@@ -1051,6 +1051,85 @@ app.post("/api/bank/reconcile", async (req, res) => {
   }
 });
 
+// Manual adjustment journal entry
+app.post("/api/journal-entry/adjustment", async (req, res) => {
+  try {
+    const { date, description, referenceNo, items, user } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "At least one journal item is required." });
+    }
+
+    // Validate balance (Debit sum must equal Credit sum)
+    const debitSum = items.reduce((sum, item) => sum + Number(item.debit || 0), 0);
+    const creditSum = items.reduce((sum, item) => sum + Number(item.credit || 0), 0);
+
+    if (Math.abs(debitSum - creditSum) > 0.009) {
+      return res.status(400).json({ error: `Unbalanced journal entry. Debits (${debitSum}) must equal Credits (${creditSum}).` });
+    }
+
+    // Validate accounts
+    for (const item of items) {
+      if (!item.accountCode) {
+        return res.status(400).json({ error: "Each journal line must specify an account code." });
+      }
+      const account = await prisma.account.findUnique({ where: { code: item.accountCode } });
+      if (!account) {
+        return res.status(400).json({ error: `Account code ${item.accountCode} does not exist.` });
+      }
+    }
+
+    // Update account balances
+    for (const item of items) {
+      const account = await prisma.account.findUnique({ where: { code: item.accountCode } });
+      if (account) {
+        let balanceChange = 0;
+        if (account.type === "Expense" || account.type === "Asset") {
+          // Debit increases, Credit decreases
+          balanceChange = Number(item.debit || 0) - Number(item.credit || 0);
+        } else {
+          // Credit increases, Debit decreases
+          balanceChange = Number(item.credit || 0) - Number(item.debit || 0);
+        }
+
+        await prisma.account.update({
+          where: { code: item.accountCode },
+          data: { balance: account.balance + balanceChange }
+        });
+      }
+    }
+
+    // Create journal entry record
+    const je = await prisma.journalEntry.create({
+      data: {
+        id: `je-${Date.now()}`,
+        journal: "Adjustment",
+        date: date || new Date().toISOString().split("T")[0],
+        description,
+        referenceNo: referenceNo || `ADJ-${Date.now().toString().slice(-4)}`,
+        isPosted: true,
+        itemsJson: JSON.stringify(items.map(item => ({
+          accountCode: item.accountCode,
+          debit: Number(item.debit || 0),
+          credit: Number(item.credit || 0),
+          projectId: item.projectId || null
+        })))
+      }
+    });
+
+    await createAuditLog(
+      user?.id || "u-3",
+      user?.name || "Finance Officer",
+      "Manual Adjustment Posting",
+      `Manual adjustment journal entry ${je.referenceNo} posted: "${description}". Net balanced value: ${debitSum} USD.`
+    );
+
+    res.json({ success: true, journalEntry: je });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Timesheet lodgement
 app.post("/api/timesheets/submit", async (req, res) => {
   try {

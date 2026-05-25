@@ -140,6 +140,20 @@ export default function App() {
   const [selectedTSMonth, setSelectedTSMonth] = useState("2026-05");
   const [tsAllocValues, setTsAllocValues] = useState<{ [projId: string]: number }>({});
 
+  // Manual Adjustment Journal Entry states
+  const [adjDate, setAdjDate] = useState("");
+  const [adjDescription, setAdjDescription] = useState("");
+  const [adjReferenceNo, setAdjReferenceNo] = useState("");
+  const [adjItems, setAdjItems] = useState<{ accountCode: string; debit: number; credit: number; projectId: string }[]>([
+    { accountCode: "", debit: 0, credit: 0, projectId: "" },
+    { accountCode: "", debit: 0, credit: 0, projectId: "" }
+  ]);
+
+  // Project Workspace states
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [reconMonth, setReconMonth] = useState<string>("2026-05");
+  const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<"folder" | "reconciliation">("folder");
+
   // Org FX adjustments state
   const [eurRateInput, setEurRateInput] = useState("1.08");
   const [lbpRateInput, setLbpRateInput] = useState("0.000011");
@@ -780,6 +794,55 @@ export default function App() {
     }
   };
 
+  const handleAdjustmentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Validate debit vs credit balance
+    const debitSum = adjItems.reduce((sum, item) => sum + Number(item.debit || 0), 0);
+    const creditSum = adjItems.reduce((sum, item) => sum + Number(item.credit || 0), 0);
+
+    if (Math.abs(debitSum - creditSum) > 0.009) {
+      triggerToast(`Unbalanced journal entry! Debits (${debitSum}) must equal Credits (${creditSum}).`, "error");
+      return;
+    }
+
+    if (adjItems.some(item => !item.accountCode)) {
+      triggerToast("Please select a valid account code for all journal lines.", "error");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/journal-entry/adjustment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: adjDate,
+          description: adjDescription,
+          referenceNo: adjReferenceNo,
+          items: adjItems,
+          user: currentUser
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to post manual adjustment entry.");
+
+      triggerToast("Manual adjustment journal entry successfully posted to the ledger!");
+      // Reset form
+      setAdjDate("");
+      setAdjDescription("");
+      setAdjReferenceNo("");
+      setAdjItems([
+        { accountCode: "", debit: 0, credit: 0, projectId: "" },
+        { accountCode: "", debit: 0, credit: 0, projectId: "" }
+      ]);
+      
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
   const handleVendorRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newVendorName || !newVendorCategory) {
@@ -817,7 +880,37 @@ export default function App() {
     }
   };
 
+  const handleProjectDocUpload = async (e: React.ChangeEvent<HTMLInputElement>, projId: string) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64String = (reader.result as string).split(",")[1];
+        const res = await fetch("/api/document/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            mimeType: file.type,
+            sizeStr: `${(file.size / 1024).toFixed(0)} KB`,
+            base64: base64String,
+            category: "Contract",
+            linkedRecordType: "Project",
+            linkedRecordId: projId,
+            user: currentUser
+          })
+        });
 
+        if (!res.ok) throw new Error("Upload failed");
+        triggerToast(`Document archived successfully: "${file.name}"`);
+        refreshState();
+      } catch (err: any) {
+        triggerToast("Failed to upload project contract doc.", "error");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleEmployeeRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1444,7 +1537,516 @@ export default function App() {
                 ))}
               </div>
 
-              {/* Budgets Lines adjustments drawer block */}
+              {/* Active Restricted Projects Section (NEW) */}
+              <div className="space-y-4">
+                <h3 className="text-md font-bold text-slate-800 uppercase font-mono flex items-center gap-1.5">
+                  📁 Active Restricted Projects
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {state.projects.map(proj => {
+                    const donor = state.donors.find(d => d.id === proj.donorId);
+                    const isSelected = selectedProjectId === proj.id;
+                    const burnTotal = state.budgetLines
+                      .filter(bl => bl.projectId === proj.id)
+                      .reduce((sum, bl) => sum + (bl.actualUSD || 0), 0);
+                    const burnPercent = Math.min(100, Math.round((burnTotal / (proj.budgetUSD || 1)) * 100));
+
+                    return (
+                      <div
+                        key={proj.id}
+                        onClick={() => setSelectedProjectId(selectedProjectId === proj.id ? null : proj.id)}
+                        className={`p-5 bg-white border rounded-xl shadow-sm cursor-pointer transition-all duration-200 ${
+                          isSelected ? "ring-2 ring-red-600 border-transparent bg-red-50/10" : "border-slate-200 hover:border-slate-350 hover:shadow-md"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="text-[10px] bg-red-50 text-red-700 font-mono font-bold px-2 py-0.5 rounded uppercase">
+                            {proj.code}
+                          </span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${
+                            proj.status === "Active" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                          }`}>
+                            {proj.status}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-900 font-sans mb-1">{proj.name}</h4>
+                        <p className="text-xs text-slate-500 mb-3">Donor Partner: {donor?.name || "Restricted Donor"}</p>
+                        
+                        <div className="space-y-1 mb-3">
+                          <div className="flex justify-between text-[10px] text-slate-500">
+                            <span>Burn Rate</span>
+                            <span>{burnPercent}%</span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                            <div className="bg-red-600 h-full transition-all duration-300" style={{ width: `${burnPercent}%` }} />
+                          </div>
+                        </div>
+
+                        <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-xs">
+                          <div>
+                            <span className="block text-[9px] text-slate-400 uppercase">Grants pool</span>
+                            <strong className="text-slate-800 font-mono">{formatUSD(proj.budgetUSD)}</strong>
+                          </div>
+                          <span className="text-red-650 font-bold hover:underline flex items-center gap-0.5">
+                            {isSelected ? "Close Workspace ✕" : "Open Workspace 📂"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Project Workspace Control Panel (NEW) */}
+              {selectedProjectId && (() => {
+                const activeProject = state.projects.find(p => p.id === selectedProjectId);
+                if (!activeProject) return null;
+
+                const activeDonor = state.donors.find(d => d.id === activeProject.donorId);
+                const projDocs = state.documents.filter(d => d.linkedRecordType === "Project" && d.linkedRecordId === selectedProjectId);
+                const projExpenses = state.expenses.filter(e => 
+                  e.projectId === selectedProjectId || 
+                  (e.allocations && e.allocations.some((a: any) => a.projectId === selectedProjectId))
+                );
+                const projProcurements = state.procurements.filter(p => p.projectId === selectedProjectId);
+                
+                // Bank transactions linked to this project
+                const projVouchers = projExpenses.map(e => e.voucherNo);
+                const projBankTx = state.bankTransactions.filter(bt => bt.voucherNo && projVouchers.includes(bt.voucherNo));
+
+                // Timesheets allocating payroll to this project
+                const projTimesheets = state.timesheets.filter(ts => 
+                  ts.allocations && ts.allocations.some((alloc: any) => alloc.projectId === selectedProjectId)
+                );
+
+                return (
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
+                    <div className="border-b border-slate-100 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded font-mono font-bold">{activeProject.code}</span>
+                          <h3 className="text-lg font-bold text-slate-900 font-sans">{activeProject.name} Workspace</h3>
+                        </div>
+                        <p className="text-xs text-slate-500">Restricted Donor: {activeDonor?.name || "Unspecified"} • Grant Pool: {formatUSD(activeProject.budgetUSD)}</p>
+                      </div>
+
+                      {/* Sub-tab navigation */}
+                      <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-medium font-sans">
+                        <button
+                          type="button"
+                          onClick={() => setProjectWorkspaceTab("folder")}
+                          className={`px-3 py-1.5 rounded-md transition-colors ${
+                            projectWorkspaceTab === "folder" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          📁 Folder Explorer (Audit File)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProjectWorkspaceTab("reconciliation")}
+                          className={`px-3 py-1.5 rounded-md transition-colors ${
+                            projectWorkspaceTab === "reconciliation" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          📊 Monthly Reconciliation Report
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Sub-tab 1: Folder Explorer (Section 2.6 Compliance) */}
+                    {projectWorkspaceTab === "folder" && (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          
+                          {/* Folder A: Project Contracts & MoUs */}
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                              <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
+                                📂 1. Contracts, MoUs & Co-funding splits
+                              </h4>
+                              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                                <label className="text-[10px] text-red-650 hover:text-red-700 font-bold cursor-pointer">
+                                  ➕ Upload MoU
+                                  <input
+                                    type="file"
+                                    accept="application/pdf"
+                                    onChange={(e) => handleProjectDocUpload(e, activeProject.id)}
+                                    className="hidden"
+                                  />
+                                </label>
+                              )}
+                            </div>
+
+                            {projDocs.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 italic py-2">No uploaded contracts or MoU PDFs found in this project archive.</p>
+                            ) : (
+                              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                {projDocs.map(doc => (
+                                  <div key={doc.id} className="flex justify-between items-center text-xs p-2 bg-white border border-slate-100 rounded shadow-inner">
+                                    <span className="text-slate-700 truncate max-w-xs">📄 {doc.filename} ({doc.sizeStr})</span>
+                                    <a
+                                      href={`data:${doc.mimeType};base64,${doc.base64}`}
+                                      download={doc.filename}
+                                      className="text-red-650 hover:underline font-mono text-[10px] font-bold"
+                                    >
+                                      📥 Download
+                                    </a>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Folder B: Procurement & Bidding Files */}
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                              <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
+                                📂 2. Procurement Files & Bid Matrices
+                              </h4>
+                              <span className="text-[10px] bg-slate-200 text-slate-700 font-bold font-mono px-1.5 py-0.5 rounded">{projProcurements.length} files</span>
+                            </div>
+
+                            {projProcurements.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 italic py-2">No procurement sourcing sheets or tender bids match this project.</p>
+                            ) : (
+                              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                {projProcurements.map(proc => (
+                                  <div key={proc.id} className="text-xs p-2 bg-white border border-slate-100 rounded space-y-1">
+                                    <div className="flex justify-between font-bold">
+                                      <span className="text-slate-800">{proc.title}</span>
+                                      <span className={`text-[10px] font-mono ${
+                                        proc.status === "Approved" ? "text-emerald-600" : "text-amber-600"
+                                      }`}>{proc.status}</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 italic">Justification: "{proc.justification}"</p>
+                                    <div className="text-[9px] text-slate-400">
+                                      Conflict declared: {proc.conflictDeclared ? "Yes (Mitigated) 🛡️" : "No (Compliant) ✓"}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Folder C: Expense Vouchers & Supporting Invoices */}
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                              <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
+                                📂 3. Expense Vouchers & Bills (Bills Ledger)
+                              </h4>
+                              <span className="text-[10px] bg-slate-200 text-slate-700 font-bold font-mono px-1.5 py-0.5 rounded">{projExpenses.length} vouchers</span>
+                            </div>
+
+                            {projExpenses.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 italic py-2">No expense vouchers or disbursements posted to this project.</p>
+                            ) : (
+                              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                {projExpenses.map(exp => {
+                                  const alloc = exp.allocations ? exp.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+                                  const isShared = !!alloc;
+                                  const displayedVal = isShared ? Number(alloc.amount) : exp.amount;
+                                  const docAttached = state.documents.find(d => d.linkedRecordType === "Expense" && d.linkedRecordId === exp.id);
+
+                                  return (
+                                    <div key={exp.id} className="text-xs p-2 bg-white border border-slate-100 rounded space-y-1">
+                                      <div className="flex justify-between items-center">
+                                        <span className="font-mono font-bold text-slate-700">{exp.voucherNo}</span>
+                                        <span className="font-mono font-bold text-slate-900">
+                                          {formatUSD(displayedVal * exp.rate)} 
+                                          {isShared && <span className="text-[9px] text-amber-600 font-normal ml-1">({alloc.percentage}%)</span>}
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] text-slate-650">{exp.title}</p>
+                                      <div className="flex justify-between items-center text-[9px] text-slate-400">
+                                        <span>Status: {exp.status}</span>
+                                        {docAttached ? (
+                                          <a
+                                            href={`data:${docAttached.mimeType};base64,${docAttached.base64}`}
+                                            download={docAttached.filename}
+                                            className="text-red-650 hover:underline font-bold"
+                                          >
+                                            📥 Supporting PDF
+                                          </a>
+                                        ) : (
+                                          <span className="text-slate-400 italic">No bill PDF attached</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Folder D: Bank & Cash reconciliations */}
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                            <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                              <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
+                                📂 4. Bank Reconciliation Statement Items
+                              </h4>
+                              <span className="text-[10px] bg-slate-200 text-slate-700 font-bold font-mono px-1.5 py-0.5 rounded">{projBankTx.length} items</span>
+                            </div>
+
+                            {projBankTx.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 italic py-2">No cleared bank statements linked to this project's vouchers.</p>
+                            ) : (
+                              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                {projBankTx.map(bt => {
+                                  const account = state.bankAccounts.find(ba => ba.id === bt.bankAccountId);
+                                  return (
+                                    <div key={bt.id} className="text-xs p-2 bg-white border border-slate-100 rounded space-y-0.5 font-mono">
+                                      <div className="flex justify-between text-slate-800">
+                                        <span>{bt.date} • {account?.name}</span>
+                                        <span className="font-bold text-red-600">-{formatUSD(bt.amount)}</span>
+                                      </div>
+                                      <p className="text-[9px] text-slate-500 font-sans italic">Reconciled to: {bt.voucherNo} • {bt.description}</p>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Folder E: Proportional Cost Allocation Sheets */}
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3 md:col-span-2">
+                            <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                              <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
+                                📂 5. Personnel Cost Allocation Sheets (Timesheets)
+                              </h4>
+                              <span className="text-[10px] bg-slate-200 text-slate-700 font-bold font-mono px-1.5 py-0.5 rounded">{projTimesheets.length} allocated logs</span>
+                            </div>
+
+                            {projTimesheets.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 italic py-2">No employee salary timesheets have co-funded allocations mapped to this project yet.</p>
+                            ) : (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-40 overflow-y-auto">
+                                {projTimesheets.map(ts => {
+                                  const emp = state.employees.find(e => e.id === ts.employeeId);
+                                  const alloc = ts.allocations.find((a: any) => a.projectId === selectedProjectId);
+                                  const allocatedSalary = (emp?.salary || 0) * ((alloc?.percentage || 0) / 100);
+
+                                  return (
+                                    <div key={ts.id} className="text-xs p-2 bg-white border border-slate-100 rounded space-y-1">
+                                      <div className="flex justify-between items-center">
+                                        <strong className="text-slate-800">{emp?.name || "Staff"}</strong>
+                                        <span className="font-mono font-bold text-slate-900 bg-red-50 text-red-750 px-1.5 py-0.5 rounded">
+                                          {alloc?.percentage || 0}% ({formatUSD(allocatedSalary)})
+                                        </span>
+                                      </div>
+                                      <div className="flex justify-between text-[10px] text-slate-500">
+                                        <span>Month: {ts.month} • {emp?.position}</span>
+                                        <span>Status: {ts.status}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Sub-tab 2: Monthly Project Reconciliation Report (Section 2.5 Compliance) */}
+                    {projectWorkspaceTab === "reconciliation" && (() => {
+                      // Filter items for the specific reconMonth (YYYY-MM)
+                      const monthExpenses = projExpenses.filter(e => {
+                        const dateVal = e.paid_at || e.created_at;
+                        return dateVal && dateVal.startsWith(reconMonth);
+                      });
+
+                      const monthBankTx = projBankTx.filter(bt => bt.date && bt.date.startsWith(reconMonth));
+
+                      const monthWht = monthExpenses.reduce((sum, e) => sum + (e.whtAmount || 0), 0);
+                      const monthPaid = monthExpenses.reduce((sum, e) => {
+                        const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+                        const amt = alloc ? Number(alloc.amount) : e.amount;
+                        return sum + amt;
+                      }, 0);
+
+                      return (
+                        <div className="space-y-4 font-sans">
+                          {/* Report configuration filters */}
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4 print:hidden">
+                            <div className="flex items-center gap-3">
+                              <label className="text-xs font-bold text-slate-650 uppercase">Select Reporting Month:</label>
+                              <input
+                                type="month"
+                                value={reconMonth}
+                                onChange={(e) => setReconMonth(e.target.value)}
+                                className="finance-input text-xs"
+                              />
+                            </div>
+                            
+                            <button
+                              type="button"
+                              onClick={() => window.print()}
+                              className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm"
+                            >
+                              🖨️ Print & Sign Monthly Report
+                            </button>
+                          </div>
+
+                          {/* Print container layout */}
+                          <div className="bg-white border-2 border-slate-200 p-8 rounded-xl space-y-6 shadow-inner print:border-0 print:p-0">
+                            
+                            {/* Standardized professional header */}
+                            <div className="text-center border-b-2 border-slate-350 pb-4 space-y-1">
+                              <h1 className="text-lg font-bold uppercase tracking-wider text-slate-900">AnaHon Media Platform</h1>
+                              <p className="text-[11px] font-mono text-slate-500 uppercase tracking-widest">Tripoli, Lebanon • Financial Control & Sinking Fund Division</p>
+                              <h2 className="text-sm font-bold text-red-650 uppercase bg-red-50 inline-block px-3 py-1 rounded-full mt-2 font-mono">
+                                Monthly Donor Project Reconciliation Report
+                              </h2>
+                            </div>
+
+                            {/* Project Information */}
+                            <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 border border-slate-200 rounded-lg">
+                              <div>
+                                <p className="text-slate-500">PROJECT CODE:</p>
+                                <p className="font-bold text-slate-900 font-mono">{activeProject.code}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-500">PROJECT TITLE:</p>
+                                <p className="font-bold text-slate-900">{activeProject.name}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-500">RESTRICTED DONOR PARTNER:</p>
+                                <p className="font-bold text-slate-900">{activeDonor?.name || "Restricted Donor"}</p>
+                              </div>
+                              <div>
+                                <p className="text-slate-500">REPORTING RECONCILIATION MONTH:</p>
+                                <p className="font-bold text-slate-900 font-mono uppercase">{reconMonth}</p>
+                              </div>
+                            </div>
+
+                            {/* Section 1: Budget vs Actuals Burn (Section 2.5 verification) */}
+                            <div className="space-y-2">
+                              <h4 className="text-xs font-bold text-slate-900 uppercase font-mono border-l-2 border-red-600 pl-2">
+                                I. Restricted Budget vs. Actual Expenditure Burn
+                              </h4>
+                              
+                              <div className="overflow-hidden border border-slate-200 rounded-lg">
+                                <table className="w-full text-left text-xs border-collapse">
+                                  <header className="bg-slate-100">
+                                    <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
+                                      <th className="px-4 py-2">Account Line</th>
+                                      <th className="px-4 py-2">Category Description</th>
+                                      <th className="px-4 py-2 text-right">Allocated Pool (USD)</th>
+                                      <th className="px-4 py-2 text-right">Actual Spent This Month (USD)</th>
+                                      <th className="px-4 py-2 text-right">Total Cumulative Spent (USD)</th>
+                                      <th className="px-4 py-2 text-right">Remaining Fund Variance</th>
+                                    </tr>
+                                  </header>
+                                  <tbody className="divide-y divide-slate-100 font-mono">
+                                    {state.budgetLines.filter(bl => bl.projectId === selectedProjectId).map(bl => {
+                                      // Month specific expense burn
+                                      const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sum, e) => {
+                                        const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+                                        return sum + (alloc ? Number(alloc.amount) : e.amount);
+                                      }, 0);
+
+                                      const remaining = bl.allocatedUSD - bl.actualUSD;
+
+                                      return (
+                                        <tr key={bl.id} className="hover:bg-slate-50 font-medium">
+                                          <td className="px-4 py-2 text-slate-800 font-bold">{bl.code}</td>
+                                          <td className="px-4 py-2 text-slate-950 font-sans">{bl.category}</td>
+                                          <td className="px-4 py-2 text-right text-slate-700">{formatUSD(bl.allocatedUSD)}</td>
+                                          <td className="px-4 py-2 text-right text-red-600">{formatUSD(monthSpent)}</td>
+                                          <td className="px-4 py-2 text-right text-slate-900">{formatUSD(bl.actualUSD)}</td>
+                                          <td className="px-4 py-2 text-right text-slate-900 font-bold">{formatUSD(remaining)}</td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+
+                            {/* Section 2: Reconciled Transactions Matched (Section 2.5 verification) */}
+                            <div className="space-y-2">
+                              <h4 className="text-xs font-bold text-slate-900 uppercase font-mono border-l-2 border-red-600 pl-2">
+                                II. Reconciled Statement Matchings & Cash Flows
+                              </h4>
+
+                              <div className="overflow-hidden border border-slate-200 rounded-lg">
+                                <table className="w-full text-left text-xs border-collapse">
+                                  <header className="bg-slate-100">
+                                    <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
+                                      <th className="px-4 py-2">Statement Date</th>
+                                      <th className="px-4 py-2">Voucher / Ref</th>
+                                      <th className="px-4 py-2">Transaction Memo</th>
+                                      <th className="px-4 py-2 text-right">Withholding Tax (7.5% WHT)</th>
+                                      <th className="px-4 py-2 text-right">Reconciled Net Paid (USD)</th>
+                                    </tr>
+                                  </header>
+                                  <tbody className="divide-y divide-slate-100 font-mono">
+                                    {monthExpenses.length === 0 ? (
+                                      <tr>
+                                        <td colSpan={5} className="px-4 py-3 text-slate-400 italic text-center font-sans">No reconciled outflows or disbursements found for this period.</td>
+                                      </tr>
+                                    ) : (
+                                      monthExpenses.map(exp => {
+                                        const alloc = exp.allocations ? exp.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+                                        const netAmt = alloc ? Number(alloc.amount) : exp.netAmount;
+                                        const whtVal = alloc ? Number(alloc.amount) * (exp.whtAmount / exp.amount) : exp.whtAmount;
+
+                                        return (
+                                          <tr key={exp.id} className="hover:bg-slate-50">
+                                            <td className="px-4 py-2 text-slate-500">{exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0]}</td>
+                                            <td className="px-4 py-2 text-slate-800 font-bold">{exp.voucherNo}</td>
+                                            <td className="px-4 py-2 text-slate-950 font-sans">{exp.title}</td>
+                                            <td className="px-4 py-2 text-right text-amber-600">{formatUSD(whtVal * exp.rate)}</td>
+                                            <td className="px-4 py-2 text-right text-slate-900 font-bold">{formatUSD(netAmt * exp.rate)}</td>
+                                          </tr>
+                                        );
+                                      })
+                                    )}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+
+                            {/* Section 3: Official Reconciliation Review Sign-Off (Section 2.5 compliance) */}
+                            <div className="border-t-2 border-slate-200 pt-6 space-y-4">
+                              <p className="text-[10px] text-slate-500 text-center leading-relaxed">
+                                Under **Section 2.5 & 2.6 of the AnaHon Media Platform Accounting Policies Manual**, this reconciliation report verifies that all project expenditures, personnel allocations, timesheets, and shared split costs have been matched with primary supporting documents and validated with actual bank statement disbursements.
+                              </p>
+                              
+                              <div className="grid grid-cols-2 gap-12 pt-6">
+                                <div className="text-center space-y-12">
+                                  <div className="font-mono text-xs border-b border-slate-350 pb-2 mx-6 italic text-slate-600">
+                                    Layale Ghorayeb
+                                  </div>
+                                  <div>
+                                    <span className="block text-xs font-bold text-slate-800 uppercase font-sans">Prepared By</span>
+                                    <span className="block text-[10px] text-slate-500 uppercase font-mono">Layale Ghorayeb (Finance Officer)</span>
+                                  </div>
+                                </div>
+
+                                <div className="text-center space-y-12">
+                                  <div className="font-mono text-xs border-b border-slate-350 pb-2 mx-6 italic text-slate-400">
+                                    [Signature Box]
+                                  </div>
+                                  <div>
+                                    <span className="block text-xs font-bold text-slate-800 uppercase font-sans">Reviewed & Co-Signed By</span>
+                                    <span className="block text-[10px] text-slate-500 uppercase font-mono">Farah Shami (Program Director)</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                  </div>
+                );
+              })()}
+
+              {/* Budgets Lines adjustments block */}
               <div className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm">
                 <h4 className="text-md font-bold mb-4">Dedicated Project Account Lines</h4>
                 <div className="divide-y divide-slate-100">
@@ -2447,6 +3049,195 @@ export default function App() {
                   })}
                 </div>
               </div>
+
+              {/* Manual Adjustment Journal Entry Form */}
+              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <div className="border-b border-slate-100 pb-3">
+                    <h3 className="text-md font-bold text-slate-800 uppercase font-mono flex items-center gap-1.5">
+                      ⚖️ Post Manual Adjustment Journal Entry
+                    </h3>
+                    <p className="text-xs text-slate-500">Record corrective adjustments or periodic transfers directly. Must be perfectly balanced (Debits = Credits).</p>
+                  </div>
+
+                  <form onSubmit={handleAdjustmentSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Adjustment Date</label>
+                        <input
+                          type="date"
+                          required
+                          value={adjDate}
+                          onChange={(e) => setAdjDate(e.target.value)}
+                          className="finance-input w-full text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Journal Reference No</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. ADJ-2026-05"
+                          value={adjReferenceNo}
+                          onChange={(e) => setAdjReferenceNo(e.target.value)}
+                          className="finance-input w-full text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Description / Memo</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Purpose of correction..."
+                          value={adjDescription}
+                          onChange={(e) => setAdjDescription(e.target.value)}
+                          className="finance-input w-full text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 border-t border-slate-100 pt-4">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-700 uppercase font-mono">Journal Lines</span>
+                        <button
+                          type="button"
+                          onClick={() => setAdjItems([...adjItems, { accountCode: "", debit: 0, credit: 0, projectId: "" }])}
+                          className="text-xs text-red-650 hover:text-red-700 font-bold flex items-center gap-1"
+                        >
+                          ➕ Add Line
+                        </button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {adjItems.map((item, idx) => (
+                          <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-slate-50 p-3 rounded-lg border border-slate-200">
+                            <div className="md:col-span-4">
+                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Account</label>
+                              <select
+                                required
+                                value={item.accountCode}
+                                onChange={(e) => {
+                                  const copy = [...adjItems];
+                                  copy[idx].accountCode = e.target.value;
+                                  setAdjItems(copy);
+                                }}
+                                className="finance-input w-full text-xs bg-white"
+                              >
+                                <option value="">-- Select Account --</option>
+                                {state.accounts.map(acc => (
+                                  <option key={acc.code} value={acc.code}>
+                                    {acc.code} - {acc.name} ({acc.type})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="md:col-span-2">
+                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Debit (USD)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={item.debit || ""}
+                                onChange={(e) => {
+                                  const copy = [...adjItems];
+                                  copy[idx].debit = Number(e.target.value);
+                                  if (Number(e.target.value) > 0) copy[idx].credit = 0;
+                                  setAdjItems(copy);
+                                }}
+                                className="finance-input w-full text-xs bg-white"
+                              />
+                            </div>
+
+                            <div className="md:col-span-2">
+                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Credit (USD)</label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={item.credit || ""}
+                                onChange={(e) => {
+                                  const copy = [...adjItems];
+                                  copy[idx].credit = Number(e.target.value);
+                                  if (Number(e.target.value) > 0) copy[idx].debit = 0;
+                                  setAdjItems(copy);
+                                }}
+                                className="finance-input w-full text-xs bg-white"
+                              />
+                            </div>
+
+                            <div className="md:col-span-3">
+                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Project Tag (Optional)</label>
+                              <select
+                                value={item.projectId}
+                                onChange={(e) => {
+                                  const copy = [...adjItems];
+                                  copy[idx].projectId = e.target.value;
+                                  setAdjItems(copy);
+                                }}
+                                className="finance-input w-full text-xs bg-white"
+                              >
+                                <option value="">Unrestricted (None)</option>
+                                {state.projects.map(p => (
+                                  <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div className="md:col-span-1 text-right">
+                              <button
+                                type="button"
+                                disabled={adjItems.length <= 2}
+                                onClick={() => {
+                                  if (adjItems.length > 2) {
+                                    setAdjItems(adjItems.filter((_, i) => i !== idx));
+                                  }
+                                }}
+                                className="text-red-650 hover:text-red-800 disabled:text-slate-300 disabled:cursor-not-allowed mb-2 inline-block"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between border-t border-slate-100 pt-4 gap-4">
+                      <div className="text-xs font-mono">
+                        <span className="mr-4">Debits: <strong className="text-slate-900">{formatUSD(adjItems.reduce((s, i) => s + Number(i.debit || 0), 0))}</strong></span>
+                        <span className="mr-4">Credits: <strong className="text-slate-900">{formatUSD(adjItems.reduce((s, i) => s + Number(i.credit || 0), 0))}</strong></span>
+                        
+                        {Math.abs(
+                          adjItems.reduce((s, i) => s + Number(i.debit || 0), 0) - 
+                          adjItems.reduce((s, i) => s + Number(i.credit || 0), 0)
+                        ) < 0.01 ? (
+                          <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-bold font-mono">✓ Balanced</span>
+                        ) : (
+                          <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-bold font-mono">
+                            ⚠️ Out of balance by {formatUSD(Math.abs(adjItems.reduce((s, i) => s + Number(i.debit || 0), 0) - adjItems.reduce((s, i) => s + Number(i.credit || 0), 0)))}
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={
+                          adjItems.some(i => !i.accountCode) ||
+                          Math.abs(
+                            adjItems.reduce((s, i) => s + Number(i.debit || 0), 0) - 
+                            adjItems.reduce((s, i) => s + Number(i.credit || 0), 0)
+                          ) >= 0.01
+                        }
+                        className="bg-red-650 hover:bg-red-700 text-white text-xs px-4 py-2 rounded-lg font-semibold disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
+                      >
+                        ⚖️ Post Adjustment Entry
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
 
               {/* Journal Entries Posted log list */}
               <div className="space-y-4">
