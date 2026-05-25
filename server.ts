@@ -93,7 +93,8 @@ async function loadState() {
   // Deserialize dynamic array list columns
   const formattedExpenses = expenses.map(e => ({
     ...e,
-    comments: JSON.parse(e.commentsJson || "[]")
+    comments: JSON.parse(e.commentsJson || "[]"),
+    allocations: JSON.parse(e.allocationsJson || "[]")
   }));
 
   const formattedProcurements = procurements.map(p => ({
@@ -368,7 +369,7 @@ app.post("/api/employees/new", async (req, res) => {
 // Post Expense request
 app.post("/api/expense/new", async (req, res) => {
   try {
-    const { title, purpose, vendorId, projectId, budgetLineId, currency, amount, user } = req.body;
+    const { title, purpose, vendorId, projectId, budgetLineId, currency, amount, allocations, user } = req.body;
 
     if (!projectId) {
       return res.status(400).json({ error: "Please map request to an active Project Code." });
@@ -383,6 +384,9 @@ app.post("/api/expense/new", async (req, res) => {
 
     const count = await prisma.expense.count();
     const voucherNo = `PV-2026-${String(count + 1).padStart(3, "0")}`;
+
+    const parsedAllocations = allocations || [];
+    const allocationsJson = JSON.stringify(parsedAllocations);
 
     const request = await prisma.expense.create({
       data: {
@@ -401,12 +405,26 @@ app.post("/api/expense/new", async (req, res) => {
         status: "Submitted",
         created_at: new Date().toISOString(),
         commentsJson: "[]",
+        allocationsJson,
         hasAttachment: false
       }
     });
 
     // Lock committed budget
-    if (budgetLineId) {
+    if (parsedAllocations.length > 0) {
+      for (const alloc of parsedAllocations) {
+        if (alloc.budgetLineId) {
+          const convertedAllocAmount = Number((Number(alloc.amount) * rate).toFixed(2));
+          const bl = await prisma.budgetLine.findUnique({ where: { id: alloc.budgetLineId } });
+          if (bl) {
+            await prisma.budgetLine.update({
+              where: { id: alloc.budgetLineId },
+              data: { committedUSD: bl.committedUSD + convertedAllocAmount }
+            });
+          }
+        }
+      }
+    } else if (budgetLineId) {
       const bl = await prisma.budgetLine.findUnique({ where: { id: budgetLineId } });
       if (bl) {
         await prisma.budgetLine.update({
@@ -420,7 +438,7 @@ app.post("/api/expense/new", async (req, res) => {
       user?.id || "u-4",
       user?.name || "Requester",
       "Expense Submission",
-      `Submitted voucher ${voucherNo} - ${title} for ${amount} ${currency}`
+      `Submitted co-funded voucher ${voucherNo} - ${title} for ${amount} ${currency}`
     );
 
     res.json({ success: true, expense: request });
@@ -466,11 +484,76 @@ app.post("/api/expense/action", async (req, res) => {
     } else if (action === "approve") {
       updatedStatus = "Approved";
       approvedAt = new Date().toISOString();
+
+      // Accrual basis accounting entry
+      const expenseCostAccount = "6100";
+      const apAccount = "2100";
+      const allocations = JSON.parse(exp.allocationsJson || "[]");
+      const journalItems = [];
+
+      if (allocations.length > 0) {
+        for (const alloc of allocations) {
+          const convertedAllocAmount = Number((Number(alloc.amount) * exp.rate).toFixed(2));
+          journalItems.push({
+            accountCode: expenseCostAccount,
+            debit: convertedAllocAmount,
+            credit: 0,
+            projectId: alloc.projectId,
+            donorId: "don-1"
+          });
+        }
+      } else {
+        journalItems.push({
+          accountCode: expenseCostAccount,
+          debit: exp.convertedAmount,
+          credit: 0,
+          projectId: exp.projectId,
+          donorId: "don-1"
+        });
+      }
+
+      // Matching liability Credit to Accounts Payable
+      journalItems.push({
+        accountCode: apAccount,
+        debit: 0,
+        credit: exp.convertedAmount
+      });
+
+      // Register accrual journal entry
+      await prisma.journalEntry.create({
+        data: {
+          id: `je-${Date.now()}`,
+          journal: "General",
+          date: new Date().toISOString().split("T")[0],
+          description: `Accrued Expense Voucher ${exp.voucherNo}: ${exp.title}`,
+          referenceNo: exp.voucherNo,
+          isPosted: true,
+          itemsJson: JSON.stringify(journalItems)
+        }
+      });
+
+      // Update central general ledger account balances
+      const acDeb = await prisma.account.findUnique({ where: { code: expenseCostAccount } });
+      const acAP = await prisma.account.findUnique({ where: { code: apAccount } });
+
+      if (acDeb) {
+        await prisma.account.update({
+          where: { code: expenseCostAccount },
+          data: { balance: acDeb.balance + exp.convertedAmount }
+        });
+      }
+      if (acAP) {
+        await prisma.account.update({
+          where: { code: apAccount },
+          data: { balance: acAP.balance + exp.convertedAmount } // Accounts payable credit increases liability balance
+        });
+      }
+
       await createAuditLog(
         user?.id,
         user?.name,
-        "Director Approval",
-        `Approved disbursement request: ${exp.voucherNo}. Amount USD equivalent: ${exp.convertedAmount}`
+        "Director Approval & Accrual Posting",
+        `Approved request and posted Accruals for ${exp.voucherNo}. Debited expense costs and credited Accounts Payable ${apAccount}.`
       );
     } else if (action === "return") {
       updatedStatus = "Returned for Correction";
@@ -539,8 +622,25 @@ app.post("/api/expense/action", async (req, res) => {
     } else if (action === "general-ledger-post") {
       updatedStatus = "Posted";
 
-      // Deduct commitment, add to actual spent budget
-      if (exp.budgetLineId) {
+      // Deduct commitment, add to actual spent budget (supporting allocations)
+      const allocations = JSON.parse(exp.allocationsJson || "[]");
+      if (allocations.length > 0) {
+        for (const alloc of allocations) {
+          if (alloc.budgetLineId) {
+            const convertedAllocAmount = Number((Number(alloc.amount) * exp.rate).toFixed(2));
+            const bl = await prisma.budgetLine.findUnique({ where: { id: alloc.budgetLineId } });
+            if (bl) {
+              await prisma.budgetLine.update({
+                where: { id: alloc.budgetLineId },
+                data: {
+                  committedUSD: Math.max(0, bl.committedUSD - convertedAllocAmount),
+                  actualUSD: bl.actualUSD + convertedAllocAmount
+                }
+              });
+            }
+          }
+        }
+      } else if (exp.budgetLineId) {
         const bl = await prisma.budgetLine.findUnique({ where: { id: exp.budgetLineId } });
         if (bl) {
           await prisma.budgetLine.update({
@@ -558,13 +658,13 @@ app.post("/api/expense/action", async (req, res) => {
       const convertedNetAmount = exp.convertedAmount - convertedWhtAmount; // Using subtraction ensures absolute mathematical precision
 
       // Mapped accounts
-      const expenseCostAccount = "6100";
+      const apAccount = "2100";
       const bankAssetAccount = exp.paymentMethod?.toLowerCase().includes("cash") ? "1120" : "1100";
       const taxPayableAccount = "2310";
 
-      // Formulate balanced journal items
+      // Formulate balanced journal items: Debit Accounts Payable, Credit Bank/Cash, Credit Taxes Payable
       const journalItems = [
-        { accountCode: expenseCostAccount, debit: exp.convertedAmount, credit: 0, projectId: exp.projectId, donorId: "don-1" },
+        { accountCode: apAccount, debit: exp.convertedAmount, credit: 0 },
         { accountCode: bankAssetAccount, debit: 0, credit: convertedNetAmount }
       ];
 
@@ -577,7 +677,7 @@ app.post("/api/expense/action", async (req, res) => {
           id: `je-${Date.now()}`,
           journal: "Cash Payments",
           date: new Date().toISOString().split("T")[0],
-          description: `Posted ${exp.voucherNo} to Ledger: ${exp.title} (Net: ${exp.netAmount} ${exp.currency}, WHT: ${exp.whtAmount} ${exp.currency})`,
+          description: `Settled Accounts Payable for ${exp.voucherNo}: ${exp.title} (Net payout, WHT applied)`,
           referenceNo: exp.voucherNo,
           isPosted: true,
           itemsJson: JSON.stringify(journalItems)
@@ -585,19 +685,19 @@ app.post("/api/expense/action", async (req, res) => {
       });
 
       // Update actual general ledger account balances
-      const acDeb = await prisma.account.findUnique({ where: { code: expenseCostAccount } });
+      const acAP = await prisma.account.findUnique({ where: { code: apAccount } });
       const acCred = await prisma.account.findUnique({ where: { code: bankAssetAccount } });
 
-      if (acDeb) {
+      if (acAP) {
         await prisma.account.update({
-          where: { code: expenseCostAccount },
-          data: { balance: acDeb.balance + exp.convertedAmount }
+          where: { code: apAccount },
+          data: { balance: acAP.balance - exp.convertedAmount } // Debit clears the accounts payable liability
         });
       }
       if (acCred) {
         await prisma.account.update({
           where: { code: bankAssetAccount },
-          data: { balance: acCred.balance - convertedNetAmount }
+          data: { balance: acCred.balance - convertedNetAmount } // Credit reduces cash asset
         });
       }
 
@@ -606,7 +706,7 @@ app.post("/api/expense/action", async (req, res) => {
         if (acTax) {
           await prisma.account.update({
             where: { code: taxPayableAccount },
-            data: { balance: acTax.balance + convertedWhtAmount }
+            data: { balance: acTax.balance + convertedWhtAmount } // Credit increases tax liability
           });
         }
       }
@@ -614,8 +714,8 @@ app.post("/api/expense/action", async (req, res) => {
       await createAuditLog(
         user?.id,
         user?.name,
-        "Voucher Ledger Posted",
-        `Double-entry posting confirmed for ${exp.voucherNo}. Ledger Accounts ${expenseCostAccount} (DR: ${exp.convertedAmount}), ${bankAssetAccount} (CR: ${convertedNetAmount}), and ${taxPayableAccount} (CR: ${convertedWhtAmount}) aligned.`
+        "Voucher Ledger Settled & Posted",
+        `Cleared Accounts Payable for ${exp.voucherNo}. Debited AP ${apAccount} (DR: ${exp.convertedAmount}), credited bank account ${bankAssetAccount} (CR: ${convertedNetAmount}), and credited tax account ${taxPayableAccount} (CR: ${convertedWhtAmount}) aligned.`
       );
     }
 

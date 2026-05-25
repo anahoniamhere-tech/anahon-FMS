@@ -91,6 +91,7 @@ model Expense {
   approved_at     String?
   paid_at         String?
   commentsJson    String  // Serialized Comments Array [Comment]
+  allocationsJson String  @default("[]") // Serialized allocations for shared cost splits
   hasAttachment   Boolean @default(false)
 }
 

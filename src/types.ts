@@ -5,6 +5,13 @@ export interface Comment {
   timestamp: string;
 }
 
+export interface ProjectAllocation {
+  projectId: string;
+  budgetLineId: string;
+  percentage: number;
+  amount: number;
+}
+
 export interface BudgetLine {
   id: string;
   projectId: string;
@@ -70,6 +77,7 @@ export interface Expense {
   approved_at?: string;
   paid_at?: string;
   comments: Comment[];
+  allocations: ProjectAllocation[];
   hasAttachment: boolean;
 }
 

@@ -127,8 +127,14 @@ export default function App() {
   const [dailyVendor, setDailyVendor] = useState("");
   const [dailyAmount, setDailyAmount] = useState("");
   const [dailyCurrency, setDailyCurrency] = useState<"USD" | "EUR" | "LBP">("USD");
-  const [dailyProject, setDailyProject] = useState("");
   const [dailyBudgetLine, setDailyBudgetLine] = useState("");
+
+  // Shared cost split allocation states
+  const [enableSharedSplit, setEnableSharedSplit] = useState(false);
+  const [splitAllocations, setSplitAllocations] = useState<{ projectId: string; budgetLineId: string; percentage: number; }[]>([
+    { projectId: "", budgetLineId: "", percentage: 50 },
+    { projectId: "", budgetLineId: "", percentage: 50 }
+  ]);
 
   // Employee registration states
   const [newEmpName, setNewEmpName] = useState("");
@@ -398,6 +404,26 @@ export default function App() {
       return;
     }
 
+    // Construct co-funding split allocations if enabled
+    let allocationsPayload = [];
+    if (enableSharedSplit) {
+      const totalPercentage = splitAllocations.reduce((sum, a) => sum + Number(a.percentage || 0), 0);
+      if (totalPercentage !== 100) {
+        triggerToast(`Shared cost splits must sum up to exactly 100%. Currently: ${totalPercentage}%`, "error");
+        return;
+      }
+      if (splitAllocations.some(a => !a.projectId)) {
+        triggerToast("Please select a project for all co-funding allocation lines.", "error");
+        return;
+      }
+      allocationsPayload = splitAllocations.map(a => ({
+        projectId: a.projectId,
+        budgetLineId: a.budgetLineId || "",
+        percentage: Number(a.percentage),
+        amount: Number(((Number(expenseAmount) * Number(a.percentage)) / 100).toFixed(2))
+      }));
+    }
+
     try {
       const res = await fetch("/api/expense/new", {
         method: "POST",
@@ -410,6 +436,7 @@ export default function App() {
           budgetLineId: expenseBudgetLine,
           currency: expenseCurrency,
           amount: expenseAmount,
+          allocations: allocationsPayload,
           user: currentUser
         })
       });
@@ -445,6 +472,11 @@ export default function App() {
       setExpenseVendor("");
       setExpenseBudgetLine("");
       setExpenseAmount("");
+      setEnableSharedSplit(false);
+      setSplitAllocations([
+        { projectId: "", budgetLineId: "", percentage: 50 },
+        { projectId: "", budgetLineId: "", percentage: 50 }
+      ]);
       setTempAttachment(null);
       refreshState();
     } catch (err: any) {
@@ -1601,9 +1633,119 @@ export default function App() {
                       <label className="block text-xs font-bold text-slate-700 mb-1">Attach supporting Invoice/Agreement (PDF)</label>
                       <input
                         type="file"
-                        onChange={handleFileDrop}
-                        className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-red-700 hover:file:bg-red-100 cursor-pointer"
+                        accept="application/pdf"
+                        onChange={handleAttachmentSelect}
+                        className="finance-input w-full text-xs"
                       />
+                    </div>
+
+                    <div className="md:col-span-3 border-t border-slate-100 pt-4 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="enable-shared-split"
+                          checked={enableSharedSplit}
+                          onChange={(e) => setEnableSharedSplit(e.target.checked)}
+                          className="h-4 w-4 cursor-pointer"
+                        />
+                        <label htmlFor="enable-shared-split" className="text-xs font-bold text-slate-800 cursor-pointer">
+                          🛠️ Enable Multi-Project Shared Cost Allocation (Co-funding split)
+                        </label>
+                      </div>
+
+                      {enableSharedSplit && (
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block font-mono">
+                            Predefined Cost Allocation Formulas & Project Splits
+                          </span>
+                          
+                          {splitAllocations.map((alloc, idx) => (
+                            <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Allocation Project</label>
+                                <select
+                                  value={alloc.projectId}
+                                  onChange={(e) => {
+                                    const copy = [...splitAllocations];
+                                    copy[idx].projectId = e.target.value;
+                                    copy[idx].budgetLineId = ""; // Reset budget line
+                                    setSplitAllocations(copy);
+                                  }}
+                                  className="finance-input w-full text-xs bg-white"
+                                >
+                                  <option value="">-- Select Project --</option>
+                                  {state.projects.map(p => (
+                                    <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Budget Line mapping</label>
+                                <select
+                                  value={alloc.budgetLineId}
+                                  onChange={(e) => {
+                                    const copy = [...splitAllocations];
+                                    copy[idx].budgetLineId = e.target.value;
+                                    setSplitAllocations(copy);
+                                  }}
+                                  className="finance-input w-full text-xs bg-white"
+                                >
+                                  <option value="">-- Unrestricted Line --</option>
+                                  {state.budgetLines.filter(bl => bl.projectId === alloc.projectId).map(bl => (
+                                    <option key={bl.id} value={bl.id}>{bl.code} - {bl.description}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Percentage Split (%)</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="100"
+                                  value={alloc.percentage}
+                                  onChange={(e) => {
+                                    const copy = [...splitAllocations];
+                                    copy[idx].percentage = Number(e.target.value);
+                                    setSplitAllocations(copy);
+                                  }}
+                                  className="finance-input w-full text-xs font-mono"
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const copy = splitAllocations.filter((_, i) => i !== idx);
+                                    setSplitAllocations(copy);
+                                  }}
+                                  className="bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 p-2 rounded text-xs border border-red-200"
+                                >
+                                  🗑️
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+
+                          <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSplitAllocations([...splitAllocations, { projectId: "", budgetLineId: "", percentage: 0 }]);
+                              }}
+                              className="text-[10px] bg-slate-900 text-white px-2.5 py-1 rounded font-bold hover:bg-slate-950 shadow"
+                            >
+                              ➕ Add Project Split Line
+                            </button>
+                            <span className="font-mono font-bold text-slate-700">
+                              Total Split:{" "}
+                              <span className={splitAllocations.reduce((s, a) => s + Number(a.percentage || 0), 0) === 100 ? "text-emerald-600" : "text-amber-600"}>
+                                {splitAllocations.reduce((s, a) => s + Number(a.percentage || 0), 0)}%
+                              </span>{" "}
+                              / 100%
+                            </span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-end">
                       <button type="submit" className="w-full bg-red-650 bg-red-600 text-white font-medium text-xs px-4 py-2.5 rounded-lg hover:bg-red-700 shadow transition-all">
@@ -1684,6 +1826,40 @@ export default function App() {
                             </span>
                           </div>
                         </div>
+
+                        {/* Co-funding shared cost splits display */}
+                        {exp.allocations && exp.allocations.length > 0 && (
+                          <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">
+                              🛠️ Predefined Co-funding splits & Shared Cost Allocations
+                            </span>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono font-medium">
+                              {exp.allocations.map((alloc, idx) => {
+                                const allocProj = state.projects.find(p => p.id === alloc.projectId);
+                                const allocBl = state.budgetLines.find(bl => bl.id === alloc.budgetLineId);
+                                
+                                return (
+                                  <div key={idx} className="p-2.5 bg-white border border-slate-200 rounded-lg flex flex-col justify-between">
+                                    <div>
+                                      <span className="text-[10px] text-slate-400 block">Project mapping</span>
+                                      <span className="font-bold text-slate-900">{allocProj ? `${allocProj.code} (${alloc.percentage}%)` : `Unknown Project (${alloc.percentage}%)`}</span>
+                                    </div>
+                                    <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-baseline">
+                                      <div>
+                                        <span className="text-[10px] text-slate-400 block">Budget Line Mapping</span>
+                                        <span className="font-bold text-slate-700">{allocBl ? allocBl.code : "Unrestricted Line"}</span>
+                                      </div>
+                                      <div className="text-right">
+                                        <span className="text-[10px] text-slate-400 block">Split Amount</span>
+                                        <span className="font-bold text-slate-900">{alloc.amount.toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
 
                         {/* Paid/Posted WHT audit trail info block */}
                         {["Paid", "Posted"].includes(exp.status) && (
