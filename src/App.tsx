@@ -119,6 +119,14 @@ export default function App() {
   const [newVendorBankInfo, setNewVendorBankInfo] = useState("");
   const [newVendorContact, setNewVendorContact] = useState("");
 
+  // Employee registration states
+  const [newEmpName, setNewEmpName] = useState("");
+  const [newEmpPosition, setNewEmpPosition] = useState("");
+  const [newEmpSalary, setNewEmpSalary] = useState("");
+  const [newEmpAllowance, setNewEmpAllowance] = useState("");
+  const [newEmpPaymentMethod, setNewEmpPaymentMethod] = useState("");
+  const [newEmpContractType, setNewEmpContractType] = useState("");
+
   // Timesheet Allocation interactive adjustment
   const [selectedTSMonth, setSelectedTSMonth] = useState("2026-05");
   const [tsAllocValues, setTsAllocValues] = useState<{ [projId: string]: number }>({});
@@ -625,6 +633,45 @@ export default function App() {
       }
     } catch {
       triggerToast("Error registering new vendor.", "error");
+    }
+  };
+
+  const handleEmployeeRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEmpName || !newEmpPosition || !newEmpSalary) {
+      triggerToast("Employee name, position and base salary are required.", "error");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/employees/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newEmpName,
+          position: newEmpPosition,
+          salary: newEmpSalary,
+          allowance: newEmpAllowance || 0,
+          paymentMethod: newEmpPaymentMethod || "Bank Audi Wire",
+          contractType: newEmpContractType || "Regular Employee",
+          user: currentUser
+        })
+      });
+      if (res.ok) {
+        triggerToast(`Employee ${newEmpName} registered on payroll!`);
+        setNewEmpName("");
+        setNewEmpPosition("");
+        setNewEmpSalary("");
+        setNewEmpAllowance("");
+        setNewEmpPaymentMethod("");
+        setNewEmpContractType("");
+        refreshState();
+      } else {
+        const data = await res.json();
+        triggerToast(data.error || "Failed to register employee.", "error");
+      }
+    } catch {
+      triggerToast("Error registering new employee.", "error");
     }
   };
 
@@ -2137,6 +2184,70 @@ export default function App() {
                   Donor rules mandate personnel compensation matches timesheet percentage logs signed by project leaders.
                 </p>
               </div>
+
+              {/* Register New Employee Form */}
+              {["Super Admin", "HR / Payroll Officer"].includes(currentUser.role) && (
+                <form onSubmit={handleEmployeeRegister} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Full Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Farah Shami"
+                      required
+                      value={newEmpName}
+                      onChange={(e) => setNewEmpName(e.target.value)}
+                      className="finance-input w-full text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Position / Title</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Community Coordinator"
+                      required
+                      value={newEmpPosition}
+                      onChange={(e) => setNewEmpPosition(e.target.value)}
+                      className="finance-input w-full text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Base Salary (USD)</label>
+                    <input
+                      type="number"
+                      placeholder="Monthly Base"
+                      required
+                      value={newEmpSalary}
+                      onChange={(e) => setNewEmpSalary(e.target.value)}
+                      className="finance-input w-full font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Allowance (USD)</label>
+                    <input
+                      type="number"
+                      placeholder="Monthly Allowance"
+                      value={newEmpAllowance}
+                      onChange={(e) => setNewEmpAllowance(e.target.value)}
+                      className="finance-input w-full font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Payment Method</label>
+                    <select
+                      value={newEmpPaymentMethod}
+                      onChange={(e) => setNewEmpPaymentMethod(e.target.value)}
+                      className="finance-input w-full text-xs"
+                    >
+                      <option value="Bank Audi Wire">Bank Audi Wire</option>
+                      <option value="Petty Cash USD">Petty Cash USD</option>
+                      <option value="USD Cash Check">USD Cash Check</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="bg-slate-900 hover:bg-slate-955 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
+                    Register Employee
+                  </button>
+                </form>
+              )}
 
               {/* Staff timesheets loop list */}
               <div className="space-y-4">

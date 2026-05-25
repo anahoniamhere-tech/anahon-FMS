@@ -330,6 +330,41 @@ app.post("/api/vendors/new", async (req, res) => {
   }
 });
 
+// Create New Employee
+app.post("/api/employees/new", async (req, res) => {
+  try {
+    const { name, position, salary, allowance, paymentMethod, contractType, user } = req.body;
+    if (!name || !position || salary === undefined) {
+      return res.status(400).json({ error: "Employee name, position, and base salary are required." });
+    }
+
+    const empid = `emp-${Date.now()}`;
+    const employee = await prisma.employee.create({
+      data: {
+        id: empid,
+        name,
+        position,
+        salary: Number(salary) || 0,
+        allowance: Number(allowance) || 0,
+        paymentMethod: paymentMethod || "Bank Audi Wire",
+        contractType: contractType || "Regular Employee",
+        active: true
+      }
+    });
+
+    await createAuditLog(
+      user?.id || "u-1",
+      user?.name || "Super Admin",
+      "Employee Registered",
+      `Registered New Team Member: ${name} as ${position}`
+    );
+
+    res.json({ success: true, employee });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Post Expense request
 app.post("/api/expense/new", async (req, res) => {
   try {
