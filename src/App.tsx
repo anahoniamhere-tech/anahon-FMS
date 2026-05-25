@@ -1874,7 +1874,7 @@ export default function App() {
 
               {/* Direct Reconcile form */}
               {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
-                <form onSubmit={handleBankReconcile} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                <form onSubmit={handleBankReconcile} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                   <div className="md:col-span-2">
                     <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Target Account Vault Drawer</label>
                     <select
@@ -1886,6 +1886,17 @@ export default function App() {
                       {state.bankAccounts.map(b => (
                         <option key={b.id} value={b.id}>{b.name} ({b.currency})</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Transaction Type</label>
+                    <select
+                      value={recType}
+                      onChange={(e) => setRecType(e.target.value as "Deposit" | "Withdrawal")}
+                      className="finance-input w-full"
+                    >
+                      <option value="Deposit">Deposit (+)</option>
+                      <option value="Withdrawal">Withdrawal (-)</option>
                     </select>
                   </div>
                   <div>
