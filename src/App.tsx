@@ -1774,39 +1774,41 @@ export default function App() {
 
                 <div className="space-y-4">
                   {filteredExpenses.map(exp => {
-                    const vendor = state.vendors.find(v => v.id === exp.vendorId);
-                    const proj = state.projects.find(p => p.id === exp.projectId);
+                    const vendor = state?.vendors?.find(v => v.id === exp.vendorId);
+                    const proj = state?.projects?.find(p => p.id === exp.projectId);
+                    const expComments = exp.comments && Array.isArray(exp.comments) ? exp.comments : [];
+                    const expAllocations = exp.allocations && Array.isArray(exp.allocations) ? exp.allocations : [];
                     
                     return (
                       <div key={exp.id} className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
                         <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-3 gap-2">
                           <div>
-                            <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold font-mono mr-2">{exp.voucherNo}</span>
-                            <span className="text-md font-bold text-slate-900">{exp.title}</span>
+                            <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold font-mono mr-2">{exp.voucherNo || "PV-N/A"}</span>
+                            <span className="text-md font-bold text-slate-900">{exp.title || "Untitled Disbursement"}</span>
                           </div>
                           <div className="text-right">
                             <span className="text-[10px] block text-slate-500 uppercase">Val USD Equivalent</span>
-                            <span className="text-lg font-bold font-mono text-slate-950">{formatUSD(exp.convertedAmount)}</span>
+                            <span className="text-lg font-bold font-mono text-slate-950">{formatUSD(exp.convertedAmount || 0)}</span>
                           </div>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
                           <div>
                             <span className="text-[10px] block text-slate-500 uppercase">Request Purpose</span>
-                            <p className="font-semibold text-slate-800">{exp.purpose}</p>
+                            <p className="font-semibold text-slate-800">{exp.purpose || "N/A"}</p>
                           </div>
                           <div>
                             <span className="text-[10px] block text-slate-500 uppercase">Vessel Project</span>
-                            <p className="font-bold text-slate-900">{proj?.code} - {proj?.name}</p>
+                            <p className="font-bold text-slate-900">{proj ? `${proj.code} - ${proj.name}` : "N/A"}</p>
                           </div>
                           <div>
                             <span className="text-[10px] block text-slate-500 uppercase">Contract vendor</span>
                             <p className="font-semibold text-slate-800">
                               {vendor ? vendor.name : "Direct Reimbursement"}
-                              {vendor && (
+                              {vendor && vendor.category && (
                                 <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-mono border ${
-                                  vendor.category.toLowerCase().includes("consultant") || vendor.category.toLowerCase().includes("freelance") ? "bg-amber-100 text-amber-800 border-amber-200" :
-                                  vendor.category.toLowerCase().includes("service") ? "bg-indigo-100 text-indigo-800 border-indigo-200" :
+                                  (vendor.category || "").toLowerCase().includes("consultant") || (vendor.category || "").toLowerCase().includes("freelance") ? "bg-amber-100 text-amber-800 border-amber-200" :
+                                  (vendor.category || "").toLowerCase().includes("service") ? "bg-indigo-100 text-indigo-800 border-indigo-200" :
                                   "bg-slate-100 text-slate-700 border-slate-200"
                                 }`}>
                                   {vendor.category}
@@ -1822,27 +1824,29 @@ export default function App() {
                               exp.status === "Submitted" ? "bg-indigo-50 text-indigo-700" :
                               "bg-amber-100 text-amber-700"
                             }`}>
-                              ● {exp.status}
+                              ● {exp.status || "Draft"}
                             </span>
                           </div>
                         </div>
 
                         {/* Co-funding shared cost splits display */}
-                        {exp.allocations && exp.allocations.length > 0 && (
+                        {expAllocations.length > 0 && (
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block font-mono">
                               🛠️ Predefined Co-funding splits & Shared Cost Allocations
                             </span>
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono font-medium">
-                              {exp.allocations.map((alloc, idx) => {
-                                const allocProj = state.projects.find(p => p.id === alloc.projectId);
-                                const allocBl = state.budgetLines.find(bl => bl.id === alloc.budgetLineId);
+                              {expAllocations.map((alloc, idx) => {
+                                const allocProj = state?.projects?.find(p => p.id === alloc.projectId);
+                                const allocBl = state?.budgetLines?.find(bl => bl.id === alloc.budgetLineId);
                                 
                                 return (
                                   <div key={idx} className="p-2.5 bg-white border border-slate-200 rounded-lg flex flex-col justify-between">
                                     <div>
                                       <span className="text-[10px] text-slate-400 block">Project mapping</span>
-                                      <span className="font-bold text-slate-900">{allocProj ? `${allocProj.code} (${alloc.percentage}%)` : `Unknown Project (${alloc.percentage}%)`}</span>
+                                      <span className="font-bold text-slate-900">
+                                        {allocProj ? `${allocProj.code} (${alloc.percentage || 0}%)` : `Unknown Project (${alloc.percentage || 0}%)`}
+                                      </span>
                                     </div>
                                     <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between items-baseline">
                                       <div>
@@ -1851,7 +1855,7 @@ export default function App() {
                                       </div>
                                       <div className="text-right">
                                         <span className="text-[10px] text-slate-400 block">Split Amount</span>
-                                        <span className="font-bold text-slate-900">{alloc.amount.toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
+                                        <span className="font-bold text-slate-900">{(alloc.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
                                       </div>
                                     </div>
                                   </div>
@@ -1866,19 +1870,19 @@ export default function App() {
                           <div className={`p-3 border rounded-lg text-xs font-mono grid grid-cols-3 gap-2 ${exp.whtAmount > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>Gross Amount</span>
-                              <span className="font-bold text-slate-900">{exp.amount.toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
+                              <span className="font-bold text-slate-900">{(exp.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
                             </div>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>
                                 {exp.whtAmount > 0 ? "WHT Withheld (7.5%)" : "WHT Withheld (0% Registered)"}
                               </span>
                               <span className={`font-bold ${exp.whtAmount > 0 ? "text-amber-700" : "text-emerald-700"}`}>
-                                {exp.whtAmount > 0 ? `-${exp.whtAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}` : "0.00"} {exp.currency}
+                                {exp.whtAmount > 0 ? `-${(exp.whtAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}` : "0.00"} {exp.currency}
                               </span>
                             </div>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>Net Paid Amount</span>
-                              <span className="font-bold text-slate-950">{exp.netAmount.toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
+                              <span className="font-bold text-slate-950">{(exp.netAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
                             </div>
                           </div>
                         )}
@@ -1917,8 +1921,8 @@ export default function App() {
                           {exp.status === "Approved" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (() => {
                             const hasTaxId = vendor && vendor.taxId && vendor.taxId.trim() !== "" && vendor.taxId.trim().toUpperCase() !== "N/A";
                             const whtRate = hasTaxId ? 0 : 0.075;
-                            const whtVal = exp.amount * whtRate;
-                            const netVal = exp.amount - whtVal;
+                            const whtVal = (exp.amount || 0) * whtRate;
+                            const netVal = (exp.amount || 0) - whtVal;
 
                             return (
                               <div className="flex flex-col gap-3 p-4 bg-slate-50 border border-slate-200 rounded-lg w-full">
@@ -1937,7 +1941,7 @@ export default function App() {
                                 <div className="grid grid-cols-3 gap-2 text-xs border-t border-slate-200 pt-2 font-mono">
                                   <div>
                                     <span className="text-[10px] text-slate-500 uppercase block font-bold">Gross Amount</span>
-                                    <span className="font-bold text-slate-900">{exp.amount.toLocaleString()} {exp.currency}</span>
+                                    <span className="font-bold text-slate-900">{(exp.amount || 0).toLocaleString()} {exp.currency}</span>
                                   </div>
                                   <div>
                                     <span className="text-[10px] text-slate-500 uppercase block font-bold">WHT Withheld (7.5%)</span>
@@ -1954,8 +1958,8 @@ export default function App() {
                                     id={`ba-sel-${exp.id}`}
                                     className="bg-white text-xs px-2 py-1 rounded border border-slate-300 outline-none"
                                   >
-                                    {state.bankAccounts.map(b => (
-                                      <option key={b.id} value={b.id}>{b.name} (Bal: {b.balance.toLocaleString()})</option>
+                                    {(state?.bankAccounts || []).map(b => (
+                                      <option key={b.id} value={b.id}>{b.name} (Bal: {(b.balance || 0).toLocaleString()})</option>
                                     ))}
                                   </select>
                                   <button
@@ -1994,10 +1998,10 @@ export default function App() {
                         </div>
 
                         {/* Audit Trail Timeline and Internal conversations */}
-                        {exp.comments.length > 0 && (
+                        {expComments.length > 0 && (
                           <div className="p-3 bg-slate-50 border border-slate-105 rounded-lg space-y-1">
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Ledger Internal Auditor audit trails</span>
-                            {exp.comments.map((c) => (
+                            {expComments.map((c) => (
                               <div key={c.id} className="text-[11px] leading-relaxed">
                                 <span className="font-bold text-slate-800">{c.author}:</span>
                                 <span className="text-slate-600 pl-1">"{c.text}"</span>
