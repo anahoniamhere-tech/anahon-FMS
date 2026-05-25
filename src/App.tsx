@@ -1054,7 +1054,6 @@ export default function App() {
           ws1[cellRef].z = "0.0%";
         }
       }
-
       XLSX.utils.book_append_sheet(wb, ws1, "Budget_vs_Actuals");
       XLSX.utils.book_append_sheet(wb, ws2, "Reconciled_Cash_Flows");
 
@@ -1065,12 +1064,284 @@ export default function App() {
     }
   };
 
+  const handleExportWord = () => {
+    try {
+      const activeProject = state.projects.find(p => p.id === selectedProjectId);
+      if (!activeProject) return;
 
+      const element = document.getElementById("reconciliation-print-report");
+      if (!element) {
+        triggerToast("Report container not found.", "error");
+        return;
+      }
 
+      // Clone element to avoid modifying the active DOM layout
+      const clonedElement = element.cloneNode(true) as HTMLElement;
 
+      const styleBlock = `
+        <style>
+          body {
+            font-family: 'Calibri', 'Segoe UI', Arial, sans-serif;
+            color: #1e293b;
+            line-height: 1.5;
+            margin: 20px;
+          }
+          h1 {
+            font-size: 16pt;
+            font-weight: bold;
+            color: #0f172a;
+            text-align: center;
+            margin-bottom: 2pt;
+            text-transform: uppercase;
+          }
+          p.subtitle {
+            font-size: 8.5pt;
+            color: #64748b;
+            text-align: center;
+            font-family: Consolas, monospace;
+            margin-bottom: 5pt;
+          }
+          h2 {
+            font-size: 10pt;
+            font-weight: bold;
+            color: #dc2626;
+            text-align: center;
+            margin-top: 5pt;
+            margin-bottom: 15pt;
+            text-transform: uppercase;
+          }
+          h4 {
+            font-size: 10pt;
+            font-weight: bold;
+            color: #0f172a;
+            margin-top: 15pt;
+            margin-bottom: 5pt;
+            border-left: 3px solid #dc2626;
+            padding-left: 6pt;
+            text-transform: uppercase;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10pt;
+            margin-bottom: 15pt;
+            font-size: 8.5pt;
+          }
+          th {
+            background-color: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            padding: 6pt 8pt;
+            font-weight: bold;
+            text-align: left;
+            text-transform: uppercase;
+          }
+          td {
+            border: 1px solid #e2e8f0;
+            padding: 5pt 8pt;
+            vertical-align: middle;
+          }
+          .text-right {
+            text-align: right;
+          }
+          .font-mono {
+            font-family: Consolas, monospace;
+          }
+          .font-bold {
+            font-weight: bold;
+          }
+          .bg-slate-50 {
+            background-color: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 8pt;
+            border-radius: 6px;
+          }
+          .grid-cols-2 {
+            width: 100%;
+            margin-top: 10pt;
+            margin-bottom: 15pt;
+          }
+          .info-table {
+            width: 100%;
+            border: none !important;
+          }
+          .info-table td {
+            border: none !important;
+            padding: 4pt 6pt;
+          }
+          .info-label {
+            color: #64748b;
+            font-size: 8pt;
+            font-weight: bold;
+          }
+          .info-value {
+            color: #0f172a;
+            font-weight: bold;
+          }
+          .bg-emerald-50 {
+            background-color: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            padding: 8pt;
+            font-size: 8.5pt;
+            color: #065f46;
+            margin-top: 10pt;
+            margin-bottom: 10pt;
+            font-family: Consolas, monospace;
+          }
+          .bg-red-50 {
+            background-color: #fef2f2;
+            border: 1px solid #fecaca;
+            padding: 8pt;
+            font-size: 8.5pt;
+            color: #991b1b;
+            margin-top: 10pt;
+            margin-bottom: 10pt;
+            font-family: Consolas, monospace;
+          }
+          .signature-box {
+            width: 45%;
+            display: inline-block;
+            vertical-align: top;
+            margin-right: 5%;
+          }
+          .signature-table {
+            width: 100%;
+            margin-top: 20pt;
+            border: none !important;
+          }
+          .signature-table td {
+            border: none !important;
+            padding: 10pt;
+            vertical-align: top;
+          }
+          .signature-line {
+            border-top: 1px solid #94a3b8;
+            margin-top: 30pt;
+            padding-top: 5pt;
+            font-size: 8pt;
+            color: #64748b;
+          }
+          .text-slate-500 {
+            color: #64748b;
+          }
+          .text-slate-900 {
+            color: #0f172a;
+          }
+          .text-red-650 {
+            color: #b91c1c;
+          }
+          .text-emerald-800 {
+            color: #065f46;
+          }
+          .text-amber-600 {
+            color: #d97706;
+          }
+          .mt-2 { margin-top: 8px; }
+          .mb-4 { margin-bottom: 16px; }
+          .flex { display: block; }
+          .justify-between { display: block; }
+          .rounded-full { border-radius: 9999px; }
+          .bg-red-50-badge {
+            background-color: #fef2f2;
+            color: #991b1b;
+            padding: 2pt 6pt;
+            border-radius: 9999px;
+            font-size: 8pt;
+            font-weight: bold;
+            display: inline-block;
+          }
+        </style>
+      `;
 
+      const header = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' 
+              xmlns:w='urn:schemas-microsoft-com:office:word' 
+              xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <meta charset="utf-8">
+          <title>${activeProject.code} Monthly Reconciliation - ${reconMonth}</title>
+          <!--[if gte mso 9]>
+          <xml>
+            <w:WordDocument>
+              <w:View>Print</w:View>
+              <w:Zoom>100</w:Zoom>
+              <w:DoNotOptimizeForBrowser/>
+            </w:WordDocument>
+          </xml>
+          <![endif]-->
+          ${styleBlock}
+        </head>
+        <body>
+      `;
+      const footer = "</body></html>";
 
+      // Transform grid info layout to tables for Word rendering
+      const infoGrid = clonedElement.querySelector(".grid-cols-2");
+      if (infoGrid) {
+        const rows = Array.from(infoGrid.children);
+        let tableHtml = '<table class="info-table bg-slate-50">';
+        for (let i = 0; i < rows.length; i += 2) {
+          tableHtml += '<tr>';
+          if (rows[i]) {
+            const label = rows[i].children[0]?.textContent || "";
+            const val = rows[i].children[1]?.textContent || "";
+            tableHtml += `<td width="20%"><span class="info-label">${label}</span></td><td width="30%"><span class="info-value">${val}</span></td>`;
+          }
+          if (rows[i + 1]) {
+            const label = rows[i + 1].children[0]?.textContent || "";
+            const val = rows[i + 1].children[1]?.textContent || "";
+            tableHtml += `<td width="20%"><span class="info-label">${label}</span></td><td width="30%"><span class="info-value">${val}</span></td>`;
+          } else {
+            tableHtml += '<td width="20%"></td><td width="30%"></td>';
+          }
+          tableHtml += '</tr>';
+        }
+        tableHtml += '</table>';
+        infoGrid.outerHTML = tableHtml;
+      }
 
+      // Convert grid/flex signature boxes into a standard side-by-side signature table
+      const signatureContainer = clonedElement.querySelector(".pt-6.space-y-4");
+      if (signatureContainer) {
+        const gridElement = signatureContainer.querySelector(".grid-cols-2") || signatureContainer.querySelector(".grid");
+        if (gridElement) {
+          const boxes = Array.from(gridElement.children);
+          let sigTableHtml = '<table class="signature-table">';
+          sigTableHtml += '<tr>';
+          boxes.forEach((box) => {
+            const content = box.innerHTML;
+            sigTableHtml += `<td width="50%">${content}</td>`;
+          });
+          sigTableHtml += '</tr></table>';
+          gridElement.outerHTML = sigTableHtml;
+        }
+      }
+
+      const badgeHeader = clonedElement.querySelector("h2.text-red-650.bg-red-50");
+      if (badgeHeader) {
+        badgeHeader.className = "bg-red-50-badge";
+      }
+
+      const content = clonedElement.innerHTML;
+      const htmlString = header + content + footer;
+
+      const blob = new Blob(['\ufeff' + htmlString], {
+        type: 'application/msword'
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${activeProject.code}_Monthly_Reconciliation_Report_${reconMonth}.doc`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      triggerToast("Word document exported successfully!");
+    } catch (err: any) {
+      triggerToast("Failed to export Word document.", "error");
+    }
+  };
 
   const handleEmployeeRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2046,6 +2317,13 @@ export default function App() {
                                   className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition cursor-pointer"
                                 >
                                   📊 Export Excel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleExportWord}
+                                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                >
+                                  📝 Export Word
                                 </button>
                               </div>
                           </div>
