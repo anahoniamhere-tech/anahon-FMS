@@ -1903,7 +1903,7 @@ export default function App() {
                           </div>
 
                           {/* Print container layout */}
-                          <div className="bg-white border-2 border-slate-200 p-8 rounded-xl space-y-6 shadow-inner print:border-0 print:p-0">
+                          <div className="bg-white border-2 border-slate-200 p-8 rounded-xl space-y-6 shadow-inner print-report print:border-0 print:p-0">
                             
                             {/* Standardized professional header */}
                             <div className="text-center border-b-2 border-slate-350 pb-4 space-y-1">
@@ -1942,7 +1942,7 @@ export default function App() {
                               
                               <div className="overflow-hidden border border-slate-200 rounded-lg">
                                 <table className="w-full text-left text-xs border-collapse">
-                                  <header className="bg-slate-100">
+                                  <thead className="bg-slate-100">
                                     <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
                                       <th className="px-4 py-2">Account Line</th>
                                       <th className="px-4 py-2">Category Description</th>
@@ -1951,7 +1951,7 @@ export default function App() {
                                       <th className="px-4 py-2 text-right">Total Cumulative Spent (USD)</th>
                                       <th className="px-4 py-2 text-right">Remaining Fund Variance</th>
                                     </tr>
-                                  </header>
+                                  </thead>
                                   <tbody className="divide-y divide-slate-100 font-mono">
                                     {state.budgetLines.filter(bl => bl.projectId === selectedProjectId).map(bl => {
                                       // Month specific expense burn
@@ -1986,7 +1986,7 @@ export default function App() {
 
                               <div className="overflow-hidden border border-slate-200 rounded-lg">
                                 <table className="w-full text-left text-xs border-collapse">
-                                  <header className="bg-slate-100">
+                                  <thead className="bg-slate-100">
                                     <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
                                       <th className="px-4 py-2">Statement Date</th>
                                       <th className="px-4 py-2">Voucher / Ref</th>
@@ -1994,7 +1994,7 @@ export default function App() {
                                       <th className="px-4 py-2 text-right">Withholding Tax (7.5% WHT)</th>
                                       <th className="px-4 py-2 text-right">Reconciled Net Paid (USD)</th>
                                     </tr>
-                                  </header>
+                                  </thead>
                                   <tbody className="divide-y divide-slate-100 font-mono">
                                     {monthExpenses.length === 0 ? (
                                       <tr>

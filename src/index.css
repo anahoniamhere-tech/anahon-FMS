@@ -29,3 +29,111 @@ body {
   border-color: #dc2626;
   box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
 }
+
+/* ==========================================
+   PRO SIGNATURE-READY PRINT STYLES (Section 2.5)
+   ========================================== */
+@media print {
+  /* Hide standard non-printable layout panels */
+  header,
+  aside,
+  .print\:hidden,
+  .fixed,
+  button,
+  nav,
+  .z-50 {
+    display: none !important;
+  }
+
+  /* Reset layout constraints & scroll locks on body/html */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Remove all flex/height restrictions of the application wrapper */
+  .h-screen {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .flex {
+    display: block !important;
+  }
+
+  .flex-1 {
+    flex: none !important;
+  }
+
+  .overflow-hidden,
+  .overflow-y-auto {
+    overflow: visible !important;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    display: block !important;
+  }
+
+  /* Expand printed report container to occupy full page width */
+  .print-report {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Force background colors and text colors to remain visible on PDF export */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Professional Table print formatting */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    page-break-after: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  th {
+    background-color: #f1f5f9 !important;
+    color: #0f172a !important;
+    font-weight: bold !important;
+    border-bottom: 2px solid #cbd5e1 !important;
+  }
+
+  th, td {
+    padding: 8px 12px !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+  }
+
+  /* Ensure text does not get squeezed or wrapped into weird fragments */
+  .font-mono {
+    white-space: nowrap !important;
+  }
+
+  /* Allow wrapping only on descriptive titles */
+  td.font-sans {
+    white-space: normal !important;
+  }
+}
+
