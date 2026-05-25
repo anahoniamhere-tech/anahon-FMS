@@ -284,6 +284,152 @@ export default function App() {
     );
   }
 
+  // Show login screen if not authenticated (must be before !state check, since state only loads after auth)
+  if (!fbUser) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 text-slate-100 font-sans p-6 overflow-y-auto">
+        <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8 space-y-6 relative overflow-hidden">
+          
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <div className="w-14 h-14 rounded-xl bg-red-600 flex items-center justify-center font-bold tracking-wider text-white text-2xl mx-auto shadow-lg shadow-red-600/30">
+              AH
+            </div>
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-white uppercase font-sans">AnaHon Media Platform</h2>
+              <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Financial & Compliance Portal</p>
+            </div>
+          </div>
+
+          {/* Auth Tab Selectors */}
+          <div className="flex border-b border-slate-800">
+            <button
+              onClick={() => { setAuthTab("signin"); setAuthError(null); }}
+              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${
+                authTab === "signin" ? "text-white" : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              Sign In
+              {authTab === "signin" && (
+                <motion.div layoutId="auth-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600" />
+              )}
+            </button>
+            <button
+              onClick={() => { setAuthTab("signup"); setAuthError(null); }}
+              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${
+                authTab === "signup" ? "text-white" : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              Create Account
+              {authTab === "signup" && (
+                <motion.div layoutId="auth-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600" />
+              )}
+            </button>
+          </div>
+
+          {/* Error Message Box */}
+          {authError && (
+            <div className="p-3 bg-red-950/40 border border-red-800/80 rounded-lg text-xs text-red-300 font-medium leading-relaxed flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+              <span>{authError}</span>
+            </div>
+          )}
+
+          {/* Forms */}
+          <form onSubmit={authTab === "signin" ? handleFirebaseSignIn : handleFirebaseSignUp} className="space-y-4 text-left">
+            {authTab === "signup" && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Full Name</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={authName}
+                    onChange={(e) => setAuthName(e.target.value)}
+                    className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 pl-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-sans"
+                    placeholder="Enter your name"
+                  />
+                  <User className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Email Address</label>
+              <div className="relative">
+                <input
+                  type="email"
+                  required
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 pl-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
+                  placeholder="name@anahon.org"
+                />
+                <Globe className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Password</label>
+              <div className="relative">
+                <input
+                  type="password"
+                  required
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 pl-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
+                  placeholder="••••••••"
+                />
+                <Key className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={authBtnLoading}
+              className="w-full p-3 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-red-600/20 cursor-pointer disabled:opacity-50 tracking-wide uppercase font-mono"
+            >
+              {authBtnLoading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <span>{authTab === "signin" ? "Access Financial Portal" : "Establish Profile"}</span>
+              )}
+            </button>
+          </form>
+
+          {/* Local testing helper banner */}
+          <div className="pt-4 border-t border-slate-800/80 space-y-2">
+            <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono text-center">
+              Local Development Seed Roles
+            </span>
+            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-400 bg-slate-950/35 p-2.5 rounded-lg border border-slate-800">
+              <div className="space-y-1">
+                <span className="block text-slate-500">Super Admin:</span>
+                <span className="block text-slate-300 select-all cursor-pointer hover:text-white" onClick={() => { setAuthEmail("anahoniamhere@gmail.com"); setAuthPassword("password123"); setAuthTab("signin"); }}>
+                  anahoniamhere@gmail.com
+                </span>
+              </div>
+              <div className="space-y-1">
+                <span className="block text-slate-500">Finance Officer:</span>
+                <span className="block text-slate-300 select-all cursor-pointer hover:text-white" onClick={() => { setAuthEmail("layale@anahon.org"); setAuthPassword("password123"); setAuthTab("signin"); }}>
+                  layale@anahon.org
+                </span>
+              </div>
+            </div>
+            <p className="text-[9px] text-slate-500 italic text-center">
+              Tip: Click any seed email to auto-fill. Password: <strong>password123</strong>
+            </p>
+          </div>
+
+        </div>
+      </div>
+    );
+  }
+
+
   if (error || !state) {
     return (
       <div className="p-8 text-center">
@@ -833,149 +979,7 @@ export default function App() {
     );
   });
 
-  if (!fbUser) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 text-slate-100 font-sans p-6 overflow-y-auto">
-        <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8 space-y-6 relative overflow-hidden">
-          
-          {/* Header */}
-          <div className="text-center space-y-2">
-            <div className="w-14 h-14 rounded-xl bg-red-600 flex items-center justify-center font-bold tracking-wider text-white text-2xl mx-auto shadow-lg shadow-red-600/30">
-              AH
-            </div>
-            <div>
-              <h2 className="text-2xl font-black tracking-tight text-white uppercase font-sans">AnaHon Media Platform</h2>
-              <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Financial & Compliance Portal</p>
-            </div>
-          </div>
 
-          {/* Auth Tab Selectors */}
-          <div className="flex border-b border-slate-800">
-            <button
-              onClick={() => { setAuthTab("signin"); setAuthError(null); }}
-              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${
-                authTab === "signin" ? "text-white" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              Sign In
-              {authTab === "signin" && (
-                <motion.div layoutId="auth-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600" />
-              )}
-            </button>
-            <button
-              onClick={() => { setAuthTab("signup"); setAuthError(null); }}
-              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${
-                authTab === "signup" ? "text-white" : "text-slate-500 hover:text-slate-300"
-              }`}
-            >
-              Create Account
-              {authTab === "signup" && (
-                <motion.div layoutId="auth-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600" />
-              )}
-            </button>
-          </div>
-
-          {/* Error Message Box */}
-          {authError && (
-            <div className="p-3 bg-red-950/40 border border-red-800/80 rounded-lg text-xs text-red-300 font-medium leading-relaxed flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              <span>{authError}</span>
-            </div>
-          )}
-
-          {/* Forms */}
-          <form onSubmit={authTab === "signin" ? handleFirebaseSignIn : handleFirebaseSignUp} className="space-y-4 text-left">
-            {authTab === "signup" && (
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Full Name</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    value={authName}
-                    onChange={(e) => setAuthName(e.target.value)}
-                    className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 pl-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-sans"
-                    placeholder="Enter your name"
-                  />
-                  <User className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Email Address</label>
-              <div className="relative">
-                <input
-                  type="email"
-                  required
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 pl-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
-                  placeholder="name@anahon.org"
-                />
-                <Globe className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Password</label>
-              <div className="relative">
-                <input
-                  type="password"
-                  required
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 pl-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
-                  placeholder="••••••••"
-                />
-                <Key className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={authBtnLoading}
-              className="w-full p-3 bg-red-600 hover:bg-red-750 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition shadow-lg shadow-red-600/20 cursor-pointer disabled:opacity-50 font-bold tracking-wide uppercase font-mono"
-            >
-              {authBtnLoading ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <span>{authTab === "signin" ? "Access ERP Console" : "Establish Profile"}</span>
-              )}
-            </button>
-          </form>
-
-          {/* Local testing helper banner */}
-          <div className="pt-4 border-t border-slate-800/80 space-y-2">
-            <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono text-center">
-              Local Development Seed Roles
-            </span>
-            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-400 bg-slate-955/35 p-2.5 rounded-lg border border-slate-850">
-              <div className="space-y-1">
-                <span className="block text-slate-500">Super Admin:</span>
-                <span className="block text-slate-300 select-all cursor-pointer hover:text-white" onClick={() => { setAuthEmail("anahoniamhere@gmail.com"); setAuthPassword("password123"); setAuthTab("signin"); }}>
-                  anahoniamhere@gmail.com
-                </span>
-              </div>
-              <div className="space-y-1">
-                <span className="block text-slate-500">Finance Officer:</span>
-                <span className="block text-slate-300 select-all cursor-pointer hover:text-white" onClick={() => { setAuthEmail("layale@anahon.org"); setAuthPassword("password123"); setAuthTab("signin"); }}>
-                  layale@anahon.org
-                </span>
-              </div>
-            </div>
-            <p className="text-[9px] text-slate-500 italic text-center">
-              Tip: Click any seed email to auto-fill the forms. (Use password: **password123** for seed accounts).
-            </p>
-          </div>
-
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-screen flex-col bg-slate-50 text-slate-900 overflow-hidden font-sans">
