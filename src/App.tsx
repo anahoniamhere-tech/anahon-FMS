@@ -112,6 +112,13 @@ export default function App() {
   const [recDesc, setRecDesc] = useState("");
   const [recAmount, setRecAmount] = useState("");
 
+  // Vendor registration states
+  const [newVendorName, setNewVendorName] = useState("");
+  const [newVendorCategory, setNewVendorCategory] = useState("");
+  const [newVendorTaxId, setNewVendorTaxId] = useState("");
+  const [newVendorBankInfo, setNewVendorBankInfo] = useState("");
+  const [newVendorContact, setNewVendorContact] = useState("");
+
   // Timesheet Allocation interactive adjustment
   const [selectedTSMonth, setSelectedTSMonth] = useState("2026-05");
   const [tsAllocValues, setTsAllocValues] = useState<{ [projId: string]: number }>({});
@@ -581,6 +588,43 @@ export default function App() {
       }
     } catch {
       triggerToast("Variance balance reconcile error.", "error");
+    }
+  };
+
+  const handleVendorRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newVendorName || !newVendorCategory) {
+      triggerToast("Vendor name and primary category are required.", "error");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/vendors/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newVendorName,
+          category: newVendorCategory,
+          taxId: newVendorTaxId,
+          bankInfo: newVendorBankInfo,
+          contact: newVendorContact,
+          user: currentUser
+        })
+      });
+      if (res.ok) {
+        triggerToast(`Vendor ${newVendorName} registered successfully!`);
+        setNewVendorName("");
+        setNewVendorCategory("");
+        setNewVendorTaxId("");
+        setNewVendorBankInfo("");
+        setNewVendorContact("");
+        refreshState();
+      } else {
+        const data = await res.json();
+        triggerToast(data.error || "Failed to register vendor.", "error");
+      }
+    } catch {
+      triggerToast("Error registering new vendor.", "error");
     }
   };
 
@@ -1816,6 +1860,57 @@ export default function App() {
                   Every contractor, freelancer and supplier must certify conflict of interest waivers periodically. Sanction-marked providers are locked automatically.
                 </p>
               </div>
+
+              {/* Register New Vendor Form */}
+              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                <form onSubmit={handleVendorRegister} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Vendor/Authority Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Ministry of Finance"
+                      required
+                      value={newVendorName}
+                      onChange={(e) => setNewVendorName(e.target.value)}
+                      className="finance-input w-full text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Primary Category</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Tax Authority"
+                      required
+                      value={newVendorCategory}
+                      onChange={(e) => setNewVendorCategory(e.target.value)}
+                      className="finance-input w-full text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Tax Registry ID</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. MoF-9382LB"
+                      value={newVendorTaxId}
+                      onChange={(e) => setNewVendorTaxId(e.target.value)}
+                      className="finance-input w-full font-mono text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Contact Email / Phone</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. tax-audit@mof.gov.lb"
+                      value={newVendorContact}
+                      onChange={(e) => setNewVendorContact(e.target.value)}
+                      className="finance-input w-full text-xs"
+                    />
+                  </div>
+                  <button type="submit" className="bg-slate-900 hover:bg-slate-955 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
+                    Register Master Vendor
+                  </button>
+                </form>
+              )}
 
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <table className="w-full text-left">

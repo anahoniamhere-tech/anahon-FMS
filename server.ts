@@ -294,6 +294,42 @@ app.post("/api/fxRates", async (req, res) => {
   }
 });
 
+// Create New Vendor
+app.post("/api/vendors/new", async (req, res) => {
+  try {
+    const { name, category, taxId, bankInfo, contact, user } = req.body;
+    if (!name || !category) {
+      return res.status(400).json({ error: "Vendor name and category are required." });
+    }
+
+    const vid = `ven-${Date.now()}`;
+    const vendor = await prisma.vendor.create({
+      data: {
+        id: vid,
+        name,
+        category,
+        taxId: taxId || "N/A",
+        bankInfo: bankInfo || "N/A",
+        contact: contact || "N/A",
+        active: true,
+        declarationSigned: true,
+        blocked: false
+      }
+    });
+
+    await createAuditLog(
+      user?.id || "u-1",
+      user?.name || "Super Admin",
+      "Vendor Registration",
+      `Registered New Vendor Contract Partner: ${name}`
+    );
+
+    res.json({ success: true, vendor });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Post Expense request
 app.post("/api/expense/new", async (req, res) => {
   try {
