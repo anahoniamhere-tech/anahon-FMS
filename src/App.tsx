@@ -1495,12 +1495,12 @@ export default function App() {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="flex flex-col md:flex-row items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-3 text-white">
+      <header className="hidden md:flex flex-row items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-3 text-white">
         <div className="flex items-center gap-3">
           <button 
             type="button" 
             onClick={() => setIsOpen(!isOpen)} 
-            className="hidden md:flex items-center justify-center p-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:text-white transition cursor-pointer min-w-[36px] min-h-[36px] text-xs font-mono font-bold"
+            className="flex items-center justify-center p-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:text-white transition cursor-pointer min-w-[36px] min-h-[36px] text-xs font-mono font-bold"
             title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
           >
             {isOpen ? "◀" : "▶"}
@@ -1511,7 +1511,7 @@ export default function App() {
             <p className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">Tripoli Civil Co. Compliance Terminal</p>
           </div>
         </div>
-        <div className="flex items-center gap-4 mt-2 md:mt-0">
+        <div className="flex items-center gap-4">
           <button onClick={handleFirebaseSignOut} className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer">
             <UserCheck className="w-3.5 h-3.5 text-red-500" />
             <span>Sign Out</span>
@@ -1520,20 +1520,40 @@ export default function App() {
       </header>
 
       {/* Mobile Header */}
-      <div className="md:hidden bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between text-white relative z-50">
-        <button type="button" onClick={() => setIsOpen(!isOpen)} className="p-2 rounded-lg bg-slate-800 border border-slate-700 transition cursor-pointer min-w-[44px] min-h-[44px]">
-          {isOpen ? <span className="text-xl font-bold font-mono">✕</span> : <span className="text-xl font-bold font-mono">☰</span>}
-        </button>
-        <span className="text-xs font-bold font-mono text-red-400 bg-red-950/40 px-3 py-1.5 rounded border border-red-900/40 uppercase">
-          {activeTab}
-        </span>
+      <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between text-white relative z-50 h-16">
+        <div className="flex items-center gap-3">
+          <button 
+            type="button" 
+            onClick={() => setIsOpen(!isOpen)} 
+            className="flex items-center justify-center p-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:text-white transition cursor-pointer min-w-[44px] min-h-[44px] text-sm font-mono font-bold"
+            title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+          >
+            {isOpen ? "◀" : "▶"}
+          </button>
+          <div className="flex h-9 w-9 items-center justify-center rounded bg-red-650 bg-red-600 text-white font-bold text-base shadow-inner">AH</div>
+          <div className="flex flex-col">
+            <h1 className="text-xs font-bold tracking-tight font-sans">AnaHon FMS</h1>
+            <span className="text-[9px] font-bold font-mono text-red-400 bg-red-950/40 px-1.5 py-0.5 rounded border border-red-900/40 uppercase w-fit leading-none mt-0.5">
+              {activeTab}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={handleFirebaseSignOut} 
+            className="flex items-center justify-center p-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px]"
+            title="Sign Out"
+          >
+            <UserCheck className="w-4 h-4 text-red-500" />
+          </button>
+        </div>
       </div>
 
       {/* Main Layout */}
       <div className="flex flex-1 overflow-hidden relative">
         {isOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={() => setIsOpen(false)} />}
         
-        <aside className={`fixed top-[69px] bottom-0 left-0 z-50 bg-slate-900 border-slate-800 shrink-0 transition-all duration-300 ease-in-out md:relative md:top-0 md:flex md:flex-col ${
+        <aside className={`fixed top-16 bottom-0 left-0 z-50 bg-slate-900 border-slate-800 shrink-0 transition-all duration-300 ease-in-out md:relative md:top-0 md:flex md:flex-col ${
           isOpen 
             ? 'translate-x-0 w-64 p-4 border-r' 
             : '-translate-x-full md:translate-x-0 md:w-0 md:p-0 md:border-r-0 overflow-hidden'
