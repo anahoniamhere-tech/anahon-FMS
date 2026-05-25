@@ -125,6 +125,8 @@ export default function App() {
   const [dailyTitle, setDailyTitle] = useState("");
   const [dailyPurpose, setDailyPurpose] = useState("");
   const [dailyVendor, setDailyVendor] = useState("");
+  const [dailyProject, setDailyProject] = useState("");
+  const [dailyBudgetLineId, setDailyBudgetLineId] = useState("");
   const [dailyAmount, setDailyAmount] = useState("");
   const [dailyCurrency, setDailyCurrency] = useState<"USD" | "EUR" | "LBP">("USD");
   const [dailyBudgetLine, setDailyBudgetLine] = useState("");
@@ -1644,7 +1646,7 @@ export default function App() {
                       <input
                         type="file"
                         accept="application/pdf"
-                        onChange={handleAttachmentSelect}
+                        onChange={handleFileDrop}
                         className="finance-input w-full text-xs"
                       />
                     </div>
