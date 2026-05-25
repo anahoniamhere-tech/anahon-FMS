@@ -1,4 +1,4 @@
-import React, { useState, useEffect, FormEvent, ChangeEvent } from "react";
+import React, { useState, useEffect, useRef, FormEvent, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Building,
@@ -154,6 +154,17 @@ export default function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [reconMonth, setReconMonth] = useState<string>("2026-05");
   const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<"folder" | "reconciliation">("folder");
+  
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      // Small timeout to allow React to render the newly displayed workspace DOM elements first
+      setTimeout(() => {
+        workspaceRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 80);
+    }
+  }, [selectedProjectId]);
 
   // Org FX adjustments state
   const [eurRateInput, setEurRateInput] = useState("1.08");
@@ -1623,7 +1634,7 @@ export default function App() {
                 );
 
                 return (
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
+                  <div ref={workspaceRef} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-6">
                     <div className="border-b border-slate-100 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">

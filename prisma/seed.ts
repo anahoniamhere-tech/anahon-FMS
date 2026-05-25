@@ -332,6 +332,17 @@ const DEFAULT_DATABASE = {
       linkedRecordType: "Expense",
       linkedRecordId: "exp-1",
       created_at: "2026-05-10T09:12:00Z"
+    },
+    {
+      id: "doc-proj-1",
+      filename: "EU_Commission_Empowering_Citizen_Space_MoU.pdf",
+      mimeType: "application/pdf",
+      sizeStr: "4.8 MB",
+      base64: "dGVzdCBjb250ZW50",
+      category: "Contract",
+      linkedRecordType: "Project",
+      linkedRecordId: "proj-1",
+      created_at: "2026-01-02T10:00:00Z"
     }
   ],
   auditLogs: [
