@@ -74,7 +74,7 @@
       "currency": "USD",
       "parent": "1000",
       "reportingGroup": "Cash & Cash Equivalents",
-      "balance": 145000,
+      "balance": 0,
       "active": true
     },
     {
@@ -84,7 +84,7 @@
       "currency": "EUR",
       "parent": "1000",
       "reportingGroup": "Cash & Cash Equivalents",
-      "balance": 27000,
+      "balance": 0,
       "active": true
     },
     {
@@ -94,7 +94,7 @@
       "currency": "USD",
       "parent": "1000",
       "reportingGroup": "Cash & Cash Equivalents",
-      "balance": 4200,
+      "balance": 0,
       "active": true
     },
     {
@@ -104,7 +104,7 @@
       "currency": "LBP",
       "parent": "1000",
       "reportingGroup": "Cash & Cash Equivalents",
-      "balance": 45000000,
+      "balance": 0,
       "active": true
     },
     {
@@ -232,7 +232,7 @@
       "currency": "USD",
       "parent": "3000",
       "reportingGroup": "Capital Contributions",
-      "balance": 30000,
+      "balance": 0,
       "active": true
     },
     {
@@ -242,7 +242,7 @@
       "currency": "USD",
       "parent": "3000",
       "reportingGroup": "Capital Contributions",
-      "balance": 20000,
+      "balance": 0,
       "active": true
     },
     {
@@ -739,7 +739,7 @@
       "type": "Bank",
       "currency": "USD",
       "accountNo": "389281-22-01-USD",
-      "balance": 145000,
+      "balance": 0,
       "active": true
     },
     {
@@ -748,7 +748,7 @@
       "type": "Bank",
       "currency": "EUR",
       "accountNo": "389281-22-02-EUR",
-      "balance": 27000,
+      "balance": 0,
       "active": true
     },
     {
@@ -757,7 +757,7 @@
       "type": "Petty Cash",
       "currency": "USD",
       "accountNo": "Layale - Vault Safe 1",
-      "balance": 4200,
+      "balance": 0,
       "active": true
     },
     {
@@ -766,21 +766,11 @@
       "type": "Petty Cash",
       "currency": "LBP",
       "accountNo": "Layale - Vault Drawer 2",
-      "balance": 45000000,
+      "balance": 0,
       "active": true
     }
   ],
-  "bankTransactions": [
-    {
-      "id": "bt-1",
-      "bankAccountId": "ba-1",
-      "date": "2026-05-25",
-      "description": "Opening Balance Deposit",
-      "amount": 145000,
-      "type": "Deposit",
-      "reconciled": true
-    }
-  ],
+  "bankTransactions": [],
   "journalEntries": [],
   "employees": [
     {
@@ -815,56 +805,23 @@
     }
   ],
   "timesheets": [],
-  "fixedAssets": [
-    {
-      "id": "asset-1",
-      "name": "Sony FX6 Camera Body + 24-70 GM Lens Set",
-      "serialNumber": "SN-93821039",
-      "fundingProjectId": "proj-2",
-      "purchaseDate": "2026-02-15",
-      "cost": 6500,
-      "currency": "USD",
-      "usefulLifeYears": 4,
-      "custodian": "Ziad Al-Ali",
-      "location": "Main studio Locker 3B",
-      "condition": "Excellent",
-      "currentBookValue": 6093,
-      "depreciationMethod": "Straight Line",
-      "accumulatedDepreciation": 407
-    },
-    {
-      "id": "asset-2",
-      "name": "MacBook Pro M3 Max 16 inch - edit rig Tripoli",
-      "serialNumber": "SN-C02R5D3W",
-      "fundingProjectId": "proj-1",
-      "purchaseDate": "2026-01-10",
-      "cost": 3800,
-      "currency": "USD",
-      "usefulLifeYears": 3,
-      "custodian": "Farah Shami",
-      "location": "Tripoli citizen workspace El-Mina",
-      "condition": "Excellent",
-      "currentBookValue": 3325,
-      "depreciationMethod": "Straight Line",
-      "accumulatedDepreciation": 475
-    }
-  ],
+  "fixedAssets": [],
   "partnerAccounts": [
     {
       "id": "pt-1",
       "partnerName": "Saad Matar",
-      "capitalBalance": 30000,
-      "loansToCompany": 5000,
+      "capitalBalance": 0,
+      "loansToCompany": 0,
       "drawingsBalance": 0,
-      "currentAccountBalance": 35000
+      "currentAccountBalance": 0
     },
     {
       "id": "pt-2",
       "partnerName": "Samer Ghamrawi",
-      "capitalBalance": 20000,
+      "capitalBalance": 0,
       "loansToCompany": 0,
       "drawingsBalance": 0,
-      "currentAccountBalance": 20000
+      "currentAccountBalance": 0
     }
   ],
   "documents": [],
