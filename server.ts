@@ -21,7 +21,7 @@ app.use(express.json({ limit: "50mb" }));
 // Fallback seed definitions in case database fails
 const DEFAULT_DATABASE = {
   users: [
-    { id: "u-1", name: "Rami Kassab", email: "anahoniamhere@gmail.com", role: "Super Admin", active: true },
+    { id: "u-1", name: "Saad Matar", email: "anahoniamhere@gmail.com", role: "Super Admin", active: true },
     { id: "u-2", name: "Samer Ghamrawi", email: "samer@anahon.org", role: "Program Director", active: true },
     { id: "u-3", name: "Layale El-Khatib", email: "layale@anahon.org", role: "Finance Officer", active: true },
     { id: "u-4", name: "Tarek Rifai", email: "tarek@anahon.org", role: "Project Lead", active: true },

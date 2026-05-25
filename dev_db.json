@@ -2,7 +2,7 @@
   "users": [
     {
       "id": "u-1",
-      "name": "Rami Kassab",
+      "name": "Saad Matar",
       "email": "anahoniamhere@gmail.com",
       "role": "Super Admin",
       "active": true
@@ -227,7 +227,7 @@
     },
     {
       "code": "3100",
-      "name": "Partner Capital - Rami Kassab",
+      "name": "Partner Capital - Saad Matar",
       "type": "Equity",
       "currency": "USD",
       "parent": "3000",
@@ -247,7 +247,7 @@
     },
     {
       "code": "3300",
-      "name": "Partner Drawings - Rami Kassab",
+      "name": "Partner Drawings - Saad Matar",
       "type": "Equity",
       "currency": "USD",
       "parent": "3000",
@@ -1037,7 +1037,7 @@
   "partnerAccounts": [
     {
       "id": "pt-1",
-      "partnerName": "Rami Kassab",
+      "partnerName": "Saad Matar",
       "capitalBalance": 30000,
       "loansToCompany": 5000,
       "drawingsBalance": 1200,
@@ -1069,7 +1069,7 @@
     {
       "id": "log-1",
       "userId": "u-1",
-      "userName": "Rami Kassab",
+      "userName": "Saad Matar",
       "action": "System Seed",
       "details": "AnaHon fully audit-compliant accounting framework initialized.",
       "timestamp": "2026-05-25T02:18:22Z"

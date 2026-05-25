@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 // Load the default database structure to fall back on
 const DEFAULT_DATABASE = {
   users: [
-    { id: "u-1", name: "Rami Kassab", email: "anahoniamhere@gmail.com", role: "Super Admin", active: true },
+    { id: "u-1", name: "Saad Matar", email: "anahoniamhere@gmail.com", role: "Super Admin", active: true },
     { id: "u-2", name: "Samer Ghamrawi", email: "samer@anahon.org", role: "Program Director", active: true },
     { id: "u-3", name: "Layale El-Khatib", email: "layale@anahon.org", role: "Finance Officer", active: true },
     { id: "u-4", name: "Tarek Rifai", email: "tarek@anahon.org", role: "Project Lead", active: true },
@@ -48,9 +48,9 @@ const DEFAULT_DATABASE = {
     { code: "2400", name: "Deferred Grant Income", type: "Liability", currency: "USD", parent: "2000", reportingGroup: "Deferred Incomes", balance: 110000, active: true },
 
     { code: "3000", name: "Equity & Partner Accounts", type: "Equity", currency: "USD", reportingGroup: "Owner's Equity", balance: 0, active: true },
-    { code: "3100", name: "Partner Capital - Rami Kassab", type: "Equity", currency: "USD", parent: "3000", reportingGroup: "Capital Contributions", balance: 30000, active: true },
+    { code: "3100", name: "Partner Capital - Saad Matar", type: "Equity", currency: "USD", parent: "3000", reportingGroup: "Capital Contributions", balance: 30000, active: true },
     { code: "3200", name: "Partner Capital - Samer Ghamrawi", type: "Equity", currency: "USD", parent: "3000", reportingGroup: "Capital Contributions", balance: 20000, active: true },
-    { code: "3300", name: "Partner Drawings - Rami Kassab", type: "Equity", currency: "USD", parent: "3000", reportingGroup: "Partner Draws", balance: -1200, active: true },
+    { code: "3300", name: "Partner Drawings - Saad Matar", type: "Equity", currency: "USD", parent: "3000", reportingGroup: "Partner Draws", balance: -1200, active: true },
     { code: "3400", name: "Partner Drawings - Samer Ghamrawi", type: "Equity", currency: "USD", parent: "3000", reportingGroup: "Partner Draws", balance: -800, active: true },
     { code: "3500", name: "Retained Earnings / Accumulated Surplus", type: "Equity", currency: "USD", parent: "3000", reportingGroup: "Equity Reserves", balance: 14740, active: true },
 
@@ -318,7 +318,7 @@ const DEFAULT_DATABASE = {
     }
   ],
   partnerAccounts: [
-    { id: "pt-1", partnerName: "Rami Kassab", capitalBalance: 30000, loansToCompany: 5000, drawingsBalance: 1200, currentAccountBalance: 33800 },
+    { id: "pt-1", partnerName: "Saad Matar", capitalBalance: 30000, loansToCompany: 5000, drawingsBalance: 1200, currentAccountBalance: 33800 },
     { id: "pt-2", partnerName: "Samer Ghamrawi", capitalBalance: 20000, loansToCompany: 0, drawingsBalance: 800, currentAccountBalance: 19200 }
   ],
   documents: [
@@ -335,7 +335,7 @@ const DEFAULT_DATABASE = {
     }
   ],
   auditLogs: [
-    { id: "log-1", userId: "u-1", userName: "Rami Kassab", action: "System Seed", details: "AnaHon fully audit-compliant accounting framework initialized.", timestamp: "2026-05-25T02:18:22Z" }
+    { id: "log-1", userId: "u-1", userName: "Saad Matar", action: "System Seed", details: "AnaHon fully audit-compliant accounting framework initialized.", timestamp: "2026-05-25T02:18:22Z" }
   ],
   complianceTasks: [
     { id: "cr-1", title: "Quarterly MoF Chapter 3 Payroll Tax filing", category: "Tax", dueDate: "2026-07-15", status: "Pending", notes: "Requires certification from certified Lebanese accountant." },
