@@ -119,17 +119,7 @@ export default function App() {
   const [newVendorBankInfo, setNewVendorBankInfo] = useState("");
   const [newVendorContact, setNewVendorContact] = useState("");
 
-  // Daily Expenses Sheet states
-  const [dailySelectedDate, setDailySelectedDate] = useState(new Date().toISOString().split("T")[0]);
-  const [dailySelectedBankId, setDailySelectedBankId] = useState("");
-  const [dailyTitle, setDailyTitle] = useState("");
-  const [dailyPurpose, setDailyPurpose] = useState("");
-  const [dailyVendor, setDailyVendor] = useState("");
-  const [dailyProject, setDailyProject] = useState("");
-  const [dailyBudgetLineId, setDailyBudgetLineId] = useState("");
-  const [dailyAmount, setDailyAmount] = useState("");
-  const [dailyCurrency, setDailyCurrency] = useState<"USD" | "EUR" | "LBP">("USD");
-  const [dailyBudgetLine, setDailyBudgetLine] = useState("");
+
 
   // Shared cost split allocation states
   const [enableSharedSplit, setEnableSharedSplit] = useState(false);
@@ -827,46 +817,7 @@ export default function App() {
     }
   };
 
-  const handleDailyDirectSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!dailyTitle || !dailyAmount || !dailyProject || !dailySelectedBankId) {
-      triggerToast("Expense title, amount, project, and cash account are required.", "error");
-      return;
-    }
 
-    try {
-      const res = await fetch("/api/expense/direct-petty-cash", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: dailyTitle,
-          purpose: dailyPurpose || "Daily Cash Book Entry",
-          vendorId: dailyVendor,
-          projectId: dailyProject,
-          budgetLineId: dailyBudgetLine,
-          currency: dailyCurrency,
-          amount: Number(dailyAmount),
-          bankAccountId: dailySelectedBankId,
-          user: currentUser
-        })
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        triggerToast(errData.error || "Failed to lodge daily direct expense.", "error");
-        return;
-      }
-
-      triggerToast("Daily direct expense successfully lodged, settled, and posted!");
-      setDailyTitle("");
-      setDailyPurpose("");
-      setDailyVendor("");
-      setDailyAmount("");
-      refreshState();
-    } catch {
-      triggerToast("Error communicating with backend.", "error");
-    }
-  };
 
   const handleEmployeeRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1088,15 +1039,7 @@ export default function App() {
               </span>
             </button>
 
-            <button
-              onClick={() => setActiveTab("daily-sheet")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "daily-sheet" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Calendar className="h-4 w-4" />
-              Daily Expenses Sheet
-            </button>
+
 
             <button
               onClick={() => setActiveTab("procurement")}
@@ -2891,8 +2834,8 @@ export default function App() {
           )}
 
 
-          {/* tab content Daily Expenses Sheet */}
-          {activeTab === "daily-sheet" && state && (
+          {/* Daily Expenses Sheet removed */}
+          {false && (
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
