@@ -1620,21 +1620,6 @@ export default function App() {
           </div>
         </aside>
 
-        {/* Floating Sidebar Toggle Handle */}
-        <button
-          type="button"
-          onClick={() => setIsOpen(!isOpen)}
-          className={`fixed md:absolute top-1/2 -translate-y-1/2 z-[60] flex h-11 w-8 items-center justify-center rounded-r-xl bg-slate-800 border-y border-r border-slate-700 hover:bg-slate-700 text-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer text-xs font-mono font-bold ${
-            isOpen 
-              ? 'left-64 md:left-64' 
-              : 'left-0 md:left-0'
-          }`}
-          style={{ minWidth: '32px', minHeight: '44px' }}
-          title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
-        >
-          {isOpen ? "◀" : "▶"}
-        </button>
-
         {/* Dynamic Display Panel View */}
         <main className="flex-1 flex flex-col overflow-y-auto p-4 md:p-8">
 
@@ -4568,6 +4553,21 @@ export default function App() {
 
         </main>
       </div>
+
+      {/* Root-Level Floating Sidebar Toggle Handle */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`fixed top-1/2 -translate-y-1/2 z-[60] flex h-11 w-8 items-center justify-center rounded-r-xl bg-slate-800 border-y border-r border-slate-700 hover:bg-slate-700 text-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer text-xs font-mono font-bold ${
+          isOpen 
+            ? 'left-64' 
+            : 'left-0'
+        }`}
+        style={{ minWidth: '32px', minHeight: '44px' }}
+        title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+      >
+        {isOpen ? "◀" : "▶"}
+      </button>
     </div>
   );
 }
