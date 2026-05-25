@@ -1597,7 +1597,18 @@ export default function App() {
                           </div>
                           <div>
                             <span className="text-[10px] block text-slate-500 uppercase">Contract vendor</span>
-                            <p className="font-semibold text-slate-800">{vendor ? vendor.name : "Direct Reimbursement"}</p>
+                            <p className="font-semibold text-slate-800">
+                              {vendor ? vendor.name : "Direct Reimbursement"}
+                              {vendor && (
+                                <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-mono border ${
+                                  vendor.category.toLowerCase().includes("consultant") || vendor.category.toLowerCase().includes("freelance") ? "bg-amber-100 text-amber-800 border-amber-200" :
+                                  vendor.category.toLowerCase().includes("service") ? "bg-indigo-100 text-indigo-800 border-indigo-200" :
+                                  "bg-slate-100 text-slate-700 border-slate-200"
+                                }`}>
+                                  {vendor.category}
+                                </span>
+                              )}
+                            </p>
                           </div>
                           <div>
                             <span className="text-[10px] block text-slate-500 uppercase">Current phase status</span>
@@ -1974,53 +1985,82 @@ export default function App() {
 
               {/* Register New Vendor Form */}
               {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
-                <form onSubmit={handleVendorRegister} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Vendor/Authority Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Ministry of Finance"
-                      required
-                      value={newVendorName}
-                      onChange={(e) => setNewVendorName(e.target.value)}
-                      className="finance-input w-full text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Primary Category</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Tax Authority"
-                      required
-                      value={newVendorCategory}
-                      onChange={(e) => setNewVendorCategory(e.target.value)}
-                      className="finance-input w-full text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Tax Registry ID</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. MoF-9382LB"
-                      value={newVendorTaxId}
-                      onChange={(e) => setNewVendorTaxId(e.target.value)}
-                      className="finance-input w-full font-mono text-xs"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Contact Email / Phone</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. tax-audit@mof.gov.lb"
-                      value={newVendorContact}
-                      onChange={(e) => setNewVendorContact(e.target.value)}
-                      className="finance-input w-full text-xs"
-                    />
-                  </div>
-                  <button type="submit" className="bg-slate-900 hover:bg-slate-955 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
-                    Register Master Vendor
-                  </button>
-                </form>
+                <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
+                  <h3 className="text-xs font-bold text-slate-800 uppercase font-mono tracking-wider">Onboard New Provider (Supplier / Consultant / Freelancer)</h3>
+                  <form onSubmit={handleVendorRegister} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Provider / Vendor Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Layale El-Khatib (Consultant)"
+                        required
+                        value={newVendorName}
+                        onChange={(e) => setNewVendorName(e.target.value)}
+                        className="finance-input w-full text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Contract / Provider Category</label>
+                      <select
+                        required
+                        value={newVendorCategory}
+                        onChange={(e) => setNewVendorCategory(e.target.value)}
+                        className="finance-input w-full text-xs bg-white"
+                      >
+                        <option value="">-- Choose Category --</option>
+                        <option value="Consultant / Freelancer">Consultant / Freelancer</option>
+                        <option value="Service Provider">Service Provider</option>
+                        <option value="General Supplier">General Supplier</option>
+                        <option value="Landlord">Landlord (Rent Services)</option>
+                        <option value="Government / Tax Authority">Government / Tax Authority</option>
+                        <option value="Other">Other Category</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">MoF Tax Registry ID (If Registered)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. MoF-9382LB (or leave blank/N/A)"
+                        value={newVendorTaxId}
+                        onChange={(e) => setNewVendorTaxId(e.target.value)}
+                        className="finance-input w-full font-mono text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Contact Email / Phone</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. consultant@anahon.org"
+                        value={newVendorContact}
+                        onChange={(e) => setNewVendorContact(e.target.value)}
+                        className="finance-input w-full text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Bank Account / Payment Details</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Bank Audi Tripoli, Account 2981..."
+                        value={newVendorBankInfo}
+                        onChange={(e) => setNewVendorBankInfo(e.target.value)}
+                        className="finance-input w-full text-xs"
+                      />
+                    </div>
+                    <button type="submit" className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all h-[36px] flex items-center justify-center">
+                      Onboard Provider
+                    </button>
+                  </form>
+
+                  {["Consultant / Freelancer", "Service Provider"].includes(newVendorCategory) && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-xs flex flex-col gap-1 font-mono">
+                      <span className="font-bold flex items-center gap-1">🏛️ Lebanese MoF Statutory Compliance Alert:</span>
+                      <p className="leading-relaxed">
+                        Individuals and consultants who do not have an official, active **Tax Registry ID** (MoF number) are subject to a **7.5% Withholding Tax (WHT)**. 
+                        The system will automatically calculate and withhold this tax at the payment stage unless a valid Tax Registry ID is entered above.
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
 
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
