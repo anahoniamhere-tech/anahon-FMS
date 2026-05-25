@@ -86,6 +86,23 @@ export default function App() {
   const [expenseCustomRate, setExpenseCustomRate] = useState("");
   const [tempAttachment, setTempAttachment] = useState<{ filename: string; mimeType: string; base64: string } | null>(null);
 
+  // Daily Operations placeholder states
+  const [dailySelectedDate, setDailySelectedDate] = useState<string>("2026-05-25");
+  const [dailySelectedBankId, setDailySelectedBankId] = useState<string>("");
+  const [dailyTitle, setDailyTitle] = useState<string>("");
+  const [dailyPurpose, setDailyPurpose] = useState<string>("");
+  const [dailyProject, setDailyProject] = useState<string>("");
+  const [dailyBudgetLine, setDailyBudgetLine] = useState<string>("");
+  const [dailyVendor, setDailyVendor] = useState<string>("");
+  const [dailyCurrency, setDailyCurrency] = useState<"USD" | "EUR" | "LBP">("USD");
+  const [dailyAmount, setDailyAmount] = useState<string>("0");
+  const handleDailyDirectSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    triggerToast("Direct operational vault transaction posted.");
+  };
+
+
+
   // Procurement sourcing form
   const [procTitle, setProcTitle] = useState("");
   const [procProject, setProcProject] = useState("");
@@ -1047,6 +1064,11 @@ export default function App() {
       triggerToast("Failed to export Excel spreadsheet.", "error");
     }
   };
+
+
+
+
+
 
 
 
@@ -2017,27 +2039,19 @@ export default function App() {
                               />
                             </div>
                             
-                            <div className="flex gap-2">
-                               <button
-                                 type="button"
-                                 onClick={handleExportExcel}
-                                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition"
-                               >
-                                 📊 Export Excel
-                               </button>
-
-                               <button
-                                 type="button"
-                                 onClick={() => window.print()}
-                                 className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition"
-                               >
-                                 🖨️ Print & Sign Monthly Report
-                               </button>
-                             </div>
+                            <div className="flex gap-2 font-sans">
+                                <button
+                                  type="button"
+                                  onClick={handleExportExcel}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                >
+                                  📊 Export Excel
+                                </button>
+                              </div>
                           </div>
 
                           {/* Print container layout */}
-                          <div id="reconciliation-print-report" className="bg-white border-2 border-slate-200 p-8 rounded-xl space-y-6 shadow-inner print-report print:border-0 print:p-0">
+                          <div id="reconciliation-print-report" className="bg-white border-2 border-slate-200 p-8 rounded-xl space-y-6 shadow-inner print-report print:border-0 print:p-0 print:exact-colors">
                             
                             {/* Standardized professional header */}
                             <div className="text-center border-b-2 border-slate-350 pb-4 space-y-1">
@@ -2127,7 +2141,7 @@ export default function App() {
                                              const burnPercent = bl.allocatedUSD > 0 ? Math.round((bl.actualUSD / bl.allocatedUSD) * 100) : 0;
 
                                              return (
-                                               <tr key={bl.id} className="hover:bg-slate-50 font-medium">
+                                               <tr key={bl.id} className="hover:bg-slate-50 font-medium break-inside-avoid">
                                                  <td className="px-4 py-2 text-slate-800 font-bold">{bl.code}</td>
                                                  <td className="px-4 py-2 text-slate-950 font-sans">{bl.category}</td>
                                                  <td className="px-4 py-2 text-right text-slate-700">{formatUSD(bl.allocatedUSD)}</td>
@@ -2140,7 +2154,7 @@ export default function App() {
                                              );
                                            })}
                                            {/* Section I totals row */}
-                                           <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold">
+                                           <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid">
                                              <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-right">TOTAL BUDGET BURN SUMMARY:</td>
                                              <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalAllocated)}</td>
                                              <td className="px-4 py-2 text-right text-red-600">{formatUSD(totalSpentThisMonth)}</td>
@@ -2183,7 +2197,7 @@ export default function App() {
                                                const whtVal = alloc ? Number(alloc.amount) * (exp.whtAmount / exp.amount) : exp.whtAmount;
 
                                                return (
-                                                 <tr key={exp.id} className="hover:bg-slate-50">
+                                                 <tr key={exp.id} className="hover:bg-slate-50 break-inside-avoid">
                                                    <td className="px-4 py-2 text-slate-500">{exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0]}</td>
                                                    <td className="px-4 py-2 text-slate-800 font-bold">{exp.voucherNo}</td>
                                                    <td className="px-4 py-2 text-slate-950 font-sans">{exp.title}</td>
@@ -2195,7 +2209,7 @@ export default function App() {
                                            )}
                                            {/* Section II totals row */}
                                            {monthExpenses.length > 0 && (
-                                             <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold">
+                                             <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid">
                                                <td colSpan={3} className="px-4 py-2 text-slate-900 font-sans text-right">RECONCILED MATCHINGS TOTAL:</td>
                                                <td className="px-4 py-2 text-right text-amber-600">{formatUSD(totalWhtReconciled)}</td>
                                                <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalNetReconciled)}</td>
@@ -2211,7 +2225,7 @@ export default function App() {
                                        const isTiedOut = difference < 0.01;
 
                                        return isTiedOut ? (
-                                         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-800 flex items-center justify-between font-mono">
+                                         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-800 flex items-center justify-between font-mono break-inside-avoid">
                                            <span className="flex items-center gap-1.5 font-bold">
                                              🛡️ AUDITOR TIE-OUT VERIFICATION PASSED:
                                            </span>
@@ -2220,7 +2234,7 @@ export default function App() {
                                            </span>
                                          </div>
                                        ) : (
-                                         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800 flex items-center justify-between font-mono">
+                                         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800 flex items-center justify-between font-mono break-inside-avoid">
                                            <span className="flex items-center gap-1.5 font-bold">
                                              ⚠️ AUDITOR TIE-OUT WARNING: MISMATCH DETECTED:
                                            </span>
@@ -2233,7 +2247,7 @@ export default function App() {
                                    </div>
 
                                    {/* Section 3: Official Reconciliation Review Sign-Off (Section 2.5 compliance) */}
-                                   <div className="border-t-2 border-slate-200 pt-6 space-y-4">
+                                   <div className="border-t-2 border-slate-200 pt-6 space-y-4 break-inside-avoid">
                                      <p className="text-[10px] text-slate-500 text-center leading-relaxed">
                                        Under **Section 2.5 & 2.6 of the AnaHon Media Platform Accounting Policies Manual**, this reconciliation report verifies that all project expenditures, personnel allocations, timesheets, and shared split costs have been matched with primary supporting documents and validated with actual bank statement disbursements.
                                      </p>

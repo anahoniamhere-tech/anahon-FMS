@@ -34,7 +34,38 @@ body {
    PRO SIGNATURE-READY PRINT STYLES (Section 2.5)
    ========================================== */
 @media print {
-  /* Hide standard non-printable layout panels */
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+
+  /* When printing the reconciliation report specifically */
+  body.print-reconciliation-only {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  body.print-reconciliation-only * {
+    visibility: hidden;
+  }
+
+  body.print-reconciliation-only #reconciliation-print-report,
+  body.print-reconciliation-only #reconciliation-print-report * {
+    visibility: visible;
+  }
+
+  body.print-reconciliation-only #reconciliation-print-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Hide standard non-printable layout panels for general prints */
   header,
   aside,
   .print\:hidden,
@@ -108,6 +139,11 @@ body {
   tr {
     page-break-inside: avoid !important;
     page-break-after: auto !important;
+  }
+
+  .break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   thead {
