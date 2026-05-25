@@ -640,6 +640,182 @@ app.post("/api/expense/action", async (req, res) => {
   }
 });
 
+// Lodge and Post Direct Petty Cash/General Expense (Daily Sheet Sync)
+app.post("/api/expense/direct-petty-cash", async (req, res) => {
+  try {
+    const { title, purpose, vendorId, projectId, budgetLineId, currency, amount, bankAccountId, paymentRef, user } = req.body;
+
+    if (!projectId) {
+      return res.status(400).json({ error: "Please map request to an active Project Code." });
+    }
+    if (!bankAccountId) {
+      return res.status(400).json({ error: "Cash vault or bank account required to disburse funds." });
+    }
+
+    const account = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
+    if (!account) return res.status(404).json({ error: "Cash/Bank vault not configured." });
+
+    // Determine exchange rates and conversions
+    const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
+    let rate = 1;
+    if (currency === "EUR") rate = rates.EUR;
+    if (currency === "LBP") rate = rates.LBP;
+    const converted = Number(amount) * rate;
+
+    // Determine WHT & Net amounts
+    let whtVal = 0;
+    let netVal = Number(amount);
+    
+    if (vendorId) {
+      const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
+      if (vendor) {
+        const hasTaxId = vendor.taxId && vendor.taxId.trim() !== "" && vendor.taxId.trim().toUpperCase() !== "N/A";
+        const whtRate = hasTaxId ? 0 : 0.075;
+        whtVal = Number(amount) * whtRate;
+        netVal = Number(amount) - whtVal;
+      }
+    }
+
+    const disbursalAmount = netVal;
+
+    if (account.balance < disbursalAmount) {
+      return res.status(400).json({ error: `Insufficient cash reserve in ${account.name}. Required: ${disbursalAmount}, Available: ${account.balance}` });
+    }
+
+    const count = await prisma.expense.count();
+    const voucherNo = `PV-2026-${String(count + 1).padStart(3, "0")}`;
+
+    // Create Expense already Paid & Posted
+    const nowStr = new Date().toISOString();
+    const expense = await prisma.expense.create({
+      data: {
+        id: `exp-${Date.now()}`,
+        voucherNo,
+        title,
+        purpose: purpose || "Daily Cash Book Entry",
+        vendorId: vendorId || "",
+        projectId,
+        budgetLineId: budgetLineId || "",
+        currency,
+        amount: Number(amount),
+        rate,
+        convertedAmount: Number(converted.toFixed(2)),
+        whtAmount: whtVal,
+        netAmount: netVal,
+        requestorId: user?.id || "u-4",
+        status: "Posted",
+        paymentMethod: account.type === "Petty Cash" ? "Petty Cash" : "Bank Transfer",
+        paymentRef: paymentRef || `CSH-DRAWN-${Date.now().toString().slice(-4)}`,
+        created_at: nowStr,
+        approved_at: nowStr,
+        paid_at: nowStr,
+        commentsJson: "[]",
+        hasAttachment: false
+      }
+    });
+
+    // Deduct balance from Cash Account
+    await prisma.bankAccount.update({
+      where: { id: bankAccountId },
+      data: { balance: account.balance - disbursalAmount }
+    });
+
+    // Create bank transaction log
+    await prisma.bankTransaction.create({
+      data: {
+        id: `bt-${Date.now()}`,
+        bankAccountId: account.id,
+        date: new Date().toISOString().split("T")[0],
+        description: `Daily Direct Cash Expense: ${voucherNo} - ${title}`,
+        amount: disbursalAmount,
+        type: "Withdrawal",
+        reconciled: true,
+        voucherNo
+      }
+    });
+
+    // Add to actual spent budget line
+    if (budgetLineId) {
+      const bl = await prisma.budgetLine.findUnique({ where: { id: budgetLineId } });
+      if (bl) {
+        await prisma.budgetLine.update({
+          where: { id: budgetLineId },
+          data: {
+            actualUSD: bl.actualUSD + expense.convertedAmount
+          }
+        });
+      }
+    }
+
+    // Double-Entry Ledger Posting
+    const convertedWhtAmount = whtVal * rate;
+    const convertedNetAmount = expense.convertedAmount - convertedWhtAmount;
+
+    const expenseCostAccount = "6100";
+    const bankAssetAccount = account.type === "Petty Cash" ? "1120" : "1100";
+    const taxPayableAccount = "2310";
+
+    const journalItems = [
+      { accountCode: expenseCostAccount, debit: expense.convertedAmount, credit: 0, projectId: expense.projectId, donorId: "don-1" },
+      { accountCode: bankAssetAccount, debit: 0, credit: convertedNetAmount }
+    ];
+
+    if (convertedWhtAmount > 0) {
+      journalItems.push({ accountCode: taxPayableAccount, debit: 0, credit: convertedWhtAmount });
+    }
+
+    await prisma.journalEntry.create({
+      data: {
+        id: `je-${Date.now()}`,
+        journal: "Cash Payments",
+        date: new Date().toISOString().split("T")[0],
+        description: `Posted ${voucherNo} to Ledger: ${title} (Daily Cash Book Sheet)`,
+        referenceNo: voucherNo,
+        isPosted: true,
+        itemsJson: JSON.stringify(journalItems)
+      }
+    });
+
+    // Update actual general ledger account balances
+    const acDeb = await prisma.account.findUnique({ where: { code: expenseCostAccount } });
+    const acCred = await prisma.account.findUnique({ where: { code: bankAssetAccount } });
+
+    if (acDeb) {
+      await prisma.account.update({
+        where: { code: expenseCostAccount },
+        data: { balance: acDeb.balance + expense.convertedAmount }
+      });
+    }
+    if (acCred) {
+      await prisma.account.update({
+        where: { code: bankAssetAccount },
+        data: { balance: acCred.balance - convertedNetAmount }
+      });
+    }
+
+    if (convertedWhtAmount > 0) {
+      const acTax = await prisma.account.findUnique({ where: { code: taxPayableAccount } });
+      if (acTax) {
+        await prisma.account.update({
+          where: { code: taxPayableAccount },
+          data: { balance: acTax.balance + convertedWhtAmount }
+        });
+      }
+    }
+
+    await createAuditLog(
+      user?.id || "u-4",
+      user?.name || "User",
+      "Daily Direct Expense Settled",
+      `Lodged & Posted daily direct petty cash expense ${voucherNo} for ${amount} ${currency}.`
+    );
+
+    res.json({ success: true, expense });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Sourcing quote comparisons
 app.post("/api/procurement/new", async (req, res) => {
   try {

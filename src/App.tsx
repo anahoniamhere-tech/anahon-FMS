@@ -119,6 +119,17 @@ export default function App() {
   const [newVendorBankInfo, setNewVendorBankInfo] = useState("");
   const [newVendorContact, setNewVendorContact] = useState("");
 
+  // Daily Expenses Sheet states
+  const [dailySelectedDate, setDailySelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [dailySelectedBankId, setDailySelectedBankId] = useState("");
+  const [dailyTitle, setDailyTitle] = useState("");
+  const [dailyPurpose, setDailyPurpose] = useState("");
+  const [dailyVendor, setDailyVendor] = useState("");
+  const [dailyAmount, setDailyAmount] = useState("");
+  const [dailyCurrency, setDailyCurrency] = useState<"USD" | "EUR" | "LBP">("USD");
+  const [dailyProject, setDailyProject] = useState("");
+  const [dailyBudgetLine, setDailyBudgetLine] = useState("");
+
   // Employee registration states
   const [newEmpName, setNewEmpName] = useState("");
   const [newEmpPosition, setNewEmpPosition] = useState("");
@@ -636,6 +647,47 @@ export default function App() {
     }
   };
 
+  const handleDailyDirectSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dailyTitle || !dailyAmount || !dailyProject || !dailySelectedBankId) {
+      triggerToast("Expense title, amount, project, and cash account are required.", "error");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/expense/direct-petty-cash", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: dailyTitle,
+          purpose: dailyPurpose || "Daily Cash Book Entry",
+          vendorId: dailyVendor,
+          projectId: dailyProject,
+          budgetLineId: dailyBudgetLine,
+          currency: dailyCurrency,
+          amount: Number(dailyAmount),
+          bankAccountId: dailySelectedBankId,
+          user: currentUser
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        triggerToast(errData.error || "Failed to lodge daily direct expense.", "error");
+        return;
+      }
+
+      triggerToast("Daily direct expense successfully lodged, settled, and posted!");
+      setDailyTitle("");
+      setDailyPurpose("");
+      setDailyVendor("");
+      setDailyAmount("");
+      refreshState();
+    } catch {
+      triggerToast("Error communicating with backend.", "error");
+    }
+  };
+
   const handleEmployeeRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmpName || !newEmpPosition || !newEmpSalary) {
@@ -990,6 +1042,16 @@ export default function App() {
               <span className="ml-auto bg-slate-800 text-[10px] text-slate-300 px-1.5 py-0.5 rounded-full font-mono">
                 {state.expenses.filter(e => ["Submitted", "Under Finance Review", "Approved"].includes(e.status)).length}
               </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("daily-sheet")}
+              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                activeTab === "daily-sheet" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+              }`}
+            >
+              <Calendar className="h-4 w-4" />
+              Daily Expenses Sheet
             </button>
 
             <button
@@ -2636,6 +2698,286 @@ export default function App() {
             </div>
           )}
 
+
+          {/* tab content Daily Expenses Sheet */}
+          {activeTab === "daily-sheet" && state && (
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold"> Tripoli Daily Operations Expenses Sheet</h2>
+                  <p className="text-xs text-slate-500">
+                    Real-time synced ledger tracking daily cashier vault balances, petty cash accounts, and immediate operational co-funded allocations.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 bg-white p-3 border border-slate-200 rounded-xl shadow-sm">
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-500 uppercase">Sheet Ledger Date</span>
+                    <input
+                      type="date"
+                      value={dailySelectedDate}
+                      onChange={(e) => setDailySelectedDate(e.target.value)}
+                      className="bg-transparent text-xs font-mono font-bold text-slate-900 border-none outline-none cursor-pointer"
+                    />
+                  </div>
+                  <div className="h-6 w-[1px] bg-slate-200 mx-2" />
+                  <div className="flex flex-col">
+                    <span className="text-[9px] font-bold text-slate-500 uppercase">Select Cash/Bank Vault</span>
+                    <select
+                      value={dailySelectedBankId || (state.bankAccounts[0]?.id || "")}
+                      onChange={(e) => setDailySelectedBankId(e.target.value)}
+                      className="bg-transparent text-xs font-bold text-slate-900 border-none outline-none cursor-pointer"
+                    >
+                      {state.bankAccounts.map(b => (
+                        <option key={b.id} value={b.id}>{b.name} ({b.currency})</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {(() => {
+                const selectedBankId = dailySelectedBankId || (state.bankAccounts[0]?.id || "");
+                const selectedAccount = state.bankAccounts.find(b => b.id === selectedBankId);
+                const accountTransactions = state.bankTransactions.filter(t => t.bankAccountId === selectedBankId);
+
+                const dailyDeposits = accountTransactions
+                  .filter(t => t.date === dailySelectedDate && t.type === "Deposit")
+                  .reduce((sum, t) => sum + t.amount, 0);
+
+                const dailyWithdrawals = accountTransactions
+                  .filter(t => t.date === dailySelectedDate && t.type === "Withdrawal")
+                  .reduce((sum, t) => sum + t.amount, 0);
+
+                const inflowsBefore = accountTransactions
+                  .filter(t => t.date < dailySelectedDate && t.type === "Deposit")
+                  .reduce((sum, t) => sum + t.amount, 0);
+
+                const outflowsBefore = accountTransactions
+                  .filter(t => t.date < dailySelectedDate && t.type === "Withdrawal")
+                  .reduce((sum, t) => sum + t.amount, 0);
+
+                const openingBalance = inflowsBefore - outflowsBefore;
+                const closingBalance = openingBalance + dailyDeposits - dailyWithdrawals;
+
+                const dailyTransactions = accountTransactions.filter(t => t.date === dailySelectedDate);
+
+                return (
+                  <>
+                    {/* KPI Balance Sheet cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-1">
+                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Opening Balance</span>
+                        <span className="text-xl font-bold font-mono text-slate-800">
+                          {openingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
+                        </span>
+                        <p className="text-[10px] text-slate-400">Opening reserve for {dailySelectedDate}</p>
+                      </div>
+                      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-1">
+                        <span className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider block">Daily Inflows (+)</span>
+                        <span className="text-xl font-bold font-mono text-emerald-600">
+                          +{dailyDeposits.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
+                        </span>
+                        <p className="text-[10px] text-slate-400">Total receipts / drawing inputs</p>
+                      </div>
+                      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-1">
+                        <span className="text-[10px] text-amber-700 font-bold uppercase tracking-wider block">Daily Outflows (-)</span>
+                        <span className="text-xl font-bold font-mono text-amber-600">
+                          -{dailyWithdrawals.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
+                        </span>
+                        <p className="text-[10px] text-slate-400">Settled vouchers / petty cash out</p>
+                      </div>
+                      <div className="bg-slate-900 border border-slate-850 rounded-xl p-5 shadow-sm space-y-1 text-white">
+                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Closing Balance</span>
+                        <span className="text-xl font-bold font-mono text-white">
+                          {closingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
+                        </span>
+                        <p className="text-[10px] text-slate-400">End-of-day reconciled reserve</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                      {/* Left: Reconciled Transactions Index */}
+                      <div className="lg:col-span-2 space-y-4">
+                        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                          <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                            <h4 className="text-xs font-bold font-mono uppercase text-slate-800">
+                              Ledger Postings for {dailySelectedDate} ({dailyTransactions.length} items)
+                            </h4>
+                            <span className="text-[10px] bg-slate-200 px-2 py-0.5 rounded font-bold font-mono">
+                              Reconciled Live
+                            </span>
+                          </div>
+                          
+                          {dailyTransactions.length === 0 ? (
+                            <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
+                              <Calendar className="h-8 w-8 text-slate-300" />
+                              <span>No financial logs recorded for this day on {selectedAccount?.name}.</span>
+                            </div>
+                          ) : (
+                            <table className="w-full text-left">
+                              <thead className="bg-slate-100 font-mono text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                                <tr>
+                                  <th className="px-4 py-3">Reference No</th>
+                                  <th className="px-4 py-3">Description / Purpose</th>
+                                  <th className="px-4 py-3">Type</th>
+                                  <th className="px-4 py-3 text-right">Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 text-xs font-sans">
+                                {dailyTransactions.map(t => {
+                                  const matchingExpense = state.expenses.find(e => e.voucherNo === t.voucherNo);
+                                  
+                                  return (
+                                    <tr key={t.id} className="hover:bg-slate-50">
+                                      <td className="px-4 py-4 font-mono font-bold text-red-650 text-red-600">
+                                        {t.voucherNo || "Statement Adjust"}
+                                      </td>
+                                      <td className="px-4 py-4">
+                                        <p className="font-semibold text-slate-900">{t.description}</p>
+                                        {matchingExpense && (
+                                          <span className="text-[10px] text-slate-500">
+                                            Project: {matchingExpense.projectId} | WHT: {matchingExpense.whtAmount.toLocaleString()} {selectedAccount?.currency}
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="px-4 py-4">
+                                        <span className={`inline-block px-2 py-0.5 rounded font-bold text-[9px] uppercase ${
+                                          t.type === "Deposit" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                                        }`}>
+                                          {t.type}
+                                        </span>
+                                      </td>
+                                      <td className={`px-4 py-4 text-right font-mono font-bold ${
+                                        t.type === "Deposit" ? "text-emerald-600" : "text-slate-900"
+                                      }`}>
+                                        {t.type === "Deposit" ? "+" : "-"} {t.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right: Quick Direct Petty Cash Form */}
+                      <div className="space-y-4">
+                        {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                          <div className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
+                            <div>
+                              <h4 className="text-xs font-bold font-mono uppercase text-slate-800 border-b border-slate-100 pb-2">
+                                ⚡ Quick Daily Direct Expense Lodger
+                              </h4>
+                              <p className="text-[10px] text-slate-500 mt-1">
+                                Bypass the approval lifecycle for immediate operations. Logs, approvals, settlements, and ledger postings execute in one click.
+                              </p>
+                            </div>
+
+                            <form onSubmit={handleDailyDirectSubmit} className="space-y-3">
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Expense Title</label>
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Taxi to ministry"
+                                  required
+                                  value={dailyTitle}
+                                  onChange={(e) => setDailyTitle(e.target.value)}
+                                  className="finance-input w-full text-xs"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">justification / rationale</label>
+                                  <input
+                                    type="text"
+                                    placeholder="e.g. Urgent transport"
+                                    value={dailyPurpose}
+                                    onChange={(e) => setDailyPurpose(e.target.value)}
+                                    className="finance-input w-full text-xs"
+                                  />
+                              </div>
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Target Project mapping</label>
+                                <select
+                                  required
+                                  value={dailyProject}
+                                  onChange={(e) => setDailyProject(e.target.value)}
+                                  className="finance-input w-full text-xs bg-white"
+                                >
+                                  <option value="">-- Choose Project --</option>
+                                  {state.projects.map(p => (
+                                    <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Budget line mapping</label>
+                                <select
+                                  value={dailyBudgetLine}
+                                  onChange={(e) => setDailyBudgetLine(e.target.value)}
+                                  className="finance-input w-full text-xs bg-white"
+                                >
+                                  <option value="">-- Select Line --</option>
+                                  {state.budgetLines.filter(bl => bl.projectId === dailyProject).map(bl => (
+                                    <option key={bl.id} value={bl.id}>{bl.code} - {bl.description}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Contractor / Vendor</label>
+                                <select
+                                  value={dailyVendor}
+                                  onChange={(e) => setDailyVendor(e.target.value)}
+                                  className="finance-input w-full text-xs bg-white"
+                                >
+                                  <option value="">-- Miscellaneous Out-of-Pocket --</option>
+                                  {state.vendors.filter(v => !v.blocked).map(v => (
+                                    <option key={v.id} value={v.id}>{v.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Currency</label>
+                                  <select
+                                    value={dailyCurrency}
+                                    onChange={(e) => setDailyCurrency(e.target.value as any)}
+                                    className="finance-input w-full text-xs bg-white font-mono font-bold"
+                                  >
+                                    <option value="USD">USD ($)</option>
+                                    <option value="EUR">EUR (€)</option>
+                                    <option value="LBP">LBP (ل.ل)</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Amount</label>
+                                  <input
+                                    type="number"
+                                    required
+                                    placeholder="e.g. 50"
+                                    value={dailyAmount}
+                                    onChange={(e) => setDailyAmount(e.target.value)}
+                                    className="finance-input w-full text-xs font-mono"
+                                  />
+                                </div>
+                              </div>
+
+                              <button
+                                type="submit"
+                                className="w-full mt-2 bg-slate-900 hover:bg-slate-950 text-white text-xs font-bold py-2.5 rounded shadow transition-all flex items-center justify-center gap-1.5"
+                              >
+                                💸 Settle & Post Direct Expense
+                              </button>
+                            </form>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
 
           {/* tab content Compliance & AI Audit Desk */}
           {activeTab === "compliance" && (
