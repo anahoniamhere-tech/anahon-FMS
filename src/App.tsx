@@ -1,5 +1,4 @@
 import * as XLSX from "xlsx";
-import html2pdf from "html2pdf.js";
 import React, { useState, useEffect, useRef, FormEvent, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -1049,40 +1048,7 @@ export default function App() {
     }
   };
 
-  const handleDownloadPDF = () => {
-    try {
-      const activeProject = state.projects.find(p => p.id === selectedProjectId);
-      if (!activeProject) return;
 
-      const element = document.getElementById("reconciliation-print-report");
-      if (!element) {
-        triggerToast("Report container not found.", "error");
-        return;
-      }
-
-      // Configure professional Letter-sized PDF options
-      const opt = {
-        margin:       [0.4, 0.4, 0.4, 0.4],
-        filename:     `${activeProject.code}_Reconciliation_${reconMonth}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false, letterRendering: true },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
-      };
-
-      triggerToast("Generating signature-ready PDF...");
-
-      html2pdf().set(opt).from(element).save()
-        .then(() => {
-          triggerToast("PDF document downloaded successfully!");
-        })
-        .catch((err: any) => {
-          console.error(err);
-          triggerToast("Failed to compile PDF.", "error");
-        });
-    } catch (err: any) {
-      triggerToast("Failed to export PDF.", "error");
-    }
-  };
 
   const handleEmployeeRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2062,7 +2028,7 @@ export default function App() {
 
                                <button
                                  type="button"
-                                 onClick={handleDownloadPDF}
+                                 onClick={() => window.print()}
                                  className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition"
                                >
                                  🖨️ Print & Sign Monthly Report
