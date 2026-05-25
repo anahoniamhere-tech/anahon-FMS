@@ -7,3 +7,7 @@ coverage/
 .env*
 !.env.example
 .antigravity/
+dev_db.json
+prisma/dev.db
+*.db
+*.db-journal
