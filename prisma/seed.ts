@@ -380,6 +380,7 @@ async function main() {
   await prisma.user.deleteMany();
   await prisma.orgSettings.deleteMany();
   await prisma.fxRates.deleteMany();
+  await prisma.complianceTask.deleteMany();
 
   console.log("All existing database rows cleared.");
 
