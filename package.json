@@ -10,7 +10,8 @@
     "clean": "rm -rf dist server.js dev_db.json",
     "lint": "tsc --noEmit",
     "db:migrate": "prisma migrate dev --name init",
-    "db:seed": "prisma db seed"
+    "db:seed": "prisma db seed",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
