@@ -432,7 +432,7 @@ app.post("/api/expense/new", async (req, res) => {
 // Action on expense lifecycle
 app.post("/api/expense/action", async (req, res) => {
   try {
-    const { expenseId, action, comment, paymentMethod, paymentRef, bankAccountId, user } = req.body;
+    const { expenseId, action, comment, paymentMethod, paymentRef, bankAccountId, whtAmount, netAmount, user } = req.body;
 
     const exp = await prisma.expense.findUnique({ where: { id: expenseId } });
     if (!exp) return res.status(404).json({ error: "Expense request not found." });
@@ -443,6 +443,8 @@ app.post("/api/expense/action", async (req, res) => {
     let paidAt = exp.paid_at;
     let updatedPaymentMethod = exp.paymentMethod;
     let updatedPaymentRef = exp.paymentRef;
+    let updatedWhtAmount = exp.whtAmount;
+    let updatedNetAmount = exp.netAmount;
 
     if (comment) {
       commentsList.push({
@@ -494,14 +496,19 @@ app.post("/api/expense/action", async (req, res) => {
       const account = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
       if (!account) return res.status(404).json({ error: "Cash/Bank vault not configured." });
 
-      if (account.balance < exp.amount) {
-        return res.status(400).json({ error: `Insufficient cash reserve in ${account.name}. Required: ${exp.amount}, Available: ${account.balance}` });
+      // Determine payout amounts: if whtAmount/netAmount is passed use them, otherwise default to no tax
+      updatedWhtAmount = typeof whtAmount === "number" ? whtAmount : 0;
+      updatedNetAmount = typeof netAmount === "number" ? netAmount : exp.amount;
+      const disbursalAmount = updatedNetAmount;
+
+      if (account.balance < disbursalAmount) {
+        return res.status(400).json({ error: `Insufficient cash reserve in ${account.name}. Required: ${disbursalAmount}, Available: ${account.balance}` });
       }
 
-      // Deduct balance
+      // Deduct balance (pay the net amount to payee)
       await prisma.bankAccount.update({
         where: { id: bankAccountId },
-        data: { balance: account.balance - exp.amount }
+        data: { balance: account.balance - disbursalAmount }
       });
 
       updatedStatus = "Paid";
@@ -509,14 +516,14 @@ app.post("/api/expense/action", async (req, res) => {
       updatedPaymentMethod = paymentMethod || "Petty Cash Box";
       updatedPaymentRef = paymentRef || "CSH-DRAWN-9281";
 
-      // Register bank transaction activity
+      // Register bank transaction activity for the actual net payout
       await prisma.bankTransaction.create({
         data: {
           id: `bt-${Date.now()}`,
           bankAccountId: account.id,
           date: new Date().toISOString().split("T")[0],
-          description: `Disbursed ${exp.voucherNo} - ${exp.title}`,
-          amount: exp.amount,
+          description: `Disbursed ${exp.voucherNo} - ${exp.title} (Net payout, WHT applied)`,
+          amount: disbursalAmount,
           type: "Withdrawal",
           reconciled: true,
           voucherNo: exp.voucherNo
@@ -527,7 +534,7 @@ app.post("/api/expense/action", async (req, res) => {
         user?.id,
         user?.name,
         "Disbursement Settled",
-        `Funds cleared from account ${account.name} using ${paymentMethod}. Asset registers adjusted.`
+        `Funds cleared from account ${account.name} using ${paymentMethod}. Net amount paid: ${disbursalAmount} ${exp.currency}, WHT withheld: ${updatedWhtAmount} ${exp.currency}.`
       );
     } else if (action === "general-ledger-post") {
       updatedStatus = "Posted";
@@ -546,22 +553,34 @@ app.post("/api/expense/action", async (req, res) => {
         }
       }
 
+      // Converted values for double entry (all recorded in base currency USD)
+      const convertedWhtAmount = exp.whtAmount * exp.rate;
+      const convertedNetAmount = exp.convertedAmount - convertedWhtAmount; // Using subtraction ensures absolute mathematical precision
+
       // Mapped accounts
       const expenseCostAccount = "6100";
       const bankAssetAccount = exp.paymentMethod?.toLowerCase().includes("cash") ? "1120" : "1100";
+      const taxPayableAccount = "2310";
+
+      // Formulate balanced journal items
+      const journalItems = [
+        { accountCode: expenseCostAccount, debit: exp.convertedAmount, credit: 0, projectId: exp.projectId, donorId: "don-1" },
+        { accountCode: bankAssetAccount, debit: 0, credit: convertedNetAmount }
+      ];
+
+      if (convertedWhtAmount > 0) {
+        journalItems.push({ accountCode: taxPayableAccount, debit: 0, credit: convertedWhtAmount });
+      }
 
       await prisma.journalEntry.create({
         data: {
           id: `je-${Date.now()}`,
           journal: "Cash Payments",
           date: new Date().toISOString().split("T")[0],
-          description: `Posted ${exp.voucherNo} to Ledger: ${exp.title}`,
+          description: `Posted ${exp.voucherNo} to Ledger: ${exp.title} (Net: ${exp.netAmount} ${exp.currency}, WHT: ${exp.whtAmount} ${exp.currency})`,
           referenceNo: exp.voucherNo,
           isPosted: true,
-          itemsJson: JSON.stringify([
-            { accountCode: expenseCostAccount, debit: exp.convertedAmount, credit: 0, projectId: exp.projectId, donorId: "don-1" },
-            { accountCode: bankAssetAccount, debit: 0, credit: exp.convertedAmount }
-          ])
+          itemsJson: JSON.stringify(journalItems)
         }
       });
 
@@ -578,15 +597,25 @@ app.post("/api/expense/action", async (req, res) => {
       if (acCred) {
         await prisma.account.update({
           where: { code: bankAssetAccount },
-          data: { balance: acCred.balance - exp.convertedAmount }
+          data: { balance: acCred.balance - convertedNetAmount }
         });
+      }
+
+      if (convertedWhtAmount > 0) {
+        const acTax = await prisma.account.findUnique({ where: { code: taxPayableAccount } });
+        if (acTax) {
+          await prisma.account.update({
+            where: { code: taxPayableAccount },
+            data: { balance: acTax.balance + convertedWhtAmount }
+          });
+        }
       }
 
       await createAuditLog(
         user?.id,
         user?.name,
         "Voucher Ledger Posted",
-        `Double-entry posting confirmed for ${exp.voucherNo}. Ledger Accounts ${expenseCostAccount} and ${bankAssetAccount} aligned.`
+        `Double-entry posting confirmed for ${exp.voucherNo}. Ledger Accounts ${expenseCostAccount} (DR: ${exp.convertedAmount}), ${bankAssetAccount} (CR: ${convertedNetAmount}), and ${taxPayableAccount} (CR: ${convertedWhtAmount}) aligned.`
       );
     }
 
@@ -599,6 +628,8 @@ app.post("/api/expense/action", async (req, res) => {
         paid_at: paidAt,
         paymentMethod: updatedPaymentMethod,
         paymentRef: updatedPaymentRef,
+        whtAmount: updatedWhtAmount,
+        netAmount: updatedNetAmount,
         commentsJson: JSON.stringify(commentsList)
       }
     });

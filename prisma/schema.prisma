@@ -81,6 +81,8 @@ model Expense {
   amount          Float
   rate            Float
   convertedAmount Float
+  whtAmount       Float   @default(0)
+  netAmount       Float   @default(0)
   requestorId     String
   status          String
   paymentMethod   String?

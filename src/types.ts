@@ -60,6 +60,8 @@ export interface Expense {
   amount: number;
   rate: number;
   convertedAmount: number;
+  whtAmount: number;
+  netAmount: number;
   requestorId: string;
   status: "Draft" | "Submitted" | "Under Finance Review" | "Returned for Correction" | "Approved" | "Paid" | "Posted" | "Cancelled";
   paymentMethod?: string;

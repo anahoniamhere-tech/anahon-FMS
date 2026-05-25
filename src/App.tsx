@@ -1612,6 +1612,28 @@ export default function App() {
                           </div>
                         </div>
 
+                        {/* Paid/Posted WHT audit trail info block */}
+                        {["Paid", "Posted"].includes(exp.status) && (
+                          <div className={`p-3 border rounded-lg text-xs font-mono grid grid-cols-3 gap-2 ${exp.whtAmount > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
+                            <div>
+                              <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>Gross Amount</span>
+                              <span className="font-bold text-slate-900">{exp.amount.toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
+                            </div>
+                            <div>
+                              <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>
+                                {exp.whtAmount > 0 ? "WHT Withheld (7.5%)" : "WHT Withheld (0% Registered)"}
+                              </span>
+                              <span className={`font-bold ${exp.whtAmount > 0 ? "text-amber-700" : "text-emerald-700"}`}>
+                                {exp.whtAmount > 0 ? `-${exp.whtAmount.toLocaleString(undefined, {minimumFractionDigits: 2})}` : "0.00"} {exp.currency}
+                              </span>
+                            </div>
+                            <div>
+                              <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>Net Paid Amount</span>
+                              <span className="font-bold text-slate-950">{exp.netAmount.toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Auditing Vouchers Interactive action drawer depending on simulated Role */}
                         <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
                           {exp.status === "Submitted" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (
@@ -1643,27 +1665,69 @@ export default function App() {
                             </>
                           )}
 
-                          {exp.status === "Approved" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (
-                            <div className="flex items-center gap-2">
-                              <select
-                                id={`ba-sel-${exp.id}`}
-                                className="bg-slate-100 text-xs px-2 py-1 rounded border border-slate-300 outline-none"
-                              >
-                                {state.bankAccounts.map(b => (
-                                  <option key={b.id} value={b.id}>{b.name} (Bal: {b.balance.toLocaleString()})</option>
-                                ))}
-                              </select>
-                              <button
-                                onClick={() => {
-                                  const sel = (document.getElementById(`ba-sel-${exp.id}`) as HTMLSelectElement).value;
-                                  handleExpenseAction(exp.id, "cashbook-pay", { bankAccountId: sel, paymentMethod: "Petty cash envelope", paymentRef: `VOU-${exp.voucherNo}` });
-                                }}
-                                className="text-[11px] bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded font-medium shadow-sm animate-pulse"
-                              >
-                                💸 Settle Cashier payment
-                              </button>
-                            </div>
-                          )}
+                          {exp.status === "Approved" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (() => {
+                            const hasTaxId = vendor && vendor.taxId && vendor.taxId.trim() !== "" && vendor.taxId.trim().toUpperCase() !== "N/A";
+                            const whtRate = hasTaxId ? 0 : 0.075;
+                            const whtVal = exp.amount * whtRate;
+                            const netVal = exp.amount - whtVal;
+
+                            return (
+                              <div className="flex flex-col gap-3 p-4 bg-slate-50 border border-slate-200 rounded-lg w-full">
+                                <div className="flex flex-wrap items-center justify-between text-xs gap-2">
+                                  <div>
+                                    <span className="font-semibold text-slate-700">MoF Vendor Tax Profile:</span>{" "}
+                                    <span className={hasTaxId ? "text-emerald-700 font-bold" : "text-amber-700 font-bold"}>
+                                      {hasTaxId ? `Registered (Tax ID: ${vendor.taxId})` : "Unregistered (No Official Tax ID)"}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold text-slate-700">MoF Withholding Tax:</span>{" "}
+                                    <span className="font-mono font-bold bg-slate-200 px-2 py-0.5 rounded">{(whtRate * 100).toFixed(1)}% Rate</span>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-3 gap-2 text-xs border-t border-slate-200 pt-2 font-mono">
+                                  <div>
+                                    <span className="text-[10px] text-slate-500 uppercase block font-bold">Gross Amount</span>
+                                    <span className="font-bold text-slate-900">{exp.amount.toLocaleString()} {exp.currency}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-slate-500 uppercase block font-bold">WHT Withheld (7.5%)</span>
+                                    <span className="font-bold text-red-600 font-bold">-{whtVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} {exp.currency}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] text-slate-500 uppercase block font-bold">Net Payout Amount</span>
+                                    <span className="font-bold text-emerald-700 font-bold">{netVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} {exp.currency}</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 border-t border-slate-200 pt-2 mt-1">
+                                  <span className="text-xs text-slate-600 font-semibold font-mono">Cashier Source:</span>
+                                  <select
+                                    id={`ba-sel-${exp.id}`}
+                                    className="bg-white text-xs px-2 py-1 rounded border border-slate-300 outline-none"
+                                  >
+                                    {state.bankAccounts.map(b => (
+                                      <option key={b.id} value={b.id}>{b.name} (Bal: {b.balance.toLocaleString()})</option>
+                                    ))}
+                                  </select>
+                                  <button
+                                    onClick={() => {
+                                      const sel = (document.getElementById(`ba-sel-${exp.id}`) as HTMLSelectElement).value;
+                                      handleExpenseAction(exp.id, "cashbook-pay", { 
+                                        bankAccountId: sel, 
+                                        paymentMethod: "Petty cash envelope", 
+                                        paymentRef: `VOU-${exp.voucherNo}`,
+                                        whtAmount: whtVal,
+                                        netAmount: netVal
+                                      });
+                                    }}
+                                    className="text-[11px] bg-amber-650 bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded font-medium shadow-sm animate-pulse"
+                                  >
+                                    💸 Settle Cashier payment (Apply WHT)
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           {exp.status === "Paid" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (
                             <button
