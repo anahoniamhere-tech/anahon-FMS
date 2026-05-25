@@ -1951,7 +1951,7 @@ export default function App() {
 
                                const totalNetReconciled = monthExpenses.reduce((sum, e) => {
                                  const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                 const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (e.whtAmount / e.amount)) : e.netAmount;
+                                 const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (e.whtAmount / e.amount)) : (e.netAmount || e.amount);
                                  return sum + (calculatedNet * e.rate);
                                }, 0);
 
@@ -2045,7 +2045,7 @@ export default function App() {
                                            ) : (
                                              monthExpenses.map(exp => {
                                                const alloc = exp.allocations ? exp.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                               const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (exp.whtAmount / exp.amount)) : exp.netAmount;
+                                               const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (exp.whtAmount / exp.amount)) : (exp.netAmount || exp.amount);
                                                const whtVal = alloc ? Number(alloc.amount) * (exp.whtAmount / exp.amount) : exp.whtAmount;
 
                                                return (
@@ -2072,14 +2072,30 @@ export default function App() {
                                      </div>
 
                                      {/* Mathematical Tie-Out Verification Banner */}
-                                     <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-800 flex items-center justify-between font-mono">
-                                       <span className="flex items-center gap-1.5 font-bold">
-                                         🛡️ AUDITOR TIE-OUT VERIFICATION PASSED:
-                                       </span>
-                                       <span>
-                                         Spent This Month ({formatUSD(totalSpentThisMonth)}) = Reconciled Net ({formatUSD(totalNetReconciled)}) + WHT ({formatUSD(totalWhtReconciled)}) perfectly ties to the penny. ✓
-                                       </span>
-                                     </div>
+                                     {(() => {
+                                       const difference = Math.abs(totalSpentThisMonth - (totalNetReconciled + totalWhtReconciled));
+                                       const isTiedOut = difference < 0.01;
+
+                                       return isTiedOut ? (
+                                         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-800 flex items-center justify-between font-mono">
+                                           <span className="flex items-center gap-1.5 font-bold">
+                                             🛡️ AUDITOR TIE-OUT VERIFICATION PASSED:
+                                           </span>
+                                           <span>
+                                             Spent This Month ({formatUSD(totalSpentThisMonth)}) = Reconciled Net ({formatUSD(totalNetReconciled)}) + WHT ({formatUSD(totalWhtReconciled)}) perfectly ties to the penny. ✓
+                                           </span>
+                                         </div>
+                                       ) : (
+                                         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800 flex items-center justify-between font-mono">
+                                           <span className="flex items-center gap-1.5 font-bold">
+                                             ⚠️ AUDITOR TIE-OUT WARNING: MISMATCH DETECTED:
+                                           </span>
+                                           <span>
+                                             Spent This Month ({formatUSD(totalSpentThisMonth)}) ≠ Reconciled Net ({formatUSD(totalNetReconciled)}) + WHT ({formatUSD(totalWhtReconciled)}) | Delta: {formatUSD(difference)}
+                                           </span>
+                                         </div>
+                                       );
+                                     })()}
                                    </div>
 
                                    {/* Section 3: Official Reconciliation Review Sign-Off (Section 2.5 compliance) */}
