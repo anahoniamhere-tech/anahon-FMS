@@ -1497,14 +1497,6 @@ export default function App() {
       {/* Header */}
       <header className="hidden md:flex flex-row items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-3 text-white">
         <div className="flex items-center gap-3">
-          <button 
-            type="button" 
-            onClick={() => setIsOpen(!isOpen)} 
-            className="flex items-center justify-center p-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:text-white transition cursor-pointer min-w-[36px] min-h-[36px] text-xs font-mono font-bold"
-            title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
-          >
-            {isOpen ? "◀" : "▶"}
-          </button>
           <div className="flex h-10 w-10 items-center justify-center rounded bg-red-600 text-white font-bold text-lg shadow-inner">AH</div>
           <div>
             <h1 className="text-lg font-bold tracking-tight font-sans">AnaHon Financial Management</h1>
@@ -1522,14 +1514,6 @@ export default function App() {
       {/* Mobile Header */}
       <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between text-white relative z-50 h-16">
         <div className="flex items-center gap-3">
-          <button 
-            type="button" 
-            onClick={() => setIsOpen(!isOpen)} 
-            className="flex items-center justify-center p-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:text-white transition cursor-pointer min-w-[44px] min-h-[44px] text-sm font-mono font-bold"
-            title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
-          >
-            {isOpen ? "◀" : "▶"}
-          </button>
           <div className="flex h-9 w-9 items-center justify-center rounded bg-red-650 bg-red-600 text-white font-bold text-base shadow-inner">AH</div>
           <div className="flex flex-col">
             <h1 className="text-xs font-bold tracking-tight font-sans">AnaHon FMS</h1>
@@ -1635,6 +1619,21 @@ export default function App() {
             <p className="mt-3 text-center text-[9px] text-slate-600 font-mono">AnaHon Media • Beirut/Tripoli Hub</p>
           </div>
         </aside>
+
+        {/* Floating Sidebar Toggle Handle */}
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className={`fixed md:absolute top-1/2 -translate-y-1/2 z-[60] flex h-11 w-8 items-center justify-center rounded-r-xl bg-slate-800 border-y border-r border-slate-700 hover:bg-slate-700 text-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer text-xs font-mono font-bold ${
+            isOpen 
+              ? 'left-64 md:left-64' 
+              : 'left-0 md:left-0'
+          }`}
+          style={{ minWidth: '32px', minHeight: '44px' }}
+          title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+        >
+          {isOpen ? "◀" : "▶"}
+        </button>
 
         {/* Dynamic Display Panel View */}
         <main className="flex-1 flex flex-col overflow-y-auto p-4 md:p-8">
