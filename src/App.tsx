@@ -821,11 +821,17 @@ export default function App() {
   };
 
   // Filter lists based on Search term
-  const filteredExpenses = state.expenses.filter(e =>
-    e.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.purpose.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    e.voucherNo.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredExpenses = (state?.expenses || []).filter(e => {
+    const title = e?.title || "";
+    const purpose = e?.purpose || "";
+    const voucherNo = e?.voucherNo || "";
+    const term = searchTerm || "";
+    return (
+      title.toLowerCase().includes(term.toLowerCase()) ||
+      purpose.toLowerCase().includes(term.toLowerCase()) ||
+      voucherNo.toLowerCase().includes(term.toLowerCase())
+    );
+  });
 
   if (!fbUser) {
     return (
@@ -2903,11 +2909,11 @@ export default function App() {
                   <div className="flex flex-col">
                     <span className="text-[9px] font-bold text-slate-500 uppercase">Select Cash/Bank Vault</span>
                     <select
-                      value={dailySelectedBankId || (state.bankAccounts[0]?.id || "")}
+                      value={dailySelectedBankId || ((state?.bankAccounts || [])[0]?.id || "")}
                       onChange={(e) => setDailySelectedBankId(e.target.value)}
                       className="bg-transparent text-xs font-bold text-slate-900 border-none outline-none cursor-pointer"
                     >
-                      {state.bankAccounts.map(b => (
+                      {(state?.bankAccounts || []).map(b => (
                         <option key={b.id} value={b.id}>{b.name} ({b.currency})</option>
                       ))}
                     </select>
@@ -2916,9 +2922,9 @@ export default function App() {
               </div>
 
               {(() => {
-                const selectedBankId = dailySelectedBankId || (state.bankAccounts[0]?.id || "");
-                const selectedAccount = state.bankAccounts.find(b => b.id === selectedBankId);
-                const accountTransactions = state.bankTransactions.filter(t => t.bankAccountId === selectedBankId);
+                const selectedBankId = dailySelectedBankId || ((state?.bankAccounts || [])[0]?.id || "");
+                const selectedAccount = (state?.bankAccounts || []).find(b => b.id === selectedBankId);
+                const accountTransactions = (state?.bankTransactions || []).filter(t => t.bankAccountId === selectedBankId);
 
                 const dailyDeposits = accountTransactions
                   .filter(t => t.date === dailySelectedDate && t.type === "Deposit")
@@ -3005,7 +3011,7 @@ export default function App() {
                               </thead>
                               <tbody className="divide-y divide-slate-100 text-xs font-sans">
                                 {dailyTransactions.map(t => {
-                                  const matchingExpense = state.expenses.find(e => e.voucherNo === t.voucherNo);
+                                  const matchingExpense = (state?.expenses || []).find(e => e.voucherNo === t.voucherNo);
                                   
                                   return (
                                     <tr key={t.id} className="hover:bg-slate-50">
@@ -3085,7 +3091,7 @@ export default function App() {
                                   className="finance-input w-full text-xs bg-white"
                                 >
                                   <option value="">-- Choose Project --</option>
-                                  {state.projects.map(p => (
+                                  {(state?.projects || []).map(p => (
                                     <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
                                   ))}
                                 </select>
@@ -3098,7 +3104,7 @@ export default function App() {
                                   className="finance-input w-full text-xs bg-white"
                                 >
                                   <option value="">-- Select Line --</option>
-                                  {state.budgetLines.filter(bl => bl.projectId === dailyProject).map(bl => (
+                                  {(state?.budgetLines || []).filter(bl => bl.projectId === dailyProject).map(bl => (
                                     <option key={bl.id} value={bl.id}>{bl.code} - {bl.description}</option>
                                   ))}
                                 </select>
@@ -3111,7 +3117,7 @@ export default function App() {
                                   className="finance-input w-full text-xs bg-white"
                                 >
                                   <option value="">-- Miscellaneous Out-of-Pocket --</option>
-                                  {state.vendors.filter(v => !v.blocked).map(v => (
+                                  {(state?.vendors || []).filter(v => !v.blocked).map(v => (
                                     <option key={v.id} value={v.id}>{v.name}</option>
                                   ))}
                                 </select>
