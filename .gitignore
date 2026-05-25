@@ -11,3 +11,4 @@ dev_db.json
 prisma/dev.db
 *.db
 *.db-journal
+.vercel
