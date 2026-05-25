@@ -3016,7 +3016,7 @@ export default function App() {
                                         <p className="font-semibold text-slate-900">{t.description}</p>
                                         {matchingExpense && (
                                           <span className="text-[10px] text-slate-500">
-                                            Project: {matchingExpense.projectId} | WHT: {matchingExpense.whtAmount.toLocaleString()} {selectedAccount?.currency}
+                                            Project: {matchingExpense.projectId || "N/A"} | WHT: {(matchingExpense.whtAmount || 0).toLocaleString()} {selectedAccount?.currency}
                                           </span>
                                         )}
                                       </td>
