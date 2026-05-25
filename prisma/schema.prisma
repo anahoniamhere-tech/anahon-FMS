@@ -1,0 +1,230 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id     String  @id
+  name   String
+  email  String  @unique
+  role   String
+  active Boolean @default(true)
+}
+
+model Account {
+  code           String  @id
+  name           String
+  type           String
+  currency       String
+  parent         String?
+  reportingGroup String
+  balance        Float   @default(0)
+  active         Boolean @default(true)
+}
+
+model Donor {
+  id           String @id
+  name         String
+  country      String
+  contactEmail String
+  notes        String
+}
+
+model Project {
+  id          String @id
+  name        String
+  code        String @unique
+  donorId     String
+  budgetUSD   Float
+  startDate   String
+  endDate     String
+  fundingType String
+  status      String
+}
+
+model BudgetLine {
+  id           String @id
+  projectId    String
+  code         String
+  category     String
+  description  String
+  allocatedUSD Float
+  actualUSD    Float  @default(0)
+  committedUSD Float  @default(0)
+}
+
+model Vendor {
+  id                String  @id
+  name              String
+  category          String
+  taxId             String
+  bankInfo          String
+  contact           String
+  active            Boolean @default(true)
+  declarationSigned Boolean @default(false)
+  blocked           Boolean @default(false)
+}
+
+model Expense {
+  id              String  @id
+  voucherNo       String  @unique
+  title           String
+  purpose         String
+  vendorId        String
+  projectId       String
+  budgetLineId    String
+  currency        String
+  amount          Float
+  rate            Float
+  convertedAmount Float
+  requestorId     String
+  status          String
+  paymentMethod   String?
+  paymentRef      String?
+  created_at      String
+  approved_at     String?
+  paid_at         String?
+  commentsJson    String  // Serialized Comments Array [Comment]
+  hasAttachment   Boolean @default(false)
+}
+
+model Procurement {
+  id               String  @id
+  title            String
+  projectId        String
+  budgetLineId     String
+  status           String
+  quotationsJson   String  // Serialized Quotations Array
+  justification    String
+  conflictDeclared Boolean @default(false)
+}
+
+model BankAccount {
+  id         String  @id
+  name       String
+  type       String
+  currency   String
+  accountNo  String
+  balance    Float
+  active     Boolean @default(true)
+}
+
+model BankTransaction {
+  id            String  @id
+  bankAccountId String
+  date          String
+  description   String
+  amount        Float
+  type          String
+  reconciled    Boolean @default(false)
+  voucherNo     String?
+}
+
+model JournalEntry {
+  id          String  @id
+  journal     String
+  date        String
+  description String
+  referenceNo String
+  isPosted    Boolean @default(false)
+  itemsJson   String  // Serialized items: { accountCode, debit, credit, projectId?, donorId? }[]
+}
+
+model Employee {
+  id            String  @id
+  name          String
+  position      String
+  salary        Float
+  allowance     Float
+  paymentMethod String
+  contractType  String
+  active        Boolean @default(true)
+}
+
+model Timesheet {
+  id              String  @id
+  employeeId      String
+  month           String
+  totalDays       Int
+  allocationsJson String  // Serialized Allocations Array
+  status          String
+  approvedBy      String?
+}
+
+model FixedAsset {
+  id                       String @id
+  name                     String
+  serialNumber             String
+  fundingProjectId         String
+  purchaseDate             String
+  cost                     Float
+  currency                 String
+  usefulLifeYears          Int
+  custodian                String
+  location                 String
+  condition                String
+  currentBookValue         Float
+  depreciationMethod       String
+  accumulatedDepreciation  Float
+}
+
+model PartnerAccount {
+  id                    String @id
+  partnerName           String
+  capitalBalance        Float
+  loansToCompany        Float
+  drawingsBalance       Float
+  currentAccountBalance Float
+}
+
+model AppDoc {
+  id               String @id
+  filename         String
+  mimeType         String
+  sizeStr          String
+  base64           String
+  category         String
+  linkedRecordType String
+  linkedRecordId   String
+  created_at       String
+}
+
+model AuditLog {
+  id        String @id
+  userId    String
+  userName  String
+  action    String
+  details   String
+  timestamp String
+}
+
+model ComplianceTask {
+  id       String @id
+  title    String
+  category String
+  dueDate  String
+  status   String
+  notes    String
+}
+
+model OrgSettings {
+  id                        String  @id @default("settings")
+  profileName               String
+  legalEntity               String
+  vesselCode                String
+  baseCurrency              String  @default("USD")
+  fiscalYearEnd             String
+  vatRate                   Float
+  approvalThresholdUSD      Float
+  allowSubProjectAllocation Boolean @default(true)
+}
+
+model FxRates {
+  id  String @id @default("rates")
+  EUR Float
+  LBP Float
+}
