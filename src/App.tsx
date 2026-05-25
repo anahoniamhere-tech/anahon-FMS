@@ -37,10 +37,10 @@ import {
 } from "lucide-react";
 import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, BankAccount, Employee, Timesheet, FixedAsset, PartnerAccount, AppDoc, ComplianceTask, AuditLog } from "./types";
 import { auth } from "./firebaseConfig";
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut, 
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut,
   onAuthStateChanged,
   updateProfile
 } from "firebase/auth";
@@ -172,8 +172,8 @@ export default function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [reconMonth, setReconMonth] = useState<string>("2026-05");
   const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<"folder" | "reconciliation">("folder");
-  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
-  
+  const [isOpen, setIsOpen] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
+
   const workspaceRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -200,6 +200,11 @@ export default function App() {
 
   // Notification Banner
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  const handleNavClick = (tab: string) => {
+    setActiveTab(tab);
+    setIsOpen(false);
+  };
 
   // Load backend state on initialization
   const refreshState = async () => {
@@ -326,7 +331,7 @@ export default function App() {
     return (
       <div className="flex h-screen items-center justify-center bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 text-slate-100 font-sans p-6 overflow-y-auto">
         <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8 space-y-6 relative overflow-hidden">
-          
+
           {/* Header */}
           <div className="text-center space-y-2">
             <div className="w-14 h-14 rounded-xl bg-red-600 flex items-center justify-center font-bold tracking-wider text-white text-2xl mx-auto shadow-lg shadow-red-600/30">
@@ -342,9 +347,8 @@ export default function App() {
           <div className="flex border-b border-slate-800">
             <button
               onClick={() => { setAuthTab("signin"); setAuthError(null); }}
-              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${
-                authTab === "signin" ? "text-white" : "text-slate-500 hover:text-slate-300"
-              }`}
+              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${authTab === "signin" ? "text-white" : "text-slate-500 hover:text-slate-300"
+                }`}
             >
               Sign In
               {authTab === "signin" && (
@@ -353,9 +357,8 @@ export default function App() {
             </button>
             <button
               onClick={() => { setAuthTab("signup"); setAuthError(null); }}
-              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${
-                authTab === "signup" ? "text-white" : "text-slate-500 hover:text-slate-300"
-              }`}
+              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${authTab === "signup" ? "text-white" : "text-slate-500 hover:text-slate-300"
+                }`}
             >
               Create Account
               {authTab === "signup" && (
@@ -523,7 +526,7 @@ export default function App() {
 
     const updatedState = { ...state, accounts: [...state.accounts, newAc] };
     setState(updatedState);
-    
+
     // Save state helper simulation (write to audit logs)
     try {
       await fetch("/api/state", {
@@ -869,7 +872,7 @@ export default function App() {
         { accountCode: "", debit: 0, credit: 0, projectId: "" },
         { accountCode: "", debit: 0, credit: 0, projectId: "" }
       ]);
-      
+
       refreshState();
     } catch (err: any) {
       triggerToast(err.message, "error");
@@ -950,8 +953,8 @@ export default function App() {
       const activeProject = state.projects.find(p => p.id === selectedProjectId);
       if (!activeProject) return;
 
-      const projExpenses = state.expenses.filter(e => 
-        e.projectId === selectedProjectId || 
+      const projExpenses = state.expenses.filter(e =>
+        e.projectId === selectedProjectId ||
         (e.allocations && e.allocations.some((a: any) => a.projectId === selectedProjectId))
       );
 
@@ -1474,7 +1477,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen flex-col bg-slate-50 text-slate-900 overflow-hidden font-sans">
-      
+
       {/* Toast Alert Header Banner */}
       <AnimatePresence>
         {toast && (
@@ -1482,9 +1485,8 @@ export default function App() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className={`fixed top-4 right-4 z-50 flex items-center gap-2 rounded-lg px-4 py-3 shadow-lg text-white ${
-              toast.type === "error" ? "bg-red-600" : "bg-emerald-600"
-            }`}
+            className={`fixed top-4 right-4 z-50 flex items-center gap-2 rounded-lg px-4 py-3 shadow-lg text-white ${toast.type === "error" ? "bg-red-600" : "bg-emerald-600"
+              }`}
           >
             <AlertCircle className="h-5 w-5" />
             <span className="text-sm font-medium">{toast.message}</span>
@@ -1492,337 +1494,100 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Primary Global Controls & Navigation Top Bar */}
+      {/* Header */}
       <header className="flex flex-col md:flex-row items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-3 text-white">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded bg-red-600 text-white font-bold text-lg shadow-inner">
-            AH
-          </div>
+          <button 
+            type="button" 
+            onClick={() => setIsOpen(!isOpen)} 
+            className="hidden md:flex items-center justify-center p-2 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 hover:text-white transition cursor-pointer min-w-[36px] min-h-[36px] text-xs font-mono font-bold"
+            title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
+          >
+            {isOpen ? "◀" : "▶"}
+          </button>
+          <div className="flex h-10 w-10 items-center justify-center rounded bg-red-600 text-white font-bold text-lg shadow-inner">AH</div>
           <div>
             <h1 className="text-lg font-bold tracking-tight font-sans">AnaHon Financial Management</h1>
-            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">
-              Tripoli Civil Co. Compliance Terminal • Registration: {state.orgSettings.vesselCode}
-            </p>
+            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">Tripoli Civil Co. Compliance Terminal</p>
           </div>
         </div>
-
-        {/* Real Authenticated Firebase User Profile */}
         <div className="flex items-center gap-4 mt-2 md:mt-0">
-          <div className="flex items-center gap-3 bg-slate-800 p-1.5 px-3 rounded-lg border border-slate-700">
-            <div className="w-8 h-8 rounded-full bg-red-600/10 border border-red-600/30 flex items-center justify-center font-bold text-red-400 text-sm">
-              {currentUser?.name?.substring(0, 2).toUpperCase() || "AH"}
-            </div>
-            <div className="text-left">
-              <span className="block text-xs font-bold text-white leading-tight">{currentUser?.name}</span>
-              <span className="block text-[9px] text-red-400 font-mono tracking-wider font-semibold uppercase leading-none">{currentUser?.role}</span>
-            </div>
-          </div>
-          
-          <button
-            onClick={handleFirebaseSignOut}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-xs font-bold text-slate-300 hover:text-white transition cursor-pointer"
-          >
+          <button onClick={handleFirebaseSignOut} className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer">
             <UserCheck className="w-3.5 h-3.5 text-red-500" />
             <span>Sign Out</span>
           </button>
         </div>
       </header>
 
-      {/* Mobile Navigation Header Bar (Mobile-only, md:hidden) */}
-      <div className="md:hidden bg-slate-900 border-t border-b border-slate-800 px-6 py-3 flex items-center justify-between text-white select-none">
-        <button
-          type="button"
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="flex items-center justify-center p-2 rounded-lg bg-slate-850 border border-slate-700 hover:bg-slate-800 focus:outline-none min-w-[44px] min-h-[44px] transition cursor-pointer"
-          aria-label="Toggle Navigation Menu"
-        >
-          {mobileMenuOpen ? (
-            <span className="text-xl font-bold font-mono">✕</span>
-          ) : (
-            <span className="text-xl font-bold font-mono">☰</span>
-          )}
+      {/* Mobile Header */}
+      <div className="md:hidden bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between text-white relative z-50">
+        <button type="button" onClick={() => setIsOpen(!isOpen)} className="p-2 rounded-lg bg-slate-800 border border-slate-700 transition cursor-pointer min-w-[44px] min-h-[44px]">
+          {isOpen ? <span className="text-xl font-bold font-mono">✕</span> : <span className="text-xl font-bold font-mono">☰</span>}
         </button>
-        <span className="text-xs font-bold font-mono text-red-400 bg-red-950/40 px-3 py-1.5 rounded border border-red-900/40 uppercase tracking-wider">
-          Tab: {activeTab.replace(/([A-Z])/g, " $1")}
+        <span className="text-xs font-bold font-mono text-red-400 bg-red-950/40 px-3 py-1.5 rounded border border-red-900/40 uppercase">
+          {activeTab}
         </span>
       </div>
 
-      {/* Mobile Navigation Drawer (Mobile-only, md:hidden) */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="md:hidden bg-slate-900 border-b border-slate-800 p-4 space-y-1 text-white select-none overflow-hidden"
-          >
-            <nav className="flex flex-col gap-1 font-sans">
-              <button
-                type="button"
-                onClick={() => { setActiveTab("dashboard"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "dashboard" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <Activity className="h-4 w-4" />
-                Overview Dashboard
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("accounts"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "accounts" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <Sliders className="h-4 w-4" />
-                Chart of Accounts
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("projects"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <FolderGit2 className="h-4 w-4" />
-                Donors & Projects
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("expenses"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <FileText className="h-4 w-4" />
-                Disbursement Vouchers
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("procurement"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "procurement" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <Layers className="h-4 w-4" />
-                Procurement & Bids
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("vendors"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "vendors" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <Users className="h-4 w-4" />
-                Vendor Registry
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("banking"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "banking" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <Coins className="h-4 w-4" />
-                Banking & Cash Reconcile
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("ledger"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "ledger" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <Building className="h-4 w-4" />
-                General double-entry Ledger
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("payroll"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "payroll" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <User className="h-4 w-4" />
-                Timesheets & Payroll Allocation
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("assets"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "assets" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <HardDrive className="h-4 w-4" />
-                Fixed Assets Roll-Forward
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("partners"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "partners" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <Briefcase className="h-4 w-4" />
-                Partner Capital Tracking
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => { setActiveTab("compliance"); setMobileMenuOpen(false); }}
-                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
-                  activeTab === "compliance" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-                }`}
-              >
-                <ShieldAlert className="h-4 w-4 text-rose-400" />
-                Compliance Control Desk
-              </button>
-            </nav>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Main Container: Sidebar + Working Tab Layout Screen */}
-      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+      {/* Main Layout */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {isOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={() => setIsOpen(false)} />}
         
-        {/* Left Side Sidebar Menu */}
-        <aside className="hidden md:flex w-64 border-r border-slate-200 bg-slate-900 flex-col justify-between p-4 overflow-y-auto shrink-0 select-none">
-          <nav className="space-y-1">
-            <button
-              onClick={() => setActiveTab("dashboard")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "dashboard" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Activity className="h-4 w-4" />
-              Overview Dashboard
+        <aside className={`fixed top-[69px] bottom-0 left-0 z-50 bg-slate-900 border-slate-800 shrink-0 transition-all duration-300 ease-in-out md:relative md:top-0 md:flex md:flex-col ${
+          isOpen 
+            ? 'translate-x-0 w-64 p-4 border-r' 
+            : '-translate-x-full md:translate-x-0 md:w-0 md:p-0 md:border-r-0 overflow-hidden'
+        }`}>
+          <nav className="space-y-1 font-sans">
+            <button onClick={() => handleNavClick("dashboard")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Activity className="h-4 w-4" /> Overview Dashboard
             </button>
 
-            <button
-              onClick={() => setActiveTab("accounts")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "accounts" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Sliders className="h-4 w-4" />
-              Chart of Accounts
+            <button onClick={() => handleNavClick("accounts")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "accounts" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Sliders className="h-4 w-4" /> Chart of Accounts
             </button>
 
-            <button
-              onClick={() => setActiveTab("projects")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <FolderGit2 className="h-4 w-4" />
-              Donors & Projects
+            <button onClick={() => handleNavClick("projects")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <FolderGit2 className="h-4 w-4" /> Donors & Projects
             </button>
 
-            <button
-              onClick={() => setActiveTab("expenses")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <FileText className="h-4 w-4" />
-              Disbursement Vouchers
+            <button onClick={() => handleNavClick("expenses")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <FileText className="h-4 w-4" /> Disbursement Vouchers
               <span className="ml-auto bg-slate-800 text-[10px] text-slate-300 px-1.5 py-0.5 rounded-full font-mono">
                 {state.expenses.filter(e => ["Submitted", "Under Finance Review", "Approved"].includes(e.status)).length}
               </span>
             </button>
 
-
-
-            <button
-              onClick={() => setActiveTab("procurement")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "procurement" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Layers className="h-4 w-4" />
-              Procurement & Bids
+            <button onClick={() => handleNavClick("procurement")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "procurement" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Layers className="h-4 w-4" /> Procurement & Bids
             </button>
 
-            <button
-              onClick={() => setActiveTab("vendors")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "vendors" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Users className="h-4 w-4" />
-              Vendor Registry
+            <button onClick={() => handleNavClick("vendors")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "vendors" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Users className="h-4 w-4" /> Vendor Registry
             </button>
 
-            <button
-              onClick={() => setActiveTab("banking")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "banking" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Coins className="h-4 w-4" />
-              Banking & Cash Reconcile
+            <button onClick={() => handleNavClick("banking")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "banking" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Coins className="h-4 w-4" /> Banking & Cash Reconcile
             </button>
 
-            <button
-              onClick={() => setActiveTab("ledger")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "ledger" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Building className="h-4 w-4" />
-              General double-entry Ledger
+            <button onClick={() => handleNavClick("ledger")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "ledger" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Building className="h-4 w-4" /> General double-entry Ledger
             </button>
 
-            <button
-              onClick={() => setActiveTab("payroll")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "payroll" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <User className="h-4 w-4" />
-              Timesheets & Payroll Allocation
+            <button onClick={() => handleNavClick("payroll")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "payroll" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <User className="h-4 w-4" /> Timesheets & Payroll Allocation
             </button>
 
-            <button
-              onClick={() => setActiveTab("assets")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "assets" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <HardDrive className="h-4 w-4" />
-              Fixed Assets Roll-Forward
+            <button onClick={() => handleNavClick("assets")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "assets" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <HardDrive className="h-4 w-4" /> Fixed Assets Roll-Forward
             </button>
 
-            <button
-              onClick={() => setActiveTab("partners")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "partners" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <Briefcase className="h-4 w-4" />
-              Partner Capital Tracking
+            <button onClick={() => handleNavClick("partners")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "partners" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Briefcase className="h-4 w-4" /> Partner Capital Tracking
             </button>
 
-            <button
-              onClick={() => setActiveTab("compliance")}
-              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                activeTab === "compliance" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
-              }`}
-            >
-              <ShieldAlert className="h-4 w-4 text-rose-400" />
-              Compliance Control Desk
+            <button onClick={() => handleNavClick("compliance")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "compliance" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <ShieldAlert className="h-4 w-4 text-rose-400" /> Compliance Control Desk
               <span className="ml-auto flex h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
             </button>
           </nav>
@@ -1957,7 +1722,7 @@ export default function App() {
 
               {/* Dual Column Bottom components */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
+
                 {/* Active compliance task indicators */}
                 <div className="md:col-span-2 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                   <h3 className="text-md font-bold text-slate-900 mb-3 flex items-center gap-2">
@@ -1972,9 +1737,8 @@ export default function App() {
                           <span className="text-xs text-slate-500">Deadline: {t.dueDate} • Code: {t.category}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${
-                            t.status === "Done" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                          }`}>
+                          <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${t.status === "Done" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                            }`}>
                             {t.status}
                           </span>
                         </div>
@@ -2097,13 +1861,12 @@ export default function App() {
                         <td className="px-6 py-3 font-mono font-bold text-slate-800">{acc.code}</td>
                         <td className="px-6 py-3 font-medium text-slate-900">{acc.name}</td>
                         <td className="px-6 py-3 hidden md:table-cell">
-                          <span className={`px-2 py-0.5 text-xs rounded font-medium ${
-                            acc.type === "Asset" ? "bg-teal-50 text-teal-700" :
-                            acc.type === "Liability" ? "bg-amber-50 text-amber-700" :
-                            acc.type === "Equity" ? "bg-indigo-50 text-indigo-700" :
-                            acc.type === "Revenue" ? "bg-emerald-50 text-emerald-700" :
-                            "bg-rose-50 text-rose-700"
-                          }`}>
+                          <span className={`px-2 py-0.5 text-xs rounded font-medium ${acc.type === "Asset" ? "bg-teal-50 text-teal-700" :
+                              acc.type === "Liability" ? "bg-amber-50 text-amber-700" :
+                                acc.type === "Equity" ? "bg-indigo-50 text-indigo-700" :
+                                  acc.type === "Revenue" ? "bg-emerald-50 text-emerald-700" :
+                                    "bg-rose-50 text-rose-700"
+                            }`}>
                             {acc.type}
                           </span>
                         </td>
@@ -2166,23 +1929,21 @@ export default function App() {
                       <div
                         key={proj.id}
                         onClick={() => setSelectedProjectId(selectedProjectId === proj.id ? null : proj.id)}
-                        className={`p-5 bg-white border rounded-xl shadow-sm cursor-pointer transition-all duration-200 ${
-                          isSelected ? "ring-2 ring-red-600 border-transparent bg-red-50/10" : "border-slate-200 hover:border-slate-350 hover:shadow-md"
-                        }`}
+                        className={`p-5 bg-white border rounded-xl shadow-sm cursor-pointer transition-all duration-200 ${isSelected ? "ring-2 ring-red-600 border-transparent bg-red-50/10" : "border-slate-200 hover:border-slate-350 hover:shadow-md"
+                          }`}
                       >
                         <div className="flex justify-between items-start mb-2">
                           <span className="text-[10px] bg-red-50 text-red-700 font-mono font-bold px-2 py-0.5 rounded uppercase">
                             {proj.code}
                           </span>
-                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${
-                            proj.status === "Active" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                          }`}>
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${proj.status === "Active" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                            }`}>
                             {proj.status}
                           </span>
                         </div>
                         <h4 className="text-sm font-bold text-slate-900 font-sans mb-1">{proj.name}</h4>
                         <p className="text-xs text-slate-500 mb-3">Donor Partner: {donor?.name || "Restricted Donor"}</p>
-                        
+
                         <div className="space-y-1 mb-3">
                           <div className="flex justify-between text-[10px] text-slate-500">
                             <span>Burn Rate</span>
@@ -2215,18 +1976,18 @@ export default function App() {
 
                 const activeDonor = state.donors.find(d => d.id === activeProject.donorId);
                 const projDocs = state.documents.filter(d => d.linkedRecordType === "Project" && d.linkedRecordId === selectedProjectId);
-                const projExpenses = state.expenses.filter(e => 
-                  e.projectId === selectedProjectId || 
+                const projExpenses = state.expenses.filter(e =>
+                  e.projectId === selectedProjectId ||
                   (e.allocations && e.allocations.some((a: any) => a.projectId === selectedProjectId))
                 );
                 const projProcurements = state.procurements.filter(p => p.projectId === selectedProjectId);
-                
+
                 // Bank transactions linked to this project
                 const projVouchers = projExpenses.map(e => e.voucherNo);
                 const projBankTx = state.bankTransactions.filter(bt => bt.voucherNo && projVouchers.includes(bt.voucherNo));
 
                 // Timesheets allocating payroll to this project
-                const projTimesheets = state.timesheets.filter(ts => 
+                const projTimesheets = state.timesheets.filter(ts =>
                   ts.allocations && ts.allocations.some((alloc: any) => alloc.projectId === selectedProjectId)
                 );
 
@@ -2246,18 +2007,16 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => setProjectWorkspaceTab("folder")}
-                          className={`min-h-[44px] px-4 py-2.5 flex items-center justify-center rounded-md transition-colors ${
-                            projectWorkspaceTab === "folder" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                          }`}
+                          className={`min-h-[44px] px-4 py-2.5 flex items-center justify-center rounded-md transition-colors ${projectWorkspaceTab === "folder" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                            }`}
                         >
                           📁 Folder Explorer (Audit File)
                         </button>
                         <button
                           type="button"
                           onClick={() => setProjectWorkspaceTab("reconciliation")}
-                          className={`min-h-[44px] px-4 py-2.5 flex items-center justify-center rounded-md transition-colors ${
-                            projectWorkspaceTab === "reconciliation" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                          }`}
+                          className={`min-h-[44px] px-4 py-2.5 flex items-center justify-center rounded-md transition-colors ${projectWorkspaceTab === "reconciliation" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                            }`}
                         >
                           📊 Monthly Reconciliation Report
                         </button>
@@ -2268,7 +2027,7 @@ export default function App() {
                     {projectWorkspaceTab === "folder" && (
                       <div className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          
+
                           {/* Folder A: Project Contracts & MoUs */}
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                             <div className="flex justify-between items-center border-b border-slate-200 pb-2">
@@ -2325,9 +2084,8 @@ export default function App() {
                                   <div key={proc.id} className="text-xs p-2 bg-white border border-slate-100 rounded space-y-1">
                                     <div className="flex justify-between font-bold">
                                       <span className="text-slate-800">{proc.title}</span>
-                                      <span className={`text-[10px] font-mono ${
-                                        proc.status === "Approved" ? "text-emerald-600" : "text-amber-600"
-                                      }`}>{proc.status}</span>
+                                      <span className={`text-[10px] font-mono ${proc.status === "Approved" ? "text-emerald-600" : "text-amber-600"
+                                        }`}>{proc.status}</span>
                                     </div>
                                     <p className="text-[10px] text-slate-500 italic">Justification: "{proc.justification}"</p>
                                     <div className="text-[9px] text-slate-400">
@@ -2363,7 +2121,7 @@ export default function App() {
                                       <div className="flex justify-between items-center">
                                         <span className="font-mono font-bold text-slate-700">{exp.voucherNo}</span>
                                         <span className="font-mono font-bold text-slate-900">
-                                          {formatUSD(displayedVal * exp.rate)} 
+                                          {formatUSD(displayedVal * exp.rate)}
                                           {isShared && <span className="text-[9px] text-amber-600 font-normal ml-1">({alloc.percentage}%)</span>}
                                         </span>
                                       </div>
@@ -2489,35 +2247,35 @@ export default function App() {
                                 className="finance-input text-xs"
                               />
                             </div>
-                            
+
                             <div className="flex flex-wrap gap-2 font-sans">
-                                <button
-                                  type="button"
-                                  onClick={handleExportExcel}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs min-h-[44px] px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-1 shadow-sm transition cursor-pointer"
-                                >
-                                  📊 Export Excel
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleExportWord}
-                                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs min-h-[44px] px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-1 shadow-sm transition cursor-pointer"
-                                >
-                                  📝 Export Word
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleExportPDF}
-                                  className="bg-slate-800 hover:bg-slate-900 text-white text-xs min-h-[44px] px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-1 shadow-sm transition cursor-pointer"
-                                >
-                                  📄 Export PDF
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={handleExportExcel}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs min-h-[44px] px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-1 shadow-sm transition cursor-pointer"
+                              >
+                                📊 Export Excel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleExportWord}
+                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs min-h-[44px] px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-1 shadow-sm transition cursor-pointer"
+                              >
+                                📝 Export Word
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleExportPDF}
+                                className="bg-slate-800 hover:bg-slate-900 text-white text-xs min-h-[44px] px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-1 shadow-sm transition cursor-pointer"
+                              >
+                                📄 Export PDF
+                              </button>
+                            </div>
                           </div>
 
                           {/* Print container layout */}
                           <div id="reconciliation-print-report" className="bg-white border-2 border-slate-200 p-8 rounded-xl space-y-6 shadow-inner print-report print:border-0 print:p-0 print:exact-colors">
-                            
+
                             {/* Standardized professional header */}
                             <div className="text-center border-b-2 border-slate-350 pb-4 space-y-1">
                               <h1 className="text-lg font-bold uppercase tracking-wider text-slate-900">AnaHon Media Platform</h1>
@@ -2546,215 +2304,215 @@ export default function App() {
                                 <p className="font-bold text-slate-900 font-mono uppercase">{reconMonth}</p>
                               </div>
                             </div>
-                             {(() => {
-                               const projectBudgetLines = state.budgetLines.filter(bl => bl.projectId === selectedProjectId);
-                               const totalAllocated = projectBudgetLines.reduce((sum, bl) => sum + bl.allocatedUSD, 0);
-                               
-                               const totalSpentThisMonth = projectBudgetLines.reduce((sum, bl) => {
-                                 const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sumE, e) => {
-                                   const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                   return sumE + (alloc ? Number(alloc.amount) : e.amount);
-                                 }, 0);
-                                 return sum + monthSpent;
-                               }, 0);
+                            {(() => {
+                              const projectBudgetLines = state.budgetLines.filter(bl => bl.projectId === selectedProjectId);
+                              const totalAllocated = projectBudgetLines.reduce((sum, bl) => sum + bl.allocatedUSD, 0);
 
-                               const totalCumulativeSpent = projectBudgetLines.reduce((sum, bl) => sum + bl.actualUSD, 0);
-                               const totalRemainingBalance = totalAllocated - totalCumulativeSpent;
-                               const overallBurnRate = totalAllocated > 0 ? Math.round((totalCumulativeSpent / totalAllocated) * 100) : 0;
+                              const totalSpentThisMonth = projectBudgetLines.reduce((sum, bl) => {
+                                const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sumE, e) => {
+                                  const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+                                  return sumE + (alloc ? Number(alloc.amount) : e.amount);
+                                }, 0);
+                                return sum + monthSpent;
+                              }, 0);
 
-                               const totalNetReconciled = monthExpenses.reduce((sum, e) => {
-                                 const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                 const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (e.whtAmount / e.amount)) : (e.netAmount || e.amount);
-                                 return sum + (calculatedNet * e.rate);
-                               }, 0);
+                              const totalCumulativeSpent = projectBudgetLines.reduce((sum, bl) => sum + bl.actualUSD, 0);
+                              const totalRemainingBalance = totalAllocated - totalCumulativeSpent;
+                              const overallBurnRate = totalAllocated > 0 ? Math.round((totalCumulativeSpent / totalAllocated) * 100) : 0;
 
-                               const totalWhtReconciled = monthExpenses.reduce((sum, e) => {
-                                 const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                 const whtVal = alloc ? Number(alloc.amount) * (e.whtAmount / e.amount) : e.whtAmount;
-                                 return sum + (whtVal * e.rate);
-                               }, 0);
+                              const totalNetReconciled = monthExpenses.reduce((sum, e) => {
+                                const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+                                const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (e.whtAmount / e.amount)) : (e.netAmount || e.amount);
+                                return sum + (calculatedNet * e.rate);
+                              }, 0);
 
-                               const hasPersonnelLines = projectBudgetLines.some(bl => bl.code.includes("PERS") || bl.category === "Personnel");
+                              const totalWhtReconciled = monthExpenses.reduce((sum, e) => {
+                                const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+                                const whtVal = alloc ? Number(alloc.amount) * (e.whtAmount / e.amount) : e.whtAmount;
+                                return sum + (whtVal * e.rate);
+                              }, 0);
 
-                               return (
-                                 <>
-                                   <div className="space-y-2">
-                                     <h4 className="text-xs font-bold text-slate-900 uppercase font-mono border-l-2 border-red-600 pl-2">
-                                       I. Restricted Budget vs. Actual Expenditure Burn
-                                     </h4>
-                                     
-                                     <div className="overflow-hidden border border-slate-200 rounded-lg">
-                                       <table className="w-full text-left text-xs border-collapse">
-                                         <thead className="bg-slate-100">
-                                           <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
-                                             <th className="px-4 py-2">Account Line</th>
-                                             <th className="px-4 py-2">Category Description</th>
-                                             <th className="px-4 py-2 text-right hidden md:table-cell">Allocated Pool (USD)</th>
-                                             <th className="px-4 py-2 text-right hidden md:table-cell">Spent This Month (USD)</th>
-                                             <th className="px-4 py-2 text-right hidden md:table-cell">Cumulative Spent to Date</th>
-                                             <th className="px-4 py-2 text-right">Remaining Balance / Burn %</th>
-                                           </tr>
-                                         </thead>
-                                         <tbody className="divide-y divide-slate-100 font-mono">
-                                           {projectBudgetLines.map(bl => {
-                                             const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sum, e) => {
-                                               const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                               return sum + (alloc ? Number(alloc.amount) : e.amount);
-                                             }, 0);
+                              const hasPersonnelLines = projectBudgetLines.some(bl => bl.code.includes("PERS") || bl.category === "Personnel");
 
-                                             const remaining = bl.allocatedUSD - bl.actualUSD;
-                                             const burnPercent = bl.allocatedUSD > 0 ? Math.round((bl.actualUSD / bl.allocatedUSD) * 100) : 0;
+                              return (
+                                <>
+                                  <div className="space-y-2">
+                                    <h4 className="text-xs font-bold text-slate-900 uppercase font-mono border-l-2 border-red-600 pl-2">
+                                      I. Restricted Budget vs. Actual Expenditure Burn
+                                    </h4>
 
-                                             return (
-                                               <tr key={bl.id} className="hover:bg-slate-50 font-medium break-inside-avoid">
-                                                 <td className="px-4 py-2 text-slate-800 font-bold">{bl.code}</td>
-                                                 <td className="px-4 py-2 text-slate-950 font-sans">{bl.category}</td>
-                                                 <td className="px-4 py-2 text-right text-slate-700 hidden md:table-cell">{formatUSD(bl.allocatedUSD)}</td>
-                                                 <td className="px-4 py-2 text-right text-red-650 font-bold hidden md:table-cell">{formatUSD(monthSpent)}</td>
-                                                 <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(bl.actualUSD)}</td>
-                                                 <td className="px-4 py-2 text-right text-slate-900 font-bold">
-                                                   {formatUSD(remaining)} <span className="text-[10px] text-slate-500 font-normal">({burnPercent}%)</span>
-                                                 </td>
-                                               </tr>
-                                             );
-                                           })}
-                                           {/* Section I totals row */}
-                                           <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid">
-                                             <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-right">TOTAL BUDGET BURN SUMMARY:</td>
-                                             <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(totalAllocated)}</td>
-                                             <td className="px-4 py-2 text-right text-red-600 hidden md:table-cell">{formatUSD(totalSpentThisMonth)}</td>
-                                             <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(totalCumulativeSpent)}</td>
-                                             <td className="px-4 py-2 text-right text-slate-900">
-                                               {formatUSD(totalRemainingBalance)} <span className="text-[10px] text-slate-500 font-normal">({overallBurnRate}%)</span>
-                                             </td>
-                                           </tr>
-                                         </tbody>
-                                       </table>
-                                     </div>
-                                   </div>
+                                    <div className="overflow-hidden border border-slate-200 rounded-lg">
+                                      <table className="w-full text-left text-xs border-collapse">
+                                        <thead className="bg-slate-100">
+                                          <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
+                                            <th className="px-4 py-2">Account Line</th>
+                                            <th className="px-4 py-2">Category Description</th>
+                                            <th className="px-4 py-2 text-right hidden md:table-cell">Allocated Pool (USD)</th>
+                                            <th className="px-4 py-2 text-right hidden md:table-cell">Spent This Month (USD)</th>
+                                            <th className="px-4 py-2 text-right hidden md:table-cell">Cumulative Spent to Date</th>
+                                            <th className="px-4 py-2 text-right">Remaining Balance / Burn %</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 font-mono">
+                                          {projectBudgetLines.map(bl => {
+                                            const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sum, e) => {
+                                              const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+                                              return sum + (alloc ? Number(alloc.amount) : e.amount);
+                                            }, 0);
 
-                                   {/* Section 2: Reconciled Transactions Matched (Section 2.5 verification) */}
-                                   <div className="space-y-2">
-                                     <h4 className="text-xs font-bold text-slate-900 uppercase font-mono border-l-2 border-red-600 pl-2">
-                                       II. Reconciled Statement Matchings & Cash Flows
-                                     </h4>
+                                            const remaining = bl.allocatedUSD - bl.actualUSD;
+                                            const burnPercent = bl.allocatedUSD > 0 ? Math.round((bl.actualUSD / bl.allocatedUSD) * 100) : 0;
 
-                                     <div className="overflow-hidden border border-slate-200 rounded-lg">
-                                       <table className="w-full text-left text-xs border-collapse">
-                                         <thead className="bg-slate-100">
-                                           <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
-                                             <th className="px-4 py-2 hidden md:table-cell">Statement Date</th>
-                                             <th className="px-4 py-2">Voucher / Ref</th>
-                                             <th className="px-4 py-2">Transaction Memo</th>
-                                             <th className="px-4 py-2 text-right hidden md:table-cell">Withholding Tax (WHT)</th>
-                                             <th className="px-4 py-2 text-right">Reconciled Net</th>
-                                           </tr>
-                                         </thead>
-                                         <tbody className="divide-y divide-slate-100 font-mono">
-                                           {monthExpenses.length === 0 ? (
-                                             <tr>
-                                               <td colSpan={5} className="px-4 py-3 text-slate-400 italic text-center font-sans">No reconciled outflows or disbursements found for this period.</td>
-                                             </tr>
-                                           ) : (
-                                             monthExpenses.map(exp => {
-                                               const alloc = exp.allocations ? exp.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                               const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (exp.whtAmount / exp.amount)) : (exp.netAmount || exp.amount);
-                                               const whtVal = alloc ? Number(alloc.amount) * (exp.whtAmount / exp.amount) : exp.whtAmount;
+                                            return (
+                                              <tr key={bl.id} className="hover:bg-slate-50 font-medium break-inside-avoid">
+                                                <td className="px-4 py-2 text-slate-800 font-bold">{bl.code}</td>
+                                                <td className="px-4 py-2 text-slate-950 font-sans">{bl.category}</td>
+                                                <td className="px-4 py-2 text-right text-slate-700 hidden md:table-cell">{formatUSD(bl.allocatedUSD)}</td>
+                                                <td className="px-4 py-2 text-right text-red-650 font-bold hidden md:table-cell">{formatUSD(monthSpent)}</td>
+                                                <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(bl.actualUSD)}</td>
+                                                <td className="px-4 py-2 text-right text-slate-900 font-bold">
+                                                  {formatUSD(remaining)} <span className="text-[10px] text-slate-500 font-normal">({burnPercent}%)</span>
+                                                </td>
+                                              </tr>
+                                            );
+                                          })}
+                                          {/* Section I totals row */}
+                                          <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid">
+                                            <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-right">TOTAL BUDGET BURN SUMMARY:</td>
+                                            <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(totalAllocated)}</td>
+                                            <td className="px-4 py-2 text-right text-red-600 hidden md:table-cell">{formatUSD(totalSpentThisMonth)}</td>
+                                            <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(totalCumulativeSpent)}</td>
+                                            <td className="px-4 py-2 text-right text-slate-900">
+                                              {formatUSD(totalRemainingBalance)} <span className="text-[10px] text-slate-500 font-normal">({overallBurnRate}%)</span>
+                                            </td>
+                                          </tr>
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
 
-                                               return (
-                                                 <tr key={exp.id} className="hover:bg-slate-50 break-inside-avoid">
-                                                   <td className="px-4 py-2 text-slate-500 hidden md:table-cell">{exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0]}</td>
-                                                   <td className="px-4 py-2 text-slate-800 font-bold">{exp.voucherNo}</td>
-                                                   <td className="px-4 py-2 text-slate-950 font-sans">{exp.title}</td>
-                                                   <td className="px-4 py-2 text-right text-amber-600 hidden md:table-cell">{formatUSD(whtVal * exp.rate)}</td>
-                                                   <td className="px-4 py-2 text-right text-slate-900 font-bold">{formatUSD(calculatedNet * exp.rate)}</td>
-                                                 </tr>
-                                               );
-                                             })
-                                           )}
-                                           {/* Section II totals row (Desktop-only) */}
-                                           {monthExpenses.length > 0 && (
-                                             <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid hidden md:table-row">
-                                               <td colSpan={3} className="px-4 py-2 text-slate-900 font-sans text-right">RECONCILED MATCHINGS TOTAL:</td>
-                                               <td className="px-4 py-2 text-right text-amber-600">{formatUSD(totalWhtReconciled)}</td>
-                                               <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalNetReconciled)}</td>
-                                             </tr>
-                                           )}
-                                           {/* Section II totals row (Mobile-only) */}
-                                           {monthExpenses.length > 0 && (
-                                             <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid md:hidden">
-                                               <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-right">TOTAL NET:</td>
-                                               <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalNetReconciled)}</td>
-                                             </tr>
-                                           )}
-                                         </tbody>
-                                       </table>
-                                     </div>
+                                  {/* Section 2: Reconciled Transactions Matched (Section 2.5 verification) */}
+                                  <div className="space-y-2">
+                                    <h4 className="text-xs font-bold text-slate-900 uppercase font-mono border-l-2 border-red-600 pl-2">
+                                      II. Reconciled Statement Matchings & Cash Flows
+                                    </h4>
 
-                                     {/* Mathematical Tie-Out Verification Banner */}
-                                     {(() => {
-                                       const difference = Math.abs(totalSpentThisMonth - (totalNetReconciled + totalWhtReconciled));
-                                       const isTiedOut = difference < 0.01;
+                                    <div className="overflow-hidden border border-slate-200 rounded-lg">
+                                      <table className="w-full text-left text-xs border-collapse">
+                                        <thead className="bg-slate-100">
+                                          <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
+                                            <th className="px-4 py-2 hidden md:table-cell">Statement Date</th>
+                                            <th className="px-4 py-2">Voucher / Ref</th>
+                                            <th className="px-4 py-2">Transaction Memo</th>
+                                            <th className="px-4 py-2 text-right hidden md:table-cell">Withholding Tax (WHT)</th>
+                                            <th className="px-4 py-2 text-right">Reconciled Net</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 font-mono">
+                                          {monthExpenses.length === 0 ? (
+                                            <tr>
+                                              <td colSpan={5} className="px-4 py-3 text-slate-400 italic text-center font-sans">No reconciled outflows or disbursements found for this period.</td>
+                                            </tr>
+                                          ) : (
+                                            monthExpenses.map(exp => {
+                                              const alloc = exp.allocations ? exp.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+                                              const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (exp.whtAmount / exp.amount)) : (exp.netAmount || exp.amount);
+                                              const whtVal = alloc ? Number(alloc.amount) * (exp.whtAmount / exp.amount) : exp.whtAmount;
 
-                                       return isTiedOut ? (
-                                         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-800 flex items-center justify-between font-mono break-inside-avoid">
-                                           <span className="flex items-center gap-1.5 font-bold">
-                                             🛡️ AUDITOR TIE-OUT VERIFICATION PASSED:
-                                           </span>
-                                           <span>
-                                             Spent This Month ({formatUSD(totalSpentThisMonth)}) = Reconciled Net ({formatUSD(totalNetReconciled)}) + WHT ({formatUSD(totalWhtReconciled)}) perfectly ties to the penny. ✓
-                                           </span>
-                                         </div>
-                                       ) : (
-                                         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800 flex items-center justify-between font-mono break-inside-avoid">
-                                           <span className="flex items-center gap-1.5 font-bold">
-                                             ⚠️ AUDITOR TIE-OUT WARNING: MISMATCH DETECTED:
-                                           </span>
-                                           <span>
-                                             Spent This Month ({formatUSD(totalSpentThisMonth)}) ≠ Reconciled Net ({formatUSD(totalNetReconciled)}) + WHT ({formatUSD(totalWhtReconciled)}) | Delta: {formatUSD(difference)}
-                                           </span>
-                                         </div>
-                                       );
-                                     })()}
-                                   </div>
+                                              return (
+                                                <tr key={exp.id} className="hover:bg-slate-50 break-inside-avoid">
+                                                  <td className="px-4 py-2 text-slate-500 hidden md:table-cell">{exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0]}</td>
+                                                  <td className="px-4 py-2 text-slate-800 font-bold">{exp.voucherNo}</td>
+                                                  <td className="px-4 py-2 text-slate-950 font-sans">{exp.title}</td>
+                                                  <td className="px-4 py-2 text-right text-amber-600 hidden md:table-cell">{formatUSD(whtVal * exp.rate)}</td>
+                                                  <td className="px-4 py-2 text-right text-slate-900 font-bold">{formatUSD(calculatedNet * exp.rate)}</td>
+                                                </tr>
+                                              );
+                                            })
+                                          )}
+                                          {/* Section II totals row (Desktop-only) */}
+                                          {monthExpenses.length > 0 && (
+                                            <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid hidden md:table-row">
+                                              <td colSpan={3} className="px-4 py-2 text-slate-900 font-sans text-right">RECONCILED MATCHINGS TOTAL:</td>
+                                              <td className="px-4 py-2 text-right text-amber-600">{formatUSD(totalWhtReconciled)}</td>
+                                              <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalNetReconciled)}</td>
+                                            </tr>
+                                          )}
+                                          {/* Section II totals row (Mobile-only) */}
+                                          {monthExpenses.length > 0 && (
+                                            <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid md:hidden">
+                                              <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-right">TOTAL NET:</td>
+                                              <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalNetReconciled)}</td>
+                                            </tr>
+                                          )}
+                                        </tbody>
+                                      </table>
+                                    </div>
 
-                                   {/* Section 3: Official Reconciliation Review Sign-Off (Section 2.5 compliance) */}
-                                   <div className="border-t-2 border-slate-200 pt-6 space-y-4 break-inside-avoid">
-                                     <p className="text-[10px] text-slate-500 text-center leading-relaxed">
-                                       Under **Section 2.5 & 2.6 of the AnaHon Media Platform Accounting Policies Manual**, this reconciliation report verifies that all project expenditures, personnel allocations, timesheets, and shared split costs have been matched with primary supporting documents and validated with actual bank statement disbursements.
-                                     </p>
+                                    {/* Mathematical Tie-Out Verification Banner */}
+                                    {(() => {
+                                      const difference = Math.abs(totalSpentThisMonth - (totalNetReconciled + totalWhtReconciled));
+                                      const isTiedOut = difference < 0.01;
 
-                                     {hasPersonnelLines && (
-                                       <p className="text-[10px] text-red-750 bg-red-50 border border-red-150 rounded px-3 py-1.5 text-center font-mono font-bold">
-                                         📋 DYNAMIC AUDIT DISCLOSURE: Timesheet evidence strictly attached for all payroll allocations.
-                                       </p>
-                                     )}
-                                     
-                                     <div className="grid grid-cols-2 gap-12 pt-6">
-                                       <div className="text-center space-y-12">
-                                         <div className="font-mono text-xs border-b border-slate-350 pb-2 mx-6 italic text-slate-600">
-                                           Layale Ghorayeb
-                                         </div>
-                                         <div>
-                                           <span className="block text-xs font-bold text-slate-800 uppercase font-sans">Prepared By</span>
-                                           <span className="block text-[10px] text-slate-500 uppercase font-mono">Layale Ghorayeb (Finance Officer)</span>
-                                         </div>
-                                       </div>
+                                      return isTiedOut ? (
+                                        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs text-emerald-800 flex items-center justify-between font-mono break-inside-avoid">
+                                          <span className="flex items-center gap-1.5 font-bold">
+                                            🛡️ AUDITOR TIE-OUT VERIFICATION PASSED:
+                                          </span>
+                                          <span>
+                                            Spent This Month ({formatUSD(totalSpentThisMonth)}) = Reconciled Net ({formatUSD(totalNetReconciled)}) + WHT ({formatUSD(totalWhtReconciled)}) perfectly ties to the penny. ✓
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-800 flex items-center justify-between font-mono break-inside-avoid">
+                                          <span className="flex items-center gap-1.5 font-bold">
+                                            ⚠️ AUDITOR TIE-OUT WARNING: MISMATCH DETECTED:
+                                          </span>
+                                          <span>
+                                            Spent This Month ({formatUSD(totalSpentThisMonth)}) ≠ Reconciled Net ({formatUSD(totalNetReconciled)}) + WHT ({formatUSD(totalWhtReconciled)}) | Delta: {formatUSD(difference)}
+                                          </span>
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
 
-                                       <div className="text-center space-y-12">
-                                         <div className="font-mono text-xs border-b border-slate-350 pb-2 mx-6 italic text-slate-400">
-                                           [Signature Box]
-                                         </div>
-                                         <div>
-                                           <span className="block text-xs font-bold text-slate-800 uppercase font-sans">Reviewed & Co-Signed By</span>
-                                           <span className="block text-[10px] text-slate-500 uppercase font-mono">Farah Shami (Program Director)</span>
-                                         </div>
-                                       </div>
-                                     </div>
-                                   </div>
-                                 </>
-                               );
-                             })()}
+                                  {/* Section 3: Official Reconciliation Review Sign-Off (Section 2.5 compliance) */}
+                                  <div className="border-t-2 border-slate-200 pt-6 space-y-4 break-inside-avoid">
+                                    <p className="text-[10px] text-slate-500 text-center leading-relaxed">
+                                      Under **Section 2.5 & 2.6 of the AnaHon Media Platform Accounting Policies Manual**, this reconciliation report verifies that all project expenditures, personnel allocations, timesheets, and shared split costs have been matched with primary supporting documents and validated with actual bank statement disbursements.
+                                    </p>
+
+                                    {hasPersonnelLines && (
+                                      <p className="text-[10px] text-red-750 bg-red-50 border border-red-150 rounded px-3 py-1.5 text-center font-mono font-bold">
+                                        📋 DYNAMIC AUDIT DISCLOSURE: Timesheet evidence strictly attached for all payroll allocations.
+                                      </p>
+                                    )}
+
+                                    <div className="grid grid-cols-2 gap-12 pt-6">
+                                      <div className="text-center space-y-12">
+                                        <div className="font-mono text-xs border-b border-slate-350 pb-2 mx-6 italic text-slate-600">
+                                          Layale Ghorayeb
+                                        </div>
+                                        <div>
+                                          <span className="block text-xs font-bold text-slate-800 uppercase font-sans">Prepared By</span>
+                                          <span className="block text-[10px] text-slate-500 uppercase font-mono">Layale Ghorayeb (Finance Officer)</span>
+                                        </div>
+                                      </div>
+
+                                      <div className="text-center space-y-12">
+                                        <div className="font-mono text-xs border-b border-slate-350 pb-2 mx-6 italic text-slate-400">
+                                          [Signature Box]
+                                        </div>
+                                        <div>
+                                          <span className="block text-xs font-bold text-slate-800 uppercase font-sans">Reviewed & Co-Signed By</span>
+                                          <span className="block text-[10px] text-slate-500 uppercase font-mono">Farah Shami (Program Director)</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </>
+                              );
+                            })()}
 
                           </div>
                         </div>
@@ -2952,7 +2710,7 @@ export default function App() {
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block font-mono">
                             Predefined Cost Allocation Formulas & Project Splits
                           </span>
-                          
+
                           {splitAllocations.map((alloc, idx) => (
                             <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                               <div>
@@ -3072,7 +2830,7 @@ export default function App() {
                     const proj = state?.projects?.find(p => p.id === exp.projectId);
                     const expComments = exp.comments && Array.isArray(exp.comments) ? exp.comments : [];
                     const expAllocations = exp.allocations && Array.isArray(exp.allocations) ? exp.allocations : [];
-                    
+
                     return (
                       <div key={exp.id} className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
                         <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-3 gap-2">
@@ -3100,11 +2858,10 @@ export default function App() {
                             <p className="font-semibold text-slate-800">
                               {vendor ? vendor.name : "Direct Reimbursement"}
                               {vendor && vendor.category && (
-                                <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-mono border ${
-                                  (vendor.category || "").toLowerCase().includes("consultant") || (vendor.category || "").toLowerCase().includes("freelance") ? "bg-amber-100 text-amber-800 border-amber-200" :
-                                  (vendor.category || "").toLowerCase().includes("service") ? "bg-indigo-100 text-indigo-800 border-indigo-200" :
-                                  "bg-slate-100 text-slate-700 border-slate-200"
-                                }`}>
+                                <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-mono border ${(vendor.category || "").toLowerCase().includes("consultant") || (vendor.category || "").toLowerCase().includes("freelance") ? "bg-amber-100 text-amber-800 border-amber-200" :
+                                    (vendor.category || "").toLowerCase().includes("service") ? "bg-indigo-100 text-indigo-800 border-indigo-200" :
+                                      "bg-slate-100 text-slate-700 border-slate-200"
+                                  }`}>
                                   {vendor.category}
                                 </span>
                               )}
@@ -3112,12 +2869,11 @@ export default function App() {
                           </div>
                           <div>
                             <span className="text-[10px] block text-slate-500 uppercase">Current phase status</span>
-                            <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                              exp.status === "Posted" ? "bg-emerald-100 text-emerald-700 font-bold" :
-                              exp.status === "Approved" ? "bg-emerald-50 text-emerald-600" :
-                              exp.status === "Submitted" ? "bg-indigo-50 text-indigo-700" :
-                              "bg-amber-100 text-amber-700"
-                            }`}>
+                            <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${exp.status === "Posted" ? "bg-emerald-100 text-emerald-700 font-bold" :
+                                exp.status === "Approved" ? "bg-emerald-50 text-emerald-600" :
+                                  exp.status === "Submitted" ? "bg-indigo-50 text-indigo-700" :
+                                    "bg-amber-100 text-amber-700"
+                              }`}>
                               ● {exp.status || "Draft"}
                             </span>
                           </div>
@@ -3125,7 +2881,7 @@ export default function App() {
 
                         {exp.currency !== "USD" && (
                           <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-                            <span>Raw Transaction Value: <strong className="text-slate-800">{exp.amount.toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</strong></span>
+                            <span>Raw Transaction Value: <strong className="text-slate-800">{exp.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</strong></span>
                             <span>Traceable Exchanger/FX Conversion Rate: <strong className="text-slate-800">1 {exp.currency} = {exp.rate} USD</strong></span>
                           </div>
                         )}
@@ -3140,7 +2896,7 @@ export default function App() {
                               {expAllocations.map((alloc, idx) => {
                                 const allocProj = state?.projects?.find(p => p.id === alloc.projectId);
                                 const allocBl = state?.budgetLines?.find(bl => bl.id === alloc.budgetLineId);
-                                
+
                                 return (
                                   <div key={idx} className="p-2.5 bg-white border border-slate-200 rounded-lg flex flex-col justify-between">
                                     <div>
@@ -3156,7 +2912,7 @@ export default function App() {
                                       </div>
                                       <div className="text-right">
                                         <span className="text-[10px] text-slate-400 block">Split Amount</span>
-                                        <span className="font-bold text-slate-900">{(alloc.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
+                                        <span className="font-bold text-slate-900">{(alloc.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
                                       </div>
                                     </div>
                                   </div>
@@ -3171,19 +2927,19 @@ export default function App() {
                           <div className={`p-3 border rounded-lg text-xs font-mono grid grid-cols-3 gap-2 ${exp.whtAmount > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>Gross Amount</span>
-                              <span className="font-bold text-slate-900">{(exp.amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
+                              <span className="font-bold text-slate-900">{(exp.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
                             </div>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>
                                 {exp.whtAmount > 0 ? "WHT Withheld (7.5%)" : "WHT Withheld (0% Registered)"}
                               </span>
                               <span className={`font-bold ${exp.whtAmount > 0 ? "text-amber-700" : "text-emerald-700"}`}>
-                                {exp.whtAmount > 0 ? `-${(exp.whtAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}` : "0.00"} {exp.currency}
+                                {exp.whtAmount > 0 ? `-${(exp.whtAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "0.00"} {exp.currency}
                               </span>
                             </div>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>Net Paid Amount</span>
-                              <span className="font-bold text-slate-950">{(exp.netAmount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</span>
+                              <span className="font-bold text-slate-950">{(exp.netAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
                             </div>
                           </div>
                         )}
@@ -3246,11 +3002,11 @@ export default function App() {
                                   </div>
                                   <div>
                                     <span className="text-[10px] text-slate-500 uppercase block font-bold">WHT Withheld (7.5%)</span>
-                                    <span className="font-bold text-red-600 font-bold">-{whtVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} {exp.currency}</span>
+                                    <span className="font-bold text-red-600 font-bold">-{whtVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {exp.currency}</span>
                                   </div>
                                   <div>
                                     <span className="text-[10px] text-slate-500 uppercase block font-bold">Net Payout Amount</span>
-                                    <span className="font-bold text-emerald-700 font-bold">{netVal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} {exp.currency}</span>
+                                    <span className="font-bold text-emerald-700 font-bold">{netVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {exp.currency}</span>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2 border-t border-slate-200 pt-2 mt-1">
@@ -3266,9 +3022,9 @@ export default function App() {
                                   <button
                                     onClick={() => {
                                       const sel = (document.getElementById(`ba-sel-${exp.id}`) as HTMLSelectElement).value;
-                                      handleExpenseAction(exp.id, "cashbook-pay", { 
-                                        bankAccountId: sel, 
-                                        paymentMethod: "Petty cash envelope", 
+                                      handleExpenseAction(exp.id, "cashbook-pay", {
+                                        bankAccountId: sel,
+                                        paymentMethod: "Petty cash envelope",
                                         paymentRef: `VOU-${exp.voucherNo}`,
                                         whtAmount: whtVal,
                                         netAmount: netVal
@@ -3460,9 +3216,8 @@ export default function App() {
                         <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded font-mono font-bold text-slate-700">PROJECT SOURCING</span>
                         <h4 className="text-sm font-bold text-slate-950 mt-1">{pr.title}</h4>
                       </div>
-                      <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${
-                        pr.status === "Approved" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded-full font-bold text-[10px] ${pr.status === "Approved" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                        }`}>
                         {pr.status}
                       </span>
                     </div>
@@ -3598,7 +3353,7 @@ export default function App() {
                     <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-xs flex flex-col gap-1 font-mono">
                       <span className="font-bold flex items-center gap-1">🏛️ Lebanese MoF Statutory Compliance Alert:</span>
                       <p className="leading-relaxed">
-                        Individuals and consultants who do not have an official, active **Tax Registry ID** (MoF number) are subject to a **7.5% Withholding Tax (WHT)**. 
+                        Individuals and consultants who do not have an official, active **Tax Registry ID** (MoF number) are subject to a **7.5% Withholding Tax (WHT)**.
                         The system will automatically calculate and withhold this tax at the payment stage unless a valid Tax Registry ID is entered above.
                       </p>
                     </div>
@@ -3951,9 +3706,9 @@ export default function App() {
                       <div className="text-xs font-mono">
                         <span className="mr-4">Debits: <strong className="text-slate-900">{formatUSD(adjItems.reduce((s, i) => s + Number(i.debit || 0), 0))}</strong></span>
                         <span className="mr-4">Credits: <strong className="text-slate-900">{formatUSD(adjItems.reduce((s, i) => s + Number(i.credit || 0), 0))}</strong></span>
-                        
+
                         {Math.abs(
-                          adjItems.reduce((s, i) => s + Number(i.debit || 0), 0) - 
+                          adjItems.reduce((s, i) => s + Number(i.debit || 0), 0) -
                           adjItems.reduce((s, i) => s + Number(i.credit || 0), 0)
                         ) < 0.01 ? (
                           <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-bold font-mono">✓ Balanced</span>
@@ -3969,7 +3724,7 @@ export default function App() {
                         disabled={
                           adjItems.some(i => !i.accountCode) ||
                           Math.abs(
-                            adjItems.reduce((s, i) => s + Number(i.debit || 0), 0) - 
+                            adjItems.reduce((s, i) => s + Number(i.debit || 0), 0) -
                             adjItems.reduce((s, i) => s + Number(i.credit || 0), 0)
                           ) >= 0.01
                         }
@@ -4097,9 +3852,8 @@ export default function App() {
                           <h4 className="text-sm font-bold text-slate-900">{emp.name}</h4>
                           <p className="text-xs text-slate-500">{emp.position} • Base: {formatUSD(emp.salary)} + {formatUSD(emp.allowance)} allowance</p>
                         </div>
-                        <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${
-                          activeTimesheet?.status === "Approved" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                        }`}>
+                        <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${activeTimesheet?.status === "Approved" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                          }`}>
                           ● Month: {selectedTSMonth} • {activeTimesheet?.status || "Draft Pending"}
                         </span>
                       </div>
@@ -4223,13 +3977,12 @@ export default function App() {
                   <div key={asset.id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
                     <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                       <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-mono font-bold">SERIAL NO: {asset.serialNumber}</span>
-                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
-                        asset.condition === "Excellent" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                      }`}>{asset.condition}</span>
+                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${asset.condition === "Excellent" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                        }`}>{asset.condition}</span>
                     </div>
                     <h4 className="text-sm font-bold text-slate-900">{asset.name}</h4>
                     <p className="text-xs text-slate-600">Location custody: {asset.location} / {asset.custodian}</p>
-                    
+
                     <div className="grid grid-cols-3 gap-2 font-mono text-[11px] pt-2 border-t border-slate-100">
                       <div>
                         <span className="text-[9px] block text-slate-400">COST</span>
@@ -4476,7 +4229,7 @@ export default function App() {
                               Reconciled Live
                             </span>
                           </div>
-                          
+
                           {dailyTransactions.length === 0 ? (
                             <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
                               <Calendar className="h-8 w-8 text-slate-300" />
@@ -4495,7 +4248,7 @@ export default function App() {
                               <tbody className="divide-y divide-slate-100 text-xs font-sans">
                                 {dailyTransactions.map(t => {
                                   const matchingExpense = (state?.expenses || []).find(e => e.voucherNo === t.voucherNo);
-                                  
+
                                   return (
                                     <tr key={t.id} className="hover:bg-slate-50">
                                       <td className="px-4 py-4 font-mono font-bold text-red-650 text-red-600">
@@ -4510,15 +4263,13 @@ export default function App() {
                                         )}
                                       </td>
                                       <td className="px-4 py-4 hidden md:table-cell">
-                                        <span className={`inline-block px-2 py-0.5 rounded font-bold text-[9px] uppercase ${
-                                          t.type === "Deposit" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                                        }`}>
+                                        <span className={`inline-block px-2 py-0.5 rounded font-bold text-[9px] uppercase ${t.type === "Deposit" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                                          }`}>
                                           {t.type}
                                         </span>
                                       </td>
-                                      <td className={`px-4 py-4 text-right font-mono font-bold ${
-                                        t.type === "Deposit" ? "text-emerald-600" : "text-slate-900"
-                                      }`}>
+                                      <td className={`px-4 py-4 text-right font-mono font-bold ${t.type === "Deposit" ? "text-emerald-600" : "text-slate-900"
+                                        }`}>
                                         {t.type === "Deposit" ? "+" : "-"} {t.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
                                       </td>
                                     </tr>
@@ -4557,13 +4308,13 @@ export default function App() {
                               </div>
                               <div>
                                 <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">justification / rationale</label>
-                                  <input
-                                    type="text"
-                                    placeholder="e.g. Urgent transport"
-                                    value={dailyPurpose}
-                                    onChange={(e) => setDailyPurpose(e.target.value)}
-                                    className="finance-input w-full text-xs"
-                                  />
+                                <input
+                                  type="text"
+                                  placeholder="e.g. Urgent transport"
+                                  value={dailyPurpose}
+                                  onChange={(e) => setDailyPurpose(e.target.value)}
+                                  className="finance-input w-full text-xs"
+                                />
                               </div>
                               <div>
                                 <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Target Project mapping</label>
