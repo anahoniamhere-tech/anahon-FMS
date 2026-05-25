@@ -114,7 +114,7 @@
       "currency": "USD",
       "parent": "1000",
       "reportingGroup": "Accounts Receivable",
-      "balance": 12000,
+      "balance": 0,
       "active": true
     },
     {
@@ -124,7 +124,7 @@
       "currency": "USD",
       "parent": "1000",
       "reportingGroup": "Other Assets",
-      "balance": 500,
+      "balance": 0,
       "active": true
     },
     {
@@ -134,7 +134,7 @@
       "currency": "USD",
       "parent": "1000",
       "reportingGroup": "Property, Plant & Equipment",
-      "balance": 18500,
+      "balance": 0,
       "active": true
     },
     {
@@ -144,7 +144,7 @@
       "currency": "USD",
       "parent": "1000",
       "reportingGroup": "Property, Plant & Equipment",
-      "balance": 7400,
+      "balance": 0,
       "active": true
     },
     {
@@ -154,7 +154,7 @@
       "currency": "USD",
       "parent": "1000",
       "reportingGroup": "Property, Plant & Equipment",
-      "balance": -3200,
+      "balance": 0,
       "active": true
     },
     {
@@ -173,7 +173,7 @@
       "currency": "USD",
       "parent": "2000",
       "reportingGroup": "Trade Payables",
-      "balance": 3400,
+      "balance": 0,
       "active": true
     },
     {
@@ -193,7 +193,7 @@
       "currency": "USD",
       "parent": "2000",
       "reportingGroup": "Tax Liabilities",
-      "balance": 940,
+      "balance": 0,
       "active": true
     },
     {
@@ -203,7 +203,7 @@
       "currency": "USD",
       "parent": "2000",
       "reportingGroup": "CNSS Liabilities",
-      "balance": 1420,
+      "balance": 0,
       "active": true
     },
     {
@@ -213,7 +213,7 @@
       "currency": "USD",
       "parent": "2000",
       "reportingGroup": "Deferred Incomes",
-      "balance": 110000,
+      "balance": 0,
       "active": true
     },
     {
@@ -252,7 +252,7 @@
       "currency": "USD",
       "parent": "3000",
       "reportingGroup": "Partner Draws",
-      "balance": -1200,
+      "balance": 0,
       "active": true
     },
     {
@@ -262,7 +262,7 @@
       "currency": "USD",
       "parent": "3000",
       "reportingGroup": "Partner Draws",
-      "balance": -800,
+      "balance": 0,
       "active": true
     },
     {
@@ -272,7 +272,7 @@
       "currency": "USD",
       "parent": "3000",
       "reportingGroup": "Equity Reserves",
-      "balance": 14740,
+      "balance": 0,
       "active": true
     },
     {
@@ -291,7 +291,7 @@
       "currency": "USD",
       "parent": "4000",
       "reportingGroup": "Donor Grant Income",
-      "balance": 85000,
+      "balance": 0,
       "active": true
     },
     {
@@ -301,7 +301,7 @@
       "currency": "USD",
       "parent": "4000",
       "reportingGroup": "Commercial Revenue",
-      "balance": 24000,
+      "balance": 0,
       "active": true
     },
     {
@@ -311,7 +311,7 @@
       "currency": "USD",
       "parent": "4000",
       "reportingGroup": "Commercial Revenue",
-      "balance": 15500,
+      "balance": 0,
       "active": true
     },
     {
@@ -321,7 +321,7 @@
       "currency": "USD",
       "parent": "4000",
       "reportingGroup": "FX Adjustment",
-      "balance": 1200,
+      "balance": 0,
       "active": true
     },
     {
@@ -340,7 +340,7 @@
       "currency": "USD",
       "parent": "5000",
       "reportingGroup": "Personnel Costs",
-      "balance": 45000,
+      "balance": 0,
       "active": true
     },
     {
@@ -350,7 +350,7 @@
       "currency": "USD",
       "parent": "5000",
       "reportingGroup": "Personnel Costs",
-      "balance": 5200,
+      "balance": 0,
       "active": true
     },
     {
@@ -360,7 +360,7 @@
       "currency": "USD",
       "parent": "5000",
       "reportingGroup": "Freelancer Fees",
-      "balance": 12400,
+      "balance": 0,
       "active": true
     },
     {
@@ -370,7 +370,7 @@
       "currency": "USD",
       "parent": "5000",
       "reportingGroup": "Consulting Fees",
-      "balance": 8900,
+      "balance": 0,
       "active": true
     },
     {
@@ -389,7 +389,7 @@
       "currency": "USD",
       "parent": "6000",
       "reportingGroup": "Direct Project Cost",
-      "balance": 14200,
+      "balance": 0,
       "active": true
     },
     {
@@ -399,7 +399,7 @@
       "currency": "USD",
       "parent": "6000",
       "reportingGroup": "Direct Project Cost",
-      "balance": 3400,
+      "balance": 0,
       "active": true
     },
     {
@@ -409,7 +409,7 @@
       "currency": "USD",
       "parent": "6000",
       "reportingGroup": "Equipment Cost",
-      "balance": 5200,
+      "balance": 0,
       "active": true
     },
     {
@@ -419,7 +419,7 @@
       "currency": "USD",
       "parent": "6000",
       "reportingGroup": "Software",
-      "balance": 1600,
+      "balance": 0,
       "active": true
     },
     {
@@ -438,7 +438,7 @@
       "currency": "USD",
       "parent": "7000",
       "reportingGroup": "Admin Overhead",
-      "balance": 12000,
+      "balance": 0,
       "active": true
     },
     {
@@ -448,7 +448,7 @@
       "currency": "USD",
       "parent": "7000",
       "reportingGroup": "Admin Overhead",
-      "balance": 4100,
+      "balance": 0,
       "active": true
     },
     {
@@ -458,7 +458,7 @@
       "currency": "USD",
       "parent": "7000",
       "reportingGroup": "Bank Fees",
-      "balance": 650,
+      "balance": 0,
       "active": true
     },
     {
@@ -468,7 +468,7 @@
       "currency": "USD",
       "parent": "7000",
       "reportingGroup": "Compliance Overhead",
-      "balance": 3500,
+      "balance": 0,
       "active": true
     },
     {
@@ -478,7 +478,7 @@
       "currency": "USD",
       "parent": "7000",
       "reportingGroup": "FX Adjustment",
-      "balance": 940,
+      "balance": 0,
       "active": true
     }
   ],
@@ -559,8 +559,8 @@
       "category": "Personnel",
       "description": "Project Coordinator Salary",
       "allocatedUSD": 24000,
-      "actualUSD": 10000,
-      "committedUSD": 14000
+      "actualUSD": 0,
+      "committedUSD": 0
     },
     {
       "id": "bl-102",
@@ -569,8 +569,8 @@
       "category": "Production",
       "description": "Short Film Videographer & Editor",
       "allocatedUSD": 36000,
-      "actualUSD": 18000,
-      "committedUSD": 12000
+      "actualUSD": 0,
+      "committedUSD": 0
     },
     {
       "id": "bl-103",
@@ -579,8 +579,8 @@
       "category": "Travel & Per Diem",
       "description": "Tripoli to Akkar Field Visits",
       "allocatedUSD": 10000,
-      "actualUSD": 4200,
-      "committedUSD": 800
+      "actualUSD": 0,
+      "committedUSD": 0
     },
     {
       "id": "bl-104",
@@ -589,7 +589,7 @@
       "category": "Administrative Support",
       "description": "Proportional Rent Contribution",
       "allocatedUSD": 15000,
-      "actualUSD": 5000,
+      "actualUSD": 0,
       "committedUSD": 0
     },
     {
@@ -599,8 +599,8 @@
       "category": "Personnel",
       "description": "Investigative Researchers (Tripoli)",
       "allocatedUSD": 18000,
-      "actualUSD": 8000,
-      "committedUSD": 4000
+      "actualUSD": 0,
+      "committedUSD": 0
     },
     {
       "id": "bl-202",
@@ -609,7 +609,7 @@
       "category": "Production",
       "description": "Camera Kit Sinking Cost Allocation",
       "allocatedUSD": 12000,
-      "actualUSD": 11500,
+      "actualUSD": 0,
       "committedUSD": 0
     },
     {
@@ -619,8 +619,8 @@
       "category": "Creative Services",
       "description": "Color Grading & Sound Editing",
       "allocatedUSD": 20000,
-      "actualUSD": 6000,
-      "committedUSD": 11000
+      "actualUSD": 0,
+      "committedUSD": 0
     },
     {
       "id": "bl-204",
@@ -629,7 +629,7 @@
       "category": "Compliance",
       "description": "Required Mid-term Project Audit",
       "allocatedUSD": 10000,
-      "actualUSD": 3500,
+      "actualUSD": 0,
       "committedUSD": 0
     },
     {
@@ -639,8 +639,8 @@
       "category": "Trainers & Instructors",
       "description": "Expert Sourcing Fees",
       "allocatedUSD": 18000,
-      "actualUSD": 6000,
-      "committedUSD": 6000
+      "actualUSD": 0,
+      "committedUSD": 0
     },
     {
       "id": "bl-302",
@@ -649,8 +649,8 @@
       "category": "Catering & Event",
       "description": "Youth Workshop Catering (Tripoli)",
       "allocatedUSD": 12000,
-      "actualUSD": 4200,
-      "committedUSD": 2000
+      "actualUSD": 0,
+      "committedUSD": 0
     },
     {
       "id": "bl-303",
@@ -659,8 +659,8 @@
       "category": "Operational Costs",
       "description": "Broadband and Stream Equipments",
       "allocatedUSD": 9000,
-      "actualUSD": 2500,
-      "committedUSD": 500
+      "actualUSD": 0,
+      "committedUSD": 0
     },
     {
       "id": "bl-304",
@@ -669,7 +669,7 @@
       "category": "Overheads",
       "description": "Administrative Cost Pool Allocation",
       "allocatedUSD": 6000,
-      "actualUSD": 1500,
+      "actualUSD": 0,
       "committedUSD": 0
     }
   ],
@@ -730,127 +730,8 @@
       "blocked": true
     }
   ],
-  "expenses": [
-    {
-      "id": "exp-1",
-      "voucherNo": "PV-2026-001",
-      "title": "Citoyens Space Launch Trailer Video Shooting",
-      "purpose": "Retained professional videographer team for capturing initial panels and Tripoli harbor drone clips.",
-      "vendorId": "ven-1",
-      "projectId": "proj-1",
-      "budgetLineId": "bl-102",
-      "currency": "USD",
-      "amount": 1400,
-      "rate": 1,
-      "convertedAmount": 1400,
-      "requestorId": "u-4",
-      "status": "Posted",
-      "paymentMethod": "Bank Audi Wire Transfer",
-      "paymentRef": "TRF-AUDI-94821",
-      "created_at": "2026-05-10T09:00:00Z",
-      "approved_at": "2026-05-12T11:00:00Z",
-      "paid_at": "2026-05-13T14:30:00Z",
-      "comments": [
-        {
-          "id": "c-1",
-          "text": "Approved. All quotes compared perfectly.",
-          "author": "Samer Ghamrawi",
-          "timestamp": "2026-05-12T11:00:00Z"
-        },
-        {
-          "id": "c-2",
-          "text": "Voucher audited, bank receipt attached.",
-          "author": "Layale El-Khatib",
-          "timestamp": "2026-05-13T14:30:00Z"
-        }
-      ],
-      "hasAttachment": true
-    },
-    {
-      "id": "exp-2",
-      "voucherNo": "PV-2026-002",
-      "title": "Generator Subscription Office Mina Month May",
-      "purpose": "Power backup subscription during peak production hours in Al-Mina area office.",
-      "vendorId": "ven-2",
-      "projectId": "proj-unrestricted",
-      "budgetLineId": "",
-      "currency": "USD",
-      "amount": 450,
-      "rate": 1,
-      "convertedAmount": 450,
-      "requestorId": "u-3",
-      "status": "Paid",
-      "paymentMethod": "Petty Cash",
-      "paymentRef": "CSH-MAY-GEN-02",
-      "created_at": "2026-05-20T08:30:00Z",
-      "approved_at": "2026-05-20T10:00:00Z",
-      "paid_at": "2026-05-21T09:15:00Z",
-      "comments": [
-        {
-          "id": "c-3",
-          "text": "Generator rates increased in El-Mina, justified.",
-          "author": "Layale El-Khatib",
-          "timestamp": "2026-05-19T08:30:00Z"
-        }
-      ],
-      "hasAttachment": true
-    },
-    {
-      "id": "exp-3",
-      "voucherNo": "PV-2026-003",
-      "title": "Audio Gear Accessories Upgrade",
-      "purpose": "Purchased dual-channel lapel microphone kits for regional project interviews.",
-      "vendorId": "ven-3",
-      "projectId": "proj-2",
-      "budgetLineId": "bl-202",
-      "currency": "EUR",
-      "amount": 800,
-      "rate": 1.08,
-      "convertedAmount": 864,
-      "requestorId": "u-4",
-      "status": "Under Finance Review",
-      "created_at": "2026-05-24T15:20:00Z",
-      "comments": [],
-      "hasAttachment": true
-    }
-  ],
-  "procurements": [
-    {
-      "id": "pr-1",
-      "title": "High-Performance Camera Sourcing",
-      "projectId": "proj-2",
-      "budgetLineId": "bl-202",
-      "status": "Approved",
-      "quotations": [
-        {
-          "vendorName": "Tripoli Media Hub",
-          "amount": 1500,
-          "currency": "USD",
-          "score": 90,
-          "comment": "Preferred technical warranty.",
-          "selected": true
-        },
-        {
-          "vendorName": "Halabi Office Tech",
-          "amount": 1650,
-          "currency": "USD",
-          "score": 85,
-          "comment": "Extra battery included but pricing higher.",
-          "selected": false
-        },
-        {
-          "vendorName": "Beirut Audio Hub",
-          "amount": 1400,
-          "currency": "USD",
-          "score": 60,
-          "comment": "No maintenance branch in Tripoli, risky delivery.",
-          "selected": false
-        }
-      ],
-      "justification": "Selected Tripoli Media Hub due to local maintenance presence and highest quality score despite not being the absolute lowest quote.",
-      "conflictDeclared": true
-    }
-  ],
+  "expenses": [],
+  "procurements": [],
   "bankAccounts": [
     {
       "id": "ba-1",
@@ -893,57 +774,14 @@
     {
       "id": "bt-1",
       "bankAccountId": "ba-1",
-      "date": "2026-05-01",
-      "description": "Opening Balance",
+      "date": "2026-05-25",
+      "description": "Opening Balance Deposit",
       "amount": 145000,
       "type": "Deposit",
       "reconciled": true
-    },
-    {
-      "id": "bt-2",
-      "bankAccountId": "ba-1",
-      "date": "2026-05-13",
-      "description": "PV-2026-001 citizen Video Shooting",
-      "amount": 1400,
-      "type": "Withdrawal",
-      "reconciled": true,
-      "voucherNo": "PV-2026-001"
-    },
-    {
-      "id": "bt-3",
-      "bankAccountId": "ba-3",
-      "date": "2026-05-21",
-      "description": "PV-2026-002 generator office Mina May",
-      "amount": 450,
-      "type": "Withdrawal",
-      "reconciled": false,
-      "voucherNo": "PV-2026-002"
     }
   ],
-  "journalEntries": [
-    {
-      "id": "je-1",
-      "journal": "Cash Payments",
-      "date": "2026-05-13",
-      "description": "PV-2026-001 citizen video recording - Tripoli Citizen Space",
-      "referenceNo": "PV-2026-001",
-      "isPosted": true,
-      "items": [
-        {
-          "accountCode": "6120",
-          "debit": 1400,
-          "credit": 0,
-          "projectId": "proj-1",
-          "donorId": "don-1"
-        },
-        {
-          "accountCode": "1100",
-          "debit": 0,
-          "credit": 1400
-        }
-      ]
-    }
-  ],
+  "journalEntries": [],
   "employees": [
     {
       "id": "emp-1",
@@ -976,30 +814,7 @@
       "active": true
     }
   ],
-  "timesheets": [
-    {
-      "id": "ts-1",
-      "employeeId": "emp-1",
-      "month": "2026-05",
-      "totalDays": 22,
-      "allocations": [
-        {
-          "projectId": "proj-1",
-          "percentage": 50
-        },
-        {
-          "projectId": "proj-2",
-          "percentage": 30
-        },
-        {
-          "projectId": "proj-unrestricted",
-          "percentage": 20
-        }
-      ],
-      "status": "Approved",
-      "approvedBy": "Samer Ghamrawi"
-    }
-  ],
+  "timesheets": [],
   "fixedAssets": [
     {
       "id": "asset-1",
@@ -1040,39 +855,27 @@
       "partnerName": "Saad Matar",
       "capitalBalance": 30000,
       "loansToCompany": 5000,
-      "drawingsBalance": 1200,
-      "currentAccountBalance": 33800
+      "drawingsBalance": 0,
+      "currentAccountBalance": 35000
     },
     {
       "id": "pt-2",
       "partnerName": "Samer Ghamrawi",
       "capitalBalance": 20000,
       "loansToCompany": 0,
-      "drawingsBalance": 800,
-      "currentAccountBalance": 19200
+      "drawingsBalance": 0,
+      "currentAccountBalance": 20000
     }
   ],
-  "documents": [
-    {
-      "id": "doc-1",
-      "filename": "Videography_Agreement_EU_Citizen_Tripoli_Media.pdf",
-      "mimeType": "application/pdf",
-      "sizeStr": "2.4 MB",
-      "base64": "dGVzdCBjb250ZW50",
-      "category": "Contract",
-      "linkedRecordType": "Expense",
-      "linkedRecordId": "exp-1",
-      "created_at": "2026-05-10T09:12:00Z"
-    }
-  ],
+  "documents": [],
   "auditLogs": [
     {
       "id": "log-1",
       "userId": "u-1",
       "userName": "Saad Matar",
-      "action": "System Seed",
-      "details": "AnaHon fully audit-compliant accounting framework initialized.",
-      "timestamp": "2026-05-25T02:18:22Z"
+      "action": "System Reset",
+      "details": "Database successfully reset to a clean state for fresh testing.",
+      "timestamp": "2026-05-25T11:04:09.760Z"
     }
   ],
   "complianceTasks": [
