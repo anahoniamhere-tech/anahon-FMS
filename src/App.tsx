@@ -172,6 +172,7 @@ export default function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [reconMonth, setReconMonth] = useState<string>("2026-05");
   const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<"folder" | "reconciliation">("folder");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
   
   const workspaceRef = useRef<HTMLDivElement | null>(null);
 
@@ -1527,11 +1528,177 @@ export default function App() {
         </div>
       </header>
 
+      {/* Mobile Navigation Header Bar (Mobile-only, md:hidden) */}
+      <div className="md:hidden bg-slate-900 border-t border-b border-slate-800 px-6 py-3 flex items-center justify-between text-white select-none">
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          className="flex items-center justify-center p-2 rounded-lg bg-slate-850 border border-slate-700 hover:bg-slate-800 focus:outline-none min-w-[44px] min-h-[44px] transition cursor-pointer"
+          aria-label="Toggle Navigation Menu"
+        >
+          {mobileMenuOpen ? (
+            <span className="text-xl font-bold font-mono">✕</span>
+          ) : (
+            <span className="text-xl font-bold font-mono">☰</span>
+          )}
+        </button>
+        <span className="text-xs font-bold font-mono text-red-400 bg-red-950/40 px-3 py-1.5 rounded border border-red-900/40 uppercase tracking-wider">
+          Tab: {activeTab.replace(/([A-Z])/g, " $1")}
+        </span>
+      </div>
+
+      {/* Mobile Navigation Drawer (Mobile-only, md:hidden) */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="md:hidden bg-slate-900 border-b border-slate-800 p-4 space-y-1 text-white select-none overflow-hidden"
+          >
+            <nav className="flex flex-col gap-1 font-sans">
+              <button
+                type="button"
+                onClick={() => { setActiveTab("dashboard"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "dashboard" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <Activity className="h-4 w-4" />
+                Overview Dashboard
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("accounts"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "accounts" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <Sliders className="h-4 w-4" />
+                Chart of Accounts
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("projects"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <FolderGit2 className="h-4 w-4" />
+                Donors & Projects
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("expenses"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <FileText className="h-4 w-4" />
+                Disbursement Vouchers
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("procurement"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "procurement" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <Layers className="h-4 w-4" />
+                Procurement & Bids
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("vendors"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "vendors" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <Users className="h-4 w-4" />
+                Vendor Registry
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("banking"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "banking" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <Coins className="h-4 w-4" />
+                Banking & Cash Reconcile
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("ledger"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "ledger" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <Building className="h-4 w-4" />
+                General double-entry Ledger
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("payroll"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "payroll" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <User className="h-4 w-4" />
+                Timesheets & Payroll Allocation
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("assets"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "assets" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <HardDrive className="h-4 w-4" />
+                Fixed Assets Roll-Forward
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("partners"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "partners" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <Briefcase className="h-4 w-4" />
+                Partner Capital Tracking
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => { setActiveTab("compliance"); setMobileMenuOpen(false); }}
+                className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-3 text-sm font-medium min-h-[44px] transition-colors cursor-pointer ${
+                  activeTab === "compliance" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
+                }`}
+              >
+                <ShieldAlert className="h-4 w-4 text-rose-400" />
+                Compliance Control Desk
+              </button>
+            </nav>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Main Container: Sidebar + Working Tab Layout Screen */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
         
         {/* Left Side Sidebar Menu */}
-        <aside className="w-64 border-r border-slate-200 bg-slate-900 flex flex-col justify-between p-4 overflow-y-auto shrink-0 select-none">
+        <aside className="hidden md:flex w-64 border-r border-slate-200 bg-slate-900 flex-col justify-between p-4 overflow-y-auto shrink-0 select-none">
           <nav className="space-y-1">
             <button
               onClick={() => setActiveTab("dashboard")}
@@ -1685,7 +1852,7 @@ export default function App() {
         </aside>
 
         {/* Dynamic Display Panel View */}
-        <main className="flex-1 flex flex-col overflow-y-auto p-8">
+        <main className="flex-1 flex flex-col overflow-y-auto p-4 md:p-8">
 
           {/* Tab Content Dynamic Mounting */}
           {activeTab === "dashboard" && (
@@ -1918,10 +2085,10 @@ export default function App() {
                     <tr className="border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
                       <th className="px-6 py-3">Code / ID</th>
                       <th className="px-6 py-3">Reporting Classification Name</th>
-                      <th className="px-6 py-3">Account Type</th>
-                      <th className="px-6 py-3">Original Currency</th>
+                      <th className="px-6 py-3 hidden md:table-cell">Account Type</th>
+                      <th className="px-6 py-3 hidden md:table-cell">Original Currency</th>
                       <th className="px-6 py-3 text-right">Raw Ledger Balance</th>
-                      <th className="px-6 py-3 text-right">Status</th>
+                      <th className="px-6 py-3 text-right hidden md:table-cell">Status</th>
                     </tr>
                   </header>
                   <tbody className="divide-y divide-slate-100 text-sm font-sans">
@@ -1929,7 +2096,7 @@ export default function App() {
                       <tr key={acc.code} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-3 font-mono font-bold text-slate-800">{acc.code}</td>
                         <td className="px-6 py-3 font-medium text-slate-900">{acc.name}</td>
-                        <td className="px-6 py-3">
+                        <td className="px-6 py-3 hidden md:table-cell">
                           <span className={`px-2 py-0.5 text-xs rounded font-medium ${
                             acc.type === "Asset" ? "bg-teal-50 text-teal-700" :
                             acc.type === "Liability" ? "bg-amber-50 text-amber-700" :
@@ -1940,11 +2107,11 @@ export default function App() {
                             {acc.type}
                           </span>
                         </td>
-                        <td className="px-6 py-3 font-mono text-slate-600">{acc.currency}</td>
+                        <td className="px-6 py-3 font-mono text-slate-600 hidden md:table-cell">{acc.currency}</td>
                         <td className="px-6 py-3 text-right font-mono font-bold text-slate-900">
                           {acc.balance.toLocaleString()}
                         </td>
-                        <td className="px-6 py-3 text-right">
+                        <td className="px-6 py-3 text-right hidden md:table-cell">
                           <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                         </td>
                       </tr>
@@ -2075,11 +2242,11 @@ export default function App() {
                       </div>
 
                       {/* Sub-tab navigation */}
-                      <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-medium font-sans">
+                      <div className="flex flex-col sm:flex-row bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-medium font-sans gap-1 sm:gap-0">
                         <button
                           type="button"
                           onClick={() => setProjectWorkspaceTab("folder")}
-                          className={`px-3 py-1.5 rounded-md transition-colors ${
+                          className={`min-h-[44px] px-4 py-2.5 flex items-center justify-center rounded-md transition-colors ${
                             projectWorkspaceTab === "folder" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
                           }`}
                         >
@@ -2088,7 +2255,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => setProjectWorkspaceTab("reconciliation")}
-                          className={`px-3 py-1.5 rounded-md transition-colors ${
+                          className={`min-h-[44px] px-4 py-2.5 flex items-center justify-center rounded-md transition-colors ${
                             projectWorkspaceTab === "reconciliation" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
                           }`}
                         >
@@ -2109,7 +2276,7 @@ export default function App() {
                                 📂 1. Contracts, MoUs & Co-funding splits
                               </h4>
                               {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
-                                <label className="text-[10px] text-red-650 hover:text-red-700 font-bold cursor-pointer">
+                                <label className="text-[10px] text-red-650 hover:text-red-700 font-bold cursor-pointer inline-flex items-center min-h-[44px] px-2">
                                   ➕ Upload MoU
                                   <input
                                     type="file"
@@ -2131,7 +2298,7 @@ export default function App() {
                                     <a
                                       href={`data:${doc.mimeType};base64,${doc.base64}`}
                                       download={doc.filename}
-                                      className="text-red-650 hover:underline font-mono text-[10px] font-bold"
+                                      className="text-red-650 hover:underline font-mono text-[10px] font-bold inline-flex items-center min-h-[44px] px-2"
                                     >
                                       📥 Download
                                     </a>
@@ -2207,12 +2374,12 @@ export default function App() {
                                           <a
                                             href={`data:${docAttached.mimeType};base64,${docAttached.base64}`}
                                             download={docAttached.filename}
-                                            className="text-red-650 hover:underline font-bold"
+                                            className="text-red-650 hover:underline font-bold inline-flex items-center min-h-[44px] px-2"
                                           >
                                             📥 Supporting PDF
                                           </a>
                                         ) : (
-                                          <span className="text-slate-400 italic">No bill PDF attached</span>
+                                          <span className="text-slate-400 italic inline-flex items-center min-h-[44px] px-2">No bill PDF attached</span>
                                         )}
                                       </div>
                                     </div>
@@ -2323,25 +2490,25 @@ export default function App() {
                               />
                             </div>
                             
-                            <div className="flex gap-2 font-sans">
+                            <div className="flex flex-wrap gap-2 font-sans">
                                 <button
                                   type="button"
                                   onClick={handleExportExcel}
-                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs min-h-[44px] px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-1 shadow-sm transition cursor-pointer"
                                 >
                                   📊 Export Excel
                                 </button>
                                 <button
                                   type="button"
                                   onClick={handleExportWord}
-                                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs min-h-[44px] px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-1 shadow-sm transition cursor-pointer"
                                 >
                                   📝 Export Word
                                 </button>
                                 <button
                                   type="button"
                                   onClick={handleExportPDF}
-                                  className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                  className="bg-slate-800 hover:bg-slate-900 text-white text-xs min-h-[44px] px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-1 shadow-sm transition cursor-pointer"
                                 >
                                   📄 Export PDF
                                 </button>
@@ -2422,9 +2589,9 @@ export default function App() {
                                            <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
                                              <th className="px-4 py-2">Account Line</th>
                                              <th className="px-4 py-2">Category Description</th>
-                                             <th className="px-4 py-2 text-right">Allocated Pool (USD)</th>
-                                             <th className="px-4 py-2 text-right">Spent This Month (USD)</th>
-                                             <th className="px-4 py-2 text-right">Cumulative Spent to Date</th>
+                                             <th className="px-4 py-2 text-right hidden md:table-cell">Allocated Pool (USD)</th>
+                                             <th className="px-4 py-2 text-right hidden md:table-cell">Spent This Month (USD)</th>
+                                             <th className="px-4 py-2 text-right hidden md:table-cell">Cumulative Spent to Date</th>
                                              <th className="px-4 py-2 text-right">Remaining Balance / Burn %</th>
                                            </tr>
                                          </thead>
@@ -2442,9 +2609,9 @@ export default function App() {
                                                <tr key={bl.id} className="hover:bg-slate-50 font-medium break-inside-avoid">
                                                  <td className="px-4 py-2 text-slate-800 font-bold">{bl.code}</td>
                                                  <td className="px-4 py-2 text-slate-950 font-sans">{bl.category}</td>
-                                                 <td className="px-4 py-2 text-right text-slate-700">{formatUSD(bl.allocatedUSD)}</td>
-                                                 <td className="px-4 py-2 text-right text-red-650 font-bold">{formatUSD(monthSpent)}</td>
-                                                 <td className="px-4 py-2 text-right text-slate-900">{formatUSD(bl.actualUSD)}</td>
+                                                 <td className="px-4 py-2 text-right text-slate-700 hidden md:table-cell">{formatUSD(bl.allocatedUSD)}</td>
+                                                 <td className="px-4 py-2 text-right text-red-650 font-bold hidden md:table-cell">{formatUSD(monthSpent)}</td>
+                                                 <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(bl.actualUSD)}</td>
                                                  <td className="px-4 py-2 text-right text-slate-900 font-bold">
                                                    {formatUSD(remaining)} <span className="text-[10px] text-slate-500 font-normal">({burnPercent}%)</span>
                                                  </td>
@@ -2454,9 +2621,9 @@ export default function App() {
                                            {/* Section I totals row */}
                                            <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid">
                                              <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-right">TOTAL BUDGET BURN SUMMARY:</td>
-                                             <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalAllocated)}</td>
-                                             <td className="px-4 py-2 text-right text-red-600">{formatUSD(totalSpentThisMonth)}</td>
-                                             <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalCumulativeSpent)}</td>
+                                             <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(totalAllocated)}</td>
+                                             <td className="px-4 py-2 text-right text-red-600 hidden md:table-cell">{formatUSD(totalSpentThisMonth)}</td>
+                                             <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(totalCumulativeSpent)}</td>
                                              <td className="px-4 py-2 text-right text-slate-900">
                                                {formatUSD(totalRemainingBalance)} <span className="text-[10px] text-slate-500 font-normal">({overallBurnRate}%)</span>
                                              </td>
@@ -2476,10 +2643,10 @@ export default function App() {
                                        <table className="w-full text-left text-xs border-collapse">
                                          <thead className="bg-slate-100">
                                            <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
-                                             <th className="px-4 py-2">Statement Date</th>
+                                             <th className="px-4 py-2 hidden md:table-cell">Statement Date</th>
                                              <th className="px-4 py-2">Voucher / Ref</th>
                                              <th className="px-4 py-2">Transaction Memo</th>
-                                             <th className="px-4 py-2 text-right">Withholding Tax (WHT)</th>
+                                             <th className="px-4 py-2 text-right hidden md:table-cell">Withholding Tax (WHT)</th>
                                              <th className="px-4 py-2 text-right">Reconciled Net</th>
                                            </tr>
                                          </thead>
@@ -2496,20 +2663,27 @@ export default function App() {
 
                                                return (
                                                  <tr key={exp.id} className="hover:bg-slate-50 break-inside-avoid">
-                                                   <td className="px-4 py-2 text-slate-500">{exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0]}</td>
+                                                   <td className="px-4 py-2 text-slate-500 hidden md:table-cell">{exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0]}</td>
                                                    <td className="px-4 py-2 text-slate-800 font-bold">{exp.voucherNo}</td>
                                                    <td className="px-4 py-2 text-slate-950 font-sans">{exp.title}</td>
-                                                   <td className="px-4 py-2 text-right text-amber-600">{formatUSD(whtVal * exp.rate)}</td>
+                                                   <td className="px-4 py-2 text-right text-amber-600 hidden md:table-cell">{formatUSD(whtVal * exp.rate)}</td>
                                                    <td className="px-4 py-2 text-right text-slate-900 font-bold">{formatUSD(calculatedNet * exp.rate)}</td>
                                                  </tr>
                                                );
                                              })
                                            )}
-                                           {/* Section II totals row */}
+                                           {/* Section II totals row (Desktop-only) */}
                                            {monthExpenses.length > 0 && (
-                                             <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid">
+                                             <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid hidden md:table-row">
                                                <td colSpan={3} className="px-4 py-2 text-slate-900 font-sans text-right">RECONCILED MATCHINGS TOTAL:</td>
                                                <td className="px-4 py-2 text-right text-amber-600">{formatUSD(totalWhtReconciled)}</td>
+                                               <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalNetReconciled)}</td>
+                                             </tr>
+                                           )}
+                                           {/* Section II totals row (Mobile-only) */}
+                                           {monthExpenses.length > 0 && (
+                                             <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid md:hidden">
+                                               <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-right">TOTAL NET:</td>
                                                <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalNetReconciled)}</td>
                                              </tr>
                                            )}
@@ -3438,9 +3612,9 @@ export default function App() {
                     <tr className="border-b border-sub-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
                       <th className="px-6 py-3">Vendor Account</th>
                       <th className="px-6 py-3">Primary Category</th>
-                      <th className="px-6 py-3">Tax Registry ID</th>
-                      <th className="px-6 py-3">Audit Disclosures</th>
-                      <th className="px-6 py-3">Sanctions Rating</th>
+                      <th className="px-6 py-3 hidden md:table-cell">Tax Registry ID</th>
+                      <th className="px-6 py-3 hidden md:table-cell">Audit Disclosures</th>
+                      <th className="px-6 py-3 hidden md:table-cell">Sanctions Rating</th>
                     </tr>
                   </header>
                   <tbody className="divide-y divide-slate-100 text-sm font-sans">
@@ -3451,13 +3625,13 @@ export default function App() {
                           <span className="text-[11px] text-slate-550 font-mono">{v.contact}</span>
                         </td>
                         <td className="px-6 py-4 font-medium text-slate-700">{v.category}</td>
-                        <td className="px-6 py-4 font-mono font-medium">{v.taxId}</td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 font-mono font-medium hidden md:table-cell">{v.taxId}</td>
+                        <td className="px-6 py-4 hidden md:table-cell">
                           <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${v.declarationSigned ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
                             {v.declarationSigned ? "Signed Conflict Code" : "Pending Signature"}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-4 hidden md:table-cell">
                           {v.blocked ? (
                             <span className="text-[10px] bg-red-100 text-red-700 font-bold uppercase tracking-wider px-2 py-0.5 rounded">
                               🚨 blocked - direct fail-safe
@@ -3540,15 +3714,14 @@ export default function App() {
                 </form>
               )}
 
-              {/* Bank Transaction entries directory list */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <table className="w-full text-left">
                   <header className="bg-slate-100">
                     <tr className="border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
                       <th className="px-6 py-3">Statement Date</th>
                       <th className="px-6 py-3">Vouchering Ref</th>
-                      <th className="px-6 py-3">Account Drawer</th>
-                      <th className="px-6 py-3">Description Purpose</th>
+                      <th className="px-6 py-3 hidden md:table-cell">Account Drawer</th>
+                      <th className="px-6 py-3 hidden md:table-cell">Description Purpose</th>
                       <th className="px-6 py-3 text-right">Cleared Amount</th>
                     </tr>
                   </header>
@@ -3559,8 +3732,8 @@ export default function App() {
                         <tr key={tx.id} className="hover:bg-slate-50">
                           <td className="px-6 py-3 font-mono text-slate-500">{tx.date}</td>
                           <td className="px-6 py-3 font-mono font-bold text-red-650 text-red-600">{tx.voucherNo || "Statement adjustment"}</td>
-                          <td className="px-6 py-3 font-semibold text-slate-800">{ba?.name}</td>
-                          <td className="px-6 py-3 text-slate-700">{tx.description}</td>
+                          <td className="px-6 py-3 font-semibold text-slate-800 hidden md:table-cell">{ba?.name}</td>
+                          <td className="px-6 py-3 text-slate-700 hidden md:table-cell">{tx.description}</td>
                           <td className="px-6 py-3 text-right font-mono font-bold text-slate-900">
                             {tx.type === "Withdrawal" ? "-" : "+"} {tx.amount.toLocaleString()} {ba?.currency}
                           </td>
@@ -4315,7 +4488,7 @@ export default function App() {
                                 <tr>
                                   <th className="px-4 py-3">Reference No</th>
                                   <th className="px-4 py-3">Description / Purpose</th>
-                                  <th className="px-4 py-3">Type</th>
+                                  <th className="px-4 py-3 hidden md:table-cell">Type</th>
                                   <th className="px-4 py-3 text-right">Amount</th>
                                 </tr>
                               </thead>
@@ -4336,7 +4509,7 @@ export default function App() {
                                           </span>
                                         )}
                                       </td>
-                                      <td className="px-4 py-4">
+                                      <td className="px-4 py-4 hidden md:table-cell">
                                         <span className={`inline-block px-2 py-0.5 rounded font-bold text-[9px] uppercase ${
                                           t.type === "Deposit" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
                                         }`}>
