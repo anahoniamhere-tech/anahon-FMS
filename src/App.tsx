@@ -1251,7 +1251,7 @@ export default function App() {
           <nav className="space-y-1">
             <button
               onClick={() => setActiveTab("dashboard")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "dashboard" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1261,7 +1261,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("accounts")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "accounts" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1271,7 +1271,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("projects")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1281,7 +1281,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("expenses")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1296,7 +1296,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("procurement")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "procurement" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1306,7 +1306,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("vendors")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "vendors" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1316,7 +1316,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("banking")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "banking" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1326,7 +1326,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("ledger")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "ledger" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1336,7 +1336,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("payroll")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "payroll" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1346,7 +1346,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("assets")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "assets" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1356,7 +1356,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("partners")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "partners" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
@@ -1366,7 +1366,7 @@ export default function App() {
 
             <button
               onClick={() => setActiveTab("compliance")}
-              className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+              className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                 activeTab === "compliance" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"
               }`}
             >
