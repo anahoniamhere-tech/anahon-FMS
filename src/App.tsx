@@ -82,6 +82,7 @@ export default function App() {
   const [expenseBudgetLine, setExpenseBudgetLine] = useState("");
   const [expenseCurrency, setExpenseCurrency] = useState<"USD" | "EUR" | "LBP">("USD");
   const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseCustomRate, setExpenseCustomRate] = useState("");
   const [tempAttachment, setTempAttachment] = useState<{ filename: string; mimeType: string; base64: string } | null>(null);
 
   // Procurement sourcing form
@@ -588,6 +589,7 @@ export default function App() {
           budgetLineId: expenseBudgetLine,
           currency: expenseCurrency,
           amount: expenseAmount,
+          customRate: expenseCustomRate,
           allocations: allocationsPayload,
           user: currentUser
         })
@@ -624,6 +626,7 @@ export default function App() {
       setExpenseVendor("");
       setExpenseBudgetLine("");
       setExpenseAmount("");
+      setExpenseCustomRate("");
       setEnableSharedSplit(false);
       setSplitAllocations([
         { projectId: "", budgetLineId: "", percentage: 50 },
@@ -2186,6 +2189,24 @@ export default function App() {
                         className="finance-input w-full font-mono"
                       />
                     </div>
+                    {expenseCurrency !== "USD" && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          Override Exchange Rate (1 {expenseCurrency} to USD)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.00000001"
+                          placeholder={expenseCurrency === "EUR" ? "e.g. 1.085" : "e.g. 0.000011"}
+                          value={expenseCustomRate}
+                          onChange={(e) => setExpenseCustomRate(e.target.value)}
+                          className="finance-input w-full font-mono bg-amber-50/20 border-amber-200"
+                        />
+                        <span className="text-[10px] text-amber-600 block mt-0.5 font-mono">
+                          ⚠️ Leave empty to use system default rate.
+                        </span>
+                      </div>
+                    )}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">Attach supporting Invoice/Agreement (PDF)</label>
                       <input
@@ -2385,6 +2406,13 @@ export default function App() {
                             </span>
                           </div>
                         </div>
+
+                        {exp.currency !== "USD" && (
+                          <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                            <span>Raw Transaction Value: <strong className="text-slate-800">{exp.amount.toLocaleString(undefined, {minimumFractionDigits: 2})} {exp.currency}</strong></span>
+                            <span>Traceable Exchanger/FX Conversion Rate: <strong className="text-slate-800">1 {exp.currency} = {exp.rate} USD</strong></span>
+                          </div>
+                        )}
 
                         {/* Co-funding shared cost splits display */}
                         {expAllocations.length > 0 && (
@@ -3941,22 +3969,45 @@ export default function App() {
                       className="finance-input w-full font-mono text-xs"
                     />
                   </div>
-                  <button
-                    onClick={async () => {
-                      const res = await fetch("/api/fxRates", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ EUR: eurRateInput, LBP: lbpRateInput, user: currentUser })
-                      });
-                      if (res.ok) {
-                        triggerToast("Global FX Rates updated on central systems.");
-                        refreshState();
-                      }
-                    }}
-                    className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow"
-                  >
-                    Adjust Global Exchange Rate Settings
-                  </button>
+                  <div className="flex flex-col md:flex-row gap-2">
+                    <button
+                      onClick={async () => {
+                        const res = await fetch("/api/fxRates", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ EUR: eurRateInput, LBP: lbpRateInput, user: currentUser })
+                        });
+                        if (res.ok) {
+                          triggerToast("Global FX Rates updated on central systems.");
+                          refreshState();
+                        }
+                      }}
+                      className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow w-full md:w-auto"
+                    >
+                      Adjust Global Rates
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch("/api/fxRates/sync-inforeuro", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ user: currentUser })
+                          });
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data.error || "Sync failed");
+                          triggerToast(`Official InfoEuro EUR rate synced: ${data.eurRate} USD (Period: ${data.period})`);
+                          setEurRateInput(data.eurRate.toString());
+                          refreshState();
+                        } catch (err: any) {
+                          triggerToast(err.message, "error");
+                        }
+                      }}
+                      className="bg-red-650 hover:bg-red-700 text-white text-xs font-semibold rounded px-4 py-2.5 shadow w-full md:w-auto flex items-center justify-center gap-1 font-sans"
+                    >
+                      🇪🇺 Sync InfoEuro EUR Rate
+                    </button>
+                  </div>
                 </div>
               </div>
 

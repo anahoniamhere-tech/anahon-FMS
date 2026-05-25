@@ -295,6 +295,53 @@ app.post("/api/fxRates", async (req, res) => {
   }
 });
 
+// Sync official European Commission InfoEuro exchange rate for EUR vs USD
+app.post("/api/fxRates/sync-inforeuro", async (req, res) => {
+  try {
+    const { user } = req.body;
+    const response = await fetch("https://ec.europa.eu/budg/inforeuro/api/public/currencies/USD");
+    if (!response.ok) {
+      throw new Error(`European Commission API returned status: ${response.status}`);
+    }
+    const data: any = await response.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error("Invalid response format from European Commission InfoEuro API.");
+    }
+
+    // Find the most recent record (typically the first one in history)
+    const latestRecord = data[0];
+    if (!latestRecord || typeof latestRecord.amount !== "number") {
+      throw new Error("No rate amount found in InfoEuro API response.");
+    }
+
+    const newEurRate = Number(latestRecord.amount);
+
+    // Update the database settings
+    const rates = await prisma.fxRates.findFirst();
+    if (rates) {
+      await prisma.fxRates.update({
+        where: { id: rates.id },
+        data: { EUR: newEurRate }
+      });
+    } else {
+      await prisma.fxRates.create({
+        data: { id: "rates", EUR: newEurRate, LBP: 0.000011 }
+      });
+    }
+
+    await createAuditLog(
+      user?.id || "u-3",
+      user?.name || "Finance Officer",
+      "InfoEuro FX Sync",
+      `Official European Commission InfoEuro exchange rate synced: 1 EUR = ${newEurRate} USD (Effective ${latestRecord.dateStart} to ${latestRecord.dateEnd}).`
+    );
+
+    res.json({ success: true, eurRate: newEurRate, period: `${latestRecord.dateStart} - ${latestRecord.dateEnd}` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Create New Vendor
 app.post("/api/vendors/new", async (req, res) => {
   try {
@@ -369,7 +416,7 @@ app.post("/api/employees/new", async (req, res) => {
 // Post Expense request
 app.post("/api/expense/new", async (req, res) => {
   try {
-    const { title, purpose, vendorId, projectId, budgetLineId, currency, amount, allocations, user } = req.body;
+    const { title, purpose, vendorId, projectId, budgetLineId, currency, amount, allocations, customRate, user } = req.body;
 
     if (!projectId) {
       return res.status(400).json({ error: "Please map request to an active Project Code." });
@@ -378,8 +425,12 @@ app.post("/api/expense/new", async (req, res) => {
     // Determine exchange rates and conversions
     const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
     let rate = 1;
-    if (currency === "EUR") rate = rates.EUR;
-    if (currency === "LBP") rate = rates.LBP;
+    if (customRate && Number(customRate) > 0) {
+      rate = Number(customRate);
+    } else {
+      if (currency === "EUR") rate = rates.EUR;
+      if (currency === "LBP") rate = rates.LBP;
+    }
     const converted = Number(amount) * rate;
 
     const count = await prisma.expense.count();
