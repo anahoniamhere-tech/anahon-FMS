@@ -1343,6 +1343,19 @@ export default function App() {
     }
   };
 
+  const handleExportPDF = () => {
+    try {
+      document.body.classList.add("print-reconciliation-only");
+      window.print();
+      setTimeout(() => {
+        document.body.classList.remove("print-reconciliation-only");
+      }, 500);
+      triggerToast("PDF print dialog opened successfully!");
+    } catch (err: any) {
+      triggerToast("Failed to launch PDF print manager.", "error");
+    }
+  };
+
   const handleEmployeeRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmpName || !newEmpPosition || !newEmpSalary) {
@@ -2324,6 +2337,13 @@ export default function App() {
                                   className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition cursor-pointer"
                                 >
                                   📝 Export Word
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleExportPDF}
+                                  className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition cursor-pointer"
+                                >
+                                  📄 Export PDF
                                 </button>
                               </div>
                           </div>
