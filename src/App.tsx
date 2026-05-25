@@ -1,3 +1,4 @@
+import * as XLSX from "xlsx";
 import React, { useState, useEffect, useRef, FormEvent, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -924,6 +925,127 @@ export default function App() {
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleExportExcel = () => {
+    try {
+      const activeProject = state.projects.find(p => p.id === selectedProjectId);
+      if (!activeProject) return;
+
+      const projExpenses = state.expenses.filter(e => 
+        e.projectId === selectedProjectId || 
+        (e.allocations && e.allocations.some((a: any) => a.projectId === selectedProjectId))
+      );
+
+      // Filter items for the specific reconMonth (YYYY-MM)
+      const monthExpenses = projExpenses.filter(e => {
+        const dateVal = e.paid_at || e.created_at;
+        return dateVal && dateVal.startsWith(reconMonth);
+      });
+
+      const projectBudgetLines = state.budgetLines.filter(bl => bl.projectId === selectedProjectId);
+
+      // Sheet 1: Budget_vs_Actuals Data
+      const sheet1Data = projectBudgetLines.map(bl => {
+        const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sum, e) => {
+          const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+          return sum + (alloc ? Number(alloc.amount) : e.amount);
+        }, 0);
+
+        const remaining = bl.allocatedUSD - bl.actualUSD;
+        const burnPercent = bl.allocatedUSD > 0 ? (bl.actualUSD / bl.allocatedUSD) : 0;
+
+        return {
+          "Account Line": bl.code,
+          "Category Description": bl.category,
+          "Allocated Pool (USD)": bl.allocatedUSD,
+          "Spent This Month (USD)": monthSpent,
+          "Cumulative Spent to Date (USD)": bl.actualUSD,
+          "Remaining Balance (USD)": remaining,
+          "Burn Rate (%)": burnPercent
+        };
+      });
+
+      // Calculate aggregates for Section I
+      const totalAllocated = projectBudgetLines.reduce((sum, bl) => sum + bl.allocatedUSD, 0);
+      const totalSpentMonth = projectBudgetLines.reduce((sum, bl) => {
+        const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sumE, e) => {
+          const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+          return sumE + (alloc ? Number(alloc.amount) : e.amount);
+        }, 0);
+        return sum + monthSpent;
+      }, 0);
+      const totalCumulative = projectBudgetLines.reduce((sum, bl) => sum + bl.actualUSD, 0);
+      const totalRemaining = totalAllocated - totalCumulative;
+      const overallBurnRate = totalAllocated > 0 ? (totalCumulative / totalAllocated) : 0;
+
+      sheet1Data.push({
+        "Account Line": "TOTAL BUDGET BURN SUMMARY",
+        "Category Description": "",
+        "Allocated Pool (USD)": totalAllocated,
+        "Spent This Month (USD)": totalSpentMonth,
+        "Cumulative Spent to Date (USD)": totalCumulative,
+        "Remaining Balance (USD)": totalRemaining,
+        "Burn Rate (%)": overallBurnRate
+      });
+
+      // Sheet 2: Reconciled_Cash_Flows Data
+      const sheet2Data = monthExpenses.map(exp => {
+        const alloc = exp.allocations ? exp.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+        const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (exp.whtAmount / exp.amount)) : (exp.netAmount || exp.amount);
+        const whtVal = alloc ? Number(alloc.amount) * (exp.whtAmount / exp.amount) : exp.whtAmount;
+
+        return {
+          "Statement Date": exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0] || "",
+          "Voucher / Ref": exp.voucherNo,
+          "Transaction Memo": exp.title,
+          "Withholding Tax (WHT)": whtVal * exp.rate,
+          "Reconciled Net": calculatedNet * exp.rate
+        };
+      });
+
+      const totalWht = monthExpenses.reduce((sum, e) => {
+        const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+        const whtVal = alloc ? Number(alloc.amount) * (e.whtAmount / e.amount) : e.whtAmount;
+        return sum + (whtVal * e.rate);
+      }, 0);
+
+      const totalNet = monthExpenses.reduce((sum, e) => {
+        const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
+        const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (e.whtAmount / e.amount)) : (e.netAmount || e.amount);
+        return sum + (calculatedNet * e.rate);
+      }, 0);
+
+      sheet2Data.push({
+        "Statement Date": "RECONCILED MATCHINGS TOTAL",
+        "Voucher / Ref": "",
+        "Transaction Memo": "",
+        "Withholding Tax (WHT)": totalWht,
+        "Reconciled Net": totalNet
+      });
+
+      // Assemble Excel Workbook
+      const wb = XLSX.utils.book_new();
+      const ws1 = XLSX.utils.json_to_sheet(sheet1Data);
+      const ws2 = XLSX.utils.json_to_sheet(sheet2Data);
+
+      // Percentage formatting in Excel for Burn Rate column
+      const range1 = XLSX.utils.decode_range(ws1["!ref"] || "");
+      for (let r = range1.s.r + 1; r <= range1.e.r; ++r) {
+        const cellRef = XLSX.utils.encode_cell({ r, c: 6 }); // Burn Rate (%) is 7th column (0-indexed 6)
+        if (ws1[cellRef]) {
+          ws1[cellRef].z = "0.0%";
+        }
+      }
+
+      XLSX.utils.book_append_sheet(wb, ws1, "Budget_vs_Actuals");
+      XLSX.utils.book_append_sheet(wb, ws2, "Reconciled_Cash_Flows");
+
+      XLSX.writeFile(wb, `${activeProject.code}_Reconciliation_${reconMonth}.xlsx`);
+      triggerToast("Excel workbook exported successfully!");
+    } catch (err: any) {
+      triggerToast("Failed to export Excel spreadsheet.", "error");
+    }
   };
 
   const handleEmployeeRegister = async (e: React.FormEvent) => {
@@ -1893,13 +2015,23 @@ export default function App() {
                               />
                             </div>
                             
-                            <button
-                              type="button"
-                              onClick={() => window.print()}
-                              className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm"
-                            >
-                              🖨️ Print & Sign Monthly Report
-                            </button>
+                            <div className="flex gap-2">
+                               <button
+                                 type="button"
+                                 onClick={handleExportExcel}
+                                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition"
+                               >
+                                 📊 Export Excel
+                               </button>
+
+                               <button
+                                 type="button"
+                                 onClick={() => window.print()}
+                                 className="bg-slate-800 hover:bg-slate-900 text-white text-xs px-3.5 py-2 rounded-lg font-semibold flex items-center gap-1 shadow-sm transition"
+                               >
+                                 🖨️ Print & Sign Monthly Report
+                               </button>
+                             </div>
                           </div>
 
                           {/* Print container layout */}
