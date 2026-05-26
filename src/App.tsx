@@ -1544,55 +1544,67 @@ export default function App() {
         }`}>
           <nav className="space-y-1 font-sans">
             <button onClick={() => handleNavClick("dashboard")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Activity className="h-4 w-4" /> Overview Dashboard
+              <Activity className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Overview Dashboard</span>
             </button>
 
             <button onClick={() => handleNavClick("accounts")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "accounts" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Sliders className="h-4 w-4" /> Chart of Accounts
+              <Sliders className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Chart of Accounts</span>
             </button>
 
             <button onClick={() => handleNavClick("projects")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <FolderGit2 className="h-4 w-4" /> Donors & Projects
+              <FolderGit2 className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Donors & Projects</span>
             </button>
 
             <button onClick={() => handleNavClick("expenses")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <FileText className="h-4 w-4" /> Disbursement Vouchers
-              <span className="ml-auto bg-slate-800 text-[10px] text-slate-300 px-1.5 py-0.5 rounded-full font-mono">
+              <FileText className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Disbursement Vouchers</span>
+              <span className="ml-auto bg-slate-800 text-[10px] text-slate-300 px-1.5 py-0.5 rounded-full font-mono shrink-0">
                 {state.expenses.filter(e => ["Submitted", "Under Finance Review", "Approved"].includes(e.status)).length}
               </span>
             </button>
 
             <button onClick={() => handleNavClick("procurement")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "procurement" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Layers className="h-4 w-4" /> Procurement & Bids
+              <Layers className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Procurement & Bids</span>
             </button>
 
             <button onClick={() => handleNavClick("vendors")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "vendors" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Users className="h-4 w-4" /> Vendor Registry
+              <Users className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Vendor Registry</span>
             </button>
 
             <button onClick={() => handleNavClick("banking")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "banking" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Coins className="h-4 w-4" /> Banking & Cash Reconcile
+              <Coins className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Banking & Cash Reconcile</span>
             </button>
 
             <button onClick={() => handleNavClick("ledger")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "ledger" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Building className="h-4 w-4" /> General double-entry Ledger
+              <Building className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">General double-entry Ledger</span>
             </button>
 
             <button onClick={() => handleNavClick("payroll")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "payroll" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <User className="h-4 w-4" /> Timesheets & Payroll Allocation
+              <User className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Timesheets & Payroll Allocation</span>
             </button>
 
             <button onClick={() => handleNavClick("assets")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "assets" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <HardDrive className="h-4 w-4" /> Fixed Assets Roll-Forward
+              <HardDrive className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Fixed Assets Roll-Forward</span>
             </button>
 
             <button onClick={() => handleNavClick("partners")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "partners" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Briefcase className="h-4 w-4" /> Partner Capital Tracking
+              <Briefcase className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Partner Capital Tracking</span>
             </button>
 
             <button onClick={() => handleNavClick("compliance")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "compliance" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <ShieldAlert className="h-4 w-4 text-rose-400" /> Compliance Control Desk
-              <span className="ml-auto flex h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+              <ShieldAlert className="h-4 w-4 text-rose-400 shrink-0" />
+              <span className="text-left flex-1">Compliance Control Desk</span>
+              <span className="ml-auto flex h-2 w-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
             </button>
           </nav>
 
