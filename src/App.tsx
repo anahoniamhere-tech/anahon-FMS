@@ -4661,6 +4661,15 @@ function IcontentInvPage() {
       size: "71.4 KB",
       type: "PNG Image",
       dimensions: "1024 × 534 px",
+    },
+    {
+      id: "tripoli_hammam",
+      title: "Hammam Ezzeddine Bathhouse Interior",
+      description: "The historical stone domes, vaulted archways, and central octagonal marble fountain inside Tripoli's Hammam Ezzeddine.",
+      url: "/assets/images/tripoli_hammam.jpg",
+      size: "76.2 KB",
+      type: "JPEG Image",
+      dimensions: "502 × 336 px",
     }
   ];
 
