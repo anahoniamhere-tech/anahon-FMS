@@ -4652,6 +4652,15 @@ function IcontentInvPage() {
       size: "360 KB",
       type: "JPEG Image",
       dimensions: "1024 × 576 px",
+    },
+    {
+      id: "hon_banner",
+      title: "HON - Horizontal Logo Banner",
+      description: "Official horizontal logotype and brand mark for HON: 'Roots and Reach - Here We Are'. High-resolution black and white branding banner.",
+      url: "/assets/images/hon_banner.png",
+      size: "71.4 KB",
+      type: "PNG Image",
+      dimensions: "1024 × 534 px",
     }
   ];
 
