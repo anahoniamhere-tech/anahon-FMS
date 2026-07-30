@@ -36,15 +36,41 @@ Bank statements (source of truth for cash): `/Users/saadmatar/Documents/eBLOM_St
 
 ---
 
-## 3. Immediate next step (what the user was about to do)
+## 3. Immediate next steps
 
-**Move the document vault to cloud storage.** It is 284 files in `~/Downloads` with no backup — the single largest risk in the system. Policy §13.6 requires weekly external + quarterly off-site backup; §13.4.1 requires a secure cloud archive.
+### 3a. FIRST — recheck / reconcile the vault (the user asked for this before moving anything)
 
-Plan:
-1. Ask the user: Google Drive or OneDrive (both are already in use).
+Audit already run on 30 Jul. Results:
+
+- **334 files on disk (83.7 MB) vs 284 registered in the app → 50 unregistered.**
+- **0 broken links** — every app record points to a file that exists. Nothing is lost.
+- **2 duplicate pairs** (TRF interim report; FPU subgrant contract).
+
+The 50 unregistered files fall into three groups — only the third needs a decision:
+
+1. **13 deliberately unregistered** (correct as-is): superseded originals we removed from the app but kept on disk per §13.3 — `Saad_1/Ahmad_2/Sally_3.pdf` contracts, six old timesheets (`*_ST2/ST3/AT2/AT3/SaT2/SaT3`), and `INV_017/019/021/022.pdf` replaced by their `_merged_With_Eng` versions.
+2. **~21 working artifacts** (low value): the unsigned `TRF_Signing_Pack_…_Word/` folder + zip (superseded by the signed PDFs in `Clarifications/Signed/`), `Memo_ANH-TRF-CLAR-001.pdf`, `_TEMPLATES/`, `_INDEX.md`.
+3. **14 files belonging to FOUR projects the app has never heard of** — this is the real finding:
+
+| Folder | Files | Notably |
+|---|---|---|
+| `BWZ-2023-FRL` | 6 | contract, financial report, 3 invoices — Basmeh & Zeitooneh |
+| `ASFARI-2024` | 3 | budget + 2 invoices |
+| `FPU-2024-ICONTENT2` | 3 | budget + 2 invoices |
+| `SKF-2025-INVJ` | 2 | two budget versions — SKF SharaKa |
+
+This matches the bank statements, which show an earlier era of funding not yet in the app: **Asfari 2024 $8,877.68 · IRI $4,000 · Front Line Defenders €1,370 · SKF services $1,651.38 + $1,643.74 · FHI360 $1,494.19 (pass-through) · Tripoli Entrepreneurs Club $1,355**. Also still absent: **SKF MediaMig (€20,297.30, first payment — active)**, **Asfari LER 2026 ($10,000 — active)**, **WeWorld GVC ($4,301.50)**.
+
+Suggested order: decide with the user which of these projects to create in the app (the two **active** ones — SKF MediaMig and Asfari LER — matter most), then register their documents. Duplicates can be deleted from disk only with the user's explicit say-so (§13.7 requires FO + PD approval for disposal).
+
+### 3b. THEN — move the vault to cloud storage
+
+284 registered files in `~/Downloads` with no backup is the single largest risk in the system. §13.6 requires weekly external + quarterly off-site backup; §13.4.1 requires a secure cloud archive.
+
+1. Ask the user: Google Drive or OneDrive (both already in use).
 2. Move `~/Downloads/AnaHon_Document_Vault` into that synced folder.
 3. Set `ANAHON_VAULT=<new path>` in `.env` — the server already reads it (`server.ts`, document upload/serve paths).
-4. Verify a few documents still open from the app (Projects → TRF → documents; voucher drawer → Details).
+4. Verify documents still open from the app (Projects → TRF → documents; voucher drawer → Details).
 5. **Do NOT put `prisma/dev.db` in a synced folder** — SQLite + cloud sync corrupts. It needs a scheduled copy instead (offer to script a nightly backup).
 
 ---
