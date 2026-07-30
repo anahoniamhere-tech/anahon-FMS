@@ -6,6 +6,11 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    // Pre-bundle the PDF exporter: it is imported lazily on click, and on-demand
+    // optimization would reload the page mid-export.
+    optimizeDeps: {
+      include: ['html2pdf.js'],
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

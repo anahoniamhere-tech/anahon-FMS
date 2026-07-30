@@ -7,9 +7,13 @@ const prisma = new PrismaClient();
 // Load the default database structure to fall back on
 const DEFAULT_DATABASE = {
   users: [
-    { id: "u-1", name: "Saad Matar", email: "anahoniamhere@gmail.com", role: "Super Admin", active: true },
-    { id: "u-2", name: "Samer Ghamrawi", email: "samer@anahon.org", role: "Program Director", active: true },
-    { id: "u-3", name: "Layale El-Khatib", email: "layale@anahon.org", role: "Finance Officer", active: true },
+    // POLICY 4.2 — Authorized signatories. Saad Matar is Primary (Program Director),
+    // Marwan El Cheikh is Secondary (Finance Officer). No account holds both authorities:
+    // Policy 4.3 forbids one person initiating, approving, and executing the same transaction.
+    { id: "u-1", name: "Saad Matar", email: "anahoniamhere@gmail.com", role: "Program Director", active: true },
+    { id: "u-2", name: "Marwan El Cheikh", email: "marwan@anahon.org", role: "Finance Officer", active: true },
+    // Capital partner (equity accounts 3200/3400, pt-2) — not an officer under Policy 4.2, so no approval authority.
+    { id: "u-3", name: "Samer Ghamrawi", email: "samer@anahon.org", role: "Auditor / Read-Only Reviewer", active: true },
     { id: "u-4", name: "Tarek Rifai", email: "tarek@anahon.org", role: "Project Lead", active: true },
     { id: "u-5", name: "Mona Merhabi", email: "mona@anahon.org", role: "HR / Payroll Officer", active: true },
     { id: "u-6", name: "External Auditor", email: "auditor@deloitte.com", role: "Auditor / Read-Only Reviewer", active: true }
@@ -80,243 +84,75 @@ const DEFAULT_DATABASE = {
     { code: "7700", name: "Foreign Exchange Loss", type: "Expense", currency: "USD", parent: "7000", reportingGroup: "FX Adjustment", balance: 940, active: true }
   ],
   donors: [
-    { id: "don-1", name: "EU Commission (Human Rights Division)", country: "Belgium (EU)", contactEmail: "projects-lebanon@commission.europa.eu", notes: "Requires strict co-financing evidence and timesheets for all payroll allocation." },
-    { id: "don-2", name: "National Endowment for Media Innovation (NEMI)", country: "United States", contactEmail: "grants-mena@nemi-gulf.org", notes: "Audit reports must map to USD reporting currency at date of voucher." },
-    { id: "don-3", name: "UNICEF MENA Region", country: "Switzerland", contactEmail: "beirut-procurement@unicef.org", notes: "Bidding comparisons required for purchases exceeding 1500 USD." }
+    { id: "don-1", name: "Thomson Reuters Foundation", country: "United Kingdom", contactEmail: "projects@thomsonreuters.com", notes: "" }
   ],
   projects: [
     {
-      id: "proj-1",
-      name: "Empowering Citizen Space in Tripoli",
-      code: "EU-2026-CITIZEN",
+      id: "proj-trf",
+      name: "Thomson Reuters Foundation (TRF)",
+      code: "TRF-2026",
       donorId: "don-1",
-      budgetUSD: 85000,
-      startDate: "2026-01-01",
-      endDate: "2026-12-31",
+      budgetUSD: 10020,
+      startDate: "2026-02-10",
+      endDate: "2026-06-30",
       fundingType: "Restricted Grant",
-      status: "Active"
-    },
-    {
-      id: "proj-2",
-      name: "Tripoli Investigative Video Journalism Series",
-      code: "NEM-2026-JOURN",
-      donorId: "don-2",
-      budgetUSD: 60000,
-      startDate: "2026-02-01",
-      endDate: "2026-11-30",
-      fundingType: "Restricted Grant",
-      status: "Active"
-    },
-    {
-      id: "proj-3",
-      name: "Lebanese Civil Society Leadership Academy",
-      code: "UNI-2026-LEADER",
-      donorId: "don-3",
-      budgetUSD: 45000,
-      startDate: "2026-04-01",
-      endDate: "2026-10-15",
-      fundingType: "Restricted Grant",
-      status: "Active"
-    },
-    {
-      id: "proj-unrestricted",
-      name: "AnaHon Commercial Production Services",
-      code: "ANAHON-COMM",
-      donorId: "",
-      budgetUSD: 150000,
-      startDate: "2025-01-01",
-      endDate: "2028-12-31",
-      fundingType: "Unrestricted Service",
       status: "Active"
     }
   ],
   budgetLines: [
-    { id: "bl-101", projectId: "proj-1", code: "EU-PERS-01", category: "Personnel", description: "Project Coordinator Salary", allocatedUSD: 24000, actualUSD: 10000, committedUSD: 14000 },
-    { id: "bl-102", projectId: "proj-1", code: "EU-PROD-02", category: "Production", description: "Short Film Videographer & Editor", allocatedUSD: 36000, actualUSD: 18000, committedUSD: 12000 },
-    { id: "bl-103", projectId: "proj-1", code: "EU-TRAV-03", category: "Travel & Per Diem", description: "Tripoli to Akkar Field Visits", allocatedUSD: 10000, actualUSD: 4200, committedUSD: 800 },
-    { id: "bl-104", projectId: "proj-1", code: "EU-ADM-04", category: "Administrative Support", description: "Proportional Rent Contribution", allocatedUSD: 15000, actualUSD: 5000, committedUSD: 0 },
-
-    { id: "bl-201", projectId: "proj-2", code: "NEM-RESE-01", category: "Personnel", description: "Investigative Researchers (Tripoli)", allocatedUSD: 18000, actualUSD: 8000, committedUSD: 4000 },
-    { id: "bl-202", projectId: "proj-2", code: "NEM-CAMV-02", category: "Production", description: "Camera Kit Sinking Cost Allocation", allocatedUSD: 12000, actualUSD: 11500, committedUSD: 0 },
-    { id: "bl-203", projectId: "proj-2", code: "NEM-POST-03", category: "Creative Services", description: "Color Grading & Sound Editing", allocatedUSD: 20000, actualUSD: 6000, committedUSD: 11000 },
-    { id: "bl-204", projectId: "proj-2", code: "NEM-AUD-04", category: "Compliance", description: "Required Mid-term Project Audit", allocatedUSD: 10000, actualUSD: 3500, committedUSD: 0 },
-
-    { id: "bl-301", projectId: "proj-3", code: "UNI-TRAI-01", category: "Trainers & Instructors", description: "Expert Sourcing Fees", allocatedUSD: 18000, actualUSD: 6000, committedUSD: 6000 },
-    { id: "bl-302", projectId: "proj-3", code: "UNI-MEAL-02", category: "Catering & Event", description: "Youth Workshop Catering (Tripoli)", allocatedUSD: 12000, actualUSD: 4200, committedUSD: 2000 },
-    { id: "bl-303", projectId: "proj-3", code: "UNI-TECH-03", category: "Operational Costs", description: "Broadband and Stream Equipments", allocatedUSD: 9000, actualUSD: 2500, committedUSD: 500 },
-    { id: "bl-304", projectId: "proj-3", code: "UNI-ADM-04", category: "Overheads", description: "Administrative Cost Pool Allocation", allocatedUSD: 6000, actualUSD: 1500, committedUSD: 0 }
+    { id: "bl-1", projectId: "proj-trf", code: "A.1.1", category: "Personnel", description: "Program director", allocatedUSD: 1560 },
+    { id: "bl-2", projectId: "proj-trf", code: "A.1.2", category: "Personnel", description: "Finance officer", allocatedUSD: 1200 },
+    { id: "bl-3", projectId: "proj-trf", code: "A.1.3", category: "Personnel", description: "Graphic designer", allocatedUSD: 1200 },
+    { id: "bl-4", projectId: "proj-trf", code: "B.1.1", category: "Contractors/Freelancers", description: "Podcasters", allocatedUSD: 900 },
+    { id: "bl-5", projectId: "proj-trf", code: "B.1.2", category: "Contractors/Freelancers", description: "Film makers", allocatedUSD: 2800 },
+    { id: "bl-6", projectId: "proj-trf", code: "B.1.3", category: "Contractors/Freelancers", description: "Content creators", allocatedUSD: 800 },
+    { id: "bl-7", projectId: "proj-trf", code: "C.1.3", category: "Travel", description: "Domestic transportation", allocatedUSD: 600 },
+    { id: "bl-8", projectId: "proj-trf", code: "D.1.1", category: "Other Costs", description: "AI tools", allocatedUSD: 360 },
+    { id: "bl-9", projectId: "proj-trf", code: "D.1.3", category: "Other Costs", description: "Internet data", allocatedUSD: 600 }
   ],
   vendors: [
-    { id: "ven-1", name: "Tripoli Media Hub & Studio S.A.R.L.", category: "Media Production Services", taxId: "24982-LB", bankInfo: "Bank Audi, Al-Tall Branch, Tripoli #38841-8", contact: "info@tripolimediahub.com", active: true, declarationSigned: true, blocked: false },
-    { id: "ven-2", name: "Qaddour Generator Network (Tripoli- Mina)", category: "Utilities & Fuel", taxId: "90023-LB", bankInfo: "Cash Only (USD/LBP)", contact: "Abo Al-Noor Qaddour (+961 70 829281)", active: true, declarationSigned: true, blocked: false },
-    { id: "ven-3", name: "Halabi Office Printers & Tech", category: "Office Assets & Supplies", taxId: "12311-LB", bankInfo: "BLOM Bank Tripoli Branch", contact: "Fouad Halabi (+961 06 439281)", active: true, declarationSigned: true, blocked: false },
-    { id: "ven-4", name: "Al-Salam Catering Tripoli", category: "Event Management & Catering", taxId: "8472-LB", bankInfo: "Bank of Beirut, Mina Tripoli", contact: "Samer Al-Salam (+961 71 289384)", active: true, declarationSigned: true, blocked: false },
-    { id: "ven-5", name: "Blacklisted Tech Solutions Lebanon", category: "Banned System Integrators", taxId: "9999-LB", bankInfo: "Banned / Cash Broker", contact: "Discontinued", active: false, declarationSigned: false, blocked: true }
+    { id: "ven-1", name: "Assem Nairab", category: "Graphic Designer / Service Provider", taxId: "N/A", bankInfo: "Cash", contact: "N/A", active: true, declarationSigned: true, blocked: false },
+    { id: "ven-2", name: "Maysaa Riz", category: "Service Provider", taxId: "N/A", bankInfo: "Cash", contact: "N/A", active: true, declarationSigned: true, blocked: false },
+    { id: "ven-3", name: "Omar", category: "Service Provider", taxId: "N/A", bankInfo: "Cash", contact: "N/A", active: true, declarationSigned: true, blocked: false },
+    { id: "ven-4", name: "Bilal Leila", category: "Service Provider", taxId: "N/A", bankInfo: "Cash", contact: "N/A", active: true, declarationSigned: true, blocked: false },
+    { id: "ven-5", name: "VIP Taxi", category: "Transportation", taxId: "N/A", bankInfo: "Cash", contact: "N/A", active: true, declarationSigned: true, blocked: false },
+    { id: "ven-6", name: "Jawhar Cell", category: "Telecommunications", taxId: "N/A", bankInfo: "Cash", contact: "N/A", active: true, declarationSigned: true, blocked: false },
+    { id: "ven-7", name: "Higgsfield", category: "Software Subscriptions", taxId: "N/A", bankInfo: "Card", contact: "N/A", active: true, declarationSigned: true, blocked: false },
+    { id: "ven-8", name: "Google One", category: "Software Subscriptions", taxId: "N/A", bankInfo: "Card", contact: "N/A", active: true, declarationSigned: true, blocked: false },
+    { id: "ven-9", name: "Anthropic, PBC - Claude", category: "Software Subscriptions", taxId: "N/A", bankInfo: "Card", contact: "N/A", active: true, declarationSigned: true, blocked: false }
   ],
   expenses: [
-    {
-      id: "exp-1",
-      voucherNo: "PV-2026-001",
-      title: "Citoyens Space Launch Trailer Video Shooting",
-      purpose: "Retained professional videographer team for capturing initial panels and Tripoli harbor drone clips.",
-      vendorId: "ven-1",
-      projectId: "proj-1",
-      budgetLineId: "bl-102",
-      currency: "USD",
-      amount: 1400,
-      rate: 1,
-      convertedAmount: 1400,
-      requestorId: "u-4",
-      status: "Posted",
-      paymentMethod: "Bank Audi Wire Transfer",
-      paymentRef: "TRF-AUDI-94821",
-      created_at: "2026-05-10T09:00:00Z",
-      approved_at: "2026-05-12T11:00:00Z",
-      paid_at: "2026-05-13T14:30:00Z",
-      comments: [
-        { id: "c-1", text: "Approved. All quotes compared perfectly.", author: "Samer Ghamrawi", timestamp: "2026-05-12T11:00:00Z" },
-        { id: "c-2", text: "Voucher audited, bank receipt attached.", author: "Layale El-Khatib", timestamp: "2026-05-13T14:30:00Z" }
-      ],
-      hasAttachment: true
-    },
-    {
-      id: "exp-2",
-      voucherNo: "PV-2026-002",
-      title: "Generator Subscription Office Mina Month May",
-      purpose: "Power backup subscription during peak production hours in Al-Mina area office.",
-      vendorId: "ven-2",
-      projectId: "proj-unrestricted",
-      budgetLineId: "",
-      currency: "USD",
-      amount: 450,
-      rate: 1,
-      convertedAmount: 450,
-      requestorId: "u-3",
-      status: "Paid",
-      paymentMethod: "Petty Cash",
-      paymentRef: "CSH-MAY-GEN-02",
-      created_at: "2026-05-20T08:30:00Z",
-      approved_at: "2026-05-20T10:00:00Z",
-      paid_at: "2026-05-21T09:15:00Z",
-      comments: [
-        { id: "c-3", text: "Generator rates increased in El-Mina, justified.", author: "Layale El-Khatib", timestamp: "2026-05-19T08:30:00Z" }
-      ],
-      hasAttachment: true
-    },
-    {
-      id: "exp-3",
-      voucherNo: "PV-2026-003",
-      title: "Audio Gear Accessories Upgrade",
-      purpose: "Purchased dual-channel lapel microphone kits for regional project interviews.",
-      vendorId: "ven-3",
-      projectId: "proj-2",
-      budgetLineId: "bl-202",
-      currency: "EUR",
-      amount: 800,
-      rate: 1.08,
-      convertedAmount: 864,
-      requestorId: "u-4",
-      status: "Under Finance Review",
-      created_at: "2026-05-24T15:20:00Z",
-      comments: [],
-      hasAttachment: true
-    }
+    { id: "exp-1", voucherNo: "PV-TRF-001", title: "Higgsfield Sub", purpose: "AI Video Generation", vendorId: "ven-7", projectId: "proj-trf", budgetLineId: "bl-8", currency: "USD", amount: 15, rate: 1, convertedAmount: 15, whtAmount: 1.13, netAmount: 13.87, requestorId: "emp-1", status: "Paid", paymentMethod: "Card", paymentRef: "CC-001", created_at: "2026-06-23T10:00:00Z", commentsJson: "[]", allocationsJson: "[]", hasAttachment: true },
+    { id: "exp-3", voucherNo: "PV-TRF-003", title: "Google AI Ultra", purpose: "Google One Ultra", vendorId: "ven-8", projectId: "proj-trf", budgetLineId: "bl-8", currency: "USD", amount: 99.99, rate: 1, convertedAmount: 99.99, whtAmount: 7.50, netAmount: 92.49, requestorId: "emp-1", status: "Paid", paymentMethod: "Card", paymentRef: "CC-003", created_at: "2026-06-21T11:00:00Z", commentsJson: "[]", allocationsJson: "[]", hasAttachment: true },
+    { id: "exp-4", voucherNo: "PV-TRF-004", title: "Claude Pro", purpose: "Anthropic Subscription", vendorId: "ven-9", projectId: "proj-trf", budgetLineId: "bl-8", currency: "USD", amount: 20.00, rate: 1, convertedAmount: 20.00, whtAmount: 1.50, netAmount: 18.50, requestorId: "emp-1", status: "Paid", paymentMethod: "Card", paymentRef: "CC-004", created_at: "2026-06-15T10:00:00Z", commentsJson: "[]", allocationsJson: "[]", hasAttachment: true }
   ],
-  procurements: [
-    {
-      id: "pr-1",
-      title: "High-Performance Camera Sourcing",
-      projectId: "proj-2",
-      budgetLineId: "bl-202",
-      status: "Approved",
-      quotations: [
-        { vendorName: "Tripoli Media Hub", amount: 1500, currency: "USD", score: 90, comment: "Preferred technical warranty.", selected: true },
-        { vendorName: "Halabi Office Tech", amount: 1650, currency: "USD", score: 85, comment: "Extra battery included but pricing higher.", selected: false },
-        { vendorName: "Beirut Audio Hub", amount: 1400, currency: "USD", score: 60, comment: "No maintenance branch in Tripoli, risky delivery.", selected: false }
-      ],
-      justification: "Selected Tripoli Media Hub due to local maintenance presence and highest quality score despite not being the absolute lowest quote.",
-      conflictDeclared: true
-    }
-  ],
+  procurements: [],
   bankAccounts: [
-    { id: "ba-1", name: "Bank Audi Tripoli Base USD", type: "Bank", currency: "USD", accountNo: "389281-22-01-USD", balance: 145000, active: true },
-    { id: "ba-2", name: "Bank Audi Tripoli Sub-EUR", type: "Bank", currency: "EUR", accountNo: "389281-22-02-EUR", balance: 27000, active: true },
-    { id: "ba-3", name: "Petty Cash Box USD (Layale Vault)", type: "Petty Cash", currency: "USD", accountNo: "Layale - Vault Safe 1", balance: 4200, active: true },
-    { id: "ba-4", name: "Petty Cash Box LBP (Layale Cash)", type: "Petty Cash", currency: "LBP", accountNo: "Layale - Vault Drawer 2", balance: 45000000, active: true }
+    { id: "ba-1", name: "TRF Base USD", type: "Bank", currency: "USD", accountNo: "TRF-USD-01", balance: 5029.43, active: true }
   ],
   bankTransactions: [
-    { id: "bt-1", bankAccountId: "ba-1", date: "2026-05-01", description: "Opening Balance", amount: 145000, type: "Deposit", reconciled: true },
-    { id: "bt-2", bankAccountId: "ba-1", date: "2026-05-13", description: "PV-2026-001 citizen Video Shooting", amount: 1400, type: "Withdrawal", reconciled: true, voucherNo: "PV-2026-001" },
-    { id: "bt-3", bankAccountId: "ba-3", date: "2026-05-21", description: "PV-2026-002 generator office Mina May", amount: 450, type: "Withdrawal", reconciled: false, voucherNo: "PV-2026-002" }
+    { id: "bt-1", bankAccountId: "ba-1", date: "2026-02-26", description: "TRF Incoming Transfer", amount: 2000.00, type: "Deposit", reconciled: true },
+    { id: "bt-2", bankAccountId: "ba-1", date: "2026-06-09", description: "TRF Incoming Transfer", amount: 3029.43, type: "Deposit", reconciled: true }
   ],
   journalEntries: [
-    {
-      id: "je-1",
-      journal: "Cash Payments",
-      date: "2026-05-13",
-      description: "PV-2026-001 citizen video recording - Tripoli Citizen Space",
-      referenceNo: "PV-2026-001",
-      isPosted: true,
-      items: [
-        { accountCode: "6120", debit: 1400, credit: 0, projectId: "proj-1", donorId: "don-1" },
-        { accountCode: "1100", debit: 0, credit: 1400 }
-      ]
-    }
+    { id: "je-1", journal: "General Journal", date: "2026-06-23", description: "PV-TRF-001 Higgsfield WHT", referenceNo: "PV-TRF-001", isPosted: true, itemsJson: JSON.stringify([{ accountCode: "6400", debit: 15, credit: 0, projectId: "proj-trf" }, { accountCode: "1100", debit: 0, credit: 13.87, projectId: "proj-trf" }, { accountCode: "2310", debit: 0, credit: 1.13, projectId: "proj-trf" }]) },
+    { id: "je-2", journal: "General Journal", date: "2026-06-21", description: "PV-TRF-003 Google Ultra WHT", referenceNo: "PV-TRF-003", isPosted: true, itemsJson: JSON.stringify([{ accountCode: "6400", debit: 99.99, credit: 0, projectId: "proj-trf" }, { accountCode: "1100", debit: 0, credit: 92.49, projectId: "proj-trf" }, { accountCode: "2310", debit: 0, credit: 7.50, projectId: "proj-trf" }]) },
+    { id: "je-3", journal: "General Journal", date: "2026-06-15", description: "PV-TRF-004 Claude Pro WHT", referenceNo: "PV-TRF-004", isPosted: true, itemsJson: JSON.stringify([{ accountCode: "6400", debit: 20.00, credit: 0, projectId: "proj-trf" }, { accountCode: "1100", debit: 0, credit: 18.50, projectId: "proj-trf" }, { accountCode: "2310", debit: 0, credit: 1.50, projectId: "proj-trf" }]) }
   ],
   employees: [
-    { id: "emp-1", name: "Ziad Al-Ali", position: "Full-Time Video Coordinator", salary: 2200, allowance: 400, paymentMethod: "Audi Bank Wire", contractType: "Regular Employee", active: true },
-    { id: "emp-2", name: "Farah Shami", position: "Tripoli Community Officer", salary: 1800, allowance: 250, paymentMethod: "Audi Bank Wire", contractType: "Employee", active: true },
-    { id: "emp-3", name: "Jean Haddad", position: "Lebanese Tax & Audit Advisor", salary: 1500, allowance: 0, paymentMethod: "USD Cash Check", contractType: "Consultant / Part-time", active: true }
+    { id: "emp-1", name: "Saad Matar", position: "Program Director", salary: 0, allowance: 0, paymentMethod: "Bank Wire", contractType: "Regular Employee", active: true },
+    { id: "emp-2", name: "Marwan El Cheikh", position: "Finance Officer", salary: 0, allowance: 0, paymentMethod: "Bank Wire", contractType: "Regular Employee", active: true },
+    { id: "emp-3", name: "Sally Kayyali", position: "Graphic Designer", salary: 0, allowance: 0, paymentMethod: "Bank Wire", contractType: "Regular Employee", active: true }
   ],
   timesheets: [
-    {
-      id: "ts-1",
-      employeeId: "emp-1",
-      month: "2026-05",
-      totalDays: 22,
-      allocations: [
-        { projectId: "proj-1", percentage: 50 },
-        { projectId: "proj-2", percentage: 30 },
-        { projectId: "proj-unrestricted", percentage: 20 }
-      ],
-      status: "Approved",
-      approvedBy: "Samer Ghamrawi"
-    }
+    { id: "ts-1", employeeId: "emp-1", month: "2026-02", totalDays: 20, allocationsJson: "[]", status: "Approved" },
+    { id: "ts-2", employeeId: "emp-1", month: "2026-03", totalDays: 21, allocationsJson: "[]", status: "Approved" },
+    { id: "ts-3", employeeId: "emp-2", month: "2026-02", totalDays: 20, allocationsJson: "[]", status: "Approved" },
+    { id: "ts-4", employeeId: "emp-2", month: "2026-03", totalDays: 21, allocationsJson: "[]", status: "Approved" },
+    { id: "ts-5", employeeId: "emp-3", month: "2026-02", totalDays: 20, allocationsJson: "[]", status: "Approved" },
+    { id: "ts-6", employeeId: "emp-3", month: "2026-03", totalDays: 21, allocationsJson: "[]", status: "Approved" }
   ],
-  fixedAssets: [
-    {
-      id: "asset-1",
-      name: "Sony FX6 Camera Body + 24-70 GM Lens Set",
-      serialNumber: "SN-93821039",
-      fundingProjectId: "proj-2",
-      purchaseDate: "2026-02-15",
-      cost: 6500,
-      currency: "USD",
-      usefulLifeYears: 4,
-      custodian: "Ziad Al-Ali",
-      location: "Main studio Locker 3B",
-      condition: "Excellent",
-      currentBookValue: 6093,
-      depreciationMethod: "Straight Line",
-      accumulatedDepreciation: 407
-    },
-    {
-      id: "asset-2",
-      name: "MacBook Pro M3 Max 16 inch - edit rig Tripoli",
-      serialNumber: "SN-C02R5D3W",
-      fundingProjectId: "proj-1",
-      purchaseDate: "2026-01-10",
-      cost: 3800,
-      currency: "USD",
-      usefulLifeYears: 3,
-      custodian: "Farah Shami",
-      location: "Tripoli citizen workspace El-Mina",
-      condition: "Excellent",
-      currentBookValue: 3325,
-      depreciationMethod: "Straight Line",
-      accumulatedDepreciation: 475
-    }
-  ],
+  fixedAssets: [],
   partnerAccounts: [
     { id: "pt-1", partnerName: "Saad Matar", capitalBalance: 30000, loansToCompany: 5000, drawingsBalance: 1200, currentAccountBalance: 33800 },
     { id: "pt-2", partnerName: "Samer Ghamrawi", capitalBalance: 20000, loansToCompany: 0, drawingsBalance: 800, currentAccountBalance: 19200 }

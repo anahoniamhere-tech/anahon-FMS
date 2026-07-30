@@ -83,6 +83,15 @@ export default function App() {
   const [newAccountCurrency, setNewAccountCurrency] = useState<"USD" | "EUR" | "LBP">("USD");
   const [newAccountGroup, setNewAccountGroup] = useState("Operating Expenses");
 
+  // New Project form states
+  const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectCode, setNewProjectCode] = useState("");
+  const [newProjectDonor, setNewProjectDonor] = useState("");
+  const [newProjectBudget, setNewProjectBudget] = useState("");
+  const [newProjectStartDate, setNewProjectStartDate] = useState("");
+  const [newProjectEndDate, setNewProjectEndDate] = useState("");
+  const [newProjectFundingType, setNewProjectFundingType] = useState<"Restricted Grant" | "Unrestricted Service">("Restricted Grant");
+
   // New Expense submission form
   const [expenseTitle, setExpenseTitle] = useState("");
   const [expensePurpose, setExpensePurpose] = useState("");
@@ -93,6 +102,8 @@ export default function App() {
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseCustomRate, setExpenseCustomRate] = useState("");
   const [tempAttachment, setTempAttachment] = useState<{ filename: string; mimeType: string; base64: string } | null>(null);
+  const [aiScanning, setAiScanning] = useState(false);
+  const [aiVendorScanning, setAiVendorScanning] = useState(false);
 
   // Daily Operations placeholder states
   const [dailySelectedDate, setDailySelectedDate] = useState<string>("2026-05-25");
@@ -209,10 +220,98 @@ export default function App() {
   // Notification Banner
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
+  // Global search (top bar)
+  const [globalQuery, setGlobalQuery] = useState<string>("");
+
+  // Voucher detail drawer
+  const [drawerExpenseId, setDrawerExpenseId] = useState<string | null>(null);
+
+  // Banking ledger view controls
+  const [bankFilterAcc, setBankFilterAcc] = useState<string>("");
+  const [bankSearch, setBankSearch] = useState<string>("");
+  const [bankShown, setBankShown] = useState<number>(50);
+
+  // Periodic reports (Policy 11.2)
+  const [reportData, setReportData] = useState<any>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportEnd, setReportEnd] = useState<string>(new Date().toISOString().slice(0, 7));
+
+  // Export filename follows the Policy 13.4.1 pattern (YEAR_ENTITY_DOCTYPE_PERIOD).
+  // Browsers take the PDF filename from document.title, so we swap it for the print only.
+  const reportFileName = (meta: any) =>
+    `${meta.periodEnd.slice(0, 4)}_ANAHON_${meta.months === 12 ? "ANNUAL" : "SEMI-ANNUAL"}-FINANCIAL-REPORT_${meta.periodStart}_to_${meta.periodEnd}`;
+
+  // Direct PDF export: writes the file with the policy filename, bypassing the OS print
+  // dialog (which names the file after the host app, not the page).
+  const downloadPeriodReport = async () => {
+    if (!reportData) return;
+    const el = document.getElementById("period-report");
+    if (!el) return;
+    setReportLoading(true);
+    try {
+      // Rendered server-side (headless Chrome): real selectable text and page breaks.
+      const res = await fetch(`/api/reports/pdf?months=${reportData.meta.months}&end=${reportEnd}`);
+      if (!res.ok) throw new Error((await res.json()).error || "Rendering failed");
+      const blob = await res.blob();
+      const name = `${reportFileName(reportData.meta)}.pdf`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      triggerToast(`Saved ${name} to your Downloads folder.`);
+    } catch (err: any) {
+      triggerToast(`PDF export failed: ${err.message}. Use Print instead.`, "error");
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const printPeriodReport = () => {
+    if (!reportData) return;
+    const previousTitle = document.title;
+    document.title = reportFileName(reportData.meta);
+    const restore = () => {
+      document.title = previousTitle;
+      window.removeEventListener("afterprint", restore);
+    };
+    window.addEventListener("afterprint", restore);
+    window.print();
+    setTimeout(restore, 60000); // fallback if afterprint never fires
+  };
+
+  const generatePeriodReport = async (months: 6 | 12) => {
+    setReportLoading(true);
+    try {
+      const res = await fetch(`/api/reports/period?months=${months}&end=${reportEnd}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Report generation failed.");
+      setReportData(data);
+    } catch (err: any) {
+      setReportData(null);
+      triggerToast(err.message, "error");
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
   const handleNavClick = (tab: string) => {
     setActiveTab(tab);
-    setIsOpen(false);
+    // Auto-close only on mobile, where the sidebar overlays the content.
+    if (typeof window !== "undefined" && window.innerWidth < 768) setIsOpen(false);
   };
+
+  // Self-service staff (Policy 8.5) are routed to the timesheet tab. Lives up here with the
+  // other hooks — placing it after the login early-return breaks the Rules of Hooks.
+  useEffect(() => {
+    if (!state?.users?.length) return;   // state is null until the backend loads
+    const u = state.users.find(x => x.id === activeUserId) || state.users[0];
+    if (u?.role === "Employee (Self-Service)" && activeTab !== "payroll") setActiveTab("payroll");
+  }, [state, activeUserId, activeTab]);
+
 
   // Load backend state on initialization
   const refreshState = async () => {
@@ -497,6 +596,9 @@ export default function App() {
   // Active simulated user
   const currentUser = state.users.find(u => u.id === activeUserId) || state.users[0];
 
+  // Self-service staff (Policy 8.5) see only their own timesheet screen.
+  const isSelfService = currentUser?.role === "Employee (Self-Service)";
+
   // Helper: Converted totals
   const totalUSDInBank = state.bankAccounts
     .filter(b => b.active)
@@ -555,6 +657,91 @@ export default function App() {
     }
   };
 
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjectName || !newProjectCode || !newProjectDonor || !newProjectBudget || !newProjectStartDate || !newProjectEndDate || !newProjectFundingType) {
+      triggerToast("All project fields are required.", "error");
+      return;
+    }
+
+    if (state.projects.some(p => p.code.toLowerCase() === newProjectCode.toLowerCase())) {
+      triggerToast(`Project code '${newProjectCode}' already exists.`, "error");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/projects/new", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newProjectName,
+          code: newProjectCode,
+          donorId: newProjectDonor,
+          budgetUSD: Number(newProjectBudget),
+          startDate: newProjectStartDate,
+          endDate: newProjectEndDate,
+          fundingType: newProjectFundingType,
+          user: currentUser
+        })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to create project");
+      }
+
+      triggerToast(`Project ${newProjectName} created successfully.`);
+      setNewProjectName("");
+      setNewProjectCode("");
+      setNewProjectDonor("");
+      setNewProjectBudget("");
+      setNewProjectStartDate("");
+      setNewProjectEndDate("");
+      setNewProjectFundingType("Restricted Grant");
+
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const handleDeleteProject = async (e: React.MouseEvent, projectId: string) => {
+    e.stopPropagation();
+
+    if (!["Super Admin", "Finance Officer"].includes(currentUser.role)) {
+      triggerToast("You do not have permission to delete projects.", "error");
+      return;
+    }
+
+    const proj = state.projects.find(p => p.id === projectId);
+    if (!proj) return;
+
+    if (!window.confirm(`Are you sure you want to delete project ${proj.name} (${proj.code})? This will also delete all associated budget lines.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/projects/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, user: currentUser })
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete project");
+      }
+
+      triggerToast(`Project ${proj.name} successfully deleted.`);
+      if (selectedProjectId === projectId) {
+        setSelectedProjectId(null);
+      }
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
   // Drag & drop file base64 reader
   const handleFileDrop = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -568,6 +755,87 @@ export default function App() {
         base64: base64String
       });
       triggerToast(`Attachment loaded for audit: "${file.name}" (Ready)`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // AI invoice scan: reads the scanned file, prefills the voucher form for human review.
+  // Never submits — Policy 5.2 keeps initiation a human act.
+  const handleAiInvoiceScan = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64String = (reader.result as string).split(",")[1];
+      // The scan doubles as the voucher's supporting document (Policy 6.1)
+      setTempAttachment({ filename: file.name, mimeType: file.type, base64: base64String });
+      setAiScanning(true);
+      try {
+        const res = await fetch("/api/expense/scan-invoice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64: base64String, mimeType: file.type, filename: file.name, user: currentUser })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "AI scan failed.");
+        const x = data.extracted;
+        if (x.title) setExpenseTitle(x.title);
+        if (x.purpose || x.invoiceRef || x.date) {
+          setExpensePurpose([x.purpose, x.invoiceRef && `Ref: ${x.invoiceRef}`, x.date && `Invoice date: ${x.date}`]
+            .filter(Boolean).join(" | "));
+        }
+        if (x.vendorId) setExpenseVendor(x.vendorId);
+        if (x.currency) setExpenseCurrency(x.currency);
+        if (x.amount) setExpenseAmount(String(x.amount));
+        if (x.suggestedProjectId) setExpenseProject(x.suggestedProjectId);
+        if (x.suggestedBudgetLineId) setExpenseBudgetLine(x.suggestedBudgetLineId);
+        const warn = (x.warnings || []).length ? ` ⚠️ ${x.warnings.join("; ")}` : "";
+        triggerToast(`AI prefilled from "${file.name}" (confidence: ${x.confidence}). Verify every field against the scan before submitting.${warn}`);
+      } catch (err: any) {
+        triggerToast(err.message, "error");
+      } finally {
+        setAiScanning(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // AI vendor scan: reads a supplier invoice and prefills the vendor registration form.
+  // Vetting and registration stay manual (Policy 7.3).
+  const handleAiVendorScan = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64String = (reader.result as string).split(",")[1];
+      setAiVendorScanning(true);
+      try {
+        const res = await fetch("/api/vendor/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ base64: base64String, mimeType: file.type, filename: file.name, user: currentUser })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "AI scan failed.");
+        const x = data.extracted;
+        if (x.duplicateOfVendorId) {
+          const dup = state.vendors.find(v => v.id === x.duplicateOfVendorId);
+          triggerToast(`⚠️ "${x.name}" looks already registered as "${dup?.name || x.duplicateOfVendorId}" — check the directory before creating a duplicate.`, "error");
+        }
+        if (x.name) setNewVendorName(x.name);
+        if (x.category) setNewVendorCategory(x.category);
+        if (x.taxId) setNewVendorTaxId(x.taxId);
+        if (x.bankInfo) setNewVendorBankInfo(x.bankInfo);
+        if (x.contact) setNewVendorContact(x.contact);
+        const warn = (x.warnings || []).length ? ` ⚠️ ${x.warnings.join("; ")}` : "";
+        if (!x.duplicateOfVendorId) {
+          triggerToast(`AI prefilled supplier "${x.name}" (confidence: ${x.confidence}). Verify against the document, complete vetting, then register.${warn}`);
+        }
+      } catch (err: any) {
+        triggerToast(err.message, "error");
+      } finally {
+        setAiVendorScanning(false);
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -1413,14 +1681,19 @@ export default function App() {
   };
 
   const handleTimesheetSubmit = async (empId: string) => {
-    const allocations = state.projects.map(p => ({
-      projectId: p.id,
-      percentage: tsAllocValues[`${empId}-${p.id}`] || 0
-    }));
+    // Policy 8.4: the timesheet records the % of time per DONOR project; the remainder is
+    // non-project/core time. Requiring exactly 100% would force over-allocation (Policy 8.7).
+    const allocations = state.projects
+      .map(p => ({ projectId: p.id, percentage: tsAllocValues[`${empId}-${p.id}`] || 0 }))
+      .filter(a => a.percentage > 0);
 
     const totalPerc = allocations.reduce((s, x) => s + x.percentage, 0);
-    if (totalPerc !== 100) {
-      triggerToast(`Fractions sum issue: Timesheet allocations must sum identically to 100%. (Current pool: ${totalPerc}%)`, "error");
+    if (totalPerc <= 0) {
+      triggerToast("Enter at least one project percentage (donor-charged share of the month).", "error");
+      return;
+    }
+    if (totalPerc > 100) {
+      triggerToast(`Over-allocation prohibited (Policy 8.7): donor allocations sum to ${totalPerc}%. Reduce to 100% or less.`, "error");
       return;
     }
 
@@ -1516,6 +1789,47 @@ export default function App() {
             <p className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">Tripoli Civil Co. Compliance Terminal</p>
           </div>
         </div>
+        {/* Global search — vouchers, projects, vendors, documents, bank, people */}
+        {!isSelfService && (
+          <div className="relative flex-1 max-w-md mx-6">
+            <input
+              value={globalQuery}
+              onChange={e => setGlobalQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === "Escape") setGlobalQuery(""); }}
+              placeholder="🔍 Search vouchers, projects, vendors, documents, bank…"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500"
+            />
+            {globalQuery.trim().length >= 2 && (
+              <div className="absolute top-full mt-1 left-0 right-0 bg-white text-slate-900 rounded-lg shadow-xl border border-slate-200 z-[70] max-h-80 overflow-y-auto">
+                {(() => {
+                  const q = globalQuery.toLowerCase();
+                  type Hit = { k: string; label: string; sub: string; go: () => void };
+                  const hits: Hit[] = [];
+                  state.expenses.filter(e => (e.voucherNo + " " + e.title + " " + e.purpose).toLowerCase().includes(q)).slice(0, 4)
+                    .forEach(e => hits.push({ k: "Voucher", label: `${e.voucherNo} — ${e.title}`, sub: formatUSD(e.convertedAmount), go: () => { setSearchTerm(e.voucherNo); handleNavClick("expenses"); } }));
+                  state.projects.filter(p => (p.code + " " + p.name).toLowerCase().includes(q)).slice(0, 3)
+                    .forEach(p => hits.push({ k: "Project", label: `${p.code} — ${p.name}`, sub: p.status, go: () => { setSelectedProjectId(p.id); handleNavClick("projects"); } }));
+                  state.vendors.filter(v => v.name.toLowerCase().includes(q)).slice(0, 3)
+                    .forEach(v => hits.push({ k: "Vendor", label: v.name, sub: v.category, go: () => handleNavClick("vendors") }));
+                  state.documents.filter(d => d.filename.toLowerCase().includes(q)).slice(0, 3)
+                    .forEach(d => hits.push({ k: "Document", label: d.filename, sub: d.category, go: () => handleNavClick(d.linkedRecordType === "Expense" ? "expenses" : "projects") }));
+                  state.bankTransactions.filter(t => t.description.toLowerCase().includes(q)).slice(0, 3)
+                    .forEach(t => hits.push({ k: "Bank", label: t.description.slice(0, 64), sub: `${t.date} · ${t.type}`, go: () => { setBankSearch(globalQuery); setBankFilterAcc(""); handleNavClick("banking"); } }));
+                  state.employees.filter(emp => emp.name.toLowerCase().includes(q)).slice(0, 2)
+                    .forEach(emp => hits.push({ k: "Employee", label: emp.name, sub: emp.position, go: () => handleNavClick("payroll") }));
+                  if (!hits.length) return <p className="px-3 py-2.5 text-xs text-slate-500">No matches for “{globalQuery}”.</p>;
+                  return hits.map((h, i) => (
+                    <button key={i} onClick={() => { h.go(); setGlobalQuery(""); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0 flex items-center gap-2">
+                      <span className="text-[9px] font-bold uppercase w-16 shrink-0 text-slate-400">{h.k}</span>
+                      <span className="text-xs font-medium flex-1 truncate">{h.label}</span>
+                      <span className="text-[10px] text-slate-400 shrink-0">{h.sub}</span>
+                    </button>
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-4">
           <button onClick={handleFirebaseSignOut} className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer">
             <UserCheck className="w-3.5 h-3.5 text-red-500" />
@@ -1556,11 +1870,14 @@ export default function App() {
             : '-translate-x-full md:translate-x-0 md:w-0 md:p-0 md:border-r-0 overflow-hidden'
         }`}>
           <nav className="space-y-1 font-sans">
+            {!isSelfService && (<>
+            <p className="px-3 pt-1 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">Overview</p>
             <button onClick={() => handleNavClick("dashboard")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Activity className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">Overview Dashboard</span>
             </button>
 
+            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">Registers</p>
             <button onClick={() => handleNavClick("accounts")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "accounts" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Sliders className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">Chart of Accounts</span>
@@ -1571,6 +1888,7 @@ export default function App() {
               <span className="text-left flex-1">Donors & Projects</span>
             </button>
 
+            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">Money Flow</p>
             <button onClick={() => handleNavClick("expenses")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <FileText className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">Disbursement Vouchers</span>
@@ -1599,11 +1917,15 @@ export default function App() {
               <span className="text-left flex-1">General double-entry Ledger</span>
             </button>
 
+            </>)}
+            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">People</p>
             <button onClick={() => handleNavClick("payroll")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "payroll" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <User className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">Timesheets & Payroll Allocation</span>
             </button>
 
+            {!isSelfService && (<>
+            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">Records & Governance</p>
             <button onClick={() => handleNavClick("assets")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "assets" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <HardDrive className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">Fixed Assets Roll-Forward</span>
@@ -1619,6 +1941,11 @@ export default function App() {
               <span className="text-left flex-1">Compliance Control Desk</span>
               <span className="ml-auto flex h-2 w-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
             </button>
+            <button onClick={() => handleNavClick("reports")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "reports" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <FileText className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">Periodic Reports</span>
+            </button>
+            </>)}
           </nav>
 
           <div className="border-t border-slate-800 pt-4 mt-6">
@@ -1668,45 +1995,45 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Financial Summary KPIs */}
+              {/* Financial Summary KPIs — each card opens its tab */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <button type="button" onClick={() => handleNavClick("banking")} className="text-left rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
                   <div className="flex items-center justify-between text-slate-500">
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Total Available Treasury Pool</span>
                     <DollarSign className="h-5 w-5 text-emerald-500" />
                   </div>
                   <h3 className="mt-2 text-2xl font-bold font-mono text-slate-900">{formatUSD(totalUSDInBank)}</h3>
-                  <p className="mt-1 text-xs text-slate-500">Across Bank accounts and 2 Cash boxes</p>
-                </div>
+                  <p className="mt-1 text-xs text-slate-500">Across Bank accounts · click to open Banking</p>
+                </button>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <button type="button" onClick={() => handleNavClick("projects")} className="text-left rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
                   <div className="flex items-center justify-between text-slate-500">
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Active Donor Projects</span>
                     <FolderGit2 className="h-5 w-5 text-blue-500" />
                   </div>
                   <h3 className="mt-2 text-2xl font-bold font-mono text-blue-900">{state.projects.length}</h3>
-                  <p className="mt-1 text-xs text-slate-500">With restriction covenants active</p>
-                </div>
+                  <p className="mt-1 text-xs text-slate-500">With restriction covenants · click to open Projects</p>
+                </button>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <button type="button" onClick={() => handleNavClick("expenses")} className="text-left rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
                   <div className="flex items-center justify-between text-slate-500">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-1000">Outstanding Approvals</span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Outstanding Approvals</span>
                     <Sliders className="h-5 w-5 text-amber-500" />
                   </div>
                   <h3 className="mt-2 text-2xl font-bold font-mono text-amber-700">
                     {state.expenses.filter(e => e.status === "Submitted" || e.status === "Under Finance Review").length} Vouchers
                   </h3>
-                  <p className="mt-1 text-xs text-slate-500">Pending Director / Finance signatures</p>
-                </div>
+                  <p className="mt-1 text-xs text-slate-500">Pending signatures · click to open Vouchers</p>
+                </button>
 
-                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <button type="button" onClick={() => handleNavClick("compliance")} className="text-left rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
                   <div className="flex items-center justify-between text-slate-500">
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Vat rate / Tax settings</span>
                     <Percent className="h-5 w-5 text-slate-600" />
                   </div>
                   <h3 className="mt-2 text-2xl font-bold font-mono text-slate-800">MoF 11% / SSD Pool</h3>
-                  <p className="mt-1 text-xs text-slate-500">Adjusted to Ministry of Finance Chapter 3 regulations</p>
-                </div>
+                  <p className="mt-1 text-xs text-slate-500">MoF Chapter 3 · click to open Compliance</p>
+                </button>
               </div>
 
               {/* Active Projects Burn rates visual tracking blocks */}
@@ -1718,7 +2045,7 @@ export default function App() {
                     const spent = lines.reduce((s, x) => s + x.actualUSD, 0);
                     const committed = lines.reduce((s, x) => s + x.committedUSD, 0);
                     const remaining = Math.max(0, p.budgetUSD - (spent + committed));
-                    const percentageSpent = Math.min(100, ((spent + committed) / p.budgetUSD) * 100);
+                    const percentageSpent = p.budgetUSD > 0 ? Math.min(100, ((spent + committed) / p.budgetUSD) * 100) : 0;
 
                     return (
                       <div key={p.id} className="p-4 rounded-lg bg-slate-50 border border-slate-105">
@@ -1728,7 +2055,7 @@ export default function App() {
                             <span className="text-sm font-bold text-slate-900">{p.name}</span>
                           </div>
                           <div className="text-xs font-mono text-slate-500">
-                            Total Limit: {formatUSD(p.budgetUSD)} | Burn rate: <span className="font-bold text-slate-850">{percentageSpent.toFixed(1)}%</span>
+                            Total Limit: {formatUSD(p.budgetUSD)} | Burn rate (actual + committed): <span className="font-bold text-slate-850">{percentageSpent.toFixed(1)}%</span>
                           </div>
                         </div>
 
@@ -1759,20 +2086,23 @@ export default function App() {
                     Statutory Post Filing Calendar & Alerts
                   </h3>
                   <div className="divide-y divide-slate-100">
-                    {state.complianceTasks.map(t => (
-                      <div key={t.id} className="py-3 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">{t.title}</p>
-                          <span className="text-xs text-slate-500">Deadline: {t.dueDate} • Code: {t.category}</span>
+                    {state.complianceTasks.map(t => {
+                      const isOverdue = t.status !== "Done" && t.dueDate < new Date().toISOString().split("T")[0];
+                      return (
+                        <div key={t.id} className="py-3 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-800">{t.title}</p>
+                            <span className="text-xs text-slate-500">Deadline: {t.dueDate} • Code: {t.category}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${t.status === "Done" ? "bg-emerald-100 text-emerald-700" : isOverdue ? "bg-red-100 text-red-700 animate-pulse" : "bg-amber-100 text-amber-700"
+                              }`}>
+                              {t.status === "Done" ? "Done" : isOverdue ? "⚠ OVERDUE" : t.status}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${t.status === "Done" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                            }`}>
-                            {t.status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -1873,8 +2203,21 @@ export default function App() {
 
               {/* Accounts table */}
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                <table className="w-full text-left border-collapse">
-                  <header className="bg-slate-100">
+                {/* Mobile: stacked cards */}
+                <div className="md:hidden divide-y divide-slate-100">
+                  {state.accounts.map(acc => (
+                    <div key={acc.code} className="px-4 py-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono font-bold text-xs text-slate-800">{acc.code}</span>
+                        <span className="font-mono font-bold text-sm text-slate-900">{acc.balance.toLocaleString()} {acc.currency}</span>
+                      </div>
+                      <p className="text-xs text-slate-700 mt-0.5">{acc.name}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{acc.type} · {acc.reportingGroup}{acc.active ? "" : " · inactive"}</p>
+                    </div>
+                  ))}
+                </div>
+                <table className="w-full text-left border-collapse hidden md:table">
+                  <thead className="bg-slate-100">
                     <tr className="border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
                       <th className="px-6 py-3">Code / ID</th>
                       <th className="px-6 py-3">Reporting Classification Name</th>
@@ -1883,7 +2226,7 @@ export default function App() {
                       <th className="px-6 py-3 text-right">Raw Ledger Balance</th>
                       <th className="px-6 py-3 text-right hidden md:table-cell">Status</th>
                     </tr>
-                  </header>
+                  </thead>
                   <tbody className="divide-y divide-slate-100 text-sm font-sans">
                     {state.accounts.map((acc) => (
                       <tr key={acc.code} className="hover:bg-slate-50 transition-colors">
@@ -1940,6 +2283,94 @@ export default function App() {
                 ))}
               </div>
 
+              {/* Add Project Inline form */}
+              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                <form onSubmit={handleCreateProject} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">➕ Create New Project</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Project Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Akkar Legal Support Clinic"
+                        value={newProjectName}
+                        onChange={(e) => setNewProjectName(e.target.value)}
+                        className="finance-input w-full font-sans text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Project Code (Unique)</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. AKK-2026"
+                        value={newProjectCode}
+                        onChange={(e) => setNewProjectCode(e.target.value)}
+                        className="finance-input w-full font-mono text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Donor Partner</label>
+                      <select
+                        value={newProjectDonor}
+                        onChange={(e) => setNewProjectDonor(e.target.value)}
+                        className="finance-input w-full text-xs"
+                      >
+                        <option value="">Select a Donor...</option>
+                        {state.donors.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Budget Pool (USD)</label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 50000"
+                        value={newProjectBudget}
+                        onChange={(e) => setNewProjectBudget(e.target.value)}
+                        className="finance-input w-full font-mono text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        value={newProjectStartDate}
+                        onChange={(e) => setNewProjectStartDate(e.target.value)}
+                        className="finance-input w-full font-mono text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">End Date</label>
+                      <input
+                        type="date"
+                        value={newProjectEndDate}
+                        onChange={(e) => setNewProjectEndDate(e.target.value)}
+                        className="finance-input w-full font-mono text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Funding Type</label>
+                      <select
+                        value={newProjectFundingType}
+                        onChange={(e) => setNewProjectFundingType(e.target.value as any)}
+                        className="finance-input w-full text-xs"
+                      >
+                        <option value="Restricted Grant">Restricted Grant</option>
+                        <option value="Unrestricted Service">Unrestricted Service</option>
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      <button type="submit" className="w-full bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">
+                        Register Project Grant
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              )}
+
               {/* Active Restricted Projects Section (NEW) */}
               <div className="space-y-4">
                 <h3 className="text-md font-bold text-slate-800 uppercase font-mono flex items-center gap-1.5">
@@ -1962,9 +2393,20 @@ export default function App() {
                           }`}
                       >
                         <div className="flex justify-between items-start mb-2">
-                          <span className="text-[10px] bg-red-50 text-red-700 font-mono font-bold px-2 py-0.5 rounded uppercase">
-                            {proj.code}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] bg-red-50 text-red-700 font-mono font-bold px-2 py-0.5 rounded uppercase">
+                              {proj.code}
+                            </span>
+                            {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                              <button
+                                onClick={(e) => handleDeleteProject(e, proj.id)}
+                                className="text-slate-400 hover:text-red-650 p-1 transition-colors rounded hover:bg-slate-100"
+                                title="Delete Project"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
                           <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${proj.status === "Active" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
                             }`}>
                             {proj.status}
@@ -2084,11 +2526,12 @@ export default function App() {
                                   <div key={doc.id} className="flex justify-between items-center text-xs p-2 bg-white border border-slate-100 rounded shadow-inner">
                                     <span className="text-slate-700 truncate max-w-xs">📄 {doc.filename} ({doc.sizeStr})</span>
                                     <a
-                                      href={`data:${doc.mimeType};base64,${doc.base64}`}
-                                      download={doc.filename}
+                                      href={`/api/document/content/${doc.id}`}
+                                      target="_blank"
+                                      rel="noreferrer"
                                       className="text-red-650 hover:underline font-mono text-[10px] font-bold inline-flex items-center min-h-[44px] px-2"
                                     >
-                                      📥 Download
+                                      📥 Open / Download
                                     </a>
                                   </div>
                                 ))}
@@ -2159,8 +2602,9 @@ export default function App() {
                                         <span>Status: {exp.status}</span>
                                         {docAttached ? (
                                           <a
-                                            href={`data:${docAttached.mimeType};base64,${docAttached.base64}`}
-                                            download={docAttached.filename}
+                                            href={`/api/document/content/${docAttached.id}`}
+                                            target="_blank"
+                                            rel="noreferrer"
                                             className="text-red-650 hover:underline font-bold inline-flex items-center min-h-[44px] px-2"
                                           >
                                             📥 Supporting PDF
@@ -2718,6 +3162,21 @@ export default function App() {
                         onChange={handleFileDrop}
                         className="finance-input w-full text-xs"
                       />
+                      <div className="mt-2 p-2 rounded-lg border border-indigo-200 bg-indigo-50/40">
+                        <label className={`block text-xs font-bold mb-1 ${aiScanning ? "text-slate-400" : "text-indigo-700"}`}>
+                          {aiScanning ? "🤖 Reading invoice…" : "🤖 Scan invoice with AI (auto-fill this form)"}
+                        </label>
+                        <input
+                          type="file"
+                          accept="application/pdf,image/*"
+                          disabled={aiScanning}
+                          onChange={handleAiInvoiceScan}
+                          className="finance-input w-full text-xs"
+                        />
+                        <span className="text-[10px] text-indigo-600 block mt-0.5">
+                          Fills the fields and attaches the scan — you review and submit (Policy 5.2).
+                        </span>
+                      </div>
                     </div>
 
                     <div className="md:col-span-3 border-t border-slate-100 pt-4 space-y-4">
@@ -2968,13 +3427,19 @@ export default function App() {
                             </div>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>Net Paid Amount</span>
-                              <span className="font-bold text-slate-950">{(exp.netAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
+                              <span className="font-bold text-slate-950">{(exp.netAmount || ((exp.amount || 0) - (exp.whtAmount || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
                             </div>
                           </div>
                         )}
 
                         {/* Auditing Vouchers Interactive action drawer depending on simulated Role */}
                         <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
+                          <button
+                            onClick={() => setDrawerExpenseId(exp.id)}
+                            className="text-[11px] bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-3 py-1.5 rounded font-medium"
+                          >
+                            🔎 Details
+                          </button>
                           {exp.status === "Submitted" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (
                             <button
                               onClick={() => handleExpenseAction(exp.id, "finance-review", { comment: "Integrity review flagged by Layale." })}
@@ -3110,7 +3575,7 @@ export default function App() {
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-bold">Tripoli Sourcing & RFQ Comparative Sheets</h2>
-                <p className="text-xs text-slate-500">Quotations matching rules demand at least 3 compared sources for donor procurements exceeding 1500 USD.</p>
+                <p className="text-xs text-slate-500">Internal policy (Section 7.2) demands at least 3 compared quotations for any procurement exceeding 300 USD. Stricter donor thresholds apply on top when required.</p>
               </div>
 
               {/* Submit bid comparison */}
@@ -3314,6 +3779,21 @@ export default function App() {
               {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
                 <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
                   <h3 className="text-xs font-bold text-slate-800 uppercase font-mono tracking-wider">Onboard New Provider (Supplier / Consultant / Freelancer)</h3>
+                  <div className="p-2 rounded-lg border border-indigo-200 bg-indigo-50/40 md:w-1/2">
+                    <label className={`block text-xs font-bold mb-1 ${aiVendorScanning ? "text-slate-400" : "text-indigo-700"}`}>
+                      {aiVendorScanning ? "🤖 Reading supplier details…" : "🤖 Scan an invoice with AI (auto-fill supplier details)"}
+                    </label>
+                    <input
+                      type="file"
+                      accept="application/pdf,image/*"
+                      disabled={aiVendorScanning}
+                      onChange={handleAiVendorScan}
+                      className="finance-input w-full text-xs"
+                    />
+                    <span className="text-[10px] text-indigo-600 block mt-0.5">
+                      Fills the fields from the supplier's invoice — vet and register manually (Policy 7.3).
+                    </span>
+                  </div>
                   <form onSubmit={handleVendorRegister} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Provider / Vendor Name</label>
@@ -3392,7 +3872,7 @@ export default function App() {
 
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <table className="w-full text-left">
-                  <header className="bg-slate-100">
+                  <thead className="bg-slate-100">
                     <tr className="border-b border-sub-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
                       <th className="px-6 py-3">Vendor Account</th>
                       <th className="px-6 py-3">Primary Category</th>
@@ -3400,7 +3880,7 @@ export default function App() {
                       <th className="px-6 py-3 hidden md:table-cell">Audit Disclosures</th>
                       <th className="px-6 py-3 hidden md:table-cell">Sanctions Rating</th>
                     </tr>
-                  </header>
+                  </thead>
                   <tbody className="divide-y divide-slate-100 text-sm font-sans">
                     {state.vendors.map(v => (
                       <tr key={v.id} className="hover:bg-slate-50">
@@ -3498,35 +3978,81 @@ export default function App() {
                 </form>
               )}
 
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                <table className="w-full text-left">
-                  <header className="bg-slate-100">
-                    <tr className="border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
-                      <th className="px-6 py-3">Statement Date</th>
-                      <th className="px-6 py-3">Vouchering Ref</th>
-                      <th className="px-6 py-3 hidden md:table-cell">Account Drawer</th>
-                      <th className="px-6 py-3 hidden md:table-cell">Description Purpose</th>
-                      <th className="px-6 py-3 text-right">Cleared Amount</th>
-                    </tr>
-                  </header>
-                  <tbody className="divide-y divide-slate-100 text-sm font-sans">
-                    {state.bankTransactions.map(tx => {
-                      const ba = state.bankAccounts.find(x => x.id === tx.bankAccountId);
-                      return (
-                        <tr key={tx.id} className="hover:bg-slate-50">
-                          <td className="px-6 py-3 font-mono text-slate-500">{tx.date}</td>
-                          <td className="px-6 py-3 font-mono font-bold text-red-650 text-red-600">{tx.voucherNo || "Statement adjustment"}</td>
-                          <td className="px-6 py-3 font-semibold text-slate-800 hidden md:table-cell">{ba?.name}</td>
-                          <td className="px-6 py-3 text-slate-700 hidden md:table-cell">{tx.description}</td>
-                          <td className="px-6 py-3 text-right font-mono font-bold text-slate-900">
-                            {tx.type === "Withdrawal" ? "-" : "+"} {tx.amount.toLocaleString()} {ba?.currency}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              {(() => {
+                const filtered = state.bankTransactions
+                  .filter(tx => !bankFilterAcc || tx.bankAccountId === bankFilterAcc)
+                  .filter(tx => !bankSearch || tx.description.toLowerCase().includes(bankSearch.toLowerCase()) || (tx.voucherNo || "").toLowerCase().includes(bankSearch.toLowerCase()))
+                  .sort((a, b) => b.date.localeCompare(a.date));
+                const visible = filtered.slice(0, bankShown);
+                return (
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-200 bg-slate-50">
+                      <select value={bankFilterAcc} onChange={e => { setBankFilterAcc(e.target.value); setBankShown(50); }} className="finance-input text-xs w-52">
+                        <option value="">All accounts</option>
+                        {state.bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name} ({b.currency})</option>)}
+                      </select>
+                      <input value={bankSearch} onChange={e => { setBankSearch(e.target.value); setBankShown(50); }} placeholder="Search description / voucher…" className="finance-input text-xs flex-1 min-w-40" />
+                      <span className="text-[11px] text-slate-500 ml-auto">{filtered.length} entries · statement-verified</span>
+                    </div>
+                    <div className="max-h-[560px] overflow-y-auto">
+                      {/* Mobile: stacked cards instead of a squeezed table */}
+                      <div className="md:hidden divide-y divide-slate-100">
+                        {visible.map(tx => {
+                          const ba = state.bankAccounts.find(x => x.id === tx.bankAccountId);
+                          const isOut = tx.type === "Withdrawal";
+                          return (
+                            <div key={tx.id} className="px-4 py-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-mono text-[11px] text-slate-500">{tx.date}</span>
+                                <span className={`font-mono font-bold text-sm ${isOut ? "text-red-600" : "text-emerald-700"}`}>
+                                  {isOut ? "−" : "+"}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {ba?.currency}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-700 mt-0.5">{tx.description}</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">{ba?.name.replace("BLOM Business Plus ", "BLOM ")}{tx.voucherNo ? ` · ${tx.voucherNo}` : ""}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <table className="w-full text-left hidden md:table">
+                        <thead className="bg-slate-100 sticky top-0 z-10">
+                          <tr className="border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider font-mono">
+                            <th className="px-4 py-2.5 w-28">Date</th>
+                            <th className="px-4 py-2.5 w-32">Voucher</th>
+                            <th className="px-4 py-2.5 w-40 hidden md:table-cell">Account</th>
+                            <th className="px-4 py-2.5 hidden md:table-cell">Description</th>
+                            <th className="px-4 py-2.5 text-right w-40">Amount</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 text-xs font-sans">
+                          {visible.map(tx => {
+                            const ba = state.bankAccounts.find(x => x.id === tx.bankAccountId);
+                            const isOut = tx.type === "Withdrawal";
+                            return (
+                              <tr key={tx.id} className="hover:bg-slate-50">
+                                <td className="px-4 py-2 font-mono text-slate-500 whitespace-nowrap">{tx.date}</td>
+                                <td className="px-4 py-2 font-mono">{tx.voucherNo
+                                  ? <span className="font-bold text-slate-800">{tx.voucherNo}</span>
+                                  : <span className="text-slate-400">bank stmt</span>}</td>
+                                <td className="px-4 py-2 text-slate-600 hidden md:table-cell whitespace-nowrap">{ba?.name.replace("BLOM Business Plus ", "BLOM ")}</td>
+                                <td className="px-4 py-2 text-slate-700 hidden md:table-cell">{tx.description}</td>
+                                <td className={`px-4 py-2 text-right font-mono font-bold whitespace-nowrap ${isOut ? "text-red-600" : "text-emerald-700"}`}>
+                                  {isOut ? "−" : "+"}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {ba?.currency}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {filtered.length > bankShown && (
+                      <button onClick={() => setBankShown(bankShown + 100)} className="w-full py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 border-t border-slate-200">
+                        Show {Math.min(100, filtered.length - bankShown)} more of {filtered.length - bankShown} remaining
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
@@ -3554,26 +4080,60 @@ export default function App() {
                   <Activity className="h-4 w-4 text-emerald-500" />
                   Trial balance ledger report sheet
                 </h3>
+                <p className="text-[10px] text-slate-500 font-mono mb-2">All balances converted to USD base currency at current system FX rates (EUR: {state.fxRates.EUR} / LBP: {state.fxRates.LBP}).</p>
                 <div className="divide-y divide-slate-200">
                   <header className="grid grid-cols-4 gap-4 text-xs font-bold uppercase font-mono py-2 text-slate-600">
                     <span>Account code</span>
                     <span>Class description</span>
-                    <span className="text-right">Debit Balance</span>
-                    <span className="text-right">Credit Balance</span>
+                    <span className="text-right">Debit Balance (USD)</span>
+                    <span className="text-right">Credit Balance (USD)</span>
                   </header>
-                  {state.accounts.map(acc => {
-                    const debVal = acc.type === "Expense" || acc.type === "Asset" ? acc.balance : 0;
-                    const credVal = acc.type === "Liability" || acc.type === "Equity" || acc.type === "Revenue" ? Math.abs(acc.balance) : 0;
-                    if (debVal === 0 && credVal === 0) return null;
+                  {(() => {
+                    let totalDeb = 0;
+                    let totalCred = 0;
+                    const rows = state.accounts.map(acc => {
+                      // Convert every balance into USD base currency before presenting
+                      let fx = 1;
+                      if (acc.currency === "EUR") fx = state.fxRates.EUR;
+                      if (acc.currency === "LBP") fx = state.fxRates.LBP;
+                      const usdBalance = acc.balance * fx;
+                      // Debit-normal accounts: Asset & Expense. Credit-normal: Liability, Equity, Revenue.
+                      // Negative balances flip to the opposite column (e.g. Accumulated Depreciation, Partner Drawings).
+                      const isDebitNormal = acc.type === "Expense" || acc.type === "Asset";
+                      let debVal = 0;
+                      let credVal = 0;
+                      if (isDebitNormal) {
+                        if (usdBalance >= 0) debVal = usdBalance; else credVal = Math.abs(usdBalance);
+                      } else {
+                        if (usdBalance >= 0) credVal = usdBalance; else debVal = Math.abs(usdBalance);
+                      }
+                      if (debVal === 0 && credVal === 0) return null;
+                      totalDeb += debVal;
+                      totalCred += credVal;
+                      return (
+                        <div key={acc.code} className="grid grid-cols-4 gap-4 text-xs font-mono py-2 hover:bg-slate-50">
+                          <span>{acc.code}</span>
+                          <span>{acc.name}{acc.currency !== "USD" ? <span className="text-[9px] text-slate-400"> ({acc.balance.toLocaleString()} {acc.currency})</span> : null}</span>
+                          <span className="text-right font-bold text-slate-900">{debVal > 0 ? formatUSD(debVal) : "-"}</span>
+                          <span className="text-right font-bold text-slate-900">{credVal > 0 ? formatUSD(credVal) : "-"}</span>
+                        </div>
+                      );
+                    });
+                    const balanced = Math.abs(totalDeb - totalCred) < 0.01;
                     return (
-                      <div key={acc.code} className="grid grid-cols-4 gap-4 text-xs font-mono py-2 hover:bg-slate-50">
-                        <span>{acc.code}</span>
-                        <span>{acc.name}</span>
-                        <span className="text-right font-bold text-slate-900">{debVal > 0 ? formatUSD(debVal) : "-"}</span>
-                        <span className="text-right font-bold text-slate-900">{credVal > 0 ? formatUSD(credVal) : "-"}</span>
-                      </div>
+                      <>
+                        {rows}
+                        <div className={`grid grid-cols-4 gap-4 text-xs font-mono py-2 font-bold border-t-2 ${balanced ? "border-emerald-400 bg-emerald-50" : "border-red-400 bg-red-50"}`}>
+                          <span />
+                          <span className={balanced ? "text-emerald-700" : "text-red-700"}>
+                            {balanced ? "✓ TOTALS — LEDGER IN BALANCE" : `⚠️ TOTALS — OUT OF BALANCE BY ${formatUSD(Math.abs(totalDeb - totalCred))}`}
+                          </span>
+                          <span className="text-right text-slate-900">{formatUSD(totalDeb)}</span>
+                          <span className="text-right text-slate-900">{formatUSD(totalCred)}</span>
+                        </div>
+                      </>
                     );
-                  })}
+                  })()}
                 </div>
               </div>
 
@@ -3870,9 +4430,12 @@ export default function App() {
 
               {/* Staff timesheets loop list */}
               <div className="space-y-4">
-                {state.employees.map(emp => {
+                {state.employees.filter(emp => !isSelfService || (emp.userEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase()).map(emp => {
+                  const isOwnCard = (emp.userEmail || "").toLowerCase() === (currentUser.email || "").toLowerCase();
                   const hasTimesheet = state.timesheets.some(t => t.employeeId === emp.id && t.month === selectedTSMonth);
                   const activeTimesheet = state.timesheets.find(t => t.employeeId === emp.id && t.month === selectedTSMonth);
+                  // % values typed into this card's inputs — no timesheet is DUE until something is entered
+                  const enteredPool = state.projects.reduce((s, p) => s + (Number(tsAllocValues[`${emp.id}-${p.id}`]) || 0), 0);
 
                   return (
                     <div key={emp.id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
@@ -3881,9 +4444,10 @@ export default function App() {
                           <h4 className="text-sm font-bold text-slate-900">{emp.name}</h4>
                           <p className="text-xs text-slate-500">{emp.position} • Base: {formatUSD(emp.salary)} + {formatUSD(emp.allowance)} allowance</p>
                         </div>
-                        <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${activeTimesheet?.status === "Approved" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                        <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${activeTimesheet?.status === "Approved" ? "bg-emerald-100 text-emerald-700"
+                          : activeTimesheet || enteredPool > 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"
                           }`}>
-                          ● Month: {selectedTSMonth} • {activeTimesheet?.status || "Draft Pending"}
+                          ● Month: {selectedTSMonth} • {activeTimesheet?.status || (enteredPool > 0 ? "Draft Pending" : "No donor allocation")}
                         </span>
                       </div>
 
@@ -3906,12 +4470,12 @@ export default function App() {
                           );
                         })}
 
-                        {activeTimesheet?.status !== "Approved" && ["Super Admin", "HR / Payroll Officer"].includes(currentUser.role) && (
+                        {activeTimesheet?.status !== "Approved" && enteredPool > 0 && (["Super Admin", "HR / Payroll Officer"].includes(currentUser.role) || (isSelfService && isOwnCard)) && (
                           <button
                             onClick={() => handleTimesheetSubmit(emp.id)}
                             className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5"
                           >
-                            Submit allocations log
+                            Submit allocations log ({enteredPool}%)
                           </button>
                         )}
 
@@ -3924,6 +4488,86 @@ export default function App() {
                           </button>
                         )}
                       </div>
+
+                      {/* Employee history: projects worked on + financial statement */}
+                      {(() => {
+                        const ALIASES: Record<string, string[]> = {
+                          "emp-1": ["saad matar"],
+                          "emp-2": ["ahmad ayshan", "ahmad aychan"],
+                          "emp-3": ["sally kayyali"],
+                          "emp-4": ["assem nayrab", "assem nairab"],
+                        };
+                        const aliases = ALIASES[emp.id] || [emp.name.toLowerCase()];
+                        const myTs = state.timesheets
+                          .filter(t => t.employeeId === emp.id)
+                          .sort((a, b) => a.month.localeCompare(b.month));
+                        // project engagement periods from timesheet allocations
+                        const eng: Record<string, { pct: number; first: string; last: string; months: number }> = {};
+                        for (const t of myTs) {
+                          let allocs: any[] = [];
+                          try { allocs = JSON.parse((t as any).allocationsJson || "[]"); } catch { }
+                          if (!allocs.length && (t as any).allocations) allocs = (t as any).allocations;
+                          for (const a of allocs) {
+                            if (!a.projectId) continue;
+                            const e = eng[a.projectId] || { pct: a.percentage, first: t.month, last: t.month, months: 0 };
+                            e.pct = a.percentage; e.last = t.month; e.months += 1;
+                            if (t.month < e.first) e.first = t.month;
+                            eng[a.projectId] = e;
+                          }
+                        }
+                        // payments matched from posted vouchers
+                        const paid: Record<string, { n: number; usd: number }> = {};
+                        let grand = 0;
+                        for (const ex of state.expenses) {
+                          const hay = `${ex.title} ${ex.purpose}`.toLowerCase();
+                          if (!aliases.some(a => hay.includes(a))) continue;
+                          const key = ex.projectId || "—";
+                          const p = paid[key] || { n: 0, usd: 0 };
+                          p.n += 1; p.usd += ex.convertedAmount; paid[key] = p; grand += ex.convertedAmount;
+                        }
+                        const projName = (pid: string) => state.projects.find(p => p.id === pid)?.code || pid;
+                        const rows = Array.from(new Set([...Object.keys(eng), ...Object.keys(paid)]));
+                        if (!rows.length) return null;
+                        return (
+                          <div className="border-t border-slate-100 pt-3">
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Employment history & financial statement</p>
+                            <table className="w-full text-left text-xs border-collapse">
+                              <thead>
+                                <tr className="text-[10px] text-slate-500 uppercase">
+                                  <th className="py-1 pr-2">Project</th>
+                                  <th className="py-1 pr-2">LOE</th>
+                                  <th className="py-1 pr-2">Period</th>
+                                  <th className="py-1 pr-2 text-right">Months</th>
+                                  <th className="py-1 pr-2 text-right">Payments</th>
+                                  <th className="py-1 text-right">Total paid (USD)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rows.map(pid => {
+                                  // payments without any timesheet engagement = per-deliverable
+                                  // service-provider work (Policy 8.6), not payroll
+                                  const contractor = !eng[pid] && (paid[pid]?.n || 0) > 0;
+                                  return (
+                                    <tr key={pid} className="border-t border-slate-100">
+                                      <td className="py-1.5 pr-2 font-semibold">{projName(pid)}</td>
+                                      <td className="py-1.5 pr-2">{eng[pid] ? `${eng[pid].pct}% (payroll)` : contractor ? <span className="text-indigo-700 font-semibold">Contractor · per deliverable</span> : "—"}</td>
+                                      <td className="py-1.5 pr-2 font-mono text-[11px]">{eng[pid] ? `${eng[pid].first} → ${eng[pid].last}` : "—"}</td>
+                                      <td className="py-1.5 pr-2 text-right">{eng[pid]?.months ?? "—"}</td>
+                                      <td className="py-1.5 pr-2 text-right">{paid[pid]?.n ?? 0}</td>
+                                      <td className="py-1.5 text-right font-mono">{formatUSD(paid[pid]?.usd || 0)}</td>
+                                    </tr>
+                                  );
+                                })}
+                                <tr className="border-t-2 border-slate-300 font-bold">
+                                  <td className="py-1.5 pr-2" colSpan={5}>Career total (all recorded vouchers)</td>
+                                  <td className="py-1.5 text-right font-mono">{formatUSD(grand)}</td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <p className="text-[10px] text-slate-400 mt-1">Derived from approved timesheets and posted vouchers; FPU amounts are EUR paid, shown at the report rate.</p>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -3932,6 +4576,129 @@ export default function App() {
             </div>
           )}
 
+
+          {/* tab content Periodic Reports (Policy 11.2) */}
+          {activeTab === "reports" && (
+            <div className="space-y-6">
+              <style>{`@media print { body * { visibility: hidden; } #period-report, #period-report * { visibility: visible; } #period-report { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; } }`}</style>
+              <div>
+                <h2 className="text-xl font-bold">Periodic Financial Reports</h2>
+                <p className="text-xs text-slate-500">Semi-annual and annual reporting per Policy 11.2 — budget vs actual, income, cash position, compliance status.</p>
+              </div>
+
+              <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Period ending (month)</label>
+                  <input type="month" value={reportEnd} onChange={e => setReportEnd(e.target.value)} className="finance-input text-xs" />
+                </div>
+                <button disabled={reportLoading} onClick={() => generatePeriodReport(6)} className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 disabled:opacity-50">
+                  {reportLoading ? "Generating…" : "Generate 6-Month Report"}
+                </button>
+                <button disabled={reportLoading} onClick={() => generatePeriodReport(12)} className="bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold rounded px-4 py-2.5 disabled:opacity-50">
+                  {reportLoading ? "Generating…" : "Generate Annual Report"}
+                </button>
+                {reportData && (
+                  <div className="ml-auto flex items-center gap-3">
+                    <span className="text-[10px] text-slate-500 font-mono hidden md:block" title="Filename used when saving as PDF (Policy 13.4.1)">
+                      {reportFileName(reportData.meta)}.pdf
+                    </span>
+                    <button disabled={reportLoading} onClick={downloadPeriodReport} className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded px-4 py-2.5 disabled:opacity-50">
+                      ⬇ Download PDF
+                    </button>
+                    <button onClick={printPeriodReport} className="bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-semibold rounded px-3 py-2.5" title="Opens the OS print dialog (filename set by the app, not the report)">
+                      🖨 Print
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {reportData && (
+                <div id="period-report" className="p-8 bg-white border border-slate-200 rounded-xl shadow-sm space-y-6 text-sm">
+                  <div className="border-b-2 border-slate-900 pb-3">
+                    <h1 className="text-lg font-bold tracking-wide">ANAHON MEDIA PLATFORM — {reportData.meta.title.toUpperCase()}</h1>
+                    <p className="text-xs text-slate-600">Period: {reportData.meta.periodStart} → {reportData.meta.periodEnd} · Basis: {reportData.meta.basis} · Generated: {reportData.meta.generatedAt.slice(0, 16).replace("T", " ")} UTC</p>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="p-3 border border-slate-200 rounded"><p className="text-[10px] uppercase font-bold text-slate-500">Income received</p><p className="text-lg font-mono font-bold">{formatUSD(reportData.totals.incomeInPeriod)}</p></div>
+                    <div className="p-3 border border-slate-200 rounded"><p className="text-[10px] uppercase font-bold text-slate-500">Expenditure</p><p className="text-lg font-mono font-bold">{formatUSD(reportData.totals.expenditureInPeriod)}</p></div>
+                    <div className="p-3 border border-slate-200 rounded"><p className="text-[10px] uppercase font-bold text-slate-500">Vouchers</p><p className="text-lg font-mono font-bold">{reportData.totals.vouchersInPeriod}</p></div>
+                  </div>
+
+                  <div>
+                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2">1. Budget vs Actual by Project</h3>
+                    {reportData.perProject.map((p: any) => (
+                      <div key={p.code} className="mb-4">
+                        <p className="font-semibold text-xs bg-slate-100 px-2 py-1 rounded">{p.code} — {p.name} · {p.donor} · {p.status} · allocated {formatUSD(p.allocated)} · spent to date {formatUSD(p.toDate)} ({p.variancePct > 0 ? "+" : ""}{p.variancePct}%)</p>
+                        <table className="w-full text-xs mt-1">
+                          <thead><tr className="text-[10px] text-slate-500 uppercase text-left"><th className="py-0.5">Line</th><th>Description</th><th className="text-right">Allocated</th><th className="text-right">In period</th><th className="text-right">Actual to date</th></tr></thead>
+                          <tbody>{p.lines.map((l: any) => (
+                            <tr key={l.code} className="border-t border-slate-100"><td className="py-0.5 pr-2 font-mono">{l.code}</td><td className="pr-2">{l.description.split(" (EUR")[0].slice(0, 48)}</td><td className="text-right font-mono">{formatUSD(l.allocated)}</td><td className="text-right font-mono">{formatUSD(l.inPeriod)}</td><td className="text-right font-mono">{formatUSD(l.actual)}</td></tr>
+                          ))}</tbody>
+                        </table>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2">2. Expenditure by Category (period)</h3>
+                      <table className="w-full text-xs">{Object.entries(reportData.byCategory).map(([c, v]: any) => (
+                        <tbody key={c}><tr className="border-t border-slate-100"><td className="py-1">{c}</td><td className="text-right font-mono">{formatUSD(v)}</td></tr></tbody>))}
+                      </table>
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2">3. Cash & Bank Position (current)</h3>
+                      <table className="w-full text-xs">{reportData.bankPosition.map((b: any) => (
+                        <tbody key={b.name}><tr className="border-t border-slate-100"><td className="py-1">{b.name} ({b.currency})</td><td className="text-right font-mono">{b.balance.toLocaleString()} {b.currency}</td><td className="text-right font-mono">{formatUSD(b.usd)}</td></tr></tbody>))}
+                      </table>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2">4. Income Received in Period</h3>
+                    <table className="w-full text-xs">
+                      <thead><tr className="text-[10px] text-slate-500 uppercase text-left"><th className="py-0.5">Date</th><th>Description</th><th>Account</th><th className="text-right">Amount</th><th className="text-right">USD</th></tr></thead>
+                      <tbody>{reportData.deposits.map((d: any, i: number) => (
+                        <tr key={i} className="border-t border-slate-100"><td className="py-0.5 font-mono">{d.date}</td><td className="pr-2">{d.description.slice(0, 60)}</td><td>{d.account}</td><td className="text-right font-mono">{d.amount.toLocaleString()} {d.currency}</td><td className="text-right font-mono">{formatUSD(d.usd)}</td></tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+
+                  {reportData.internalMovements?.length > 0 && (
+                    <div>
+                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2">
+                        4b. Internal Movements — excluded from income ({formatUSD(reportData.totals.internalMovementsInPeriod)})
+                      </h3>
+                      <p className="text-[10px] text-slate-500 mb-1">Currency conversions and reversals between our own balances. Listed for completeness; counting them as income would double-count money already received.</p>
+                      <table className="w-full text-xs">
+                        <tbody>{reportData.internalMovements.map((d: any, i: number) => (
+                          <tr key={i} className="border-t border-slate-100"><td className="py-0.5 font-mono">{d.date}</td><td className="pr-2">{d.description.slice(0, 60)}</td><td className="text-right font-mono">{d.amount.toLocaleString()} {d.currency}</td><td className="text-right font-mono text-slate-500">{formatUSD(d.usd)}</td></tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <div>
+                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2">5. Compliance Status</h3>
+                    {reportData.compliance.map((t: any, i: number) => (
+                      <p key={i} className="text-xs py-0.5 border-t border-slate-100">{t.overdue ? "🔴" : t.status === "Done" ? "✅" : "🟡"} {t.title} — {t.status}{t.dueDate ? ` (due ${t.dueDate})` : ""}</p>
+                    ))}
+                  </div>
+
+                  <div className="text-[10px] text-slate-500 border border-amber-200 bg-amber-50/40 rounded p-2">
+                    <p className="font-bold uppercase mb-1">Notes & known limitations</p>
+                    {reportData.caveats.map((c: string, i: number) => <p key={i}>• {c}</p>)}
+                  </div>
+
+                  <div className="flex gap-16 pt-8">
+                    <div className="flex-1 border-t border-slate-400 pt-1 text-xs">Prepared by — Finance Officer (Policy 11.7)<br />Name & signature: ____________________</div>
+                    <div className="flex-1 border-t border-slate-400 pt-1 text-xs">Approved by — Program Director (Policy 11.7)<br />Name & signature: ____________________</div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* tab content Fixed Assets Roll forward */}
           {activeTab === "assets" && (
@@ -4578,6 +5345,98 @@ export default function App() {
 
         </main>
       </div>
+
+      {/* Voucher detail drawer — the full chain of one expense in a side panel */}
+      {drawerExpenseId && (() => {
+        const exp = state.expenses.find(e => e.id === drawerExpenseId);
+        if (!exp) return null;
+        const proj = state.projects.find(p => p.id === exp.projectId);
+        const bl = state.budgetLines.find(b => b.id === exp.budgetLineId);
+        const ven = state.vendors.find(v => v.id === exp.vendorId);
+        const docs = state.documents.filter(d => d.linkedRecordType === "Expense" && d.linkedRecordId === exp.id);
+        const bankHits = state.bankTransactions.filter(t => t.voucherNo === exp.voucherNo);
+        const fmtTs = (s?: string | null) => s ? s.slice(0, 10) : null;
+        const steps: [string, string | null][] = [["Created", fmtTs(exp.created_at)], ["Approved", fmtTs(exp.approved_at)], ["Paid", fmtTs(exp.paid_at)]];
+        return (
+          <>
+            <div className="fixed inset-0 bg-black/40 z-[80]" onClick={() => setDrawerExpenseId(null)} />
+            <aside className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white z-[90] shadow-2xl overflow-y-auto">
+              <div className="sticky top-0 bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+                <div>
+                  <p className="font-mono font-bold">{exp.voucherNo}</p>
+                  <p className="text-xs text-slate-300">{exp.title}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${exp.status === "Posted" ? "bg-emerald-600" : exp.status === "Paid" ? "bg-blue-600" : exp.status === "Approved" ? "bg-amber-500" : "bg-slate-600"}`}>{exp.status}</span>
+                  <button onClick={() => setDrawerExpenseId(null)} className="text-slate-300 hover:text-white text-lg leading-none px-1">✕</button>
+                </div>
+              </div>
+
+              <div className="p-5 space-y-5 text-sm">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Amounts</p>
+                  <table className="w-full text-xs">
+                    <tbody>
+                      <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Gross</td><td className="py-1 text-right font-mono font-bold">{exp.amount.toLocaleString()} {exp.currency}{exp.rate !== 1 ? ` @ ${exp.rate}` : ""}</td></tr>
+                      <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Converted (USD base)</td><td className="py-1 text-right font-mono">{formatUSD(exp.convertedAmount)}</td></tr>
+                      {exp.whtAmount > 0 && (<>
+                        <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">WHT withheld</td><td className="py-1 text-right font-mono text-red-600">−{exp.whtAmount.toLocaleString()} {exp.currency}</td></tr>
+                        <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Net paid</td><td className="py-1 text-right font-mono font-bold">{exp.netAmount.toLocaleString()} {exp.currency}</td></tr>
+                      </>)}
+                      {exp.paymentMethod && <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Method / Ref</td><td className="py-1 text-right">{exp.paymentMethod}{exp.paymentRef ? ` · ${exp.paymentRef}` : ""}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Assignment</p>
+                  <p className="text-xs"><span className="text-slate-500">Project:</span> <b>{proj ? `${proj.code} — ${proj.name}` : "—"}</b></p>
+                  <p className="text-xs mt-1"><span className="text-slate-500">Budget line:</span> {bl ? `${bl.code} · ${bl.description.split(" (EUR")[0]}` : "Unrestricted / shared"}</p>
+                  <p className="text-xs mt-1"><span className="text-slate-500">Vendor:</span> {ven?.name || "—"}</p>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Timeline</p>
+                  <div className="flex gap-2">
+                    {steps.map(([label, ts]) => (
+                      <div key={label} className={`flex-1 rounded border px-2 py-1.5 text-center ${ts ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50 opacity-60"}`}>
+                        <p className="text-[10px] font-bold">{ts ? "✓" : "…"} {label}</p>
+                        <p className="text-[10px] font-mono text-slate-500">{ts || "pending"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Documents ({docs.length})</p>
+                  {docs.length === 0 && <p className="text-xs text-slate-400">No documents linked to this voucher.</p>}
+                  {docs.map(d => (
+                    <a key={d.id} href={`/api/document/content/${d.id}`} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-2 py-1.5 border-t border-slate-100 text-xs hover:bg-slate-50 px-1 rounded">
+                      <span className="text-[9px] font-bold uppercase text-slate-400 w-24 shrink-0">{d.category}</span>
+                      <span className="flex-1 truncate text-blue-700 underline decoration-dotted">{d.filename}</span>
+                      <span className="text-[10px] text-slate-400 shrink-0">{d.sizeStr}</span>
+                    </a>
+                  ))}
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Bank statement match</p>
+                  {bankHits.length === 0 && <p className="text-xs text-slate-400">No statement line carries this voucher number (cash disbursement or pending GL rebuild).</p>}
+                  {bankHits.map(t => (
+                    <p key={t.id} className="text-xs py-1 border-t border-slate-100 font-mono">{t.date} · {t.type === "Withdrawal" ? "−" : "+"}{t.amount.toLocaleString()} · {t.description.slice(0, 46)}</p>
+                  ))}
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Purpose</p>
+                  <p className="text-xs text-slate-700 leading-relaxed">{exp.purpose || "—"}</p>
+                </div>
+              </div>
+            </aside>
+          </>
+        );
+      })()}
 
       {/* Root-Level Floating Sidebar Toggle Handle */}
       <button

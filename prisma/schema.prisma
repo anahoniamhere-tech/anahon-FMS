@@ -1,6 +1,6 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 generator client {
@@ -146,6 +146,7 @@ model Employee {
   paymentMethod String
   contractType  String
   active        Boolean @default(true)
+  userEmail     String  @default("") // login email for self-service timesheets (Policy 8.5)
 }
 
 model Timesheet {

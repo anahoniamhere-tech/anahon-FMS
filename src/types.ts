@@ -145,6 +145,7 @@ export interface Employee {
   paymentMethod: string;
   contractType: string;
   active: boolean;
+  userEmail?: string; // login email for self-service timesheets (Policy 8.5)
 }
 
 export interface Timesheet {

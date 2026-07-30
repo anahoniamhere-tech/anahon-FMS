@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import os from "os";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -18,12 +19,30 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "50mb" }));
 
+// Master document vault on the local filesystem (Policy 13 retention archive).
+// Documents are stored here as real files; the database keeps only a "file://" pointer,
+// which keeps the app state payload tiny.
+const VAULT_ROOT = process.env.ANAHON_VAULT || path.join(os.homedir(), "Downloads", "AnaHon_Document_Vault");
+
+function vaultPathFromPointer(pointer: string): string | null {
+  if (!pointer.startsWith("file://")) return null;
+  const rel = pointer.slice("file://".length);
+  const abs = path.resolve(VAULT_ROOT, rel);
+  // prevent path traversal outside the vault
+  if (!abs.startsWith(path.resolve(VAULT_ROOT))) return null;
+  return abs;
+}
+
 // Fallback seed definitions in case database fails
 const DEFAULT_DATABASE = {
   users: [
-    { id: "u-1", name: "Saad Matar", email: "anahoniamhere@gmail.com", role: "Super Admin", active: true },
-    { id: "u-2", name: "Samer Ghamrawi", email: "samer@anahon.org", role: "Program Director", active: true },
-    { id: "u-3", name: "Layale El-Khatib", email: "layale@anahon.org", role: "Finance Officer", active: true },
+    // POLICY 4.2 — Authorized signatories. Saad Matar is Primary (Program Director),
+    // Marwan El Cheikh is Secondary (Finance Officer). No account holds both authorities:
+    // Policy 4.3 forbids one person initiating, approving, and executing the same transaction.
+    { id: "u-1", name: "Saad Matar", email: "anahoniamhere@gmail.com", role: "Program Director", active: true },
+    { id: "u-2", name: "Marwan El Cheikh", email: "marwan@anahon.org", role: "Finance Officer", active: true },
+    // Capital partner (equity accounts 3200/3400, pt-2) — not an officer under Policy 4.2, so no approval authority.
+    { id: "u-3", name: "Samer Ghamrawi", email: "samer@anahon.org", role: "Auditor / Read-Only Reviewer", active: true },
     { id: "u-4", name: "Tarek Rifai", email: "tarek@anahon.org", role: "Project Lead", active: true },
     { id: "u-5", name: "Mona Merhabi", email: "mona@anahon.org", role: "HR / Payroll Officer", active: true },
     { id: "u-6", name: "External Auditor", email: "auditor@deloitte.com", role: "Auditor / Read-Only Reviewer", active: true }
@@ -133,7 +152,9 @@ async function loadState() {
       filename: d.filename,
       mimeType: d.mimeType,
       sizeStr: d.sizeStr,
-      base64: d.base64,
+      // Never ship file contents with app state — the browser fetches them
+      // on demand from /api/document/content/:id. Keeps page loads instant.
+      base64: "",
       category: d.category,
       linkedRecordType: d.linkedRecordType,
       linkedRecordId: d.linkedRecordId,
@@ -413,6 +434,76 @@ app.post("/api/employees/new", async (req, res) => {
   }
 });
 
+// Create New Project
+app.post("/api/projects/new", async (req, res) => {
+  try {
+    const { name, code, donorId, budgetUSD, startDate, endDate, fundingType, user } = req.body;
+    if (!name || !code || !donorId || budgetUSD === undefined || !startDate || !endDate || !fundingType) {
+      return res.status(400).json({ error: "Project name, code, donor, budget, start/end dates, and funding type are required." });
+    }
+
+    const existingProject = await prisma.project.findUnique({ where: { code } });
+    if (existingProject) {
+      return res.status(400).json({ error: `Project code '${code}' is already in use.` });
+    }
+
+    const pid = `proj-${Date.now()}`;
+    const project = await prisma.project.create({
+      data: {
+        id: pid,
+        name,
+        code,
+        donorId,
+        budgetUSD: Number(budgetUSD) || 0,
+        startDate,
+        endDate,
+        fundingType,
+        status: "Active"
+      }
+    });
+
+    await createAuditLog(
+      user?.id || "u-1",
+      user?.name || "Super Admin",
+      "Project Created",
+      `Created New Restricted Grant Project: ${name} (${code}) with budget ${budgetUSD} USD`
+    );
+
+    res.json({ success: true, project });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete Project
+app.post("/api/projects/delete", async (req, res) => {
+  try {
+    const { projectId, user } = req.body;
+    if (!projectId) {
+      return res.status(400).json({ error: "Project ID is required." });
+    }
+
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) {
+      return res.status(404).json({ error: "Project not found." });
+    }
+
+    await prisma.project.delete({ where: { id: projectId } });
+    await prisma.budgetLine.deleteMany({ where: { projectId } });
+
+    await createAuditLog(
+      user?.id || "u-1",
+      user?.name || "Super Admin",
+      "Project Deleted",
+      `Deleted Project: ${project.name} (${project.code}) and its associated budget lines.`
+    );
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Post Expense request
 app.post("/api/expense/new", async (req, res) => {
   try {
@@ -433,6 +524,21 @@ app.post("/api/expense/new", async (req, res) => {
     }
     const converted = Number(amount) * rate;
 
+    // POLICY 2.4 — Every restricted donor expense must map to exactly one approved budget line.
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    const hasAllocations = Array.isArray(allocations) && allocations.length > 0;
+    if (project && project.fundingType === "Restricted Grant" && !budgetLineId && !hasAllocations) {
+      return res.status(400).json({ error: "Policy 2.4 violation: expenses charged to a restricted grant must be mapped to an approved donor budget line — 'Unrestricted Operational Line' is not permitted for restricted projects." });
+    }
+
+    // POLICY 5.3 / 7.2 — Purchases above USD 300 require an approved procurement comparison (3 quotations).
+    if (converted > 300) {
+      const approvedRfqs = await prisma.procurement.count({ where: { projectId, status: "Approved" } });
+      if (approvedRfqs === 0) {
+        return res.status(400).json({ error: `Policy 7.2 violation: this request (${converted.toFixed(2)} USD equivalent) exceeds the USD 300 procurement threshold. Lodge and approve a 3-quotation RFQ comparison sheet for this project before submitting the voucher.` });
+      }
+    }
+
     const count = await prisma.expense.count();
     const voucherNo = `PV-2026-${String(count + 1).padStart(3, "0")}`;
 
@@ -445,7 +551,7 @@ app.post("/api/expense/new", async (req, res) => {
         voucherNo,
         title,
         purpose,
-        vendorId,
+        vendorId: vendorId || "",
         projectId,
         budgetLineId: budgetLineId || "",
         currency,
@@ -542,6 +648,12 @@ app.post("/api/expense/action", async (req, res) => {
       const allocations = JSON.parse(exp.allocationsJson || "[]");
       const journalItems = [];
 
+      // Resolve the real donor of each project instead of hardcoding
+      const donorOfProject = async (pid: string) => {
+        const proj = pid ? await prisma.project.findUnique({ where: { id: pid } }) : null;
+        return proj?.donorId || null;
+      };
+
       if (allocations.length > 0) {
         for (const alloc of allocations) {
           const convertedAllocAmount = Number((Number(alloc.amount) * exp.rate).toFixed(2));
@@ -550,7 +662,7 @@ app.post("/api/expense/action", async (req, res) => {
             debit: convertedAllocAmount,
             credit: 0,
             projectId: alloc.projectId,
-            donorId: "don-1"
+            donorId: await donorOfProject(alloc.projectId)
           });
         }
       } else {
@@ -559,15 +671,16 @@ app.post("/api/expense/action", async (req, res) => {
           debit: exp.convertedAmount,
           credit: 0,
           projectId: exp.projectId,
-          donorId: "don-1"
+          donorId: await donorOfProject(exp.projectId)
         });
       }
 
-      // Matching liability Credit to Accounts Payable
+      // Matching liability Credit to Accounts Payable (carries the project tag for full donor traceability — Policy 4.7)
       journalItems.push({
         accountCode: apAccount,
         debit: 0,
-        credit: exp.convertedAmount
+        credit: exp.convertedAmount,
+        projectId: exp.projectId
       });
 
       // Register accrual journal entry
@@ -608,8 +721,22 @@ app.post("/api/expense/action", async (req, res) => {
       );
     } else if (action === "return") {
       updatedStatus = "Returned for Correction";
-      // Reverse committed budget
-      if (exp.budgetLineId) {
+      // Reverse committed budget (both single-line and multi-project shared allocations)
+      const returnAllocations = JSON.parse(exp.allocationsJson || "[]");
+      if (returnAllocations.length > 0) {
+        for (const alloc of returnAllocations) {
+          if (alloc.budgetLineId) {
+            const convertedAllocAmount = Number((Number(alloc.amount) * exp.rate).toFixed(2));
+            const bl = await prisma.budgetLine.findUnique({ where: { id: alloc.budgetLineId } });
+            if (bl) {
+              await prisma.budgetLine.update({
+                where: { id: alloc.budgetLineId },
+                data: { committedUSD: Math.max(0, bl.committedUSD - convertedAllocAmount) }
+              });
+            }
+          }
+        }
+      } else if (exp.budgetLineId) {
         const bl = await prisma.budgetLine.findUnique({ where: { id: exp.budgetLineId } });
         if (bl) {
           await prisma.budgetLine.update({
@@ -633,16 +760,29 @@ app.post("/api/expense/action", async (req, res) => {
       // Determine payout amounts: if whtAmount/netAmount is passed use them, otherwise default to no tax
       updatedWhtAmount = typeof whtAmount === "number" ? whtAmount : 0;
       updatedNetAmount = typeof netAmount === "number" ? netAmount : exp.amount;
-      const disbursalAmount = updatedNetAmount;
+      const disbursalAmount = updatedNetAmount; // expressed in the voucher currency
 
-      if (account.balance < disbursalAmount) {
-        return res.status(400).json({ error: `Insufficient cash reserve in ${account.name}. Required: ${disbursalAmount}, Available: ${account.balance}` });
+      // FX FIX: convert the payout into the disbursing account's own currency before checking/deducting.
+      const ratesNow = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
+      const disbursalUSD = disbursalAmount * exp.rate;
+      let accountFx = 1;
+      if (account.currency === "EUR") accountFx = ratesNow.EUR;
+      if (account.currency === "LBP") accountFx = ratesNow.LBP;
+      const disbursalInAccountCurrency = Number((disbursalUSD / accountFx).toFixed(2));
+
+      // POLICY 4.4.2 — Cash payments above USD 150 require prior Program Director approval on record.
+      if (account.type === "Petty Cash" && disbursalUSD > 150 && !exp.approved_at) {
+        return res.status(400).json({ error: "Policy 4.4.2 violation: cash payments above USD 150 require Program Director approval before disbursement." });
       }
 
-      // Deduct balance (pay the net amount to payee)
+      if (account.balance < disbursalInAccountCurrency) {
+        return res.status(400).json({ error: `Insufficient cash reserve in ${account.name}. Required: ${disbursalInAccountCurrency} ${account.currency}, Available: ${account.balance} ${account.currency}` });
+      }
+
+      // Deduct balance (pay the net amount to payee) in the account's own currency
       await prisma.bankAccount.update({
         where: { id: bankAccountId },
-        data: { balance: account.balance - disbursalAmount }
+        data: { balance: account.balance - disbursalInAccountCurrency }
       });
 
       updatedStatus = "Paid";
@@ -650,14 +790,14 @@ app.post("/api/expense/action", async (req, res) => {
       updatedPaymentMethod = paymentMethod || "Petty Cash Box";
       updatedPaymentRef = paymentRef || "CSH-DRAWN-9281";
 
-      // Register bank transaction activity for the actual net payout
+      // Register bank transaction activity for the actual net payout (in account currency)
       await prisma.bankTransaction.create({
         data: {
           id: `bt-${Date.now()}`,
           bankAccountId: account.id,
           date: new Date().toISOString().split("T")[0],
           description: `Disbursed ${exp.voucherNo} - ${exp.title} (Net payout, WHT applied)`,
-          amount: disbursalAmount,
+          amount: disbursalInAccountCurrency,
           type: "Withdrawal",
           reconciled: true,
           voucherNo: exp.voucherNo
@@ -714,13 +854,14 @@ app.post("/api/expense/action", async (req, res) => {
       const taxPayableAccount = "2310";
 
       // Formulate balanced journal items: Debit Accounts Payable, Credit Bank/Cash, Credit Taxes Payable
+      // Every leg carries the project tag for full donor traceability (Policy 4.7)
       const journalItems = [
-        { accountCode: apAccount, debit: exp.convertedAmount, credit: 0 },
-        { accountCode: bankAssetAccount, debit: 0, credit: convertedNetAmount }
+        { accountCode: apAccount, debit: exp.convertedAmount, credit: 0, projectId: exp.projectId },
+        { accountCode: bankAssetAccount, debit: 0, credit: convertedNetAmount, projectId: exp.projectId }
       ];
 
       if (convertedWhtAmount > 0) {
-        journalItems.push({ accountCode: taxPayableAccount, debit: 0, credit: convertedWhtAmount });
+        journalItems.push({ accountCode: taxPayableAccount, debit: 0, credit: convertedWhtAmount, projectId: exp.projectId });
       }
 
       await prisma.journalEntry.create({
@@ -827,10 +968,29 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
       }
     }
 
-    const disbursalAmount = netVal;
+    const disbursalAmount = netVal; // voucher currency
 
-    if (account.balance < disbursalAmount) {
-      return res.status(400).json({ error: `Insufficient cash reserve in ${account.name}. Required: ${disbursalAmount}, Available: ${account.balance}` });
+    // POLICY 2.4 — restricted grant expenses must map to an approved budget line
+    const pcProject = await prisma.project.findUnique({ where: { id: projectId } });
+    if (pcProject && pcProject.fundingType === "Restricted Grant" && !budgetLineId) {
+      return res.status(400).json({ error: "Policy 2.4 violation: direct cash expenses charged to a restricted grant must be mapped to an approved donor budget line." });
+    }
+
+    // POLICY 4.4.2 — Cash payments above USD 150 require Program Director approval; the direct
+    // cash book skips the approval workflow, so it is capped for non-Director roles.
+    const disbursalUSD = disbursalAmount * rate;
+    if (disbursalUSD > 150 && !["Program Director", "Super Admin"].includes(user?.role || "")) {
+      return res.status(400).json({ error: "Policy 4.4.2 violation: direct cash payments above USD 150 equivalent require the Program Director. Lodge a standard disbursement voucher for approval instead." });
+    }
+
+    // FX FIX: deduct from the cash drawer in its own currency
+    let accountFx = 1;
+    if (account.currency === "EUR") accountFx = rates.EUR;
+    if (account.currency === "LBP") accountFx = rates.LBP;
+    const disbursalInAccountCurrency = Number((disbursalUSD / accountFx).toFixed(2));
+
+    if (account.balance < disbursalInAccountCurrency) {
+      return res.status(400).json({ error: `Insufficient cash reserve in ${account.name}. Required: ${disbursalInAccountCurrency} ${account.currency}, Available: ${account.balance} ${account.currency}` });
     }
 
     const count = await prisma.expense.count();
@@ -865,20 +1025,20 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
       }
     });
 
-    // Deduct balance from Cash Account
+    // Deduct balance from Cash Account (in the account's own currency)
     await prisma.bankAccount.update({
       where: { id: bankAccountId },
-      data: { balance: account.balance - disbursalAmount }
+      data: { balance: account.balance - disbursalInAccountCurrency }
     });
 
-    // Create bank transaction log
+    // Create bank transaction log (in account currency)
     await prisma.bankTransaction.create({
       data: {
         id: `bt-${Date.now()}`,
         bankAccountId: account.id,
         date: new Date().toISOString().split("T")[0],
         description: `Daily Direct Cash Expense: ${voucherNo} - ${title}`,
-        amount: disbursalAmount,
+        amount: disbursalInAccountCurrency,
         type: "Withdrawal",
         reconciled: true,
         voucherNo
@@ -907,12 +1067,12 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
     const taxPayableAccount = "2310";
 
     const journalItems = [
-      { accountCode: expenseCostAccount, debit: expense.convertedAmount, credit: 0, projectId: expense.projectId, donorId: "don-1" },
-      { accountCode: bankAssetAccount, debit: 0, credit: convertedNetAmount }
+      { accountCode: expenseCostAccount, debit: expense.convertedAmount, credit: 0, projectId: expense.projectId },
+      { accountCode: bankAssetAccount, debit: 0, credit: convertedNetAmount, projectId: expense.projectId }
     ];
 
     if (convertedWhtAmount > 0) {
-      journalItems.push({ accountCode: taxPayableAccount, debit: 0, credit: convertedWhtAmount });
+      journalItems.push({ accountCode: taxPayableAccount, debit: 0, credit: convertedWhtAmount, projectId: expense.projectId });
     }
 
     await prisma.journalEntry.create({
@@ -1186,6 +1346,16 @@ app.post("/api/timesheets/submit", async (req, res) => {
   try {
     const { employeeId, month, allocations, user } = req.body;
 
+    // Policy 8.5: staff may file their OWN timesheet; HR/PD/admin may file for anyone.
+    const HR_ROLES = ["Super Admin", "HR / Payroll Officer", "Program Director", "Finance Officer"];
+    if (!HR_ROLES.includes(user?.role || "")) {
+      const emp = await prisma.employee.findUnique({ where: { id: employeeId } });
+      const email = (user?.email || "").toLowerCase();
+      if (!emp || !email || (emp as any).userEmail?.toLowerCase() !== email) {
+        return res.status(403).json({ error: "You can only submit your own timesheet (Policy 8.5). Ask HR to link your login email to your employee record." });
+      }
+    }
+
     const existing = await prisma.timesheet.findFirst({
       where: { employeeId, month }
     });
@@ -1438,19 +1608,66 @@ app.post("/api/compliance/complete", async (req, res) => {
   }
 });
 
-// Document Upload Record archiving
+// Serve a single document's content on demand (from the vault, or legacy base64 rows)
+app.get("/api/document/content/:id", async (req, res) => {
+  try {
+    const doc = await prisma.appDoc.findUnique({ where: { id: req.params.id } });
+    if (!doc) return res.status(404).json({ error: "Document not found." });
+
+    res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(doc.filename)}"`);
+
+    const vaultPath = vaultPathFromPointer(doc.base64 || "");
+    if (vaultPath) {
+      if (!fs.existsSync(vaultPath)) {
+        return res.status(404).json({ error: `File missing from vault: ${doc.filename}. Check the AnaHon_Document_Vault folder.` });
+      }
+      return res.sendFile(vaultPath);
+    }
+    // Legacy inline-base64 documents
+    return res.send(Buffer.from(doc.base64 || "", "base64"));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Document Upload Record archiving — file is written into the vault, DB keeps a pointer
 app.post("/api/document/upload", async (req, res) => {
   try {
     const { filename, mimeType, sizeStr, base64, category, linkedRecordType, linkedRecordId, user } = req.body;
 
+    // Resolve the owning project code for vault organization
+    let projectCode = "GENERAL";
+    try {
+      if (linkedRecordType === "Project" && linkedRecordId) {
+        const proj = await prisma.project.findUnique({ where: { id: linkedRecordId } });
+        if (proj) projectCode = proj.code;
+      } else if (linkedRecordType === "Expense" && linkedRecordId) {
+        const exp = await prisma.expense.findUnique({ where: { id: linkedRecordId } });
+        if (exp) {
+          const proj = await prisma.project.findUnique({ where: { id: exp.projectId } });
+          if (proj) projectCode = proj.code;
+        }
+      }
+    } catch { /* fall back to GENERAL */ }
+
+    const cat = category || "Voucher";
+    const safeName = (filename || `document-${Date.now()}.pdf`).replace(/[^\w.\-()\[\] ]/g, "_");
+    const dir = path.join(VAULT_ROOT, projectCode, cat);
+    fs.mkdirSync(dir, { recursive: true });
+    let finalName = safeName;
+    if (fs.existsSync(path.join(dir, finalName))) finalName = `${Date.now()}_${safeName}`;
+    const buffer = Buffer.from(base64 || "", "base64");
+    fs.writeFileSync(path.join(dir, finalName), buffer);
+
     const doc = await prisma.appDoc.create({
       data: {
         id: `doc-${Date.now()}`,
-        filename,
+        filename: filename || finalName,
         mimeType: mimeType || "application/pdf",
-        sizeStr: sizeStr || "440 KB",
-        base64: base64 || "dGVzdCBiYXNlNjQ=",
-        category: category || "Voucher",
+        sizeStr: sizeStr || `${Math.max(1, Math.round(buffer.length / 1024))} KB`,
+        base64: `file://${projectCode}/${cat}/${finalName}`,
+        category: cat,
         linkedRecordType: linkedRecordType || "Expense",
         linkedRecordId: linkedRecordId || "exp-1",
         created_at: new Date().toISOString()
@@ -1478,6 +1695,373 @@ app.post("/api/document/upload", async (req, res) => {
   }
 });
 
+// Renders the periodic report as a self-contained print document and converts it with the
+// system Chrome. Server-side so the PDF has real text/page breaks (the browser canvas
+// exporter cannot parse Tailwind v4's oklch() colours).
+const REPORT_CSS = `
+@page { size: A4; margin: 14mm 12mm 16mm 12mm; }
+body { font-family: Georgia, 'Times New Roman', serif; color:#1a1a1a; font-size:10.5pt; line-height:1.4; }
+h1 { font-size:13pt; letter-spacing:1px; border-bottom:2px solid #1a1a1a; padding-bottom:5px; margin:0 0 4px; }
+h2 { font-size:9pt; font-weight:normal; color:#555; margin:0 0 14px; }
+h3 { font-size:9.5pt; text-transform:uppercase; letter-spacing:1px; margin:16px 0 6px; border-bottom:1px solid #ccc; padding-bottom:3px; }
+table { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:9pt; }
+th { text-align:left; font-size:7.5pt; text-transform:uppercase; color:#555; border-bottom:1px solid #999; padding:3px 4px; }
+td { padding:3px 4px; border-bottom:1px solid #eee; }
+.r { text-align:right; font-family:'Courier New',monospace; }
+.kpis { display:flex; gap:10px; margin:10px 0 4px; }
+.kpi { flex:1; border:1px solid #999; padding:6px; text-align:center; }
+.kpi span { display:block; font-size:7.5pt; text-transform:uppercase; color:#555; }
+.kpi b { font-size:13pt; font-family:'Courier New',monospace; }
+.projhdr { background:#f0f0f0; padding:4px 6px; font-weight:bold; font-size:9pt; margin-top:10px; }
+.two { display:flex; gap:20px; } .two > div { flex:1; }
+.note { border:1px solid #d9b400; background:#fffbe8; padding:6px; font-size:8pt; margin-top:12px; }
+.sig { display:flex; gap:40px; margin-top:34px; page-break-inside:avoid; }
+.sig div { flex:1; border-top:1px solid #333; padding-top:4px; font-size:8.5pt; }
+.avoid { page-break-inside:avoid; }`;
+
+const esc = (s: any) => String(s ?? "").replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c] as string));
+const usd = (n: number) => "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function renderReportHtml(r: any): string {
+  const projects = r.perProject.map((p: any) => `
+    <div class="avoid">
+      <div class="projhdr">${esc(p.code)} — ${esc(p.name)} · ${esc(p.donor)} · ${esc(p.status)}<br>
+        allocated ${usd(p.allocated)} · spent to date ${usd(p.toDate)} (${p.variancePct > 0 ? "+" : ""}${p.variancePct}%)</div>
+      <table><thead><tr><th>Line</th><th>Description</th><th class="r">Allocated</th><th class="r">In period</th><th class="r">Actual to date</th></tr></thead>
+      <tbody>${p.lines.map((l: any) => `<tr><td>${esc(l.code)}</td><td>${esc(String(l.description).split(" (EUR")[0].slice(0, 60))}</td><td class="r">${usd(l.allocated)}</td><td class="r">${usd(l.inPeriod)}</td><td class="r">${usd(l.actual)}</td></tr>`).join("")}</tbody></table>
+    </div>`).join("");
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(r.meta.title)}</title><style>${REPORT_CSS}</style></head><body>
+<h1>ANAHON MEDIA PLATFORM — ${esc(r.meta.title).toUpperCase()}</h1>
+<h2>Period: ${r.meta.periodStart} → ${r.meta.periodEnd} · Basis: ${esc(r.meta.basis)} · Generated: ${r.meta.generatedAt.slice(0, 16).replace("T", " ")} UTC</h2>
+<div class="kpis">
+  <div class="kpi"><span>Income received</span><b>${usd(r.totals.incomeInPeriod)}</b></div>
+  <div class="kpi"><span>Expenditure</span><b>${usd(r.totals.expenditureInPeriod)}</b></div>
+  <div class="kpi"><span>Vouchers</span><b>${r.totals.vouchersInPeriod}</b></div>
+</div>
+<h3>1. Budget vs Actual by Project</h3>${projects}
+<div class="two avoid">
+  <div><h3>2. Expenditure by Category</h3><table>${Object.entries(r.byCategory).map(([c, v]: any) => `<tr><td>${esc(c)}</td><td class="r">${usd(v)}</td></tr>`).join("")}</table></div>
+  <div><h3>3. Cash &amp; Bank Position</h3><table>${r.bankPosition.map((b: any) => `<tr><td>${esc(b.name)} (${esc(b.currency)})</td><td class="r">${Number(b.balance).toLocaleString()}</td><td class="r">${usd(b.usd)}</td></tr>`).join("")}</table></div>
+</div>
+<h3>4. Income Received in Period (donor &amp; partner receipts)</h3>
+<table><thead><tr><th>Date</th><th>Description</th><th>Account</th><th class="r">Amount</th><th class="r">USD</th></tr></thead>
+<tbody>${r.deposits.map((d: any) => `<tr><td>${esc(d.date)}</td><td>${esc(String(d.description).slice(0, 70))}</td><td>${esc(d.account)}</td><td class="r">${Number(d.amount).toLocaleString()} ${esc(d.currency)}</td><td class="r">${usd(d.usd)}</td></tr>`).join("")}</tbody></table>
+${(r.internalMovements || []).length ? `<h3>4b. Internal Movements — excluded from income (${usd(r.totals.internalMovementsInPeriod)})</h3>
+<p style="font-size:8pt;color:#555">Currency conversions and reversals between our own balances, shown for completeness.</p>
+<table><tbody>${r.internalMovements.map((d: any) => `<tr><td>${esc(d.date)}</td><td>${esc(String(d.description).slice(0, 70))}</td><td class="r">${Number(d.amount).toLocaleString()} ${esc(d.currency)}</td><td class="r">${usd(d.usd)}</td></tr>`).join("")}</tbody></table>` : ""}
+<h3>5. Compliance Status</h3>
+<table>${r.compliance.map((t: any) => `<tr><td>${t.overdue ? "OVERDUE" : t.status === "Done" ? "DONE" : "PENDING"}</td><td>${esc(t.title)}</td><td>${esc(t.dueDate || "")}</td></tr>`).join("")}</table>
+<div class="note"><b>NOTES &amp; KNOWN LIMITATIONS</b><br>${r.caveats.map((c: string) => "• " + esc(c)).join("<br>")}</div>
+<div class="sig">
+  <div>Prepared by — Finance Officer (Policy 11.7)<br><br>Name &amp; signature: ____________________</div>
+  <div>Approved by — Program Director (Policy 11.7)<br><br>Name &amp; signature: ____________________</div>
+</div>
+</body></html>`;
+}
+
+const CHROME_PATHS = [
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "/Applications/Chromium.app/Contents/MacOS/Chromium",
+  "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+];
+
+async function htmlToPdf(html: string): Promise<Buffer> {
+  const { spawn } = await import("child_process");
+  const chrome = CHROME_PATHS.find(p => fs.existsSync(p));
+  if (!chrome) throw new Error("No Chrome/Chromium found for PDF rendering.");
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "anahon-report-"));
+  const htmlPath = path.join(dir, "report.html");
+  const pdfPath = path.join(dir, "report.pdf");
+  fs.writeFileSync(htmlPath, html, "utf8");
+
+  const proc = spawn(chrome, [
+    "--headless", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+    `--user-data-dir=${path.join(dir, "profile")}`,
+    "--no-pdf-header-footer", `--print-to-pdf=${pdfPath}`, `file://${htmlPath}`
+  ], { stdio: "ignore" });
+
+  try {
+    // Chrome writes the PDF then often lingers; poll for a settled file instead of waiting on exit.
+    const deadline = Date.now() + 30000;
+    let lastSize = -1;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 400));
+      if (fs.existsSync(pdfPath)) {
+        const size = fs.statSync(pdfPath).size;
+        if (size > 0 && size === lastSize) return fs.readFileSync(pdfPath);
+        lastSize = size;
+      }
+    }
+    throw new Error("PDF rendering timed out.");
+  } finally {
+    try { proc.kill("SIGKILL"); } catch { /* already gone */ }
+    setTimeout(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { } }, 2000);
+  }
+}
+
+app.get("/api/reports/pdf", async (req, res) => {
+  try {
+    const months = Number(req.query.months) === 12 ? 12 : 6;
+    const endStr = String(req.query.end || new Date().toISOString().slice(0, 7));
+    const base = `http://127.0.0.1:${PORT}/api/reports/period?months=${months}&end=${endStr}`;
+    const data: any = await (await fetch(base)).json();
+    if (data.error) throw new Error(data.error);
+
+    const pdf = await htmlToPdf(renderReportHtml(data));
+    const name = `${data.meta.periodEnd.slice(0, 4)}_ANAHON_${months === 12 ? "ANNUAL" : "SEMI-ANNUAL"}-FINANCIAL-REPORT_${data.meta.periodStart}_to_${data.meta.periodEnd}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+    res.send(pdf);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Periodic financial report (Policy 11.2) — aggregates a 6- or 12-month window.
+app.get("/api/reports/period", async (req, res) => {
+  try {
+    const months = Number(req.query.months) === 12 ? 12 : 6;
+    // end month inclusive, defaults to current month
+    const endStr = String(req.query.end || new Date().toISOString().slice(0, 7));
+    const [ey, em] = endStr.split("-").map(Number);
+    const end = new Date(Date.UTC(ey, em, 1));                       // first day AFTER the window
+    const start = new Date(Date.UTC(ey, em - months, 1));
+    const inWindow = (iso?: string | null) => {
+      if (!iso) return false;
+      const d = new Date(iso);
+      return d >= start && d < end;
+    };
+
+    const [projects, budgetLines, expenses, bankAccounts, bankTx, tasks, donors, fx] = await Promise.all([
+      prisma.project.findMany(), prisma.budgetLine.findMany(), prisma.expense.findMany(),
+      prisma.bankAccount.findMany({ where: { active: true } }), prisma.bankTransaction.findMany(),
+      prisma.complianceTask.findMany(), prisma.donor.findMany(), prisma.fxRates.findFirst()
+    ]);
+
+    const spentStatuses = ["Approved", "Paid", "Posted"];
+    const periodExpenses = expenses.filter(e => spentStatuses.includes(e.status) && inWindow(e.created_at));
+
+    // per-project: allocated, actual in period, actual to date
+    const perProject = projects.map(p => {
+      const lines = budgetLines.filter(b => b.projectId === p.id);
+      const inPeriod = periodExpenses.filter(e => e.projectId === p.id).reduce((s, e) => s + e.convertedAmount, 0);
+      const toDate = expenses.filter(e => e.projectId === p.id && spentStatuses.includes(e.status)).reduce((s, e) => s + e.convertedAmount, 0);
+      const allocated = lines.reduce((s, b) => s + b.allocatedUSD, 0);
+      return {
+        code: p.code, name: p.name, donor: donors.find(d => d.id === p.donorId)?.name || "", status: p.status,
+        allocated, inPeriod: +inPeriod.toFixed(2), toDate: +toDate.toFixed(2),
+        variancePct: allocated ? +(((toDate - allocated) / allocated) * 100).toFixed(1) : 0,
+        lines: lines.map(b => ({
+          code: b.code, description: b.description, category: b.category, allocated: b.allocatedUSD, actual: b.actualUSD,
+          inPeriod: +periodExpenses.filter(e => e.budgetLineId === b.id).reduce((s, e) => s + e.convertedAmount, 0).toFixed(2)
+        }))
+      };
+    }).filter(p => p.inPeriod > 0 || p.toDate > 0);
+
+    // category rollup across projects (period)
+    const byCategory: Record<string, number> = {};
+    for (const e of periodExpenses) {
+      const cat = budgetLines.find(b => b.id === e.budgetLineId)?.category || "Unallocated";
+      byCategory[cat] = +((byCategory[cat] || 0) + e.convertedAmount).toFixed(2);
+    }
+
+    // income received in the window (bank deposits).
+    // FX conversions, reversals and own-cash deposits are NOT income — they are movements
+    // between our own balances and would double-count money already received.
+    const eurRate = fx?.EUR || 1.08;
+    const INTERNAL = /FX conversion|Reversal|Cash deposit|الغاء|ع\.قطع/i;
+    const allDeposits = bankTx.filter(t => t.type === "Deposit" && inWindow(t.date + "T12:00:00Z")).map(t => {
+      const acc = bankAccounts.find(a => a.id === t.bankAccountId);
+      const usd = acc?.currency === "EUR" ? t.amount * eurRate : acc?.currency === "LBP" ? t.amount * 0.000011 : t.amount;
+      return {
+        date: t.date, description: t.description, account: acc?.name || t.bankAccountId,
+        currency: acc?.currency || "USD", amount: t.amount, usd: +usd.toFixed(2),
+        internal: INTERNAL.test(t.description)
+      };
+    });
+    const deposits = allDeposits.filter(d => !d.internal);
+    const internalMovements = allDeposits.filter(d => d.internal);
+
+    res.json({
+      meta: {
+        title: months === 12 ? "Annual Financial Report" : "Semi-Annual Financial Report (6 Months)",
+        periodStart: start.toISOString().slice(0, 10),
+        periodEnd: new Date(end.getTime() - 86400000).toISOString().slice(0, 10),
+        months, generatedAt: new Date().toISOString(), basis: "Accrual (Policy Section 1); amounts in USD unless noted"
+      },
+      totals: {
+        expenditureInPeriod: +periodExpenses.reduce((s, e) => s + e.convertedAmount, 0).toFixed(2),
+        vouchersInPeriod: periodExpenses.length,
+        incomeInPeriod: +deposits.reduce((s, d) => s + d.usd, 0).toFixed(2),
+        internalMovementsInPeriod: +internalMovements.reduce((s, d) => s + d.usd, 0).toFixed(2)
+      },
+      perProject, byCategory, deposits, internalMovements,
+      bankPosition: bankAccounts.map(a => ({ name: a.name, currency: a.currency, balance: a.balance, usd: +(a.currency === "EUR" ? a.balance * eurRate : a.currency === "LBP" ? a.balance * 0.000011 : a.balance).toFixed(2) })),
+      compliance: tasks.map(t => ({ title: t.title, status: t.status, dueDate: t.dueDate, overdue: t.status !== "Done" && t.dueDate < new Date().toISOString().slice(0, 10) })),
+      caveats: [
+        "Income counts donor and partner receipts only. Internal movements (currency conversions, reversals, own-cash deposits) are listed separately and excluded, so money received is not counted twice.",
+        `EUR receipts are converted at the current system rate (${eurRate}), not the rate on each transaction date — historical-rate conversion comes with the general-ledger rebuild.`,
+        "TRF cash disbursements are recorded as vouchers but not yet posted against a cash/bank account (general-ledger rebuild pending).",
+        "FPU-2025 budget figures are EUR converted at that report's own rate of 0.86753."
+      ]
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// AI vendor scan — reads a scanned invoice/letterhead and returns prefill data for the
+// Vendor Registration form. Read-only: registration stays manual (Policy 7.3 vetting is human).
+app.post("/api/vendor/scan", async (req, res) => {
+  try {
+    const { base64, mimeType, filename, user } = req.body;
+    if (!base64 || !mimeType) {
+      return res.status(400).json({ error: "Scanned invoice file (base64 + mimeType) is required." });
+    }
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(400).json({ error: "No GEMINI_API_KEY configured — AI reading unavailable. Fill the form manually." });
+    }
+
+    const existing = await prisma.vendor.findMany();
+
+    const ai = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    });
+
+    const prompt = `You are the finance assistant of AnaHon Media Platform. Read the attached supplier invoice/receipt/letterhead and extract the SUPPLIER'S details for a vendor registration form, as STRICT JSON (no markdown).
+
+Already-registered vendors (flag a duplicate, do not re-register): ${JSON.stringify(existing.map(v => ({ id: v.id, name: v.name })))}
+
+Category must be exactly one of: "Consultant / Freelancer", "Service Provider", "General Supplier", "Landlord", "Government / Tax Authority", "Other".
+
+Return exactly this JSON shape:
+{
+  "name": "supplier legal/trading name as printed",
+  "category": "one of the allowed categories, inferred from what they sell",
+  "taxId": "VAT/tax/fiscal number if printed, else empty",
+  "bankInfo": "IBAN / account / payment details if printed (often in the footer), else empty",
+  "contact": "email, phone, address — whatever is printed, comma-separated",
+  "duplicateOfVendorId": "id from the registered list if this supplier is already registered, else empty",
+  "confidence": "high" | "medium" | "low",
+  "warnings": ["anything unclear or missing; note if the document shows no tax/bank details"]
+}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: [
+        { inlineData: { mimeType, data: base64 } },
+        { text: prompt }
+      ],
+      config: { responseMimeType: "application/json" }
+    });
+
+    let extracted;
+    try {
+      extracted = JSON.parse((response.text || "").replace(/^```json?\s*|```\s*$/g, ""));
+    } catch {
+      return res.status(422).json({ error: "AI could not read supplier details from this scan. Fill the form manually." });
+    }
+
+    const CATS = ["Consultant / Freelancer", "Service Provider", "General Supplier", "Landlord", "Government / Tax Authority", "Other"];
+    if (!CATS.includes(extracted.category)) extracted.category = "Other";
+    if (extracted.duplicateOfVendorId && !existing.some(v => v.id === extracted.duplicateOfVendorId)) extracted.duplicateOfVendorId = "";
+
+    await createAuditLog(
+      user?.id || "u-1",
+      user?.name || "User",
+      "AI Vendor Scan",
+      `Scanned "${filename || "document"}" — extracted supplier "${extracted.name}" (${extracted.category}, confidence: ${extracted.confidence}). Prefill only; vendor not registered.`
+    );
+
+    res.json({ extracted });
+  } catch (err: any) {
+    res.status(500).json({ error: "AI scan failed: " + err.message });
+  }
+});
+
+// AI invoice scan — reads a scanned invoice (image/PDF) and returns prefill data for the
+// expense form. Read-only: never creates the voucher; submission stays manual (Policy 5.2).
+app.post("/api/expense/scan-invoice", async (req, res) => {
+  try {
+    const { base64, mimeType, filename, user } = req.body;
+    if (!base64 || !mimeType) {
+      return res.status(400).json({ error: "Scanned invoice file (base64 + mimeType) is required." });
+    }
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(400).json({ error: "No GEMINI_API_KEY configured — AI invoice reading unavailable. Fill the form manually." });
+    }
+
+    const [vendors, projects, budgetLines] = await Promise.all([
+      prisma.vendor.findMany({ where: { active: true, blocked: false } }),
+      prisma.project.findMany({ where: { status: "Active" } }),
+      prisma.budgetLine.findMany()
+    ]);
+
+    const ai = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    });
+
+    const prompt = `You are the finance assistant of AnaHon Media Platform. Read the attached scanned invoice/receipt and extract the fields below as STRICT JSON (no markdown, no commentary).
+
+Known vendors (match by name if possible): ${JSON.stringify(vendors.map(v => ({ id: v.id, name: v.name })))}
+Active projects: ${JSON.stringify(projects.map(p => ({ id: p.id, code: p.code, name: p.name })))}
+Budget lines: ${JSON.stringify(budgetLines.map(b => ({ id: b.id, projectId: b.projectId, code: b.code, description: b.description })))}
+
+Return exactly this JSON shape:
+{
+  "title": "short voucher title (vendor + what was bought)",
+  "purpose": "one-sentence description incl. invoice/receipt number if visible",
+  "vendorId": "id from the known-vendor list, or empty string if no confident match",
+  "vendorName": "vendor name as printed",
+  "date": "YYYY-MM-DD or empty",
+  "currency": "USD" | "EUR" | "LBP",
+  "amount": number (total payable on the invoice),
+  "invoiceRef": "invoice/receipt number or empty",
+  "suggestedProjectId": "project id if the invoice clearly maps to one, else empty",
+  "suggestedBudgetLineId": "budget line id if clearly inferable, else empty",
+  "confidence": "high" | "medium" | "low",
+  "warnings": ["anything unclear, altered-looking, or missing per documentation policy 6.1/6.6"]
+}`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: [
+        { inlineData: { mimeType, data: base64 } },
+        { text: prompt }
+      ],
+      config: { responseMimeType: "application/json" }
+    });
+
+    let extracted;
+    try {
+      extracted = JSON.parse((response.text || "").replace(/^```json?\s*|```\s*$/g, ""));
+    } catch {
+      return res.status(422).json({ error: "AI could not produce structured data from this scan. Fill the form manually." });
+    }
+
+    // Never trust foreign keys from the model blindly — validate against the DB lists
+    if (extracted.vendorId && !vendors.some(v => v.id === extracted.vendorId)) extracted.vendorId = "";
+    if (extracted.suggestedProjectId && !projects.some(p => p.id === extracted.suggestedProjectId)) extracted.suggestedProjectId = "";
+    if (extracted.suggestedBudgetLineId && !budgetLines.some(b => b.id === extracted.suggestedBudgetLineId)) extracted.suggestedBudgetLineId = "";
+    if (!["USD", "EUR", "LBP"].includes(extracted.currency)) extracted.currency = "USD";
+
+    await createAuditLog(
+      user?.id || "u-1",
+      user?.name || "User",
+      "AI Invoice Scan",
+      `Scanned "${filename || "invoice"}" — extracted ${extracted.currency} ${extracted.amount} / ${extracted.vendorName || "unknown vendor"} (confidence: ${extracted.confidence}). Prefill only; voucher not created.`
+    );
+
+    res.json({ extracted });
+  } catch (err: any) {
+    res.status(500).json({ error: "AI scan failed: " + err.message });
+  }
+});
+
 // Gemini compliance checker using direct SQLite data
 app.post("/api/gemini/compliance-audit", async (req, res) => {
   const { checkType } = req.body;
@@ -1498,36 +2082,70 @@ app.post("/api/gemini/compliance-audit", async (req, res) => {
       }
     });
 
-    const [projects, budgetLines, expenses] = await Promise.all([
+    const [projects, budgetLines, expenses, accounts, bankAccounts, bankTransactions, journalEntries, timesheets, procurements, complianceTasks, docCount] = await Promise.all([
       prisma.project.findMany(),
       prisma.budgetLine.findMany(),
-      prisma.expense.findMany()
+      prisma.expense.findMany(),
+      prisma.account.findMany(),
+      prisma.bankAccount.findMany(),
+      prisma.bankTransaction.findMany(),
+      prisma.journalEntry.findMany(),
+      prisma.timesheet.findMany(),
+      prisma.procurement.findMany(),
+      prisma.complianceTask.findMany(),
+      prisma.appDoc.count()
     ]);
 
     const projectStats = projects.map(p => {
-      const spent = budgetLines.filter(bl => bl.projectId === p.id).reduce((sum, bl) => sum + bl.actualUSD, 0);
-      return { code: p.code, name: p.name, budget: p.budgetUSD, spent, restriction: p.fundingType };
+      const lines = budgetLines.filter(bl => bl.projectId === p.id);
+      return {
+        code: p.code, name: p.name, budgetUSD: p.budgetUSD, fundingType: p.fundingType,
+        status: p.status, startDate: p.startDate, endDate: p.endDate,
+        budgetLines: lines.map(bl => ({ code: bl.code, description: bl.description, allocatedUSD: bl.allocatedUSD, actualUSD: bl.actualUSD, committedUSD: bl.committedUSD }))
+      };
     });
 
-    const recentVouchers = expenses.map(e => ({
-      voucher: e.voucherNo,
-      purpose: e.purpose,
-      amountUSD: e.convertedAmount,
-      status: e.status
+    const voucherList = expenses.map(e => ({
+      voucher: e.voucherNo, title: e.title, amount: e.amount, currency: e.currency,
+      convertedUSD: e.convertedAmount, whtUSD: e.whtAmount, netUSD: e.netAmount,
+      status: e.status, paymentMethod: e.paymentMethod, budgetLineId: e.budgetLineId,
+      hasAttachment: e.hasAttachment, date: e.created_at?.split("T")[0]
     }));
 
-    const prompt = `Conduct a rigorous financial audit risk assessment and donor compliance check for "AnaHon Media Platform", a Lebanese civil company based in Tripoli. 
-    Analyze this context:
-    CheckType: ${checkType || "General Assessment"}
-    Projects Overview: ${JSON.stringify(projectStats)}
-    Voucher Listing: ${JSON.stringify(recentVouchers)}
-    
-    Please output a structured auditor's assessment markdown report. Highlight:
-    1. Budget Burn Rates & Potential Overrun risks.
-    2. Strict restricted donor funding rules (co-funding, timesheets tracking, etc.).
-    3. Suggested warning flags for audit readiness (e.g. procurement matching above 1500 USD, or MoF statutory compliance with Lebanese tax rules).
-    4. Compliance scoring (out of 100).
-    Keep it formal, structured, and constructive.`;
+    const glSummary = accounts.filter(a => a.balance !== 0).map(a => ({ code: a.code, name: a.name, type: a.type, balance: a.balance }));
+    const today = new Date().toISOString().split("T")[0];
+
+    const prompt = `You are the internal compliance auditor of "AnaHon Media Platform", a Lebanese civil company (société civile) in Tripoli.
+Today's date is ${today}. Produce a structured markdown audit report for check type: ${checkType || "General Assessment"}.
+
+STRICT RULES — violating any of these makes the report unusable:
+- Use ONLY the data provided below. Do NOT invent vouchers, amounts, dates, transactions, vendors, or findings. If data is absent, state "no data recorded" rather than assuming.
+- Every finding MUST cite the specific voucher number, account code, or budget line it comes from.
+- Date the report ${today}. Do not use any other report date.
+- Apply the ORGANIZATION'S OWN policy thresholds (below), not generic donor defaults. Where a donor rule is stricter, say so explicitly.
+
+ANAHON ACCOUNTING POLICY THRESHOLDS (Accounting & Business Policy Manual v020):
+- Procurement: 3 written quotations + comparison sheet required for any purchase above USD 300 (Sections 5.3/7.2).
+- Cash payments above USD 150 require Program Director approval + written justification; bank transfer is the preferred method (Section 4.4.2).
+- Petty cash ceiling: USD 300 total (Section 4.4.1).
+- Budget line overruns above 10% of the line require prior donor approval (Section 11).
+- Every restricted-grant expense must map to exactly one approved budget line (Section 2.4).
+- All supporting documents retained 7 years (Section 13).
+- WHT on non-resident service vendors per Lebanese MoF rules (7.5%), declared quarterly (Form 83 context applies).
+
+ACTUAL SYSTEM DATA:
+Projects & budget lines: ${JSON.stringify(projectStats)}
+Vouchers: ${JSON.stringify(voucherList)}
+General ledger (non-zero accounts): ${JSON.stringify(glSummary)}
+Bank/cash accounts: ${JSON.stringify(bankAccounts.map(b => ({ name: b.name, currency: b.currency, balance: b.balance })))}
+Bank transactions: ${JSON.stringify(bankTransactions.map(t => ({ date: t.date, desc: t.description, amount: t.amount, type: t.type, voucher: t.voucherNo })))}
+Posted journal entries: ${journalEntries.length}
+Timesheets on file: ${timesheets.length}
+Procurement RFQs on file: ${procurements.length}
+Supporting documents archived: ${docCount}
+Statutory deadlines: ${JSON.stringify(complianceTasks.map(t => ({ title: t.title, due: t.dueDate, status: t.status })))}
+
+Report structure: 1) Executive summary with a compliance score out of 100 justified line-by-line; 2) Budget vs actual per budget line with variance %; 3) Reconciliation check (vouchers vs GL vs bank); 4) Policy threshold violations found (cite evidence) or explicit confirmation of none; 5) Statutory deadline status as of ${today}; 6) Prioritized corrective actions based only on actual findings. Formal, concise, constructive.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
