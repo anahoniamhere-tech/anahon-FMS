@@ -592,7 +592,7 @@ export default function App() {
                   <span>Processing...</span>
                 </>
               ) : (
-                <span>{authTab === "signin" ? "Access Financial Portal" : "Establish Profile"}</span>
+                <span>{authTab === "signin" ? "Access Management System" : "Establish Profile"}</span>
               )}
             </button>
           </form>
@@ -1279,6 +1279,8 @@ export default function App() {
         const isImage = mt.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "heic"].includes(ext);
         const isPdf = mt.includes("pdf") || ext === "pdf";
         const isText = mt.startsWith("text/") || ["txt", "md", "csv", "json", "html"].includes(ext);
+        const isVideo = mt.startsWith("video/") || ["mp4", "webm", "mov", "m4v"].includes(ext);
+        const isAudio = mt.startsWith("audio/") || ["mp3", "wav", "m4a", "ogg", "aac"].includes(ext);
         return (
           <>
             <div className="fixed inset-0 bg-black/70 z-[100]" onClick={() => setDocView(null)} />
@@ -1297,6 +1299,15 @@ export default function App() {
                 {isImage ? (
                   <div className="min-h-full flex items-center justify-center p-4">
                     <img src={src} alt={docView.filename} className="max-w-full max-h-full object-contain shadow-lg" />
+                  </div>
+                ) : isVideo ? (
+                  <div className="min-h-full flex items-center justify-center p-4">
+                    <video src={src} controls className="max-w-full max-h-full shadow-lg" />
+                  </div>
+                ) : isAudio ? (
+                  // Meeting recordings live here — playable without leaving the vault.
+                  <div className="min-h-full flex items-center justify-center p-8">
+                    <audio src={src} controls className="w-full max-w-xl" />
                   </div>
                 ) : isPdf ? (
                   // Rendered server-side to PNG: no browser PDF plugin is involved, so this

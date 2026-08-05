@@ -342,6 +342,10 @@ export interface AppDoc {
   linkedRecordId: string;
   /** The person/provider (emp-* / ven-*) this document is about — drives the party file view. */
   partyId?: string | null;
+  /** sha256 of the bytes — identical files share it, so duplicates collapse. */
+  contentHash?: string;
+  /** Editable description shown in the materials library. */
+  note?: string;
   created_at: string;
 }
 

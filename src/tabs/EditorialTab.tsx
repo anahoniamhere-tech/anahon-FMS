@@ -45,6 +45,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const [libOpen, setLibOpen] = useState(false);
   const [libKind, setLibKind] = useState("");
   const [libSearch, setLibSearch] = useState("");
+  const [libEdit, setLibEdit] = useState<null | { url: string; label: string; note: string }>(null);
   // Meeting recorder + minutes processing
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [mtgBusy, setMtgBusy] = useState(false);
@@ -330,30 +331,65 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   // content item, plus vault Reference Material from Idea Desk sessions that never
   // became an assignment (so nothing gathered along the way is lost).
   const library = useMemo(() => {
-    const byUrl = new Map<string, any>();
+    const docById = new Map((state.documents || []).map(d => [d.id, d]));
+    // Identical bytes are one entry: keyed by content hash where known, URL otherwise.
+    const byKey = new Map<string, any>();
+    const put = (key: string, entry: any) => {
+      const prior = byKey.get(key);
+      if (!prior) { byKey.set(key, { ...entry, copies: 1 }); return; }
+      // Keep the entry that carries a source item; count the rest as copies.
+      byKey.set(key, { ...(prior.itemTitle ? prior : entry), copies: prior.copies + 1 });
+    };
     for (const c of state.contentItems || []) {
       for (const m of c.materials || []) {
-        byUrl.set(m.url, {
-          ...m,
-          itemId: c.id, itemTitle: c.title, itemStatus: c.status,
-          docId: m.url.startsWith("/api/document/content/") ? m.url.split("/").pop() : "",
-          date: c.created_at?.slice(0, 10) || ""
+        const docId = m.url.startsWith("/api/document/content/") ? m.url.split("/").pop() || "" : "";
+        const doc = docId ? docById.get(docId) : undefined;
+        put(doc?.contentHash || m.url, {
+          ...m, itemId: c.id, itemTitle: c.title, itemStatus: c.status,
+          docId, mimeType: doc?.mimeType, refNo: doc?.refNo || "",
+          note: doc?.note || (m as any).description || "",
+          date: (doc?.created_at || c.created_at || "").slice(0, 10)
         });
       }
     }
     for (const d of state.documents || []) {
       if (d.category !== "Reference Material") continue;
-      const url = `/api/document/content/${d.id}`;
-      if (byUrl.has(url)) continue; // already attached to an item — keep the richer entry
-      byUrl.set(url, {
-        label: d.filename, url,
+      put(d.contentHash || `/api/document/content/${d.id}`, {
+        label: d.filename, url: `/api/document/content/${d.id}`,
         kind: /^image\//.test(d.mimeType) ? "photo" : /^video\//.test(d.mimeType) ? "video" : "doc",
-        itemTitle: "", docId: d.id, mimeType: d.mimeType,
-        date: d.created_at?.slice(0, 10) || "", refNo: d.refNo || ""
+        itemTitle: "", docId: d.id, mimeType: d.mimeType, note: d.note || "",
+        date: (d.created_at || "").slice(0, 10), refNo: d.refNo || ""
       });
     }
-    return [...byUrl.values()].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    return [...byKey.values()].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   }, [state.contentItems, state.documents]);
+
+  // Open a library material with the right handler for its kind.
+  const openMaterial = (m: any) => {
+    if (m.docId) openDoc({ id: m.docId, filename: m.label, mimeType: m.mimeType });
+    else window.open(m.url, "_blank");
+  };
+
+  // Reuse anything from the library in a new idea conversation.
+  const useInIdeaDesk = (m: any) => {
+    const material = { label: m.label, url: m.url, kind: m.kind, description: m.note || "" };
+    setChat(c => c
+      ? { ...c, materials: c.materials.some(x => x.url === m.url) ? c.materials : [...c.materials, material] }
+      : { messages: [], busy: false, draft: null, materials: [material], provider: "", pendingFile: null });
+    triggerToast(`${m.label} → ${t("Idea Desk")}`);
+  };
+
+  // Rename / re-describe: vault files carry it on the document, links on their item.
+  const saveMaterialMeta = async (m: any, label: string, note: string) => {
+    if (m.docId) {
+      if (await post("/api/documents/meta", { id: m.docId, filename: label, note }, "Renamed")) setLibEdit(null);
+      return;
+    }
+    const item = (state.contentItems || []).find(c => c.id === m.itemId);
+    if (!item) { triggerToast("This material has no item to update.", "error"); return; }
+    const materials = item.materials.map(x => x.url === m.url ? { ...x, label, description: note } : x);
+    if (await saveItem(item, { materials }, "Renamed")) setLibEdit(null);
+  };
 
   const libVisible = library.filter(m =>
     (!libKind || m.kind === libKind) &&
@@ -856,26 +892,52 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {libVisible.map((m, i) => (
-                <button key={i}
-                  onClick={() => m.docId
-                    ? openDoc({ id: m.docId, filename: m.label, mimeType: m.mimeType })
-                    : window.open(m.url, "_blank")}
-                  className="text-left border border-slate-200 rounded-lg overflow-hidden hover:border-slate-400 hover:shadow-sm transition-all">
-                  {m.kind === "photo" ? (
-                    <img src={m.url} alt={m.label} className="h-24 w-full object-cover bg-slate-100"
-                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                <div key={i} className="border border-slate-200 rounded-lg overflow-hidden hover:border-slate-400 hover:shadow-sm transition-all flex flex-col">
+                  <button onClick={() => openMaterial(m)} className="text-left" title={t("Open")}>
+                    {m.kind === "photo" ? (
+                      <img src={m.url} alt={m.label} className="h-24 w-full object-cover bg-slate-100"
+                        onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                    ) : (
+                      <div className="h-24 w-full bg-slate-50 flex items-center justify-center text-3xl">{MAT_ICON[m.kind] || "🔗"}</div>
+                    )}
+                  </button>
+
+                  {libEdit?.url === m.url ? (
+                    <div className="p-2 space-y-1">
+                      <input value={libEdit.label} onChange={e => setLibEdit({ ...libEdit, label: e.target.value })}
+                        aria-label={t("Name")} className="finance-input w-full text-[11px] py-1" />
+                      <input value={libEdit.note} onChange={e => setLibEdit({ ...libEdit, note: e.target.value })}
+                        placeholder={t("Description")} aria-label={t("Description")} className="finance-input w-full text-[10px] py-1" />
+                      <span className="flex gap-1">
+                        <button onClick={() => saveMaterialMeta(m, libEdit.label, libEdit.note)}
+                          className="bg-red-600 hover:bg-red-700 text-white rounded px-2 py-0.5 text-[10px]">{t("Save")}</button>
+                        <button onClick={() => setLibEdit(null)}
+                          className="bg-slate-100 hover:bg-slate-200 rounded px-2 py-0.5 text-[10px]">{t("Cancel")}</button>
+                      </span>
+                    </div>
                   ) : (
-                    <div className="h-24 w-full bg-slate-50 flex items-center justify-center text-3xl">{MAT_ICON[m.kind] || "🔗"}</div>
+                    <div className="p-2 space-y-0.5 flex-1 flex flex-col">
+                      <p className="text-[11px] font-bold text-slate-800 truncate" title={m.label}>{m.label}</p>
+                      {m.note && <p className="text-[10px] text-slate-500 truncate" title={m.note}>{m.note}</p>}
+                      <p className="text-[9px] text-slate-400 truncate">
+                        {m.itemTitle ? `→ ${m.itemTitle}` : t("Idea Desk session")}{m.date ? ` · ${m.date}` : ""}
+                      </p>
+                      <p className="text-[9px] font-mono text-slate-400 truncate">
+                        {m.refNo}{m.copies > 1 ? `  ·  ${m.copies}× ${t("copies merged")}` : ""}
+                      </p>
+                      {canManage && (
+                        <span className="flex gap-1 pt-1 mt-auto">
+                          <button onClick={() => useInIdeaDesk(m)} title={t("Use in Idea Desk")}
+                            className="bg-slate-900 hover:bg-slate-700 text-white rounded px-2 py-0.5 text-[10px]">💡</button>
+                          <button onClick={() => setLibEdit({ url: m.url, label: m.label, note: m.note || "" })} title={t("Rename")}
+                            className="bg-slate-100 hover:bg-slate-200 rounded px-2 py-0.5 text-[10px]">✏️</button>
+                          <a href={m.url} download={m.label} onClick={e => e.stopPropagation()} title={t("Download")}
+                            className="bg-slate-100 hover:bg-slate-200 rounded px-2 py-0.5 text-[10px]">⬇</a>
+                        </span>
+                      )}
+                    </div>
                   )}
-                  <div className="p-2 space-y-0.5">
-                    <p className="text-[11px] font-bold text-slate-800 truncate" title={m.label}>{m.label}</p>
-                    {m.description && <p className="text-[10px] text-slate-500 truncate">{m.description}</p>}
-                    <p className="text-[9px] text-slate-400 truncate">
-                      {m.itemTitle ? `→ ${m.itemTitle}` : t("Idea Desk session")}{m.date ? ` · ${m.date}` : ""}
-                    </p>
-                    {m.refNo && <p className="text-[9px] font-mono text-slate-400">{m.refNo}</p>}
-                  </div>
-                </button>
+                </div>
               ))}
             </div>
           </div>

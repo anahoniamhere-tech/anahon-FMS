@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
@@ -82,6 +83,7 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/procurement/approve",
   "/api/users/set-role",
   "/api/documents/set-ref",
+  "/api/documents/meta",
   "/api/vendors/engageable",
   "/api/partners/draw",
   "/api/journal-entry/adjustment",
@@ -356,7 +358,8 @@ async function loadState(viewer?: any) {
         .map(d => ({
           id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
           base64: "", category: d.category, linkedRecordType: d.linkedRecordType,
-          linkedRecordId: d.linkedRecordId, partyId: d.partyId, created_at: d.created_at
+          linkedRecordId: d.linkedRecordId, partyId: d.partyId, created_at: d.created_at,
+          contentHash: d.contentHash, note: d.note
         })),
       auditLogs: [], complianceTasks: [],
       opportunities: [], cashCounts: [], subscriptions: [],
@@ -401,7 +404,9 @@ async function loadState(viewer?: any) {
       linkedRecordType: d.linkedRecordType,
       linkedRecordId: d.linkedRecordId,
       partyId: d.partyId,
-      created_at: d.created_at
+      created_at: d.created_at,
+      contentHash: d.contentHash,
+      note: d.note
     })),
     auditLogs,
     complianceTasks,
@@ -1579,6 +1584,30 @@ app.post("/api/users/set-role", async (req, res) => {
 // Amend a document's unique reference — MASTER ACCOUNT ONLY. References are
 // auto-assigned at registration; a manual change is exceptional and fully audited.
 // (Role comes from the client like every endpoint here — see §5.3 known weakness.)
+// Rename a document and edit its description. The display name and note are
+// metadata — the file on disk keeps its vault path, so nothing breaks downstream.
+app.post("/api/documents/meta", async (req, res) => {
+  try {
+    const { id, filename, note, user } = req.body;
+    const doc = await prisma.appDoc.findUnique({ where: { id } });
+    if (!doc) return res.status(404).json({ error: "Document not found." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role) && !["Finance Officer", "Project Officer"].includes(user?.role)) {
+      return res.status(403).json({ error: "Renaming documents needs an editor, Finance Officer or Project Officer." });
+    }
+    const name = String(filename ?? doc.filename).trim();
+    if (!name) return res.status(400).json({ error: "Give the document a name." });
+    const updated = await prisma.appDoc.update({ where: { id }, data: {
+      filename: name.slice(0, 200),
+      ...(note !== undefined ? { note: String(note).slice(0, 500) } : {})
+    } });
+    await createAuditLog(user?.id, user?.name, "Document Renamed",
+      `${doc.refNo || doc.id}: "${doc.filename}" → "${updated.filename}"${note ? ` (note updated)` : ""}.`);
+    res.json({ success: true, document: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/documents/set-ref", async (req, res) => {
   try {
     const { docId, refNo, user } = req.body;
@@ -4787,11 +4816,23 @@ app.post("/api/document/upload", async (req, res) => {
 
     const cat = category || "Voucher";
     const safeName = (filename || `document-${Date.now()}.pdf`).replace(/[^\w.\-()\[\] ]/g, "_");
+    const buffer = Buffer.from(base64 || "", "base64");
+
+    // Same bytes = same document. Re-uploading a file returns the row already on
+    // file instead of writing a second copy — the vault and the materials library
+    // stay free of duplicates by construction.
+    const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
+    const dupe = await prisma.appDoc.findFirst({ where: { contentHash } });
+    if (dupe) {
+      await createAuditLog(user?.id, user?.name, "Document Already On File",
+        `${filename || safeName} matches ${dupe.refNo || dupe.id} byte-for-byte — existing document reused.`);
+      return res.json({ success: true, document: dupe, doc: dupe, duplicate: true });
+    }
+
     const dir = path.join(VAULT_ROOT, projectCode, cat);
     fs.mkdirSync(dir, { recursive: true });
     let finalName = safeName;
     if (fs.existsSync(path.join(dir, finalName))) finalName = `${Date.now()}_${safeName}`;
-    const buffer = Buffer.from(base64 || "", "base64");
     fs.writeFileSync(path.join(dir, finalName), buffer);
 
     const doc = await prisma.appDoc.create({
@@ -4805,6 +4846,7 @@ app.post("/api/document/upload", async (req, res) => {
         category: cat,
         linkedRecordType: linkedRecordType || "Expense",
         linkedRecordId: linkedRecordId || "exp-1",
+        contentHash,
         created_at: new Date().toISOString()
       }
     });

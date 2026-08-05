@@ -251,6 +251,8 @@ model AppDoc {
   // The person/provider this document is ABOUT (emp-* or ven-*), independent of what it is
   // linked to (project/expense). Explicit so party files never rely on name-in-filename guessing.
   partyId          String?
+  contentHash      String @default("") // sha256 of the bytes — the same file never files twice
+  note             String @default("") // editable description shown in the materials library
 }
 
 model AuditLog {
