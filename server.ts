@@ -45,6 +45,7 @@ const PO_ALLOWED_POSTS = new Set([
   "/api/activities/save",           // may plan their own projects' timeline (scope-checked inside)
   "/api/activities/generate",
   "/api/document/upload",
+  "/api/materials/link",
   "/api/expense/scan-invoice",
   // Policy 002: each Project Officer runs their programme's content operations.
   "/api/content/save",
@@ -75,7 +76,9 @@ const CREW_ALLOWED_POSTS = new Set([
   "/api/content/return",           // the named checker sends work back
   "/api/content/produce",          // the assignee drafts their own piece in the studio
   "/api/content/draft-save",
-  "/api/content/draft-delete"
+  "/api/content/draft-delete",
+  "/api/document/upload",          // reference material gathered while producing
+  "/api/materials/link"
 ]);
 // Money-moving/control endpoints where an anonymous request is not acceptable.
 const IDENTITY_REQUIRED_POSTS = new Set([
@@ -84,6 +87,7 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/users/set-role",
   "/api/documents/set-ref",
   "/api/documents/meta",
+  "/api/materials/link",
   "/api/vendors/engageable",
   "/api/partners/draw",
   "/api/journal-entry/adjustment",
@@ -357,7 +361,8 @@ async function loadState(viewer?: any) {
           (d.linkedRecordType === "Expense" && myExpenseIds.has(d.linkedRecordId)))
         .map(d => ({
           id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
-          base64: "", category: d.category, linkedRecordType: d.linkedRecordType,
+          base64: d.base64.startsWith("link://") ? d.base64 : "",
+          category: d.category, linkedRecordType: d.linkedRecordType,
           linkedRecordId: d.linkedRecordId, partyId: d.partyId, created_at: d.created_at,
           contentHash: d.contentHash, note: d.note
         })),
@@ -399,7 +404,8 @@ async function loadState(viewer?: any) {
       sizeStr: d.sizeStr,
       // Never ship file contents with app state — the browser fetches them
       // on demand from /api/document/content/:id. Keeps page loads instant.
-      base64: "",
+      // Link entries carry no payload, so their pointer travels as-is.
+      base64: d.base64.startsWith("link://") ? d.base64 : "",
       category: d.category,
       linkedRecordType: d.linkedRecordType,
       linkedRecordId: d.linkedRecordId,
@@ -1584,6 +1590,39 @@ app.post("/api/users/set-role", async (req, res) => {
 // Amend a document's unique reference — MASTER ACCOUNT ONLY. References are
 // auto-assigned at registration; a manual change is exceptional and fully audited.
 // (Role comes from the client like every endpoint here — see §5.3 known weakness.)
+// Register a reference LINK in the vault register. The pointer column already
+// distinguishes storage ("file://…"); a link is "link://…" — so links land in the
+// materials library beside uploaded files without a parallel table. Deduped on the
+// URL, so pasting the same reference twice never doubles it.
+app.post("/api/materials/link", async (req, res) => {
+  try {
+    const { url, label, note, user } = req.body;
+    const clean = String(url || "").trim();
+    if (!/^https?:\/\//i.test(clean)) return res.status(400).json({ error: "Give a link starting with http:// or https://." });
+    const contentHash = crypto.createHash("sha256").update(`link:${clean}`).digest("hex");
+    const existing = await prisma.appDoc.findFirst({ where: { contentHash } });
+    if (existing) return res.json({ success: true, document: existing, doc: existing, duplicate: true });
+    const doc = await prisma.appDoc.create({ data: {
+      id: `doc-${Date.now()}`,
+      refNo: await nextDocRef(prisma),
+      filename: String(label || clean).slice(0, 200),
+      mimeType: "text/uri-list",
+      sizeStr: "link",
+      base64: `link://${clean}`,
+      category: "Reference Material",
+      linkedRecordType: "Content Reference",
+      linkedRecordId: "-",
+      contentHash,
+      note: String(note || "").slice(0, 500),
+      created_at: new Date().toISOString()
+    } });
+    await createAuditLog(user?.id, user?.name, "Reference Link Registered", `${doc.refNo}: ${doc.filename} — ${clean}`);
+    res.json({ success: true, document: doc, doc });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Rename a document and edit its description. The display name and note are
 // metadata — the file on disk keeps its vault path, so nothing breaks downstream.
 app.post("/api/documents/meta", async (req, res) => {

@@ -212,6 +212,8 @@ export const AR: Record<string, string> = {
   "Materials & References": "المواد والمراجع",
   "Materials Library": "مكتبة المواد",
   "Use in Idea Desk": "استخدام في مكتب الأفكار",
+  "From Library": "من المكتبة",
+  "Add from Library": "إضافة من المكتبة",
   "copies merged": "نسخ مدمجة",
   "Rename": "إعادة تسمية",
   "Name": "الاسم",

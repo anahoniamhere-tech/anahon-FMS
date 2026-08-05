@@ -46,6 +46,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const [libKind, setLibKind] = useState("");
   const [libSearch, setLibSearch] = useState("");
   const [libEdit, setLibEdit] = useState<null | { url: string; label: string; note: string }>(null);
+  const [chatLib, setChatLib] = useState(false);   // library picker open inside the Idea Desk
   // Meeting recorder + minutes processing
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [mtgBusy, setMtgBusy] = useState(false);
@@ -354,10 +355,15 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
     }
     for (const d of state.documents || []) {
       if (d.category !== "Reference Material") continue;
-      put(d.contentHash || `/api/document/content/${d.id}`, {
-        label: d.filename, url: `/api/document/content/${d.id}`,
-        kind: /^image\//.test(d.mimeType) ? "photo" : /^video\//.test(d.mimeType) ? "video" : "doc",
-        itemTitle: "", docId: d.id, mimeType: d.mimeType, note: d.note || "",
+      // Registered links carry their destination in the pointer column; files are fetched by id.
+      const isLink = (d.base64 || "").startsWith("link://");
+      const url = isLink ? d.base64.slice("link://".length) : `/api/document/content/${d.id}`;
+      put(d.contentHash || url, {
+        label: d.filename, url,
+        kind: isLink ? (/\.(jpe?g|png|gif|webp)([?#]|$)/i.test(url) ? "photo" : "link")
+          : /^image\//.test(d.mimeType) ? "photo" : /^video\//.test(d.mimeType) ? "video" : "doc",
+        itemTitle: "", docId: isLink ? "" : d.id, linkDocId: d.id,
+        mimeType: d.mimeType, note: d.note || "",
         date: (d.created_at || "").slice(0, 10), refNo: d.refNo || ""
       });
     }
@@ -381,8 +387,9 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
   // Rename / re-describe: vault files carry it on the document, links on their item.
   const saveMaterialMeta = async (m: any, label: string, note: string) => {
-    if (m.docId) {
-      if (await post("/api/documents/meta", { id: m.docId, filename: label, note }, "Renamed")) setLibEdit(null);
+    const docId = m.docId || m.linkDocId;   // links are vault entries too, just not files
+    if (docId) {
+      if (await post("/api/documents/meta", { id: docId, filename: label, note }, "Renamed")) setLibEdit(null);
       return;
     }
     const item = (state.contentItems || []).find(c => c.id === m.itemId);
@@ -639,9 +646,11 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
               // No files: a link/image dragged from a web page arrives as a URL.
               const url = (e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain")).trim().split("\n")[0];
               if (url && /^https?:\/\//.test(url)) {
-                setChat(c => c ? { ...c, materials: [...c.materials, { label: upDesc || url, url, kind: /\.(jpe?g|png|gif|webp)([?#]|$)/i.test(url) ? "photo" : "link", description: upDesc }] } : c);
+                const label = upDesc || url;
+                setChat(c => c ? { ...c, materials: [...c.materials, { label, url, kind: /\.(jpe?g|png|gif|webp)([?#]|$)/i.test(url) ? "photo" : "link", description: upDesc }] } : c);
                 setUpDesc("");
                 triggerToast("Link attached.");
+                post("/api/materials/link", { url, label, note: upDesc });  // → library
               }
             } catch (err: any) {
               triggerToast(err?.message || "Drop failed", "error");
@@ -743,13 +752,58 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                 <option value="doc">📄 Document</option>
               </select>
               <button
-                onClick={() => {
-                  if (!linkForm.url.trim()) return;
-                  setChat(c => c ? { ...c, materials: [...c.materials, { label: linkForm.description || linkForm.url, url: linkForm.url.trim(), kind: linkForm.kind, description: linkForm.description }] } : c);
+                onClick={async () => {
+                  const url = linkForm.url.trim();
+                  if (!url) return;
+                  const label = linkForm.description || url;
+                  setChat(c => c ? { ...c, materials: [...c.materials, { label, url, kind: linkForm.kind, description: linkForm.description }] } : c);
                   setLinkForm({ url: "", description: "", kind: "link" });
+                  // Register it in the vault so it joins the library immediately,
+                  // whether or not this idea ever becomes an assignment.
+                  await post("/api/materials/link", { url, label, note: linkForm.description });
                 }}
                 className="bg-slate-800 hover:bg-slate-700 text-white text-xs rounded px-3 py-1.5">+ {t("Add Material")}</button>
             </div>
+          </div>
+
+          {/* Section 2b — reuse anything already in the library */}
+          <div>
+            <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+              📚 {t("From Library")} <span className="normal-case font-normal">({library.length})</span>
+            </span>
+            {!chatLib ? (
+              <button onClick={() => setChatLib(true)}
+                className="bg-slate-800 hover:bg-slate-700 text-white text-xs rounded px-3 py-1.5">
+                📚 {t("Add from Library")}
+              </button>
+            ) : (
+              <div className="bg-slate-950 border border-slate-800 rounded p-2 space-y-2">
+                <div className="flex gap-2">
+                  <input value={libSearch} onChange={e => setLibSearch(e.target.value)}
+                    placeholder={t("Search materials…")} aria-label={t("Search materials…")}
+                    className="flex-1 bg-slate-900 text-xs px-2 py-1 rounded text-white border border-slate-800 outline-none" />
+                  <button onClick={() => setChatLib(false)} className="text-slate-400 hover:text-white text-xs px-2">✕</button>
+                </div>
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-1.5 max-h-44 overflow-y-auto">
+                  {libVisible.map((m, i) => {
+                    const attached = chat.materials.some(x => x.url === m.url);
+                    return (
+                      <button key={i} onClick={() => useInIdeaDesk(m)} disabled={attached} title={`${m.label}${m.note ? ` — ${m.note}` : ""}`}
+                        className={`border rounded overflow-hidden text-left ${attached ? "border-emerald-600 opacity-60" : "border-slate-700 hover:border-slate-500"}`}>
+                        {m.kind === "photo" ? (
+                          <img src={m.url} alt={m.label} className="h-12 w-full object-cover bg-slate-800"
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                        ) : (
+                          <div className="h-12 w-full bg-slate-800 flex items-center justify-center text-lg">{MAT_ICON[m.kind] || "🔗"}</div>
+                        )}
+                        <p className="text-[9px] p-1 truncate text-slate-300">{attached ? "✓ " : ""}{m.label}</p>
+                      </button>
+                    );
+                  })}
+                  {libVisible.length === 0 && <p className="col-span-6 text-[10px] text-slate-500 p-2">Nothing in the library matches.</p>}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Section 3 — upload files (into the vault) with description */}
