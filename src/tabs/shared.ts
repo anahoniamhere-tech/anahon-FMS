@@ -1,4 +1,4 @@
-import { DatabaseState, AppDoc } from "../types";
+import { DatabaseState, Project } from "../types";
 
 // Props every tab component receives from App via {...shared}.
 // One interface for all tabs; each tab destructures the subset it uses.
@@ -16,4 +16,14 @@ export interface SharedProps {
   triggerToast: (msg: string, typ?: "success" | "error") => void;
   handleNavClick: (tab: string) => void;
   openDoc: (d: { id: string; filename?: string; mimeType?: string }) => void;
+  // Banking list controls — global search jumps into banking with these pre-filled
+  bankFilterAcc: string;
+  setBankFilterAcc: (v: string) => void;
+  bankSearch: string;
+  setBankSearch: (v: string) => void;
+  // Projects the active user may raise requests against (role-scoped)
+  requestableProjects: Project[];
+  isProjectOfficer: boolean;
+  // LAN access info fetched alongside state (dashboard's phone panel)
+  phoneAccess: { urls: { iface: string; url: string }[]; qr: string | null } | null;
 }
