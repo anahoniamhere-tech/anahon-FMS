@@ -1232,6 +1232,25 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                       </div>
                     </div>
 
+                    {/* Facts still to verify — derived from the [FILL: …] markers the AI
+                        leaves on unverified claims. The markers become the reporting list. */}
+                    {(() => {
+                      const text = [item.brief, ...item.drafts.map(d => d.text)].join("\n");
+                      const facts = [...new Set([...text.matchAll(/\[FILL:\s*([^\]]+)\]/g)].map(m => m[1].trim()))];
+                      if (!facts.length) return null;
+                      return (
+                        <div>
+                          <h5 className="font-bold text-amber-700 uppercase text-[10px] mb-1">
+                            ⓘ {t("Facts still to verify")} ({facts.length})
+                          </h5>
+                          <ul className="text-[11px] text-slate-600 list-disc ml-4">
+                            {facts.map((f, i) => <li key={i}>{f}</li>)}
+                          </ul>
+                          <p className="text-[9px] text-slate-400 mt-0.5">{t("Each becomes a source entry below once confirmed (Policy 005).")}</p>
+                        </div>
+                      );
+                    })()}
+
                     {/* Fact-check log (Policy 005: sources and verification steps) */}
                     <div>
                       <h5 className="font-bold text-slate-700 uppercase text-[10px] mb-1">

@@ -256,6 +256,8 @@ export const AR: Record<string, string> = {
   "Suggested sources (verify per Policy 005)": "مصادر مقترحة (تُتحقَّق وفق سياسة 005)",
   "Content Standards": "معايير المحتوى",
   "Fact-Check Log": "سجل التحقق",
+  "Facts still to verify": "وقائع بانتظار التحقق",
+  "Each becomes a source entry below once confirmed (Policy 005).": "كل واقعة تُصبح مصدراً موثّقاً أدناه بعد إثباتها (سياسة 005).",
   "Approvals": "الاعتمادات",
   "Brief": "الموجز",
 };
