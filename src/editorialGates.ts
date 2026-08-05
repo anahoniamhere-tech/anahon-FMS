@@ -39,6 +39,8 @@ export type ContentGateFields = {
   legalFlag: boolean;
   legalReviewedBy: string;
   checksJson: string;
+  aiAssisted?: boolean;
+  aiDisclosed?: boolean;
 };
 
 /**
@@ -57,6 +59,9 @@ export function publishBlockers(c: ContentGateFields): string[] {
     blockers.push("Both approvals are by the same person — Policy 002 requires the Production Manager AND the Programs Director.");
   if (c.legalFlag && !c.legalReviewedBy)
     blockers.push("Flagged for legal implications but no legal review recorded (Policy 002).");
+  // The golden transparency rule: AI-assisted content publishes only with its label.
+  if (c.aiAssisted && !c.aiDisclosed)
+    blockers.push("AI was used on this item — confirm the AI-use watermark/disclaimer is on the published piece (transparency rule).");
   let checks: Record<string, boolean> = {};
   try { checks = JSON.parse(c.checksJson || "{}"); } catch { /* treated as unchecked */ }
   for (const [key, label] of CONTENT_CHECKS) {

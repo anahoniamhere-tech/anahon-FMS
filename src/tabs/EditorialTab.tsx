@@ -150,7 +150,8 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
       id: item.id, title: item.title, contentType: item.contentType, stream: item.stream,
       channels: item.channels, brief: item.brief, assigneeUserId: item.assigneeUserId,
       dueDate: item.dueDate, reviewedMeetingDate: item.reviewedMeetingDate,
-      checks: item.checks, legalFlag: item.legalFlag, materials: item.materials, ...patch
+      checks: item.checks, legalFlag: item.legalFlag, materials: item.materials,
+      aiAssisted: item.aiAssisted, aiDisclosed: item.aiDisclosed, ...patch
     }, ok);
 
   const sendChat = async () => {
@@ -516,7 +517,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                   const brief = chat.draft.brief + (sources.length
                     ? `\n\nSUGGESTED SOURCES — verify per Policy 005:\n${sources.map(s => `- ${s.name} — ${s.why}`).join("\n")}`
                     : "");
-                  setForm({ title: chat.draft.title, contentType: chat.draft.contentType, stream: chat.draft.stream, channels: chat.draft.channels, assigneeUserId: "", dueDate: "", brief, legalFlag: chat.draft.legalFlag, materials: chat.draft.materials });
+                  setForm({ title: chat.draft.title, contentType: chat.draft.contentType, stream: chat.draft.stream, channels: chat.draft.channels, assigneeUserId: "", dueDate: "", brief, legalFlag: chat.draft.legalFlag, materials: chat.draft.materials, aiAssisted: true });
                   setChat(null);
                 }}
                 className="mt-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded px-3 py-1.5">
@@ -707,6 +708,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                   <span className="text-slate-400">{item.contentType}{item.stream ? ` · ${item.stream}` : ""}</span>
                   {item.factCheckTag && <span className="text-emerald-700 flex items-center gap-0.5 text-[10px] font-bold"><CheckCircle2 className="h-3 w-3" /> {t("Fact-checked")}</span>}
                   {item.legalFlag && <span className="text-red-700 flex items-center gap-0.5 text-[10px] font-bold"><ShieldAlert className="h-3 w-3" /> {t("Legal review required")}</span>}
+                  {item.aiAssisted && <span className="text-indigo-700 text-[10px] font-bold" title={t("AI used")}>🤖 AI{item.aiDisclosed ? " ✓" : ""}</span>}
                   {item.corrections.length > 0 && <span className="text-amber-700 text-[10px] font-bold">{item.corrections.length} {t("Corrections")}</span>}
                   <span className="ml-auto text-slate-500 font-mono">{nameOf(item.assigneeUserId)}{item.dueDate ? ` · ${item.dueDate}` : ""}</span>
                 </div>
@@ -825,6 +827,27 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                         </div>
                       );
                     })()}
+
+                    {/* Golden transparency rule: AI use must be labeled on the published piece */}
+                    {(item.aiAssisted || (canManage && item.status !== "Published")) && (
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                        <label className={`flex items-center gap-1 font-bold ${item.aiAssisted ? "text-indigo-700" : "text-slate-500"}`}>
+                          <input type="checkbox" checked={item.aiAssisted}
+                            disabled={!canManage || item.status === "Published" || item.drafts.length > 0}
+                            title={item.drafts.length > 0 ? "Saved AI drafts keep this on." : ""}
+                            onChange={e => saveItem(item, { aiAssisted: e.target.checked, aiDisclosed: e.target.checked ? item.aiDisclosed : false })} />
+                          🤖 {t("AI used")}
+                        </label>
+                        {item.aiAssisted && (
+                          <label className={`flex items-center gap-1 ${item.aiDisclosed ? "text-emerald-700" : "text-red-700 font-bold"}`}>
+                            <input type="checkbox" checked={item.aiDisclosed}
+                              disabled={!canManage || item.status === "Published"}
+                              onChange={e => saveItem(item, { aiDisclosed: e.target.checked })} />
+                            {t("AI-use disclaimer applied to the published piece")}
+                          </label>
+                        )}
+                      </div>
+                    )}
 
                     {/* Content standards — each checkbox is a policy sentence (Policy 002) */}
                     <div>

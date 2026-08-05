@@ -420,6 +420,8 @@ export interface ContentItem {
   corrections: { date: string; nature: string; correction: string; by: string }[];
   materials: { label: string; url: string; kind: "link" | "photo" | "video" | "doc" }[];
   drafts: { label: string; kind: string; text: string; date: string; by: string }[];
+  aiAssisted: boolean;
+  aiDisclosed: boolean;
   created_at: string;
 }
 

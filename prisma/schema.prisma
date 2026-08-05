@@ -414,6 +414,8 @@ model ContentItem {
   correctionsJson     String  @default("[]")     // [{date, nature, correction, by}] — dated public record
   materialsJson       String  @default("[]")     // [{label, url, kind: link|photo|video|doc}] — reference material
   draftsJson          String  @default("[]")     // [{label, kind, text, date, by}] — production drafts the fact-checker verifies
+  aiAssisted          Boolean @default(false)    // set automatically when an AI draft is saved; manual toggle for outside tools
+  aiDisclosed         Boolean @default(false)    // attestation: watermark/disclaimer on the published piece (golden rule)
   created_at          String
 }
 

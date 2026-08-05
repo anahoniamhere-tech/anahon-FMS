@@ -45,5 +45,14 @@ for (const [key, label] of CONTENT_CHECKS) {
 assert.deepStrictEqual(publishBlockers({ ...good, legalFlag: true, legalReviewedBy: "External counsel" }), [],
   "flagged + reviewed must publish");
 
+// Golden transparency rule: AI-assisted content publishes only with its label.
+const aiBlockers = publishBlockers({ ...good, aiAssisted: true, aiDisclosed: false });
+assert(aiBlockers.length === 1 && /watermark\/disclaimer/.test(aiBlockers[0]),
+  `AI without disclosure must block, got: ${aiBlockers.join(" | ")}`);
+assert.deepStrictEqual(publishBlockers({ ...good, aiAssisted: true, aiDisclosed: true }), [],
+  "AI + disclosed must publish");
+assert.deepStrictEqual(publishBlockers({ ...good, aiAssisted: false, aiDisclosed: false }), [],
+  "no AI → no disclosure needed");
+
 console.log("check-editorial-gates: all assertions passed —",
-  `${2 + cases.length + CONTENT_CHECKS.length} scenarios (Policies 002 & 005 publish gate).`);
+  `${5 + cases.length + CONTENT_CHECKS.length} scenarios (Policies 002 & 005 + transparency rule).`);

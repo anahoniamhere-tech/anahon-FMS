@@ -2127,7 +2127,8 @@ async function contentManageBlock(req: any, stream: string): Promise<string | nu
 app.post("/api/content/save", async (req, res) => {
   try {
     const { id, title, contentType, stream, channels, brief, assigneeUserId, dueDate,
-            assignedMeetingDate, reviewedMeetingDate, checks, legalFlag, materials, user } = req.body;
+            assignedMeetingDate, reviewedMeetingDate, checks, legalFlag, materials,
+            aiAssisted, aiDisclosed, user } = req.body;
     if (!title) return res.status(400).json({ error: "Give the content item a title." });
     const block = await contentManageBlock(req, stream || "");
     if (block) return res.status(403).json({ error: block });
@@ -2184,7 +2185,10 @@ app.post("/api/content/save", async (req, res) => {
       checksJson: JSON.stringify(cleanChecks),
       legalFlag: !!legalFlag,
       // Only touch materials when the client sent the field — an omitted field must not wipe the list.
-      ...(materials !== undefined ? { materialsJson: JSON.stringify(cleanMaterials) } : {})
+      ...(materials !== undefined ? { materialsJson: JSON.stringify(cleanMaterials) } : {}),
+      // Golden transparency rule fields (aiAssisted also forced true by draft-save).
+      ...(aiAssisted !== undefined ? { aiAssisted: !!aiAssisted } : {}),
+      ...(aiDisclosed !== undefined ? { aiDisclosed: !!aiDisclosed } : {})
     };
     const item = existing
       ? await prisma.contentItem.update({ where: { id }, data })
@@ -2660,8 +2664,10 @@ app.post("/api/content/produce", async (req, res) => {
       `- Reel / Short Documentary → script with scenes/shots, VO lines, which provided material appears where.`,
       `- Podcast → episode outline, host notes, question list.`,
       `- Carousel → numbered slides: slide 1 hook … final slide CTA; text per slide, short.`,
-      `- Single-image post → caption (+ hashtags fitting the channels) and WHICH provided photo/material to use — never invent or generate imagery.`,
+      `- Single-image post → caption (+ hashtags fitting the channels) and WHICH provided photo/material to use.`,
       `- Interview → question list grouped by theme.`,
+      `VISUALS — the golden transparency rule: prefer the provided real photos for factual coverage. You MAY propose an AI-generated visual concept when it amplifies the message (describe it for the designer), but it must NEVER depict real events/people as documentary reality, and it must carry a visible AI watermark/label. Never present AI imagery as a real photo.`,
+      `TRANSPARENCY DISCLAIMER — every Article Draft ends with: "أُعدّ هذا المحتوى بمساعدة الذكاء الاصطناعي وراجعه فريق تحرير أناهون. / This content was prepared with AI assistance and reviewed by AnaHon's editorial team." Captions/carousels end with a short label like "(محتوى بمساعدة AI)". Scripts note it in the credits line.`,
       `Solution-journalism framing, balanced, no invented facts, respect source confidentiality. Write in the language the user is working in.`,
       `When your reply contains a usable piece, ALSO return it in draft {label, kind, text} so it can be saved to the item; otherwise draft = null.`,
       ``,
@@ -2706,7 +2712,9 @@ app.post("/api/content/draft-save", async (req, res) => {
     if (!text || !label) return res.status(400).json({ error: "A draft needs a label and its text." });
     const drafts = JSON.parse(item.draftsJson || "[]");
     drafts.push({ label: String(label).slice(0, 120), kind: kind || "Other", text: String(text), date: localDate(), by: user?.name || "" });
-    const updated = await prisma.contentItem.update({ where: { id }, data: { draftsJson: JSON.stringify(drafts) } });
+    // Saving an AI draft marks the item AI-assisted — the transparency rule's publish
+    // gate (watermark/disclaimer attestation) now applies automatically.
+    const updated = await prisma.contentItem.update({ where: { id }, data: { draftsJson: JSON.stringify(drafts), aiAssisted: true } });
     await createAuditLog(user?.id, user?.name, "Content Draft Saved", `"${item.title}": ${label} (${kind}) — draft ${drafts.length}.`);
     res.json({ success: true, item: updated });
   } catch (err: any) {
