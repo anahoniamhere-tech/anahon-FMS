@@ -413,6 +413,7 @@ model ContentItem {
   publishedAt         String  @default("")
   correctionsJson     String  @default("[]")     // [{date, nature, correction, by}] — dated public record
   materialsJson       String  @default("[]")     // [{label, url, kind: link|photo|video|doc}] — reference material
+  draftsJson          String  @default("[]")     // [{label, kind, text, date, by}] — production drafts the fact-checker verifies
   created_at          String
 }
 

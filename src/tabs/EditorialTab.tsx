@@ -219,6 +219,45 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
   const MAT_ICON: Record<string, string> = { link: "🔗", photo: "🖼", video: "🎬", doc: "📄" };
 
+  // Production studio: per-item drafting chat. Ephemeral thread; drafts persist
+  // only when explicitly saved to the item.
+  const [studio, setStudio] = useState<null | {
+    itemId: string;
+    messages: { role: string; text: string }[];
+    busy: boolean;
+    draft: { label: string; kind: string; text: string } | null;
+    provider: string;
+  }>(null);
+  const [studioInput, setStudioInput] = useState("");
+
+  const sendStudio = async (prefill?: string) => {
+    if (!studio) return;
+    const text = (prefill ?? studioInput).trim();
+    if (!text || studio.busy) return;
+    const messages = [...studio.messages, { role: "user", text }];
+    setStudio({ ...studio, messages, busy: true });
+    setStudioInput("");
+    try {
+      const res = await fetch("/api/content/produce", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: studio.itemId, messages, user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      setStudio(s => s ? {
+        ...s,
+        messages: [...messages, { role: "assistant", text: data.reply }],
+        busy: false,
+        draft: data.draft || s.draft,
+        provider: data.provider || s.provider
+      } : s);
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+      setStudio(s => s ? { ...s, busy: false } : s);
+    }
+  };
+
   // Policy 002 weekly editorial meeting: reviews last week's content, plans the
   // coming week. Derived from the register — never stored.
   const today = new Date().toISOString().split("T")[0];
@@ -709,6 +748,83 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                         </div>
                       )}
                     </div>
+
+                    {/* Production studio + drafts — what gets written here is what fact-check verifies */}
+                    {(() => {
+                      const working = ["Assigned", "In Production", "Fact-Check"].includes(item.status);
+                      const canProduce = isAssignee || isChecker || canManage;
+                      return (
+                        <div>
+                          <h5 className="font-bold text-slate-700 uppercase text-[10px] mb-1">{t("Drafts")} ({item.drafts.length})</h5>
+                          {item.drafts.map((d, i) => (
+                            <details key={i} className="mb-1 text-[11px] bg-slate-50 border border-slate-200 rounded px-2 py-1">
+                              <summary className="cursor-pointer flex items-center gap-2">
+                                <span className="font-bold">{d.label}</span>
+                                <span className="bg-slate-200 rounded-full px-2 py-0.5 text-[9px]">{d.kind}</span>
+                                <span className="text-slate-400 text-[9px]">{d.date} · {d.by}</span>
+                              </summary>
+                              <p className="whitespace-pre-wrap text-slate-700 max-h-64 overflow-y-auto my-1">{d.text}</p>
+                              <span className="flex gap-2">
+                                <button onClick={() => { navigator.clipboard?.writeText(d.text); triggerToast("Draft copied."); }}
+                                  className="bg-slate-900 text-white rounded px-2 py-0.5 text-[10px]">{t("Copy")}</button>
+                                {working && canProduce && (
+                                  <button onClick={() => post("/api/content/draft-delete", { id: item.id, index: i }, "Draft removed")}
+                                    className="text-red-600 hover:bg-red-50 rounded px-2 py-0.5 text-[10px]">{t("Delete")}</button>
+                                )}
+                              </span>
+                            </details>
+                          ))}
+                          {working && canProduce && studio?.itemId !== item.id && (
+                            <button onClick={() => { setStudio({ itemId: item.id, messages: [], busy: false, draft: null, provider: "" }); setStudioInput(""); }}
+                              className="bg-slate-900 hover:bg-slate-950 text-white rounded px-3 py-1.5">🎬 {t("Production Studio")}</button>
+                          )}
+                          {studio?.itemId === item.id && (
+                            <div className="mt-2 p-3 bg-slate-900 text-white rounded-lg space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold uppercase text-[10px] font-mono">🎬 {t("Production Studio")}</span>
+                                <span className="flex items-center gap-3">
+                                  {studio.provider && <span className="text-[9px] text-slate-400 font-mono">{t("Provided by")} {studio.provider}</span>}
+                                  <button onClick={() => setStudio(null)} className="text-slate-400 hover:text-white text-[10px]">✕</button>
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {[
+                                  [t("Draft Article"), `Write the full ${item.contentType === "Article" ? "article" : "piece"} draft for this item, using the brief and materials.`],
+                                  [t("Carousel"), "Suggest a carousel post for this item: numbered slides, short text per slide, hook first, CTA last."],
+                                  [t("Single-image Post"), "Suggest a single-image post: caption with hashtags for our channels, and which provided photo to use."],
+                                  [t("Script"), "Write the production script for this item: scenes, VO lines, and where each provided material appears."]
+                                ].map(([label, msg]) => (
+                                  <button key={label} disabled={studio.busy} onClick={() => sendStudio(msg)}
+                                    className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-full px-2.5 py-1 text-[10px]">{label}</button>
+                                ))}
+                              </div>
+                              <div className="space-y-1.5 max-h-64 overflow-y-auto text-[11px]">
+                                {studio.messages.map((m, i) => (
+                                  <div key={i} className={`p-2 rounded whitespace-pre-wrap ${m.role === "user" ? "bg-red-600/20 border border-red-600/30 ml-6" : "bg-slate-800 border border-slate-700 mr-6"}`}>{m.text}</div>
+                                ))}
+                                {studio.busy && <p className="text-slate-400 animate-pulse text-[10px]">Producing…</p>}
+                              </div>
+                              {studio.draft && (
+                                <div className="p-2 bg-emerald-950/60 border border-emerald-700 rounded text-[11px] space-y-1">
+                                  <p className="font-bold text-emerald-300">{studio.draft.label} <span className="font-normal">({studio.draft.kind})</span></p>
+                                  <p className="whitespace-pre-wrap text-slate-300 max-h-40 overflow-y-auto">{studio.draft.text}</p>
+                                  <button onClick={async () => { if (await post("/api/content/draft-save", { id: item.id, ...studio.draft }, "Draft saved to item")) setStudio(s => s ? { ...s, draft: null } : s); }}
+                                    className="bg-emerald-600 hover:bg-emerald-700 rounded px-2.5 py-1 text-[10px] font-semibold">💾 {t("Save Draft to Item")}</button>
+                                </div>
+                              )}
+                              <div className="flex gap-2">
+                                <textarea value={studioInput} onChange={e => setStudioInput(e.target.value)}
+                                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendStudio(); } }}
+                                  rows={2} placeholder={t("What should the studio produce or edit?")}
+                                  className="flex-1 bg-slate-950 text-[11px] px-2.5 py-1.5 rounded text-white border border-slate-800 outline-none resize-none" />
+                                <button onClick={() => sendStudio()} disabled={studio.busy || !studioInput.trim()}
+                                  className="bg-red-600 hover:bg-red-700 disabled:opacity-40 rounded px-3 text-[11px] font-semibold shrink-0">{t("Send")}</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Content standards — each checkbox is a policy sentence (Policy 002) */}
                     <div>

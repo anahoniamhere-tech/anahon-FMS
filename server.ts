@@ -53,6 +53,9 @@ const PO_ALLOWED_POSTS = new Set([
   "/api/content/factcheck-pass",
   "/api/content/return",
   "/api/content/brainstorm", // POs develop their programme's content ideas (Policy 002)
+  "/api/content/produce",
+  "/api/content/draft-save",
+  "/api/content/draft-delete",
   "/api/meetings/save",      // POs attend both meetings (Policy 002) and may record them
   "/api/meetings/extract-topics",
   "/api/meetings/transcribe"
@@ -68,7 +71,10 @@ const CREW_ALLOWED_POSTS = new Set([
   "/api/content/submit-factcheck",
   "/api/content/factcheck-log",
   "/api/content/factcheck-pass",   // any team member can be the named independent checker
-  "/api/content/return"            // the named checker sends work back
+  "/api/content/return",           // the named checker sends work back
+  "/api/content/produce",          // the assignee drafts their own piece in the studio
+  "/api/content/draft-save",
+  "/api/content/draft-delete"
 ]);
 // Money-moving/control endpoints where an anonymous request is not acceptable.
 const IDENTITY_REQUIRED_POSTS = new Set([
@@ -94,6 +100,9 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/content/correction",
   "/api/content/delete",
   "/api/content/brainstorm",
+  "/api/content/produce",
+  "/api/content/draft-save",
+  "/api/content/draft-delete",
   "/api/meetings/save",
   "/api/meetings/delete",
   "/api/meetings/extract-topics",
@@ -291,7 +300,8 @@ async function loadState(viewer?: any) {
     checks: JSON.parse(c.checksJson || "{}"),
     factCheckLog: JSON.parse(c.factCheckJson || "[]"),
     corrections: JSON.parse(c.correctionsJson || "[]"),
-    materials: JSON.parse(c.materialsJson || "[]")
+    materials: JSON.parse(c.materialsJson || "[]"),
+    drafts: JSON.parse(c.draftsJson || "[]")
   }));
 
   const formattedMeetings = editorialMeetings.map(m => ({
@@ -2598,6 +2608,127 @@ app.post("/api/meetings/save", async (req, res) => {
       existing ? "Editorial Meeting Updated" : "Editorial Meeting Recorded",
       `${mtgKind} of ${date} — ${ids.length} attendee(s)${direction ? `; direction: ${String(direction).slice(0, 80)}` : ""}.`);
     res.json({ success: true, meeting });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Production studio: type-aware drafting chat scoped to ONE content item, grounded
+// in its brief, materials and fact-check log. Drafts text only (articles, scripts,
+// carousels, captions) — never images: a newsroom's visuals are its real photos.
+// AI prefills, humans decide: nothing is stored unless the user saves the draft.
+const CONTENT_WORKING_STATUSES = ["Assigned", "In Production", "Fact-Check"];
+
+function contentProduceAllowed(user: any, item: any): boolean {
+  return CONTENT_EDITOR_ROLES.includes(user?.role)
+    || user?.id === item.assigneeUserId
+    || user?.id === item.factCheckerUserId
+    || user?.role === "Project Officer";
+}
+
+app.post("/api/content/produce", async (req, res) => {
+  try {
+    const { id, messages, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!CONTENT_WORKING_STATUSES.includes(item.status)) {
+      return res.status(400).json({ error: `Drafting happens before editorial review (currently ${item.status}) — after that, the text under review is frozen.` });
+    }
+    if (!contentProduceAllowed(user, item)) {
+      return res.status(403).json({ error: "The studio is for the assignee, the fact-checker, Project Officers and editors." });
+    }
+    if (!aiConfigured()) return res.status(400).json({ error: "No AI provider configured — add ANTHROPIC_API_KEY or GEMINI_API_KEY to .env." });
+    const thread: { role: string; text: string }[] = Array.isArray(messages) ? messages.slice(-20) : [];
+    if (!thread.length || !thread[thread.length - 1]?.text) {
+      return res.status(400).json({ error: "Say what to produce first." });
+    }
+    const materials = JSON.parse(item.materialsJson || "[]");
+    const factLog = JSON.parse(item.factCheckJson || "[]");
+    const drafts = JSON.parse(item.draftsJson || "[]");
+    const prompt = [
+      await anahonBrainContext(),
+      ``,
+      `You are AnaHon's production studio, working on ONE assigned content item (Policies 002 & 005 govern).`,
+      `ITEM: "${item.title}" — ${item.contentType}, programme ${item.stream || "—"}, channels: ${JSON.parse(item.channelsJson || "[]").join(", ") || "—"}.`,
+      `BRIEF (includes suggested sources to verify):\n${item.brief || "(no brief)"}`,
+      materials.length ? `MATERIALS:\n${materials.map((m: any) => `- [${m.kind}] ${m.label} (${m.url})`).join("\n")}` : ``,
+      factLog.length ? `VERIFIED SOURCE LOG so far:\n${factLog.map((l: any) => `- ${l.date} ${l.source}${l.step ? " — " + l.step : ""}`).join("\n")}` : `No sources verified yet — everything factual stays a [FILL: …] placeholder until the fact-check log confirms it.`,
+      drafts.length ? `EXISTING DRAFTS on the item: ${drafts.map((d: any) => `"${d.label}" (${d.kind})`).join(", ")}.` : ``,
+      ``,
+      `Produce and edit PRODUCTION TEXT tailored to the request and the content type:`,
+      `- Article → full draft with structure, attributed claims, [FILL: …] for anything unverified.`,
+      `- Reel / Short Documentary → script with scenes/shots, VO lines, which provided material appears where.`,
+      `- Podcast → episode outline, host notes, question list.`,
+      `- Carousel → numbered slides: slide 1 hook … final slide CTA; text per slide, short.`,
+      `- Single-image post → caption (+ hashtags fitting the channels) and WHICH provided photo/material to use — never invent or generate imagery.`,
+      `- Interview → question list grouped by theme.`,
+      `Solution-journalism framing, balanced, no invented facts, respect source confidentiality. Write in the language the user is working in.`,
+      `When your reply contains a usable piece, ALSO return it in draft {label, kind, text} so it can be saved to the item; otherwise draft = null.`,
+      ``,
+      `CONVERSATION:`,
+      ...thread.map(m => `${m.role === "assistant" ? "STUDIO" : "TEAM"}: ${m.text}`),
+      ``,
+      `Reply as STUDIO.`
+    ].filter(Boolean).join("\n");
+    const out = await askJson(prompt, {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        reply: { type: "string" },
+        draft: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          properties: {
+            label: { type: "string", description: "Short name, e.g. 'Article draft v1', 'Carousel — 7 slides'" },
+            kind: { type: "string", enum: ["Article Draft", "Script", "Outline", "Carousel", "Caption", "Questions", "Other"] },
+            text: { type: "string" }
+          },
+          required: ["label", "kind", "text"]
+        }
+      },
+      required: ["reply", "draft"]
+    });
+    res.json({ reply: out.reply || "", draft: out.draft || null, provider: anthropicKey() ? "Claude Opus 5" : "Gemini 3.5 Flash" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/draft-save", async (req, res) => {
+  try {
+    const { id, label, kind, text, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!CONTENT_WORKING_STATUSES.includes(item.status)) {
+      return res.status(400).json({ error: `Drafts are added before editorial review (currently ${item.status}).` });
+    }
+    if (!contentProduceAllowed(user, item)) return res.status(403).json({ error: "Only the working team can save drafts on this item." });
+    if (!text || !label) return res.status(400).json({ error: "A draft needs a label and its text." });
+    const drafts = JSON.parse(item.draftsJson || "[]");
+    drafts.push({ label: String(label).slice(0, 120), kind: kind || "Other", text: String(text), date: localDate(), by: user?.name || "" });
+    const updated = await prisma.contentItem.update({ where: { id }, data: { draftsJson: JSON.stringify(drafts) } });
+    await createAuditLog(user?.id, user?.name, "Content Draft Saved", `"${item.title}": ${label} (${kind}) — draft ${drafts.length}.`);
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/draft-delete", async (req, res) => {
+  try {
+    const { id, index, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!CONTENT_WORKING_STATUSES.includes(item.status)) {
+      return res.status(400).json({ error: "Drafts are frozen once editorial review starts." });
+    }
+    if (!contentProduceAllowed(user, item)) return res.status(403).json({ error: "Only the working team can remove drafts on this item." });
+    const drafts = JSON.parse(item.draftsJson || "[]");
+    if (!(index >= 0 && index < drafts.length)) return res.status(400).json({ error: "No such draft." });
+    const [removed] = drafts.splice(index, 1);
+    const updated = await prisma.contentItem.update({ where: { id }, data: { draftsJson: JSON.stringify(drafts) } });
+    await createAuditLog(user?.id, user?.name, "Content Draft Removed", `"${item.title}": ${removed.label} removed.`);
+    res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
