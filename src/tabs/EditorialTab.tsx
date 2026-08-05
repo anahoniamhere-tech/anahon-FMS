@@ -23,6 +23,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [form, setForm] = useState<any | null>(null);
+  const [mtgForm, setMtgForm] = useState<any | null>(null);
   const [srcForm, setSrcForm] = useState({ source: "", step: "" });
   const [legalForm, setLegalForm] = useState({ by: "", note: "" });
   const [corrForm, setCorrForm] = useState({ nature: "", correction: "" });
@@ -77,6 +78,18 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
   const visible = (state.contentItems || []).filter(c => !statusFilter || c.status === statusFilter);
 
+  // The meeting record for the current week (Policy 002: PD chairs, PM + POs attend),
+  // plus recent history. Rows come sorted date-desc from the server.
+  const weeklies = (state.editorialMeetings || []).filter(m => m.kind === "Weekly Editorial");
+  const ago7 = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
+  const thisWeekMtg = weeklies.find(m => m.date >= ago7);
+  const pastMtgs = weeklies.filter(m => m !== thisWeekMtg).slice(0, 3);
+  // Policy participants, preticked when opening a fresh attendance sheet.
+  const policyAttendees = activeUsers
+    .filter(u => ["Program Director", "Production Manager", "Project Officer", "Super Admin"].includes(u.role))
+    .map(u => u.id);
+  const canRecordMeeting = isEditor || currentUser.role === "Project Officer";
+
   return (
     <div className="space-y-6">
       <div>
@@ -87,9 +100,69 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
         </p>
       </div>
 
-      {/* Weekly editorial meeting — derived agenda (Policy 002) */}
+      {/* Weekly editorial meeting — derived agenda + held-meeting record (Policy 002) */}
       <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
         <h3 className="text-sm font-bold text-slate-800 uppercase font-mono mb-3">📅 {t("Weekly Editorial Meeting")}</h3>
+
+        {/* The held meeting: attendance sheet, direction, decisions */}
+        {!mtgForm && thisWeekMtg && (
+          <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-bold text-slate-800">{thisWeekMtg.date}</span>
+              <span className="text-slate-500">{t("Attendance")}:</span>
+              {thisWeekMtg.attendees.map(id => (
+                <span key={id} className="bg-slate-200 text-slate-700 rounded-full px-2 py-0.5 text-[10px]">{nameOf(id)}</span>
+              ))}
+              {canRecordMeeting && (
+                <button onClick={() => setMtgForm({ id: thisWeekMtg.id, date: thisWeekMtg.date, attendees: [...thisWeekMtg.attendees], direction: thisWeekMtg.direction, notes: thisWeekMtg.notes })}
+                  className="ml-auto text-[10px] bg-slate-200 hover:bg-slate-300 rounded px-2 py-1">{t("Edit Meeting")}</button>
+              )}
+            </div>
+            {thisWeekMtg.direction && <p><span className="font-bold text-slate-600">{t("Direction for the week")}:</span> {thisWeekMtg.direction}</p>}
+            {thisWeekMtg.notes && <p><span className="font-bold text-slate-600">{t("Decisions & notes")}:</span> {thisWeekMtg.notes}</p>}
+            <p className="text-[10px] text-slate-400">{t("Recorded by")} {nameOf(thisWeekMtg.recordedBy)}</p>
+          </div>
+        )}
+        {!mtgForm && !thisWeekMtg && canRecordMeeting && (
+          <button onClick={() => setMtgForm({ date: today, attendees: policyAttendees, direction: "", notes: "" })}
+            className="mb-4 bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2 shadow">
+            📝 {t("Record This Week's Meeting")}
+          </button>
+        )}
+        {mtgForm && (
+          <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-bold text-slate-600">{t("Meeting date")}</span>
+              <input type="date" value={mtgForm.date} onChange={e => setMtgForm({ ...mtgForm, date: e.target.value })} className="finance-input py-1" disabled={!!mtgForm.id} />
+            </div>
+            <div>
+              <span className="block font-bold text-slate-600 mb-1">{t("Attendance")} <span className="font-normal text-slate-400">(Policy 002: Programs Director, Production Manager, Project Officers)</span></span>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {activeUsers.map(u => (
+                  <label key={u.id} className="flex items-center gap-1">
+                    <input type="checkbox" checked={mtgForm.attendees.includes(u.id)}
+                      onChange={e => setMtgForm({ ...mtgForm, attendees: e.target.checked ? [...mtgForm.attendees, u.id] : mtgForm.attendees.filter((x: string) => x !== u.id) })} />
+                    {u.name} <span className="text-slate-400">({u.role})</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span className="block font-bold text-slate-600 mb-1">{t("Direction for the week")}</span>
+              <textarea value={mtgForm.direction} onChange={e => setMtgForm({ ...mtgForm, direction: e.target.value })} rows={2} className="finance-input w-full" placeholder="Planning for upcoming content and coverage…" />
+            </div>
+            <div>
+              <span className="block font-bold text-slate-600 mb-1">{t("Decisions & notes")}</span>
+              <textarea value={mtgForm.notes} onChange={e => setMtgForm({ ...mtgForm, notes: e.target.value })} rows={2} className="finance-input w-full" placeholder="Issues addressed, performance review, decisions…" />
+            </div>
+            <div className="flex gap-2">
+              <button onClick={async () => { if (await post("/api/meetings/save", { kind: "Weekly Editorial", ...mtgForm }, "Meeting recorded")) setMtgForm(null); }}
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold rounded px-4 py-1.5 shadow">{t("Save")}</button>
+              <button onClick={() => setMtgForm(null)} className="bg-slate-200 hover:bg-slate-300 rounded px-4 py-1.5">{t("Cancel")}</button>
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div>
             <h4 className="font-bold text-slate-600 mb-2">{t("Past week")} — {t("Published")} ({pastWeek.length})</h4>
@@ -119,6 +192,15 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
             ))}
           </div>
         </div>
+
+        {pastMtgs.length > 0 && (
+          <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+            <span className="font-bold uppercase text-[10px]">{t("Previous meetings")}:</span>{" "}
+            {pastMtgs.map(m => (
+              <span key={m.id} className="mr-3 font-mono">{m.date}{m.direction ? ` — ${m.direction.slice(0, 60)}${m.direction.length > 60 ? "…" : ""}` : ""}</span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* New assignment — Policy 002: assignments come out of the daily production meeting */}

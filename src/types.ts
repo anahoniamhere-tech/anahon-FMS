@@ -421,6 +421,18 @@ export interface ContentItem {
   created_at: string;
 }
 
+/** One held editorial meeting (Policy 002): attendance, direction, decisions. */
+export interface EditorialMeeting {
+  id: string;
+  kind: "Weekly Editorial" | "Daily Production";
+  date: string;
+  attendees: string[];
+  direction: string;
+  notes: string;
+  recordedBy: string;
+  created_at: string;
+}
+
 export interface DatabaseState {
   users: { id: string; name: string; email: string; role: string; active: boolean; projectIdsJson?: string; streamScope?: string }[];
   accounts: Account[];
@@ -445,6 +457,7 @@ export interface DatabaseState {
   subscriptions: Subscription[];
   projectActivities: ProjectActivity[];
   contentItems: ContentItem[];
+  editorialMeetings: EditorialMeeting[];
   clients: Client[];
   quotations: Quotation[];
   orgSettings: OrgSettings;

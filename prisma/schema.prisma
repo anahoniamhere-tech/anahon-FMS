@@ -414,3 +414,20 @@ model ContentItem {
   correctionsJson     String  @default("[]")     // [{date, nature, correction, by}] — dated public record
   created_at          String
 }
+
+// One held editorial meeting (Policy 002 defines both kinds with participants and
+// agenda). The weekly card derives its agenda from the content register; this row
+// records what the derivation can't know: who attended, the week's direction, and
+// the decisions taken. One row per meeting day per kind.
+model EditorialMeeting {
+  id            String @id
+  kind          String @default("Weekly Editorial") // Weekly Editorial | Daily Production
+  date          String                              // YYYY-MM-DD
+  attendeesJson String @default("[]")               // userIds present (002 names the expected roles)
+  direction     String @default("")                 // "Planning for upcoming content and coverage" (002)
+  notes         String @default("")                 // issues addressed, decisions, performance review (002)
+  recordedBy    String @default("")
+  created_at    String
+
+  @@unique([kind, date])
+}

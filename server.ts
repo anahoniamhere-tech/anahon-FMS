@@ -51,7 +51,8 @@ const PO_ALLOWED_POSTS = new Set([
   "/api/content/submit-factcheck",
   "/api/content/factcheck-log",
   "/api/content/factcheck-pass",
-  "/api/content/return"
+  "/api/content/return",
+  "/api/meetings/save"      // POs attend both meetings (Policy 002) and may record them
 ]);
 // Content crew (Policy 002 production team: reporters, content creators, podcasters)
 // are content-only accounts: they act on the editorial pipeline and nothing else —
@@ -88,7 +89,9 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/content/legal-record",
   "/api/content/publish",
   "/api/content/correction",
-  "/api/content/delete"
+  "/api/content/delete",
+  "/api/meetings/save",
+  "/api/meetings/delete"
 ]);
 
 app.use(async (req: any, res, next) => {
@@ -220,6 +223,7 @@ async function loadState(viewer?: any) {
     clients,
     quotations,
     contentItems,
+    editorialMeetings,
     orgSettingsRaw,
     fxRatesRaw
   ] = await Promise.all([
@@ -248,6 +252,7 @@ async function loadState(viewer?: any) {
     prisma.client.findMany(),
     prisma.quotation.findMany(),
     prisma.contentItem.findMany({ orderBy: { created_at: "desc" } }),
+    prisma.editorialMeeting.findMany({ orderBy: { date: "desc" } }),
     prisma.orgSettings.findFirst(),
     prisma.fxRates.findFirst()
   ]);
@@ -282,6 +287,11 @@ async function loadState(viewer?: any) {
     corrections: JSON.parse(c.correctionsJson || "[]")
   }));
 
+  const formattedMeetings = editorialMeetings.map(m => ({
+    ...m,
+    attendees: JSON.parse(m.attendeesJson || "[]")
+  }));
+
   let visibleProjects = fundedOnly(projects, bankTransactions);
 
   // Content crew (Policy 002 production team) get the editorial register and the people
@@ -295,6 +305,7 @@ async function loadState(viewer?: any) {
       opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [],
       contentItems: formattedContent, // the whole board — the daily production meeting is collective
+      editorialMeetings: formattedMeetings,
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
     };
@@ -337,6 +348,7 @@ async function loadState(viewer?: any) {
       // author or fact-check in another programme.
       contentItems: formattedContent.filter(c =>
         poStreams.has(c.stream) || c.assigneeUserId === viewer.id || c.factCheckerUserId === viewer.id),
+      editorialMeetings: formattedMeetings, // POs attend both meetings (Policy 002)
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
     };
@@ -389,6 +401,7 @@ async function loadState(viewer?: any) {
     projectActivities,
     // Editorial pipeline (Policies 002 & 005) — content register with enforcement fields.
     contentItems: formattedContent,
+    editorialMeetings: formattedMeetings,
     // Production stream — clients pay us; a quotation is never income until
     // the payment shows on a bank statement.
     clients,
@@ -2418,6 +2431,64 @@ app.post("/api/content/delete", async (req, res) => {
     }
     await prisma.contentItem.delete({ where: { id } });
     await createAuditLog(user?.id, user?.name, "Content Item Removed", `Removed "${item.title}" (${item.status}).`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Record a held editorial meeting (Policy 002): attendance, the week's direction,
+// decisions. One row per (kind, date) — saving the same meeting day updates it.
+app.post("/api/meetings/save", async (req, res) => {
+  try {
+    const { kind, date, attendees, direction, notes, user } = req.body;
+    const mtgKind = kind || "Weekly Editorial";
+    if (!["Weekly Editorial", "Daily Production"].includes(mtgKind)) {
+      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy 002)." });
+    }
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: "Meeting date must be YYYY-MM-DD." });
+    }
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
+      return res.status(403).json({ error: "Recording a meeting needs an editor or Project Officer (Policy 002 participants)." });
+    }
+    const ids: string[] = Array.isArray(attendees) ? attendees : [];
+    const known = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true } });
+    if (known.length !== ids.length) {
+      return res.status(400).json({ error: "Attendance list contains an unknown user." });
+    }
+    const existing = await prisma.editorialMeeting.findUnique({ where: { kind_date: { kind: mtgKind, date } } });
+    const data = {
+      attendeesJson: JSON.stringify(ids),
+      direction: direction || "",
+      notes: notes || "",
+      recordedBy: user?.id || ""
+    };
+    const meeting = existing
+      ? await prisma.editorialMeeting.update({ where: { id: existing.id }, data })
+      : await prisma.editorialMeeting.create({ data: {
+          id: `mtg-${Date.now()}`, kind: mtgKind, date, ...data,
+          created_at: new Date().toISOString()
+        } });
+    await createAuditLog(user?.id, user?.name,
+      existing ? "Editorial Meeting Updated" : "Editorial Meeting Recorded",
+      `${mtgKind} of ${date} — ${ids.length} attendee(s)${direction ? `; direction: ${String(direction).slice(0, 80)}` : ""}.`);
+    res.json({ success: true, meeting });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/meetings/delete", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
+      return res.status(403).json({ error: "Removing a meeting record needs an editor role." });
+    }
+    const meeting = await prisma.editorialMeeting.findUnique({ where: { id } });
+    if (!meeting) return res.status(404).json({ error: "Meeting record not found." });
+    await prisma.editorialMeeting.delete({ where: { id } });
+    await createAuditLog(user?.id, user?.name, "Editorial Meeting Removed", `${meeting.kind} of ${meeting.date} removed.`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
