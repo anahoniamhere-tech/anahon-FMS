@@ -496,7 +496,7 @@ export default function App() {
             </div>
             <div>
               <h2 className="text-2xl font-black tracking-tight text-white uppercase font-sans">AnaHon Media Platform</h2>
-              <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Management System — Finance · Editorial · Compliance</p>
+              <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Management System</p>
             </div>
           </div>
 
@@ -848,7 +848,7 @@ export default function App() {
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded bg-red-600 text-white font-bold text-lg shadow-inner">AH</div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight font-sans">AnaHon Financial Management</h1>
+            <h1 className="text-lg font-bold tracking-tight font-sans">AnaHon Management System</h1>
             <p className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">Tripoli Civil Co. Compliance Terminal</p>
           </div>
         </div>
@@ -925,7 +925,7 @@ export default function App() {
           </button>
           <div className="flex h-9 w-9 items-center justify-center rounded bg-red-650 bg-red-600 text-white font-bold text-base shadow-inner">AH</div>
           <div className="flex flex-col">
-            <h1 className="text-xs font-bold tracking-tight font-sans">AnaHon FMS</h1>
+            <h1 className="text-xs font-bold tracking-tight font-sans">AnaHon MS</h1>
             <span className="text-[9px] font-bold font-mono text-red-400 bg-red-950/40 px-1.5 py-0.5 rounded border border-red-900/40 uppercase w-fit leading-none mt-0.5">
               {activeTab}
             </span>
