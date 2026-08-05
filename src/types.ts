@@ -430,6 +430,8 @@ export interface EditorialMeeting {
   attendees: string[];
   direction: string;
   notes: string;
+  minutes: string;
+  topics: { topic: string; note: string }[];
   recordedBy: string;
   created_at: string;
 }

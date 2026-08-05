@@ -53,7 +53,9 @@ const PO_ALLOWED_POSTS = new Set([
   "/api/content/factcheck-pass",
   "/api/content/return",
   "/api/content/brainstorm", // POs develop their programme's content ideas (Policy 002)
-  "/api/meetings/save"      // POs attend both meetings (Policy 002) and may record them
+  "/api/meetings/save",      // POs attend both meetings (Policy 002) and may record them
+  "/api/meetings/extract-topics",
+  "/api/meetings/transcribe"
 ]);
 // Content crew (Policy 002 production team: reporters, content creators, podcasters)
 // are content-only accounts: they act on the editorial pipeline and nothing else —
@@ -93,7 +95,9 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/content/delete",
   "/api/content/brainstorm",
   "/api/meetings/save",
-  "/api/meetings/delete"
+  "/api/meetings/delete",
+  "/api/meetings/extract-topics",
+  "/api/meetings/transcribe"
 ]);
 
 app.use(async (req: any, res, next) => {
@@ -292,7 +296,8 @@ async function loadState(viewer?: any) {
 
   const formattedMeetings = editorialMeetings.map(m => ({
     ...m,
-    attendees: JSON.parse(m.attendeesJson || "[]")
+    attendees: JSON.parse(m.attendeesJson || "[]"),
+    topics: JSON.parse(m.topicsJson || "[]")
   }));
 
   let visibleProjects = fundedOnly(projects, bankTransactions);
@@ -2554,7 +2559,7 @@ app.post("/api/content/brainstorm", async (req, res) => {
 // decisions. One row per (kind, date) — saving the same meeting day updates it.
 app.post("/api/meetings/save", async (req, res) => {
   try {
-    const { kind, date, attendees, direction, notes, user } = req.body;
+    const { kind, date, attendees, direction, notes, minutes, topics, user } = req.body;
     const mtgKind = kind || "Weekly Editorial";
     if (!["Weekly Editorial", "Daily Production"].includes(mtgKind)) {
       return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy 002)." });
@@ -2570,11 +2575,17 @@ app.post("/api/meetings/save", async (req, res) => {
     if (known.length !== ids.length) {
       return res.status(400).json({ error: "Attendance list contains an unknown user." });
     }
+    const cleanTopics = (Array.isArray(topics) ? topics : [])
+      .filter((tp: any) => tp && typeof tp.topic === "string" && tp.topic.trim())
+      .map((tp: any) => ({ topic: String(tp.topic).slice(0, 300), note: String(tp.note || "").slice(0, 500) }));
     const existing = await prisma.editorialMeeting.findUnique({ where: { kind_date: { kind: mtgKind, date } } });
     const data = {
       attendeesJson: JSON.stringify(ids),
       direction: direction || "",
       notes: notes || "",
+      // Only touch minutes/topics when sent — an attendance edit must not wipe them.
+      ...(minutes !== undefined ? { minutes: String(minutes) } : {}),
+      ...(topics !== undefined ? { topicsJson: JSON.stringify(cleanTopics) } : {}),
       recordedBy: user?.id || ""
     };
     const meeting = existing
@@ -2587,6 +2598,151 @@ app.post("/api/meetings/save", async (req, res) => {
       existing ? "Editorial Meeting Updated" : "Editorial Meeting Recorded",
       `${mtgKind} of ${date} — ${ids.length} attendee(s)${direction ? `; direction: ${String(direction).slice(0, 80)}` : ""}.`);
     res.json({ success: true, meeting });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Paste path: any tool's transcript or typed minutes → structured topics on the
+// meeting row. Zoom/Meet need no integration — their own transcript export pastes here.
+app.post("/api/meetings/extract-topics", async (req, res) => {
+  try {
+    const { kind, date, minutes, user } = req.body;
+    const mtgKind = kind || "Weekly Editorial";
+    if (!["Weekly Editorial", "Daily Production"].includes(mtgKind)) {
+      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy 002)." });
+    }
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Meeting date must be YYYY-MM-DD." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
+      return res.status(403).json({ error: "Processing minutes needs an editor or Project Officer (Policy 002 participants)." });
+    }
+    if (!minutes || String(minutes).trim().length < 20) {
+      return res.status(400).json({ error: "Paste the meeting minutes or transcript first (at least a few lines)." });
+    }
+    if (!aiConfigured()) return res.status(400).json({ error: "No AI provider configured — add ANTHROPIC_API_KEY or GEMINI_API_KEY to .env." });
+    const out = await askJson([
+      `You are processing minutes of an AnaHon editorial meeting (${mtgKind}, ${date}).`,
+      `From the minutes below, extract: a clean summary of the meeting (2-5 sentences, same language as the minutes),`,
+      `the week's editorial direction if one was discussed (1-2 sentences, else empty string),`,
+      `and the CONTENT TOPICS discussed — each topic is a potential story/content idea with a short note of what was said about it.`,
+      `Only extract topics actually present in the minutes. Never invent.`,
+      ``,
+      `MINUTES:`,
+      String(minutes).slice(0, 30000)
+    ].join("\n"), {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        summary: { type: "string" },
+        direction: { type: "string" },
+        topics: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: { topic: { type: "string" }, note: { type: "string" } },
+            required: ["topic", "note"]
+          }
+        }
+      },
+      required: ["summary", "direction", "topics"]
+    });
+    const topics = (out.topics || []).map((tp: any) => ({ topic: String(tp.topic).slice(0, 300), note: String(tp.note || "").slice(0, 500) }));
+    const existing = await prisma.editorialMeeting.findUnique({ where: { kind_date: { kind: mtgKind, date } } });
+    const data = {
+      minutes: String(minutes),
+      topicsJson: JSON.stringify(topics),
+      // Fill direction/notes only where the human left them empty — never overwrite.
+      ...(existing?.direction ? {} : { direction: out.direction || "" }),
+      ...(existing?.notes ? {} : { notes: out.summary || "" }),
+      recordedBy: user?.id || ""
+    };
+    const meeting = existing
+      ? await prisma.editorialMeeting.update({ where: { id: existing.id }, data })
+      : await prisma.editorialMeeting.create({ data: { id: `mtg-${Date.now()}`, kind: mtgKind, date, attendeesJson: "[]", ...data, created_at: new Date().toISOString() } });
+    await createAuditLog(user?.id, user?.name, "Meeting Minutes Processed",
+      `${mtgKind} of ${date}: minutes captured, ${topics.length} topic(s) extracted.`);
+    res.json({ success: true, meeting, topics });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Recorder path: in-app audio → vault (registered AppDoc) → Gemini transcription →
+// minutes + topics. Needs GEMINI_API_KEY — Claude's API does not take audio.
+app.post("/api/meetings/transcribe", async (req, res) => {
+  try {
+    const { kind, date, audio, user } = req.body;
+    const mtgKind = kind || "Weekly Editorial";
+    if (!["Weekly Editorial", "Daily Production"].includes(mtgKind)) {
+      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy 002)." });
+    }
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Meeting date must be YYYY-MM-DD." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
+      return res.status(403).json({ error: "Processing a recording needs an editor or Project Officer (Policy 002 participants)." });
+    }
+    if (!audio?.base64 || !String(audio.mimeType || "").startsWith("audio/")) {
+      return res.status(400).json({ error: "Send the meeting recording as audio." });
+    }
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(400).json({ error: "In-app transcription needs GEMINI_API_KEY (Claude's API does not accept audio). Paste the transcript instead." });
+    }
+
+    // Archive the recording in the vault first — the tape is the primary record.
+    const ext = audio.mimeType.includes("ogg") ? "ogg" : audio.mimeType.includes("mp4") ? "m4a" : "webm";
+    const cat = "Meeting Recordings";
+    const dir = path.join(VAULT_ROOT, "GENERAL", cat);
+    fs.mkdirSync(dir, { recursive: true });
+    const fname = `${mtgKind.toLowerCase().replace(/ /g, "-")}-${date}-${Date.now()}.${ext}`;
+    const buffer = Buffer.from(audio.base64, "base64");
+    fs.writeFileSync(path.join(dir, fname), buffer);
+
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const r = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: [{ role: "user", parts: [
+        { inlineData: { mimeType: audio.mimeType, data: audio.base64 } },
+        { text: [
+          `This is a recording of an AnaHon editorial meeting (${mtgKind}, ${date}), likely in Arabic (Lebanese) and/or English.`,
+          `Return STRICT JSON: {"minutes": string, "summary": string, "direction": string, "topics": [{"topic": string, "note": string}]}.`,
+          `minutes = clean readable minutes of what was said (same language as spoken, speaker turns where clear).`,
+          `summary = 2-5 sentences. direction = the editorial direction for the week if discussed, else "".`,
+          `topics = the content topics/story ideas discussed, each with a note of what was said. Only what is actually in the recording — never invent.`
+        ].join("\n") }
+      ] }],
+      config: { responseMimeType: "application/json" }
+    });
+    let out: any = {};
+    try { out = JSON.parse(r.text || "{}"); } catch { return res.status(500).json({ error: "Transcription returned unreadable output — try again or paste the transcript." }); }
+
+    const meetingRow = await prisma.editorialMeeting.findUnique({ where: { kind_date: { kind: mtgKind, date } } });
+    const topics = (out.topics || []).map((tp: any) => ({ topic: String(tp.topic).slice(0, 300), note: String(tp.note || "").slice(0, 500) }));
+    const data = {
+      minutes: String(out.minutes || ""),
+      topicsJson: JSON.stringify(topics),
+      ...(meetingRow?.direction ? {} : { direction: out.direction || "" }),
+      ...(meetingRow?.notes ? {} : { notes: out.summary || "" }),
+      recordedBy: user?.id || ""
+    };
+    const meeting = meetingRow
+      ? await prisma.editorialMeeting.update({ where: { id: meetingRow.id }, data })
+      : await prisma.editorialMeeting.create({ data: { id: `mtg-${Date.now()}`, kind: mtgKind, date, attendeesJson: "[]", ...data, created_at: new Date().toISOString() } });
+
+    const doc = await prisma.appDoc.create({ data: {
+      id: `doc-${Date.now()}`,
+      refNo: await nextDocRef(prisma),
+      filename: fname,
+      mimeType: audio.mimeType,
+      sizeStr: `${Math.max(1, Math.round(buffer.length / 1024))} KB`,
+      base64: `file://GENERAL/${cat}/${fname}`,
+      category: cat,
+      linkedRecordType: "Meeting",
+      linkedRecordId: meeting.id,
+      created_at: new Date().toISOString()
+    } });
+    await createAuditLog(user?.id, user?.name, "Meeting Recording Transcribed",
+      `${mtgKind} of ${date}: recording archived (${doc.refNo}), minutes transcribed, ${topics.length} topic(s) extracted.`);
+    res.json({ success: true, meeting, topics, docRefNo: doc.refNo });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -427,6 +427,8 @@ model EditorialMeeting {
   attendeesJson String @default("[]")               // userIds present (002 names the expected roles)
   direction     String @default("")                 // "Planning for upcoming content and coverage" (002)
   notes         String @default("")                 // issues addressed, decisions, performance review (002)
+  minutes       String @default("")                 // pasted transcript or in-app recording transcription
+  topicsJson    String @default("[]")               // [{topic, note}] — documented topics, seeds for the idea desk
   recordedBy    String @default("")
   created_at    String
 

@@ -41,6 +41,62 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const [matForm, setMatForm] = useState({ label: "", url: "", kind: "link" });
   const [linkForm, setLinkForm] = useState({ url: "", description: "", kind: "link" });
   const [upDesc, setUpDesc] = useState("");
+  // Meeting recorder + minutes processing
+  const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
+  const [mtgBusy, setMtgBusy] = useState(false);
+
+  // Open the Idea Desk pre-seeded with a documented meeting topic. The user still
+  // presses Send — no surprise model calls.
+  const elaborateTopic = (mtg: { date: string; direction: string }, tp: { topic: string; note: string }) => {
+    setChat({ messages: [], busy: false, draft: null, materials: [], provider: "", pendingFile: null });
+    setChatInput(`${t("Topics discussed")} (${mtg.date}): ${tp.topic}${tp.note ? `\n${tp.note}` : ""}${mtg.direction ? `\n${t("Direction for the week")}: ${mtg.direction}` : ""}`);
+  };
+
+  // Save the form first (attendance/direction must survive), then process minutes.
+  const processMinutes = async (form: any, viaAudio?: { base64: string; mimeType: string }) => {
+    setMtgBusy(true);
+    try {
+      await post("/api/meetings/save", { kind: "Weekly Editorial", ...form });
+      const ok = await post(
+        viaAudio ? "/api/meetings/transcribe" : "/api/meetings/extract-topics",
+        viaAudio
+          ? { kind: "Weekly Editorial", date: form.date, audio: viaAudio }
+          : { kind: "Weekly Editorial", date: form.date, minutes: form.minutes },
+        viaAudio ? "Recording transcribed — topics extracted" : "Topics extracted from minutes");
+      if (ok) setMtgForm(null);
+    } finally {
+      setMtgBusy(false);
+    }
+  };
+
+  const toggleRecording = async (form: any) => {
+    if (recorder) {
+      recorder.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream, MediaRecorder.isTypeSupported("audio/webm") ? { mimeType: "audio/webm" } : undefined);
+      const chunks: Blob[] = [];
+      rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach(tr => tr.stop());
+        setRecorder(null);
+        const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64 = String(reader.result).split(",")[1] || "";
+          processMinutes(form, { base64, mimeType: blob.type });
+        };
+        reader.readAsDataURL(blob);
+      };
+      rec.start();
+      setRecorder(rec);
+      triggerToast("Recording — press Stop when the meeting ends");
+    } catch {
+      triggerToast("Microphone access refused — paste the transcript instead.", "error");
+    }
+  };
 
   const isEditor = EDITOR_ROLES.includes(currentUser.role);
   const canManage = isEditor || currentUser.role === "Project Officer"; // server scope-checks POs
@@ -193,17 +249,39 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                 <span key={id} className="bg-slate-200 text-slate-700 rounded-full px-2 py-0.5 text-[10px]">{nameOf(id)}</span>
               ))}
               {canRecordMeeting && (
-                <button onClick={() => setMtgForm({ id: thisWeekMtg.id, date: thisWeekMtg.date, attendees: [...thisWeekMtg.attendees], direction: thisWeekMtg.direction, notes: thisWeekMtg.notes })}
+                <button onClick={() => setMtgForm({ id: thisWeekMtg.id, date: thisWeekMtg.date, attendees: [...thisWeekMtg.attendees], direction: thisWeekMtg.direction, notes: thisWeekMtg.notes, minutes: thisWeekMtg.minutes })}
                   className="ml-auto text-[10px] bg-slate-200 hover:bg-slate-300 rounded px-2 py-1">{t("Edit Meeting")}</button>
               )}
             </div>
             {thisWeekMtg.direction && <p><span className="font-bold text-slate-600">{t("Direction for the week")}:</span> {thisWeekMtg.direction}</p>}
             {thisWeekMtg.notes && <p><span className="font-bold text-slate-600">{t("Decisions & notes")}:</span> {thisWeekMtg.notes}</p>}
+            {thisWeekMtg.topics.length > 0 && (
+              <div>
+                <span className="font-bold text-slate-600">{t("Topics discussed")}:</span>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {thisWeekMtg.topics.map((tp, i) => (
+                    <span key={i} title={tp.note} className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-full px-2.5 py-1">
+                      {tp.topic}
+                      {canManage && (
+                        <button onClick={() => elaborateTopic(thisWeekMtg, tp)}
+                          className="text-[10px] bg-slate-900 text-white rounded-full px-2 py-0.5 hover:bg-slate-700">💡 {t("Elaborate")}</button>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {thisWeekMtg.minutes && (
+              <details className="text-[11px]">
+                <summary className="cursor-pointer font-bold text-slate-600">{t("Minutes / Transcript")} ({thisWeekMtg.minutes.length.toLocaleString()} chars)</summary>
+                <p className="whitespace-pre-wrap text-slate-600 max-h-48 overflow-y-auto mt-1 p-2 bg-white border border-slate-200 rounded">{thisWeekMtg.minutes}</p>
+              </details>
+            )}
             <p className="text-[10px] text-slate-400">{t("Recorded by")} {nameOf(thisWeekMtg.recordedBy)}</p>
           </div>
         )}
         {!mtgForm && !thisWeekMtg && canRecordMeeting && (
-          <button onClick={() => setMtgForm({ date: today, attendees: policyAttendees, direction: "", notes: "" })}
+          <button onClick={() => setMtgForm({ date: today, attendees: policyAttendees, direction: "", notes: "", minutes: "" })}
             className="mb-4 bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2 shadow">
             📝 {t("Record This Week's Meeting")}
           </button>
@@ -233,6 +311,22 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
             <div>
               <span className="block font-bold text-slate-600 mb-1">{t("Decisions & notes")}</span>
               <textarea value={mtgForm.notes} onChange={e => setMtgForm({ ...mtgForm, notes: e.target.value })} rows={2} className="finance-input w-full" placeholder="Issues addressed, performance review, decisions…" />
+            </div>
+            <div>
+              <span className="block font-bold text-slate-600 mb-1">{t("Minutes / Transcript")}</span>
+              <textarea value={mtgForm.minutes || ""} onChange={e => setMtgForm({ ...mtgForm, minutes: e.target.value })} rows={4} className="finance-input w-full font-mono text-[11px]" placeholder={t("Paste transcript or minutes here…")} />
+              <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                <button onClick={() => processMinutes(mtgForm)} disabled={mtgBusy || !(mtgForm.minutes || "").trim()}
+                  className="bg-slate-900 hover:bg-slate-950 disabled:opacity-40 text-white rounded px-3 py-1.5">
+                  🧠 {t("Extract Topics")}
+                </button>
+                <button onClick={() => toggleRecording(mtgForm)} disabled={mtgBusy}
+                  className={`${recorder ? "bg-red-600 animate-pulse" : "bg-slate-200 hover:bg-slate-300 text-slate-800"} ${recorder ? "text-white" : ""} rounded px-3 py-1.5 disabled:opacity-40`}>
+                  {recorder ? `⏹ ${t("Stop Recording")}` : `🎙 ${t("Record Meeting")}`}
+                </button>
+                {mtgBusy && <span className="text-slate-500 animate-pulse">{t("Transcribing…")}</span>}
+                <span className="text-[9px] text-slate-400">Zoom/Meet: download their transcript and paste it — no integration needed. Recordings are archived in the vault.</span>
+              </div>
             </div>
             <div className="flex gap-2">
               <button onClick={async () => { if (await post("/api/meetings/save", { kind: "Weekly Editorial", ...mtgForm }, "Meeting recorded")) setMtgForm(null); }}
