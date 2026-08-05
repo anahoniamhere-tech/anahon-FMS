@@ -50,6 +50,11 @@ import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, B
 import { PROPOSAL_SECTIONS, STREAMS, OPP_STAGES, QUOTE_STATUSES, SERVICE_CATALOG, FINANCIAL_TERMS, PRODUCTION_NOTE, TECHNICAL_NOTE, EXTRAS_DEFAULT } from "./constants";
 import { tr } from "./i18n";
 import IcontentInvPage from "./IcontentInvPage";
+import ReportsTab from "./tabs/ReportsTab";
+import AssetsTab from "./tabs/AssetsTab";
+import AccountsTab from "./tabs/AccountsTab";
+import HandbooksTab from "./tabs/HandbooksTab";
+import { SharedProps } from "./tabs/shared";
 import { auth } from "./firebaseConfig";
 import {
   signInWithEmailAndPassword,
@@ -94,12 +99,6 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [vFilter, setVFilter] = useState({ from: "", to: "", type: "", status: "" });
 
-  // Sub-forms and interactive options
-  const [newAccountCode, setNewAccountCode] = useState("");
-  const [newAccountName, setNewAccountName] = useState("");
-  const [newAccountType, setNewAccountType] = useState<"Asset" | "Liability" | "Equity" | "Revenue" | "Expense">("Expense");
-  const [newAccountCurrency, setNewAccountCurrency] = useState<"USD" | "EUR" | "LBP">("USD");
-  const [newAccountGroup, setNewAccountGroup] = useState("Operating Expenses");
 
   // New Project form states
   const [newProjectName, setNewProjectName] = useState("");
@@ -246,14 +245,6 @@ export default function App() {
   // Waiver: fewer than 3 quotations, only with a written reason.
   const [procSingleSource, setProcSingleSource] = useState(false);
 
-  // Asset creation form
-  const [assetName, setAssetName] = useState("");
-  const [assetSerial, setAssetSerial] = useState("");
-  const [assetCost, setAssetCost] = useState("");
-  const [assetProject, setAssetProject] = useState("");
-  const [assetLife, setAssetLife] = useState("3");
-  const [assetCustodian, setAssetCustodian] = useState("");
-  const [assetLocation, setAssetLocation] = useState("");
 
   // Bank Reconciliation Trigger form
   const [recBank, setRecBank] = useState("");
@@ -510,75 +501,10 @@ export default function App() {
   const [bankSearch, setBankSearch] = useState<string>("");
   const [bankShown, setBankShown] = useState<number>(50);
 
-  // Periodic reports (Policy 11.2)
-  const [reportData, setReportData] = useState<any>(null);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportEnd, setReportEnd] = useState<string>(new Date().toISOString().slice(0, 7));
 
-  // Export filename follows the Policy 13.4.1 pattern (YEAR_ENTITY_DOCTYPE_PERIOD).
-  // Browsers take the PDF filename from document.title, so we swap it for the print only.
-  const reportFileName = (meta: any) =>
-    `${meta.periodEnd.slice(0, 4)}_ANAHON_${meta.months === 12 ? "ANNUAL" : meta.months === 6 ? "SEMI-ANNUAL" : `${meta.months}-MONTH`}-FINANCIAL-REPORT_${meta.periodStart}_to_${meta.periodEnd}`;
 
-  // Direct PDF export: writes the file with the policy filename, bypassing the OS print
-  // dialog (which names the file after the host app, not the page).
-  const downloadPeriodReport = async () => {
-    if (!reportData) return;
-    const el = document.getElementById("period-report");
-    if (!el) return;
-    setReportLoading(true);
-    try {
-      // Rendered server-side (headless Chrome): real selectable text and page breaks.
-      const res = await fetch(`/api/reports/pdf?months=${reportData.meta.months}&end=${reportEnd}`);
-      if (!res.ok) throw new Error((await res.json()).error || "Rendering failed");
-      const blob = await res.blob();
-      const name = `${reportFileName(reportData.meta)}.pdf`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-      triggerToast(`Saved ${name} to your Downloads folder.`);
-    } catch (err: any) {
-      triggerToast(`PDF export failed: ${err.message}. Use Print instead.`, "error");
-    } finally {
-      setReportLoading(false);
-    }
-  };
 
-  const printPeriodReport = () => {
-    if (!reportData) return;
-    const previousTitle = document.title;
-    document.title = reportFileName(reportData.meta);
-    const restore = () => {
-      document.title = previousTitle;
-      window.removeEventListener("afterprint", restore);
-    };
-    window.addEventListener("afterprint", restore);
-    window.print();
-    setTimeout(restore, 60000); // fallback if afterprint never fires
-  };
 
-  // Custom timeframe: when a start month is set, it wins over the preset buttons.
-  const [reportStart, setReportStart] = useState<string>("");
-  const generatePeriodReport = async (months: number) => {
-    setReportLoading(true);
-    try {
-      const q = reportStart ? `start=${reportStart}&end=${reportEnd}` : `months=${months}&end=${reportEnd}`;
-      const res = await fetch(`/api/reports/period?${q}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Report generation failed.");
-      setReportData(data);
-    } catch (err: any) {
-      setReportData(null);
-      triggerToast(err.message, "error");
-    } finally {
-      setReportLoading(false);
-    }
-  };
 
   const handleNavClick = (tab: string) => {
     setActiveTab(tab);
@@ -968,48 +894,6 @@ export default function App() {
   const formatIn = (val: number, currency: string) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(val);
 
-  const handleCreateAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAccountCode || !newAccountName) {
-      triggerToast("Account number code and descriptive name mandatory.", "error");
-      return;
-    }
-
-    // Integrity constraint validation
-    const exists = state.accounts.some(a => a.code === newAccountCode);
-    if (exists) {
-      triggerToast(`Account code ${newAccountCode} already belongs to an existing ledger line.`, "error");
-      return;
-    }
-
-    // Directly append in local-state representation and write updates to db if desired, or let ERP keep runtime changes
-    const newAc: Account = {
-      code: newAccountCode,
-      name: newAccountName,
-      type: newAccountType,
-      currency: newAccountCurrency,
-      reportingGroup: newAccountGroup,
-      balance: 0,
-      active: true
-    };
-
-    const updatedState = { ...state, accounts: [...state.accounts, newAc] };
-    setState(updatedState);
-
-    // Save state helper simulation (write to audit logs)
-    try {
-      await fetch("/api/state", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedState)
-      });
-      triggerToast(`Account ${newAccountCode} (${newAccountName}) established in General Ledger.`);
-      setNewAccountCode("");
-      setNewAccountName("");
-    } catch {
-      triggerToast("Communication interrupted, saved in local sandbox.");
-    }
-  };
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1775,38 +1659,6 @@ export default function App() {
     }
   };
 
-  const handleCapitalizeAsset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!assetName || !assetCost) {
-      triggerToast("Specify asset name & acquisitions cost.", "error");
-      return;
-    }
-    try {
-      const res = await fetch("/api/assets/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: assetName,
-          serialNumber: assetSerial || `SN-M-${Math.floor(Math.random() * 900000)}`,
-          fundingProjectId: assetProject,
-          purchaseDate: new Date().toISOString().split("T")[0],
-          cost: assetCost,
-          usefulLifeYears: assetLife,
-          custodian: assetCustodian || "Mina Studio Coordinator",
-          location: assetLocation || "Tripoli Principal Office",
-          user: currentUser
-        })
-      });
-      if (res.ok) {
-        triggerToast("Acquisition loaded directly into asset register.");
-        setAssetName("");
-        setAssetCost("");
-        refreshState();
-      }
-    } catch {
-      triggerToast("Asset ledger save failed.", "error");
-    }
-  };
 
   const handleBankReconcile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2787,7 +2639,11 @@ export default function App() {
   const voucherTypes = [...new Set((state?.budgetLines || []).map(bl => bl.category))].sort();
   const voucherStatuses = [...new Set((state?.expenses || []).map(e => e.status || "Draft"))].sort();
 
-
+  // Everything the split-out tab components receive. Grows as tabs are split.
+  const shared: SharedProps = {
+    state, setState, currentUser, t, lang, rtl, formatUSD, formatIn,
+    refreshState, triggerToast, handleNavClick, openDoc,
+  };
 
   return (
     <div className="flex h-screen flex-col bg-slate-50 text-slate-900 overflow-hidden font-sans">
@@ -3333,129 +3189,7 @@ export default function App() {
 
 
           {/* tab content Chart of Accounts */}
-          {activeTab === "accounts" && (
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-bold font-sans">Ministry of Finance Approved Chart of Accounts</h2>
-                  <p className="text-xs text-slate-500">Official double-entry account lines mapped to statutory reporting schedules.</p>
-                </div>
-                {/* Modal setup parameters */}
-                <div className="bg-slate-100 text-[11px] p-2 rounded max-w-sm text-slate-600 border border-slate-200 leading-relaxed font-mono">
-                  💡 Single balance updates occur during <strong>Posting Vouchers</strong> ensuring audit trace-ability. Direct balance edits are prohibited.
-                </div>
-              </div>
-
-              {/* Add Account Inline form */}
-              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
-                <form onSubmit={handleCreateAccount} className="p-4 bg-white border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Account Number Code")}</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. 5140"
-                      value={newAccountCode}
-                      onChange={(e) => setNewAccountCode(e.target.value)}
-                      className="finance-input w-full font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Descriptive Title")}</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Travel fuel to Akkar"
-                      value={newAccountName}
-                      onChange={(e) => setNewAccountName(e.target.value)}
-                      className="finance-input w-full"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Class Type")}</label>
-                    <select
-                      value={newAccountType}
-                      onChange={(e) => setNewAccountType(e.target.value as any)}
-                      className="finance-input w-full"
-                    >
-                      <option value="Asset">Asset (1000s)</option>
-                      <option value="Liability">Liability (2000s)</option>
-                      <option value="Equity">Equity (3000s)</option>
-                      <option value="Revenue">Revenue (4000s)</option>
-                      <option value="Expense">Expense (5000-7000s)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Currency Code")}</label>
-                    <select
-                      value={newAccountCurrency}
-                      onChange={(e) => setNewAccountCurrency(e.target.value as any)}
-                      className="finance-input w-full"
-                    >
-                      <option value="USD">USD</option>
-                      <option value="EUR">EUR</option>
-                      <option value="LBP">LBP</option>
-                    </select>
-                  </div>
-                  <button type="submit" className="bg-red-650 bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">
-                    Register Account Line
-                  </button>
-                </form>
-              )}
-
-              {/* Accounts table */}
-              <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                {/* Mobile: stacked cards */}
-                <div className="md:hidden divide-y divide-slate-100">
-                  {state.accounts.map(acc => (
-                    <div key={acc.code} className="px-4 py-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono font-bold text-xs text-slate-800">{acc.code}</span>
-                        <span className="font-mono font-bold text-sm text-slate-900">{acc.balance.toLocaleString()} {acc.currency}</span>
-                      </div>
-                      <p className="text-xs text-slate-700 mt-0.5">{acc.name}</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">{acc.type} · {acc.reportingGroup}{acc.active ? "" : " · inactive"}</p>
-                    </div>
-                  ))}
-                </div>
-                <table className="w-full text-left border-collapse hidden md:table">
-                  <thead className="bg-slate-100">
-                    <tr className="border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
-                      <th className="px-6 py-3">Code / ID</th>
-                      <th className="px-6 py-3">Reporting Classification Name</th>
-                      <th className="px-6 py-3 hidden md:table-cell">Account Type</th>
-                      <th className="px-6 py-3 hidden md:table-cell">Original Currency</th>
-                      <th className="px-6 py-3 text-right">Raw Ledger Balance</th>
-                      <th className="px-6 py-3 text-right hidden md:table-cell">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-sm font-sans">
-                    {state.accounts.map((acc) => (
-                      <tr key={acc.code} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-3 font-mono font-bold text-slate-800">{acc.code}</td>
-                        <td className="px-6 py-3 font-medium text-slate-900">{acc.name}</td>
-                        <td className="px-6 py-3 hidden md:table-cell">
-                          <span className={`px-2 py-0.5 text-xs rounded font-medium ${acc.type === "Asset" ? "bg-teal-50 text-teal-700" :
-                              acc.type === "Liability" ? "bg-amber-50 text-amber-700" :
-                                acc.type === "Equity" ? "bg-indigo-50 text-indigo-700" :
-                                  acc.type === "Revenue" ? "bg-emerald-50 text-emerald-700" :
-                                    "bg-rose-50 text-rose-700"
-                            }`}>
-                            {acc.type}
-                          </span>
-                        </td>
-                        <td className="px-6 py-3 font-mono text-slate-600 hidden md:table-cell">{acc.currency}</td>
-                        <td className="px-6 py-3 text-right font-mono font-bold text-slate-900">
-                          {acc.balance.toLocaleString()}
-                        </td>
-                        <td className="px-6 py-3 text-right hidden md:table-cell">
-                          <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+          {activeTab === "accounts" && <AccountsTab {...shared} />}
 
 
           {/* tab content Donors & Projects */}
@@ -7747,269 +7481,10 @@ export default function App() {
 
 
           {/* tab content Periodic Reports (Policy 11.2) */}
-          {activeTab === "reports" && (
-            <div className="space-y-6">
-              <style>{`@media print { body * { visibility: hidden; } #period-report, #period-report * { visibility: visible; } #period-report { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; } }`}</style>
-              <div>
-                <h2 className="text-xl font-bold">{t("Periodic Financial Reports")}</h2>
-                <p className="text-xs text-slate-500">Semi-annual and annual reporting per Policy 11.2 — budget vs actual, income, cash position, compliance status.</p>
-              </div>
-
-              <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-wrap items-end gap-3">
-                <div>
-                  <label htmlFor="report-start" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Period starting (optional)")}</label>
-                  <input id="report-start" type="month" value={reportStart} onChange={e => setReportStart(e.target.value)} className="finance-input text-xs" />
-                </div>
-                <div>
-                  <label htmlFor="report-end" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Period ending (month)")}</label>
-                  <input id="report-end" type="month" value={reportEnd} onChange={e => setReportEnd(e.target.value)} className="finance-input text-xs" />
-                </div>
-                {reportStart ? (
-                  <button disabled={reportLoading} onClick={() => generatePeriodReport(0)} className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded px-4 py-2.5 disabled:opacity-50">
-                    {reportLoading ? "Generating…" : `Generate ${reportStart} → ${reportEnd} Report`}
-                  </button>
-                ) : (<>
-                <button disabled={reportLoading} onClick={() => generatePeriodReport(6)} className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 disabled:opacity-50">
-                  {reportLoading ? "Generating…" : "Generate 6-Month Report"}
-                </button>
-                <button disabled={reportLoading} onClick={() => generatePeriodReport(12)} className="bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold rounded px-4 py-2.5 disabled:opacity-50">
-                  {reportLoading ? "Generating…" : "Generate Annual Report"}
-                </button>
-                </>)}
-                {reportData && (
-                  <div className="ml-auto flex items-center gap-3">
-                    <span className="text-[10px] text-slate-500 font-mono hidden md:block" title="Filename used when saving as PDF (Policy 13.4.1)">
-                      {reportFileName(reportData.meta)}.pdf
-                    </span>
-                    <button disabled={reportLoading} onClick={downloadPeriodReport} className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded px-4 py-2.5 disabled:opacity-50">
-                      ⬇ Download PDF
-                    </button>
-                    <button onClick={printPeriodReport} className="bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-semibold rounded px-3 py-2.5" title="Opens the OS print dialog (filename set by the app, not the report)">
-                      🖨 Print
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {reportData && (
-                <div id="period-report" className="p-8 bg-white border border-slate-200 rounded-xl shadow-sm space-y-6 text-sm">
-                  <div className="border-b-2 border-slate-900 pb-3">
-                    <h1 className="text-lg font-bold tracking-wide">ANAHON MEDIA PLATFORM — {reportData.meta.title.toUpperCase()}</h1>
-                    <p className="text-xs text-slate-600">Period: {reportData.meta.periodStart} → {reportData.meta.periodEnd} · Basis: {reportData.meta.basis} · Generated: {reportData.meta.generatedAt.slice(0, 16).replace("T", " ")} UTC</p>
-                  </div>
-
-                  {/* Stacks on phones — three currency figures side by side at 375px overlap. */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-                    <div className="p-3 border border-slate-200 rounded"><p className="text-[10px] uppercase font-bold text-slate-500">Income received</p><p className="text-lg font-mono font-bold">{formatUSD(reportData.totals.incomeInPeriod)}</p></div>
-                    <div className="p-3 border border-slate-200 rounded"><p className="text-[10px] uppercase font-bold text-slate-500">Expenditure</p><p className="text-lg font-mono font-bold">{formatUSD(reportData.totals.expenditureInPeriod)}</p></div>
-                    <div className="p-3 border border-slate-200 rounded"><p className="text-[10px] uppercase font-bold text-slate-500">Vouchers</p><p className="text-lg font-mono font-bold">{reportData.totals.vouchersInPeriod}</p></div>
-                  </div>
-
-                  <div>
-                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2">1. Budget vs Actual by Project</h3>
-                    {reportData.perProject.map((p: any) => (
-                      <div key={p.code} className="mb-4">
-                        <p className="font-semibold text-xs bg-slate-100 px-2 py-1 rounded">{p.code} — {p.name} · {p.donor} · {p.status} · allocated {formatUSD(p.allocated)} · spent to date {formatUSD(p.toDate)} ({p.variancePct > 0 ? "+" : ""}{p.variancePct}%)</p>
-                        <table className="w-full text-xs mt-1">
-                          <thead><tr className="text-[10px] text-slate-500 uppercase text-left"><th className="py-0.5">Line</th><th>Description</th><th className="text-right">Allocated</th><th className="text-right">In period</th><th className="text-right">Actual to date</th></tr></thead>
-                          <tbody>{p.lines.map((l: any) => (
-                            <tr key={l.code} className="border-t border-slate-100"><td className="py-0.5 pr-2 font-mono">{l.code}</td><td className="pr-2">{l.description.split(" (EUR")[0].slice(0, 48)}</td><td className="text-right font-mono">{formatUSD(l.allocated)}</td><td className="text-right font-mono">{formatUSD(l.inPeriod)}</td><td className="text-right font-mono">{formatUSD(l.actual)}</td></tr>
-                          ))}</tbody>
-                        </table>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div>
-                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2">2. Expenditure by Category (period)</h3>
-                      <table className="w-full text-xs">{Object.entries(reportData.byCategory).map(([c, v]: any) => (
-                        <tbody key={c}><tr className="border-t border-slate-100"><td className="py-1">{c}</td><td className="text-right font-mono">{formatUSD(v)}</td></tr></tbody>))}
-                      </table>
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2">3. Cash & Bank Position (current)</h3>
-                      <table className="w-full text-xs">{reportData.bankPosition.map((b: any) => (
-                        <tbody key={b.name}><tr className="border-t border-slate-100"><td className="py-1">{b.name} ({b.currency})</td><td className="text-right font-mono">{b.balance.toLocaleString()} {b.currency}</td><td className="text-right font-mono">{formatUSD(b.usd)}</td></tr></tbody>))}
-                      </table>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2">4. Income Received in Period</h3>
-                    <table className="w-full text-xs">
-                      <thead><tr className="text-[10px] text-slate-500 uppercase text-left"><th className="py-0.5">Date</th><th>Description</th><th>Account</th><th className="text-right">Amount</th><th className="text-right">USD</th></tr></thead>
-                      <tbody>{reportData.deposits.map((d: any, i: number) => (
-                        <tr key={i} className="border-t border-slate-100"><td className="py-0.5 font-mono">{d.date}</td><td className="pr-2">{d.description.slice(0, 60)}</td><td>{d.account}</td><td className="text-right font-mono">{d.amount.toLocaleString()} {d.currency}</td><td className="text-right font-mono">{formatUSD(d.usd)}</td></tr>
-                      ))}</tbody>
-                    </table>
-                  </div>
-
-                  {reportData.internalMovements?.length > 0 && (
-                    <div>
-                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2">
-                        4b. Internal Movements — excluded from income ({formatUSD(reportData.totals.internalMovementsInPeriod)})
-                      </h3>
-                      <p className="text-[10px] text-slate-500 mb-1">Currency conversions and reversals between our own balances. Listed for completeness; counting them as income would double-count money already received.</p>
-                      <table className="w-full text-xs">
-                        <tbody>{reportData.internalMovements.map((d: any, i: number) => (
-                          <tr key={i} className="border-t border-slate-100"><td className="py-0.5 font-mono">{d.date}</td><td className="pr-2">{d.description.slice(0, 60)}</td><td className="text-right font-mono">{d.amount.toLocaleString()} {d.currency}</td><td className="text-right font-mono text-slate-500">{formatUSD(d.usd)}</td></tr>
-                        ))}</tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  <div>
-                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2">5. Compliance Status</h3>
-                    {reportData.compliance.map((t: any, i: number) => (
-                      <p key={i} className="text-xs py-0.5 border-t border-slate-100">{t.overdue ? "🔴" : t.status === "Done" ? "✅" : "🟡"} {t.title} — {t.status}{t.dueDate ? ` (due ${t.dueDate})` : ""}</p>
-                    ))}
-                  </div>
-
-                  <div className="text-[10px] text-slate-500 border border-amber-200 bg-amber-50/40 rounded p-2">
-                    <p className="font-bold uppercase mb-1">Notes & known limitations</p>
-                    {reportData.caveats.map((c: string, i: number) => <p key={i}>• {c}</p>)}
-                  </div>
-
-                  <div className="flex gap-16 pt-8">
-                    <div className="flex-1 border-t border-slate-400 pt-1 text-xs">Prepared by — Finance Officer (Policy 11.7)<br />Name & signature: ____________________</div>
-                    <div className="flex-1 border-t border-slate-400 pt-1 text-xs">Approved by — Program Director (Policy 11.7)<br />Name & signature: ____________________</div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          {activeTab === "reports" && <ReportsTab {...shared} />}
 
           {/* tab content Fixed Assets Roll forward */}
-          {activeTab === "assets" && (
-            <div className="space-y-6">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-bold">{t("Fixed Assets capitalization Register")}</h2>
-                  <p className="text-xs text-slate-500 md:max-w-xl">
-                    Sinking cost models with straight-line automatic depreciation trackers mapped to physical serial numbers.
-                  </p>
-                </div>
-              </div>
-
-              {/* Capitalize Asset Form */}
-              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
-                <form onSubmit={handleCapitalizeAsset} className="p-4 bg-white border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Asset Name / Model")}</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Sony FX6 camera"
-                      value={assetName}
-                      onChange={(e) => setAssetName(e.target.value)}
-                      className="finance-input w-full font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Acquisition Cost USD")}</label>
-                    <input
-                      type="number"
-                      placeholder="Amount"
-                      value={assetCost}
-                      onChange={(e) => setAssetCost(e.target.value)}
-                      className="finance-input w-full font-mono"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Vessel Project funding")}</label>
-                    <select
-                      value={assetProject}
-                      onChange={(e) => setAssetProject(e.target.value)}
-                      className="finance-input w-full"
-                    >
-                      <option value="">-- Direct Purchase or Code Link --</option>
-                      {state.projects.map(p => (
-                        <option key={p.id} value={p.id}>{p.code}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Useful Life (Years)")}</label>
-                    <select
-                      value={assetLife}
-                      onChange={(e) => setAssetLife(e.target.value)}
-                      className="finance-input w-full font-mono"
-                    >
-                      <option value="2">2 Years</option>
-                      <option value="3">3 Years</option>
-                      <option value="4">4 Years</option>
-                      <option value="5">5 Years</option>
-                    </select>
-                  </div>
-                  <button type="submit" className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
-                    Capitalize Asset register
-                  </button>
-                </form>
-              )}
-
-              {/* Assets rollforward index register */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {state.fixedAssets.map(asset => (
-                  <div key={asset.id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
-                    <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-                      <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-mono font-bold">SERIAL NO: {asset.serialNumber}</span>
-                      <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${asset.condition === "Excellent" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                        }`}>{asset.condition}</span>
-                    </div>
-                    <h4 className="text-sm font-bold text-slate-900">{asset.name}</h4>
-                    <p className="text-xs text-slate-600">Location custody: {asset.location} / {asset.custodian}</p>
-
-                    <div className="grid grid-cols-3 gap-2 font-mono text-[11px] pt-2 border-t border-slate-100">
-                      <div>
-                        <span className="text-[9px] block text-slate-400">COST</span>
-                        <span className="font-bold text-slate-800">{formatUSD(asset.cost)}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] block text-slate-400">ACCUM DEP</span>
-                        <span className="font-bold text-slate-800">-{formatUSD(asset.accumulatedDepreciation)}</span>
-                      </div>
-                      <div>
-                        <span className="text-[9px] block text-slate-400">BOOK VALUE</span>
-                        <span className="font-bold text-red-650 font-bold text-red-650">{formatUSD(asset.currentBookValue)}</span>
-                      </div>
-                    </div>
-
-                    {["Super Admin", "Auditor / Read-Only Reviewer"].includes(currentUser.role) && (
-                      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
-                        <select
-                          id={`cond-${asset.id}`}
-                          className="bg-slate-100 text-xs px-2 py-1 rounded border border-slate-300 outline-none"
-                        >
-                          <option value="Excellent">Excellent condition</option>
-                          <option value="Good">Good condition</option>
-                          <option value="Needs Repair">Needs Repair</option>
-                          <option value="Damaged">Damaged</option>
-                        </select>
-                        <button
-                          onClick={async () => {
-                            const cond = (document.getElementById(`cond-${asset.id}`) as HTMLSelectElement).value;
-                            const res = await fetch("/api/assets/verify", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ assetId: asset.id, condition: cond, location: asset.location, user: currentUser })
-                            });
-                            if (res.ok) {
-                              triggerToast("Asset condition verified on physical review.");
-                              refreshState();
-                            }
-                          }}
-                          className="text-[11px] bg-slate-900 text-white px-2.5 py-1 rounded shadow-sm"
-                        >
-                          Record audit verification check
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-            </div>
-          )}
+          {activeTab === "assets" && <AssetsTab {...shared} />}
 
 
           {/* tab content Partner Capital draws */}
@@ -8562,60 +8037,7 @@ export default function App() {
           )}
 
           {/* tab content Compliance & AI Audit Desk */}
-          {activeTab === "handbooks" && (() => {
-            const books = state.documents
-              .filter(d => d.category === "Handbook")
-              // The filename carries a policy number as a suffix — order by it, not alphabetically.
-              .map(d => ({ d, no: (d.filename.match(/_(\d{3})\.docx$/) || [])[1] || "" }))
-              .sort((a, b) => a.no.localeCompare(b.no) || a.d.filename.localeCompare(b.d.filename));
-            const pretty = (f: string) => f
-              .replace(/\.docx$/i, "").replace(/_\d{3}$/, "")
-              .replace(/^Ana[Hh]on[_\s-]*/i, "").replace(/[_]+/g, " ").trim();
-            const nums = books.map(b => b.no).filter(Boolean);
-            const gaps = Array.from({ length: 20 }, (_, i) => String(i + 1).padStart(3, "0"))
-              .filter(n => !nums.includes(n) && n <= (nums[nums.length - 1] || "000"));
-            const dupes = [...new Set(nums.filter((n, i) => nums.indexOf(n) !== i))];
-
-            return (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold text-slate-900">Policies & Handbooks</h2>
-                  <p className="text-sm text-slate-500 mt-1">
-                    AnaHon's institutional policies. Funders ask for these by name — the ARIJ form has a
-                    policies checklist. Click any one to read it here.
-                  </p>
-                </div>
-
-                {(gaps.length > 0 || dupes.length > 0) && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900">
-                    <strong>Numbering:</strong>{" "}
-                    {gaps.length > 0 && <>missing {gaps.join(", ")}. </>}
-                    {dupes.length > 0 && <>number {dupes.join(", ")} used twice. </>}
-                    Either the missing ones were never written, or they exist and are not here.
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {books.map(({ d, no }) => (
-                    <button key={d.id} onClick={() => openDoc(d)}
-                      className="text-left p-4 bg-white border border-slate-200 rounded-xl hover:border-red-300 hover:shadow-md transition flex items-start gap-3">
-                      <span className="text-lg leading-none pt-0.5">📘</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-slate-900 truncate">{pretty(d.filename)}</p>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                          {no && `#${no} · `}{d.refNo} · {d.sizeStr}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                {!books.length && (
-                  <p className="text-sm text-slate-500">No handbooks registered yet.</p>
-                )}
-              </div>
-            );
-          })()}
+          {activeTab === "handbooks" && <HandbooksTab {...shared} />}
 
           {activeTab === "compliance" && (
             <div className="space-y-6">
@@ -9119,4 +8541,8 @@ export default function App() {
     </div>
   );
 }
+
+
+
+
 

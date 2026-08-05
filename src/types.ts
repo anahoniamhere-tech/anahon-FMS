@@ -336,7 +336,8 @@ export interface AppDoc {
   mimeType: string;
   sizeStr: string;
   base64: string;
-  category: "Voucher" | "Contract" | "Receipt" | "AuditFile";
+  // Free-form in practice — the DB holds 28 distinct values ("Handbook", "Digitized Invoice", …).
+  category: string;
   linkedRecordType: string;
   linkedRecordId: string;
   /** The person/provider (emp-* / ven-*) this document is about — drives the party file view. */
