@@ -55,14 +55,15 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
   // Save the form first (attendance/direction must survive), then process minutes.
   const processMinutes = async (form: any, viaAudio?: { base64: string; mimeType: string }) => {
+    const kind = form.kind || "Weekly Editorial";
     setMtgBusy(true);
     try {
-      await post("/api/meetings/save", { kind: "Weekly Editorial", ...form });
+      await post("/api/meetings/save", { ...form, kind });
       const ok = await post(
         viaAudio ? "/api/meetings/transcribe" : "/api/meetings/extract-topics",
         viaAudio
-          ? { kind: "Weekly Editorial", date: form.date, audio: viaAudio }
-          : { kind: "Weekly Editorial", date: form.date, minutes: form.minutes },
+          ? { kind, date: form.date, audio: viaAudio }
+          : { kind, date: form.date, minutes: form.minutes },
         viaAudio ? "Recording transcribed — topics extracted" : "Topics extracted from minutes");
       if (ok) setMtgForm(null);
     } finally {
@@ -234,15 +235,17 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
   const visible = (state.contentItems || []).filter(c => !statusFilter || c.status === statusFilter);
 
-  // The meeting record for the current week (Policy 002: PD chairs, PM + POs attend),
-  // plus recent history. Rows come sorted date-desc from the server.
-  const weeklies = (state.editorialMeetings || []).filter(m => m.kind === "Weekly Editorial");
+  // Meetings of the last 7 days (both kinds — Policy 002 defines the weekly editorial
+  // AND the daily production meeting), plus older history. Rows come date-desc.
   const ago7 = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
-  const thisWeekMtg = weeklies.find(m => m.date >= ago7);
-  const pastMtgs = weeklies.filter(m => m !== thisWeekMtg).slice(0, 3);
-  // Policy participants, preticked when opening a fresh attendance sheet.
-  const policyAttendees = activeUsers
-    .filter(u => ["Program Director", "Production Manager", "Project Officer", "Super Admin"].includes(u.role))
+  const allMtgs = state.editorialMeetings || [];
+  const recentMtgs = allMtgs.filter(m => m.date >= ago7);
+  const pastMtgs = allMtgs.filter(m => m.date < ago7).slice(0, 3);
+  // Policy 002 participants per meeting kind, preticked on a fresh attendance sheet.
+  const policyAttendeesFor = (kind: string) => activeUsers
+    .filter(u => (kind === "Daily Production"
+      ? ["Production Manager", "Project Officer", "Reporter", "Content Creator", "Podcaster", "Super Admin"]
+      : ["Program Director", "Production Manager", "Project Officer", "Super Admin"]).includes(u.role))
     .map(u => u.id);
   const canRecordMeeting = isEditor || currentUser.role === "Project Officer";
 
@@ -258,33 +261,34 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
       {/* Weekly editorial meeting — derived agenda + held-meeting record (Policy 002) */}
       <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
-        <h3 className="text-sm font-bold text-slate-800 uppercase font-mono mb-3">📅 {t("Weekly Editorial Meeting")}</h3>
+        <h3 className="text-sm font-bold text-slate-800 uppercase font-mono mb-3">📅 {t("Editorial Meetings")}</h3>
 
-        {/* The held meeting: attendance sheet, direction, decisions */}
-        {!mtgForm && thisWeekMtg && (
-          <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1.5">
+        {/* Held meetings of the last 7 days: attendance, direction, topics per meeting */}
+        {!mtgForm && recentMtgs.map(m => (
+          <div key={m.id} className="mb-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1.5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold text-slate-800">{thisWeekMtg.date}</span>
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${m.kind === "Daily Production" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>{t(m.kind)}</span>
+              <span className="font-bold text-slate-800">{m.date}</span>
               <span className="text-slate-500">{t("Attendance")}:</span>
-              {thisWeekMtg.attendees.map(id => (
+              {m.attendees.map(id => (
                 <span key={id} className="bg-slate-200 text-slate-700 rounded-full px-2 py-0.5 text-[10px]">{nameOf(id)}</span>
               ))}
               {canRecordMeeting && (
-                <button onClick={() => setMtgForm({ id: thisWeekMtg.id, date: thisWeekMtg.date, attendees: [...thisWeekMtg.attendees], direction: thisWeekMtg.direction, notes: thisWeekMtg.notes, minutes: thisWeekMtg.minutes })}
+                <button onClick={() => setMtgForm({ id: m.id, kind: m.kind, date: m.date, attendees: [...m.attendees], direction: m.direction, notes: m.notes, minutes: m.minutes })}
                   className="ml-auto text-[10px] bg-slate-200 hover:bg-slate-300 rounded px-2 py-1">{t("Edit Meeting")}</button>
               )}
             </div>
-            {thisWeekMtg.direction && <p><span className="font-bold text-slate-600">{t("Direction for the week")}:</span> {thisWeekMtg.direction}</p>}
-            {thisWeekMtg.notes && <p><span className="font-bold text-slate-600">{t("Decisions & notes")}:</span> {thisWeekMtg.notes}</p>}
-            {thisWeekMtg.topics.length > 0 && (
+            {m.direction && <p><span className="font-bold text-slate-600">{t("Direction for the week")}:</span> {m.direction}</p>}
+            {m.notes && <p><span className="font-bold text-slate-600">{t("Decisions & notes")}:</span> {m.notes}</p>}
+            {m.topics.length > 0 && (
               <div>
                 <span className="font-bold text-slate-600">{t("Topics discussed")}:</span>
                 <div className="flex flex-wrap gap-1.5 mt-1">
-                  {thisWeekMtg.topics.map((tp, i) => (
+                  {m.topics.map((tp, i) => (
                     <span key={i} title={tp.note} className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-full px-2.5 py-1">
                       {tp.topic}
                       {canManage && (
-                        <button onClick={() => elaborateTopic(thisWeekMtg, tp)}
+                        <button onClick={() => elaborateTopic(m, tp)}
                           className="text-[10px] bg-slate-900 text-white rounded-full px-2 py-0.5 hover:bg-slate-700">💡 {t("Elaborate")}</button>
                       )}
                     </span>
@@ -292,24 +296,31 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                 </div>
               </div>
             )}
-            {thisWeekMtg.minutes && (
+            {m.minutes && (
               <details className="text-[11px]">
-                <summary className="cursor-pointer font-bold text-slate-600">{t("Minutes / Transcript")} ({thisWeekMtg.minutes.length.toLocaleString()} chars)</summary>
-                <p className="whitespace-pre-wrap text-slate-600 max-h-48 overflow-y-auto mt-1 p-2 bg-white border border-slate-200 rounded">{thisWeekMtg.minutes}</p>
+                <summary className="cursor-pointer font-bold text-slate-600">{t("Minutes / Transcript")} ({m.minutes.length.toLocaleString()} chars)</summary>
+                <p className="whitespace-pre-wrap text-slate-600 max-h-48 overflow-y-auto mt-1 p-2 bg-white border border-slate-200 rounded">{m.minutes}</p>
               </details>
             )}
-            <p className="text-[10px] text-slate-400">{t("Recorded by")} {nameOf(thisWeekMtg.recordedBy)}</p>
+            <p className="text-[10px] text-slate-400">{t("Recorded by")} {nameOf(m.recordedBy)}</p>
           </div>
-        )}
-        {!mtgForm && !thisWeekMtg && canRecordMeeting && (
-          <button onClick={() => setMtgForm({ date: today, attendees: policyAttendees, direction: "", notes: "", minutes: "" })}
+        ))}
+        {!mtgForm && canRecordMeeting && (
+          <button onClick={() => setMtgForm({ kind: "Weekly Editorial", date: today, attendees: policyAttendeesFor("Weekly Editorial"), direction: "", notes: "", minutes: "" })}
             className="mb-4 bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2 shadow">
-            📝 {t("Record This Week's Meeting")}
+            📝 {t("Record a Meeting")}
           </button>
         )}
         {mtgForm && (
           <div className="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-2">
             <div className="flex flex-wrap items-center gap-3">
+              <span className="font-bold text-slate-600">{t("Type")}</span>
+              <select value={mtgForm.kind} disabled={!!mtgForm.id} aria-label={t("Type")}
+                onChange={e => setMtgForm({ ...mtgForm, kind: e.target.value, attendees: policyAttendeesFor(e.target.value) })}
+                className="finance-input py-1">
+                <option value="Weekly Editorial">{t("Weekly Editorial")}</option>
+                <option value="Daily Production">{t("Daily Production")}</option>
+              </select>
               <span className="font-bold text-slate-600">{t("Meeting date")}</span>
               <input type="date" value={mtgForm.date} onChange={e => setMtgForm({ ...mtgForm, date: e.target.value })} className="finance-input py-1" disabled={!!mtgForm.id} />
             </div>
@@ -377,7 +388,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
               )}
             </div>
             <div className="flex gap-2">
-              <button onClick={async () => { if (await post("/api/meetings/save", { kind: "Weekly Editorial", ...mtgForm }, "Meeting recorded")) setMtgForm(null); }}
+              <button onClick={async () => { if (await post("/api/meetings/save", { ...mtgForm, kind: mtgForm.kind || "Weekly Editorial" }, "Meeting recorded")) setMtgForm(null); }}
                 className="bg-red-600 hover:bg-red-700 text-white font-semibold rounded px-4 py-1.5 shadow">{t("Save")}</button>
               <button onClick={() => setMtgForm(null)} className="bg-slate-200 hover:bg-slate-300 rounded px-4 py-1.5">{t("Cancel")}</button>
             </div>
@@ -418,7 +429,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
           <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
             <span className="font-bold uppercase text-[10px]">{t("Previous meetings")}:</span>{" "}
             {pastMtgs.map(m => (
-              <span key={m.id} className="mr-3 font-mono">{m.date}{m.direction ? ` — ${m.direction.slice(0, 60)}${m.direction.length > 60 ? "…" : ""}` : ""}</span>
+              <span key={m.id} className="mr-3 font-mono">{m.date} ({t(m.kind)}){m.direction ? ` — ${m.direction.slice(0, 60)}${m.direction.length > 60 ? "…" : ""}` : ""}</span>
             ))}
           </div>
         )}
