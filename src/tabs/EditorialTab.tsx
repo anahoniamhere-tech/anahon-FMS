@@ -19,7 +19,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 const EDITOR_ROLES = ["Production Manager", "Program Director", "Super Admin"];
 
-export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess }: SharedProps) {
+export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc }: SharedProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [form, setForm] = useState<any | null>(null);
@@ -42,6 +42,9 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const [linkForm, setLinkForm] = useState({ url: "", description: "", kind: "link" });
   const [upDesc, setUpDesc] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [libOpen, setLibOpen] = useState(false);
+  const [libKind, setLibKind] = useState("");
+  const [libSearch, setLibSearch] = useState("");
   // Meeting recorder + minutes processing
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [mtgBusy, setMtgBusy] = useState(false);
@@ -322,6 +325,39 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   }, [state.contentItems]);
 
   const visible = (state.contentItems || []).filter(c => !statusFilter || c.status === statusFilter);
+
+  // Materials library — derived, never stored twice: every reference attached to any
+  // content item, plus vault Reference Material from Idea Desk sessions that never
+  // became an assignment (so nothing gathered along the way is lost).
+  const library = useMemo(() => {
+    const byUrl = new Map<string, any>();
+    for (const c of state.contentItems || []) {
+      for (const m of c.materials || []) {
+        byUrl.set(m.url, {
+          ...m,
+          itemId: c.id, itemTitle: c.title, itemStatus: c.status,
+          docId: m.url.startsWith("/api/document/content/") ? m.url.split("/").pop() : "",
+          date: c.created_at?.slice(0, 10) || ""
+        });
+      }
+    }
+    for (const d of state.documents || []) {
+      if (d.category !== "Reference Material") continue;
+      const url = `/api/document/content/${d.id}`;
+      if (byUrl.has(url)) continue; // already attached to an item — keep the richer entry
+      byUrl.set(url, {
+        label: d.filename, url,
+        kind: /^image\//.test(d.mimeType) ? "photo" : /^video\//.test(d.mimeType) ? "video" : "doc",
+        itemTitle: "", docId: d.id, mimeType: d.mimeType,
+        date: d.created_at?.slice(0, 10) || "", refNo: d.refNo || ""
+      });
+    }
+    return [...byUrl.values()].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  }, [state.contentItems, state.documents]);
+
+  const libVisible = library.filter(m =>
+    (!libKind || m.kind === libKind) &&
+    (!libSearch || `${m.label} ${m.description || ""} ${m.itemTitle || ""}`.toLowerCase().includes(libSearch.toLowerCase())));
 
   // Meetings of the last 7 days (both kinds — Policy 002 defines the weekly editorial
   // AND the daily production meeting), plus older history. Rows come date-desc.
@@ -790,6 +826,61 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
           )}
         </div>
       )}
+
+      {/* Materials library — everything gathered along the way, in one place */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+        <button onClick={() => setLibOpen(v => !v)}
+          className="flex w-full items-center justify-between text-sm font-bold text-slate-800 uppercase font-mono">
+          <span>📚 {t("Materials Library")} <span className="text-slate-400 normal-case font-sans font-normal">({library.length})</span></span>
+          <span className="text-slate-400">{libOpen ? "▾" : "▸"}</span>
+        </button>
+
+        {libOpen && (
+          <div className="mt-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <input value={libSearch} onChange={e => setLibSearch(e.target.value)}
+                placeholder={t("Search materials…")} className="finance-input flex-1 min-w-[160px] py-1" />
+              {[["", "All"], ["photo", "🖼"], ["video", "🎬"], ["link", "🔗"], ["doc", "📄"]].map(([k, label]) => (
+                <button key={k} onClick={() => setLibKind(k)}
+                  className={`rounded-full px-3 py-1 ${libKind === k ? "bg-slate-900 text-white" : "bg-slate-100 hover:bg-slate-200"}`}>
+                  {label} {k ? library.filter(m => m.kind === k).length : library.length}
+                </button>
+              ))}
+            </div>
+
+            {libVisible.length === 0 && (
+              <p className="text-xs text-slate-400 py-3">
+                Nothing here yet — materials attached in the Idea Desk or on a content item collect in this library.
+              </p>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {libVisible.map((m, i) => (
+                <button key={i}
+                  onClick={() => m.docId
+                    ? openDoc({ id: m.docId, filename: m.label, mimeType: m.mimeType })
+                    : window.open(m.url, "_blank")}
+                  className="text-left border border-slate-200 rounded-lg overflow-hidden hover:border-slate-400 hover:shadow-sm transition-all">
+                  {m.kind === "photo" ? (
+                    <img src={m.url} alt={m.label} className="h-24 w-full object-cover bg-slate-100"
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                  ) : (
+                    <div className="h-24 w-full bg-slate-50 flex items-center justify-center text-3xl">{MAT_ICON[m.kind] || "🔗"}</div>
+                  )}
+                  <div className="p-2 space-y-0.5">
+                    <p className="text-[11px] font-bold text-slate-800 truncate" title={m.label}>{m.label}</p>
+                    {m.description && <p className="text-[10px] text-slate-500 truncate">{m.description}</p>}
+                    <p className="text-[9px] text-slate-400 truncate">
+                      {m.itemTitle ? `→ ${m.itemTitle}` : t("Idea Desk session")}{m.date ? ` · ${m.date}` : ""}
+                    </p>
+                    {m.refNo && <p className="text-[9px] font-mono text-slate-400">{m.refNo}</p>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Register */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
