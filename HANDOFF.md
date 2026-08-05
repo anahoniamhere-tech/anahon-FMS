@@ -594,3 +594,17 @@ The signed handbooks are the spec; the system enforces them (same philosophy as 
   are undeletable by design, which the QA itself verified).
 
 Out of scope, unchanged: auth token verification (§4.2, 31 Aug), performance metrics, notifications.
+
+## C. Same-day follow-ons (5 Aug, evening)
+
+Meeting records grew into the full Policy-002 loop: minutes by paste OR in-app/phone
+recording (audio → vault → Gemini; upload path for phones — http has no mic API), AI
+topic extraction, per-topic "Elaborate" into the Idea Desk; multiple meetings per week
+(Weekly Editorial + Daily Production, kind selector, policy-preticked attendance).
+Idea Desk v2: sectioned intake (idea / links / vault uploads with descriptions),
+provider label, suggested-sources-to-verify in every draft. Production Studio on each
+content item: type-aware drafting chat (articles, scripts, carousels, captions) grounded
+in brief+materials+fact-check log, drafts saved on the item (draftsJson) and frozen once
+Editorial Review starts. Funnel programme cards click through to projects; sign-in
+rebranded; toast moved below the mobile header. Gemini decision: keep free tier (audio
+transcription + fallback; Claude Opus 5 primary and the only paid provider).
