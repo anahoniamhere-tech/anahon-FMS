@@ -4,7 +4,7 @@ import { Donor, Opportunity, Proposal } from "../types";
 import { OPP_STAGES, PROPOSAL_SECTIONS, STREAMS } from "../constants";
 import { SharedProps } from "./shared";
 
-export default function FunnelTab({ currentUser, formatUSD, openDoc, refreshState, state, t, triggerToast }: SharedProps) {
+export default function FunnelTab({ currentUser, formatUSD, handleNavClick, openDoc, refreshState, setSelectedProjectId, state, t, triggerToast }: SharedProps) {
   // Funding funnel: the opportunity being added/edited (null = form closed)
   const [oppForm, setOppForm] = useState<Partial<Opportunity> | null>(null);
 
@@ -256,9 +256,17 @@ export default function FunnelTab({ currentUser, formatUSD, openDoc, refreshStat
                       {projs.length > 0 ? (
                         <ul className="space-y-1 mb-3">
                           {projs.map(p => (
-                            <li key={p.id} className="flex justify-between text-[11px]">
-                              <span className="font-mono text-slate-600">{p.code}</span>
-                              <span className={p.status === "Active" ? "text-emerald-700 font-bold" : "text-slate-400"}>{p.status}</span>
+                            <li key={p.id}>
+                              {/* Click-through: open this project in the Projects register. */}
+                              <button
+                                onClick={() => { setSelectedProjectId(p.id); handleNavClick("projects"); }}
+                                className="w-full flex justify-between items-center gap-2 text-[11px] rounded px-1.5 py-1 -mx-1.5 hover:bg-slate-50 text-left"
+                                title={`${p.name} — open in Donors & Projects`}
+                              >
+                                <span className="font-mono text-slate-600 shrink-0">{p.code}</span>
+                                <span className="text-slate-500 truncate flex-1">{p.name}</span>
+                                <span className={p.status === "Active" ? "text-emerald-700 font-bold shrink-0" : "text-slate-400 shrink-0"}>{p.status}</span>
+                              </button>
                             </li>
                           ))}
                         </ul>

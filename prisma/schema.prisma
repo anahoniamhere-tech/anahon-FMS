@@ -412,6 +412,7 @@ model ContentItem {
   factCheckTag        Boolean @default(false)    // Policy 005 "tags or labels" — set at publish
   publishedAt         String  @default("")
   correctionsJson     String  @default("[]")     // [{date, nature, correction, by}] — dated public record
+  materialsJson       String  @default("[]")     // [{label, url, kind: link|photo|video|doc}] — reference material
   created_at          String
 }
 

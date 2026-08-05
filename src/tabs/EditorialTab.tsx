@@ -28,6 +28,10 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const [legalForm, setLegalForm] = useState({ by: "", note: "" });
   const [corrForm, setCorrForm] = useState({ nature: "", correction: "" });
   const [checkerPick, setCheckerPick] = useState("");
+  // Idea-desk chat: local thread; the AI prefills a draft, only a human saves it.
+  const [chat, setChat] = useState<null | { messages: { role: string; text: string }[]; busy: boolean; draft: any | null }>(null);
+  const [chatInput, setChatInput] = useState("");
+  const [matForm, setMatForm] = useState({ label: "", url: "", kind: "link" });
 
   const isEditor = EDITOR_ROLES.includes(currentUser.role);
   const canManage = isEditor || currentUser.role === "Project Officer"; // server scope-checks POs
@@ -59,8 +63,34 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
       id: item.id, title: item.title, contentType: item.contentType, stream: item.stream,
       channels: item.channels, brief: item.brief, assigneeUserId: item.assigneeUserId,
       dueDate: item.dueDate, reviewedMeetingDate: item.reviewedMeetingDate,
-      checks: item.checks, legalFlag: item.legalFlag, ...patch
+      checks: item.checks, legalFlag: item.legalFlag, materials: item.materials, ...patch
     }, ok);
+
+  const sendChat = async () => {
+    if (!chat || !chatInput.trim() || chat.busy) return;
+    const messages = [...chat.messages, { role: "user", text: chatInput.trim() }];
+    setChat({ ...chat, messages, busy: true });
+    setChatInput("");
+    try {
+      const res = await fetch("/api/content/brainstorm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages, user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Request failed");
+      setChat({
+        messages: [...messages, { role: "assistant", text: data.reply }],
+        busy: false,
+        draft: data.ready && data.draft ? data.draft : null
+      });
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+      setChat(c => c ? { ...c, busy: false } : c);
+    }
+  };
+
+  const MAT_ICON: Record<string, string> = { link: "🔗", photo: "🖼", video: "🎬", doc: "📄" };
 
   // Policy 002 weekly editorial meeting: reviews last week's content, plans the
   // coming week. Derived from the register — never stored.
@@ -203,14 +233,74 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
         )}
       </div>
 
+      {/* Idea desk — brainstorm chat; AI prefills, only a human saves (house rule) */}
+      {canManage && chat && (
+        <div className="p-5 bg-slate-900 text-white border border-slate-800 rounded-xl shadow-lg space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold uppercase font-mono">💡 {t("Idea Desk")}</h3>
+            <button onClick={() => setChat(null)} className="text-slate-400 hover:text-white text-xs">✕ {t("Cancel")}</button>
+          </div>
+          <div className="space-y-2 max-h-72 overflow-y-auto text-xs">
+            {chat.messages.length === 0 && (
+              <p className="text-slate-400 italic">Describe the idea — angle, who it serves, and paste any reference links, photos or videos. The desk will sharpen it and draft the assignment.</p>
+            )}
+            {chat.messages.map((m, i) => (
+              <div key={i} className={`p-2.5 rounded-lg whitespace-pre-wrap ${m.role === "user" ? "bg-red-600/20 border border-red-600/30 ml-8" : "bg-slate-800 border border-slate-700 mr-8"}`}>
+                {m.text}
+              </div>
+            ))}
+            {chat.busy && <p className="text-slate-400 animate-pulse">Thinking…</p>}
+          </div>
+          {chat.draft && (
+            <div className="p-3 bg-emerald-950/60 border border-emerald-700 rounded-lg text-xs space-y-1">
+              <p className="font-bold text-emerald-300">{chat.draft.title} <span className="font-normal text-emerald-400">({chat.draft.contentType} · {chat.draft.stream || "no programme"})</span></p>
+              <p className="text-slate-300 whitespace-pre-wrap">{chat.draft.brief.slice(0, 400)}{chat.draft.brief.length > 400 ? "…" : ""}</p>
+              <p className="text-[10px] text-slate-400">
+                {chat.draft.channels.join(", ") || "no channels"} · {chat.draft.materials.length} material(s){chat.draft.legalFlag ? " · ⚖ legal review flagged" : ""}
+              </p>
+              <button
+                onClick={() => {
+                  setForm({ title: chat.draft.title, contentType: chat.draft.contentType, stream: chat.draft.stream, channels: chat.draft.channels, assigneeUserId: "", dueDate: "", brief: chat.draft.brief, legalFlag: chat.draft.legalFlag, materials: chat.draft.materials });
+                  setChat(null);
+                }}
+                className="mt-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded px-3 py-1.5">
+                ✓ {t("Use This Draft")}
+              </button>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <textarea
+              value={chatInput}
+              onChange={e => setChatInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+              rows={2}
+              placeholder={t("Describe the idea, paste reference links…")}
+              className="flex-1 bg-slate-950 text-xs px-3 py-2 rounded text-white border border-slate-800 outline-none resize-none"
+            />
+            <button onClick={sendChat} disabled={chat.busy || !chatInput.trim()}
+              className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-xs font-semibold rounded px-4 shadow shrink-0">
+              {t("Send")}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* New assignment — Policy 002: assignments come out of the daily production meeting */}
       {canManage && (
         <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
           {!form ? (
-            <button onClick={() => setForm({ title: "", contentType: "Post", stream: "", channels: [], assigneeUserId: "", dueDate: "", brief: "", legalFlag: false })}
-              className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded px-4 py-2.5 shadow">
-              + {t("New Assignment")}
-            </button>
+            <span className="flex flex-wrap gap-2">
+              <button onClick={() => setForm({ title: "", contentType: "Post", stream: "", channels: [], assigneeUserId: "", dueDate: "", brief: "", legalFlag: false, materials: [] })}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded px-4 py-2.5 shadow">
+                + {t("New Assignment")}
+              </button>
+              {!chat && (
+                <button onClick={() => setChat({ messages: [], busy: false, draft: null })}
+                  className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow">
+                  💡 {t("Suggest with AI")}
+                </button>
+              )}
+            </span>
           ) : (
             <div className="space-y-3 text-xs">
               <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">{t("New Assignment")}</h3>
@@ -264,6 +354,11 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                   <ShieldAlert className="h-3.5 w-3.5" /> {t("Legal review required")}
                 </label>
               </div>
+              {(form.materials || []).length > 0 && (
+                <p className="text-[10px] text-slate-500">
+                  📎 {form.materials.length} material(s) attached from the draft — {form.materials.map((m: any) => m.label).join(" · ").slice(0, 120)}
+                </p>
+              )}
               <div className="flex gap-2">
                 <button onClick={async () => { if (await post("/api/content/save", form, `"${form.title}" assigned`)) setForm(null); }}
                   className="bg-red-600 hover:bg-red-700 text-white font-semibold rounded px-4 py-2 shadow">{t("Save")}</button>
@@ -312,6 +407,36 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                       {t("Channels")}: {item.channels.join(", ") || "—"} · daily meeting {item.assignedMeetingDate || "—"}
                       {item.reviewedMeetingDate && ` · weekly review ${item.reviewedMeetingDate}`}
                     </p>
+
+                    {/* Reference material: links, photos, videos, documents */}
+                    <div>
+                      <h5 className="font-bold text-slate-700 uppercase text-[10px] mb-1">{t("Materials & References")}</h5>
+                      {item.materials.length === 0 && <p className="text-slate-400">No materials attached.</p>}
+                      {item.materials.map((m, i) => (
+                        <p key={i} className="font-mono text-[11px] flex items-center gap-1.5">
+                          <span>{MAT_ICON[m.kind] || "🔗"}</span>
+                          <a href={m.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline truncate">{m.label}</a>
+                          {canManage && item.status !== "Published" && (
+                            <button onClick={() => saveItem(item, { materials: item.materials.filter((_, x) => x !== i) }, "Material removed")}
+                              className="text-slate-400 hover:text-red-600" title="Remove">✕</button>
+                          )}
+                        </p>
+                      ))}
+                      {canManage && item.status !== "Published" && (
+                        <div className="flex flex-wrap gap-2 mt-1">
+                          <input placeholder="Label" value={matForm.label} onChange={e => setMatForm({ ...matForm, label: e.target.value })} className="finance-input flex-1 min-w-[110px]" />
+                          <input placeholder="URL" value={matForm.url} onChange={e => setMatForm({ ...matForm, url: e.target.value })} className="finance-input flex-1 min-w-[150px]" />
+                          <select value={matForm.kind} onChange={e => setMatForm({ ...matForm, kind: e.target.value })} className="finance-input py-1" aria-label="Material kind">
+                            <option value="link">🔗 Link</option>
+                            <option value="photo">🖼 Photo</option>
+                            <option value="video">🎬 Video</option>
+                            <option value="doc">📄 Document</option>
+                          </select>
+                          <button onClick={async () => { if (!matForm.url.trim()) return; if (await saveItem(item, { materials: [...item.materials, { ...matForm, label: matForm.label || matForm.url }] }, "Material added")) setMatForm({ label: "", url: "", kind: "link" }); }}
+                            className="bg-slate-900 hover:bg-slate-950 text-white rounded px-3 py-1.5">{t("Add Material")}</button>
+                        </div>
+                      )}
+                    </div>
 
                     {/* Content standards — each checkbox is a policy sentence (Policy 002) */}
                     <div>

@@ -418,6 +418,7 @@ export interface ContentItem {
   factCheckTag: boolean;
   publishedAt: string;
   corrections: { date: string; nature: string; correction: string; by: string }[];
+  materials: { label: string; url: string; kind: "link" | "photo" | "video" | "doc" }[];
   created_at: string;
 }
 

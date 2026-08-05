@@ -484,7 +484,7 @@ export default function App() {
             </div>
             <div>
               <h2 className="text-2xl font-black tracking-tight text-white uppercase font-sans">AnaHon Media Platform</h2>
-              <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Financial & Compliance Portal</p>
+              <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Management System — Finance · Editorial · Compliance</p>
             </div>
           </div>
 
@@ -599,8 +599,8 @@ export default function App() {
               </div>
               <div className="space-y-1">
                 <span className="block text-slate-500">Finance Officer:</span>
-                <span className="block text-slate-300 select-all cursor-pointer hover:text-white" onClick={() => { setAuthEmail("layale@anahon.org"); setAuthPassword("password123"); setAuthTab("signin"); }}>
-                  layale@anahon.org
+                <span className="block text-slate-300 select-all cursor-pointer hover:text-white" onClick={() => { setAuthEmail("marwan@anahon.org"); setAuthPassword("password123"); setAuthTab("signin"); }}>
+                  marwan@anahon.org
                 </span>
               </div>
             </div>

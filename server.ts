@@ -52,6 +52,7 @@ const PO_ALLOWED_POSTS = new Set([
   "/api/content/factcheck-log",
   "/api/content/factcheck-pass",
   "/api/content/return",
+  "/api/content/brainstorm", // POs develop their programme's content ideas (Policy 002)
   "/api/meetings/save"      // POs attend both meetings (Policy 002) and may record them
 ]);
 // Content crew (Policy 002 production team: reporters, content creators, podcasters)
@@ -90,6 +91,7 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/content/publish",
   "/api/content/correction",
   "/api/content/delete",
+  "/api/content/brainstorm",
   "/api/meetings/save",
   "/api/meetings/delete"
 ]);
@@ -284,7 +286,8 @@ async function loadState(viewer?: any) {
     channels: JSON.parse(c.channelsJson || "[]"),
     checks: JSON.parse(c.checksJson || "{}"),
     factCheckLog: JSON.parse(c.factCheckJson || "[]"),
-    corrections: JSON.parse(c.correctionsJson || "[]")
+    corrections: JSON.parse(c.correctionsJson || "[]"),
+    materials: JSON.parse(c.materialsJson || "[]")
   }));
 
   const formattedMeetings = editorialMeetings.map(m => ({
@@ -2109,7 +2112,7 @@ async function contentManageBlock(req: any, stream: string): Promise<string | nu
 app.post("/api/content/save", async (req, res) => {
   try {
     const { id, title, contentType, stream, channels, brief, assigneeUserId, dueDate,
-            assignedMeetingDate, reviewedMeetingDate, checks, legalFlag, user } = req.body;
+            assignedMeetingDate, reviewedMeetingDate, checks, legalFlag, materials, user } = req.body;
     if (!title) return res.status(400).json({ error: "Give the content item a title." });
     const block = await contentManageBlock(req, stream || "");
     if (block) return res.status(403).json({ error: block });
@@ -2138,6 +2141,15 @@ app.post("/api/content/save", async (req, res) => {
     if (checks && typeof checks === "object") {
       for (const [k, v] of Object.entries(checks)) if (checkKeys.has(k)) cleanChecks[k] = !!v;
     }
+    // Reference material: links, photos, videos, documents per item.
+    const MATERIAL_KINDS = ["link", "photo", "video", "doc"];
+    const cleanMaterials = (Array.isArray(materials) ? materials : [])
+      .filter((m: any) => m && typeof m.url === "string" && m.url.trim())
+      .map((m: any) => ({
+        label: String(m.label || m.url).slice(0, 200),
+        url: String(m.url).trim(),
+        kind: MATERIAL_KINDS.includes(m.kind) ? m.kind : "link"
+      }));
 
     const existing = id ? await prisma.contentItem.findUnique({ where: { id } }) : null;
     if (id && !existing) return res.status(404).json({ error: "Content item not found." });
@@ -2155,7 +2167,9 @@ app.post("/api/content/save", async (req, res) => {
       dueDate: dueDate || "",
       reviewedMeetingDate: reviewedMeetingDate || "",
       checksJson: JSON.stringify(cleanChecks),
-      legalFlag: !!legalFlag
+      legalFlag: !!legalFlag,
+      // Only touch materials when the client sent the field — an omitted field must not wipe the list.
+      ...(materials !== undefined ? { materialsJson: JSON.stringify(cleanMaterials) } : {})
     };
     const item = existing
       ? await prisma.contentItem.update({ where: { id }, data })
@@ -2432,6 +2446,79 @@ app.post("/api/content/delete", async (req, res) => {
     await prisma.contentItem.delete({ where: { id } });
     await createAuditLog(user?.id, user?.name, "Content Item Removed", `Removed "${item.title}" (${item.status}).`);
     res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Content-idea brainstorm chat. The editor talks through an idea (with reference
+// links / material URLs pasted into the conversation); the model elaborates and,
+// when the idea is concrete enough, returns a structured draft tailored to the
+// content type. AI PREFILLS, HUMANS DECIDE: the draft only fills the New
+// Assignment form — nothing is written to the register here.
+app.post("/api/content/brainstorm", async (req, res) => {
+  try {
+    const { messages, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
+      return res.status(403).json({ error: "The idea desk is for editors and Project Officers — assignments come out of the editorial meetings (Policy 002)." });
+    }
+    if (!aiConfigured()) return res.status(400).json({ error: "No AI provider configured — add ANTHROPIC_API_KEY or GEMINI_API_KEY to .env." });
+    const thread: { role: string; text: string }[] = Array.isArray(messages) ? messages.slice(-20) : [];
+    if (!thread.length || !thread[thread.length - 1]?.text) {
+      return res.status(400).json({ error: "Say something about the idea first." });
+    }
+    const context = await anahonBrainContext();
+    const prompt = [
+      context,
+      ``,
+      `You are the editorial idea desk for AnaHon's newsroom (Policies 002 & 005 govern all content).`,
+      `Content types: ${CONTENT_TYPES.join(", ")}. Channels: ${CONTENT_CHANNELS.join(", ")}. Programmes: ${STREAMS.join(", ")}.`,
+      `The editor is developing a content idea in conversation. Reference links, photo/video URLs and document links they paste are MATERIALS — collect them.`,
+      `Converse briefly and concretely: sharpen the angle, suggest the right content type and channels, respect solution-journalism framing (Policy 002), and flag legal risk honestly.`,
+      `When (and only when) the idea is concrete enough to assign, set ready=true and fill draft: a title, the content type, programme, channels, a production-ready brief TAILORED to that type (an Article brief reads differently from a Reel or Podcast brief: angle, structure, key questions, visual/audio treatment as appropriate), materials collected from the conversation (label each; kind is link/photo/video/doc), and legalFlag if the story could have legal implications.`,
+      `Never invent facts, names or figures — use [FILL: …] placeholders where reporting must fill gaps.`,
+      ``,
+      `CONVERSATION SO FAR:`,
+      ...thread.map(m => `${m.role === "assistant" ? "IDEA DESK" : "EDITOR"}: ${m.text}`),
+      ``,
+      `Reply as IDEA DESK.`
+    ].join("\n");
+    const out = await askJson(prompt, {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        reply: { type: "string", description: "Conversational reply to the editor" },
+        ready: { type: "boolean", description: "True only when the draft is concrete enough to assign" },
+        draft: {
+          type: ["object", "null"],
+          additionalProperties: false,
+          properties: {
+            title: { type: "string" },
+            contentType: { type: "string", enum: [...CONTENT_TYPES] },
+            stream: { type: "string", enum: [...STREAMS, ""] },
+            channels: { type: "array", items: { type: "string", enum: [...CONTENT_CHANNELS] } },
+            brief: { type: "string" },
+            legalFlag: { type: "boolean" },
+            materials: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  label: { type: "string" },
+                  url: { type: "string" },
+                  kind: { type: "string", enum: ["link", "photo", "video", "doc"] }
+                },
+                required: ["label", "url", "kind"]
+              }
+            }
+          },
+          required: ["title", "contentType", "stream", "channels", "brief", "legalFlag", "materials"]
+        }
+      },
+      required: ["reply", "ready", "draft"]
+    });
+    res.json({ reply: out.reply || "", ready: !!out.ready, draft: out.draft || null });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
