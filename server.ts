@@ -496,6 +496,56 @@ app.post("/api/auth/sync", async (req, res) => {
 
 // Where this server can be reached from a phone on the same WiFi. Read live from the
 // machine's own interfaces, so a router reassigning the IP can never leave a stale link.
+// Editorial calendar as a standard iCalendar file: meetings + content deadlines.
+// Download & import into Google Calendar (their URL-subscribe can't reach a
+// local-only app); Apple Calendar / Outlook on the LAN can subscribe directly.
+app.get("/api/calendar.ics", async (req, res) => {
+  try {
+    const [meetings, items, users] = await Promise.all([
+      prisma.editorialMeeting.findMany(),
+      prisma.contentItem.findMany({ where: { NOT: { status: "Published" } } }),
+      prisma.user.findMany()
+    ]);
+    const nameOf = (id: string) => users.find(u => u.id === id)?.name || "";
+    const esc = (s: string) => String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+    const day = (d: string) => d.replace(/-/g, "");
+    const nextDay = (d: string) => new Date(new Date(d + "T12:00:00Z").getTime() + 86400000).toISOString().slice(0, 10).replace(/-/g, "");
+    const lines: string[] = [
+      "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//AnaHon//Editorial//AR", "CALSCALE:GREGORIAN",
+      "X-WR-CALNAME:AnaHon Editorial"
+    ];
+    for (const m of meetings) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(m.date)) continue;
+      const topics = JSON.parse(m.topicsJson || "[]");
+      lines.push(
+        "BEGIN:VEVENT",
+        `UID:${m.id}@anahon`,
+        `DTSTART;VALUE=DATE:${day(m.date)}`,
+        `DTEND;VALUE=DATE:${nextDay(m.date)}`,
+        `SUMMARY:${esc(`AnaHon — ${m.kind} Meeting`)}`,
+        `DESCRIPTION:${esc([m.direction && `Direction: ${m.direction}`, topics.length && `Topics: ${topics.map((tp: any) => tp.topic + (tp.assigneeName ? ` → ${tp.assigneeName}` : "")).join("; ")}`].filter(Boolean).join("\n"))}`,
+        "END:VEVENT");
+    }
+    for (const c of items) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(c.dueDate)) continue;
+      lines.push(
+        "BEGIN:VEVENT",
+        `UID:${c.id}@anahon`,
+        `DTSTART;VALUE=DATE:${day(c.dueDate)}`,
+        `DTEND;VALUE=DATE:${nextDay(c.dueDate)}`,
+        `SUMMARY:${esc(`Due: ${c.title}${c.assigneeUserId ? ` (${nameOf(c.assigneeUserId)})` : ""}`)}`,
+        `DESCRIPTION:${esc(`${c.contentType} · ${c.stream || "—"} · status ${c.status}\n${(c.brief || "").slice(0, 400)}`)}`,
+        "END:VEVENT");
+    }
+    lines.push("END:VCALENDAR");
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="anahon-editorial.ics"');
+    res.send(lines.join("\r\n"));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/network/access", async (req, res) => {
   try {
     const nets = os.networkInterfaces();

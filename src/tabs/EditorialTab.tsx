@@ -125,7 +125,19 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const canManage = isEditor || currentUser.role === "Project Officer"; // server scope-checks POs
 
   const nameOf = (id: string) => state.users.find(u => u.id === id)?.name || "—";
+  const emailOf = (id: string) => state.users.find(u => u.id === id)?.email || "";
   const activeUsers = state.users.filter(u => u.active);
+
+  // Google Calendar event-template URL: creating the event in Saad's Google account
+  // with guests makes GOOGLE send the invitation emails and reminders — no OAuth,
+  // no integration, works because the human is signed into Google in their browser.
+  const gcalUrl = (title: string, date: string, details: string, guests: string[]) => {
+    const d = date.replace(/-/g, "");
+    const next = new Date(new Date(date + "T12:00:00Z").getTime() + 86400000).toISOString().slice(0, 10).replace(/-/g, "");
+    const p = new URLSearchParams({ action: "TEMPLATE", text: title, dates: `${d}/${next}`, details });
+    guests.filter(Boolean).forEach(g => p.append("add", g));
+    return `https://calendar.google.com/calendar/render?${p.toString()}`;
+  };
 
   const post = async (path: string, body: any, ok?: string) => {
     try {
@@ -302,7 +314,12 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
       {/* Weekly editorial meeting — derived agenda + held-meeting record (Policy 002) */}
       <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
-        <h3 className="text-sm font-bold text-slate-800 uppercase font-mono mb-3">📅 {t("Editorial Meetings")}</h3>
+        <h3 className="text-sm font-bold text-slate-800 uppercase font-mono mb-3 flex items-center justify-between">
+          <span>📅 {t("Editorial Meetings")}</span>
+          <a href="/api/calendar.ics" download className="text-[10px] font-sans normal-case bg-slate-100 hover:bg-slate-200 text-slate-700 rounded px-2.5 py-1">
+            ⬇ {t("Download calendar (.ics)")}
+          </a>
+        </h3>
 
         {/* Held meetings of the last 7 days: attendance, direction, topics per meeting */}
         {!mtgForm && recentMtgs.map(m => (
@@ -314,10 +331,21 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
               {m.attendees.map(id => (
                 <span key={id} className="bg-slate-200 text-slate-700 rounded-full px-2 py-0.5 text-[10px]">{nameOf(id)}</span>
               ))}
-              {canRecordMeeting && (
-                <button onClick={() => setMtgForm({ id: m.id, kind: m.kind, date: m.date, attendees: [...m.attendees], direction: m.direction, notes: m.notes, minutes: m.minutes })}
-                  className="ml-auto text-[10px] bg-slate-200 hover:bg-slate-300 rounded px-2 py-1">{t("Edit Meeting")}</button>
-              )}
+              <span className="ml-auto flex gap-1.5">
+                <button
+                  title={t("Add to Google Calendar")}
+                  onClick={() => window.open(gcalUrl(
+                    `AnaHon — ${m.kind} Meeting`, m.date,
+                    [m.direction && `Direction: ${m.direction}`,
+                     m.topics.length ? `Topics: ${m.topics.map(tp => tp.topic + (tp.assigneeName ? ` → ${tp.assigneeName}` : "")).join("; ")}` : ""]
+                      .filter(Boolean).join("\n"),
+                    m.attendees.map(emailOf)), "_blank")}
+                  className="text-[10px] bg-slate-200 hover:bg-slate-300 rounded px-2 py-1">📅 Google</button>
+                {canRecordMeeting && (
+                  <button onClick={() => setMtgForm({ id: m.id, kind: m.kind, date: m.date, attendees: [...m.attendees], direction: m.direction, notes: m.notes, minutes: m.minutes })}
+                    className="text-[10px] bg-slate-200 hover:bg-slate-300 rounded px-2 py-1">{t("Edit Meeting")}</button>
+                )}
+              </span>
             </div>
             {m.direction && <p><span className="font-bold text-slate-600">{t("Direction for the week")}:</span> {m.direction}</p>}
             {m.notes && <p><span className="font-bold text-slate-600">{t("Decisions & notes")}:</span> {m.notes}</p>}
@@ -736,9 +764,20 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                 {open && (
                   <div className="mt-3 ml-1 pl-3 border-l-2 border-slate-200 space-y-3">
                     {item.brief && <p className="text-slate-600">{item.brief}</p>}
-                    <p className="text-[10px] text-slate-400 font-mono">
-                      {t("Channels")}: {item.channels.join(", ") || "—"} · daily meeting {item.assignedMeetingDate || "—"}
-                      {item.reviewedMeetingDate && ` · weekly review ${item.reviewedMeetingDate}`}
+                    <p className="text-[10px] text-slate-400 font-mono flex flex-wrap items-center gap-2">
+                      <span>
+                        {t("Channels")}: {item.channels.join(", ") || "—"} · daily meeting {item.assignedMeetingDate || "—"}
+                        {item.reviewedMeetingDate && ` · weekly review ${item.reviewedMeetingDate}`}
+                      </span>
+                      {item.dueDate && item.status !== "Published" && (
+                        <button
+                          title={t("Add to Google Calendar")}
+                          onClick={() => window.open(gcalUrl(
+                            `Due: ${item.title}`, item.dueDate,
+                            `${item.contentType} · ${item.stream || "—"}\n${(item.brief || "").slice(0, 300)}`,
+                            [emailOf(item.assigneeUserId), emailOf(item.factCheckerUserId)]), "_blank")}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 rounded px-2 py-0.5">📅 Google</button>
+                      )}
                     </p>
 
                     {/* Reference material: links, photos, videos, documents */}

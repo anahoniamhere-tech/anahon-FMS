@@ -239,6 +239,8 @@ export const AR: Record<string, string> = {
   "What should the studio produce or edit?": "ماذا ينتج الاستوديو أو يعدّل؟",
   "AI used": "استُخدم الذكاء الاصطناعي",
   "or drag files anywhere onto this panel": "أو اسحب الملفات إلى هذه النافذة",
+  "Add to Google Calendar": "إضافة إلى تقويم Google",
+  "Download calendar (.ics)": "تنزيل التقويم (.ics)",
   "AI-use disclaimer applied to the published piece": "أُضيف بيان استخدام الذكاء الاصطناعي إلى المحتوى المنشور",
   "Suggested sources (verify per Policy 005)": "مصادر مقترحة (تُتحقَّق وفق سياسة 005)",
   "Content Standards": "معايير المحتوى",
