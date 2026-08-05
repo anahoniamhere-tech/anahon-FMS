@@ -223,6 +223,7 @@ export const AR: Record<string, string> = {
   "Topics discussed": "المواضيع المطروحة",
   "Elaborate": "تطوير الفكرة",
   "Record from your phone": "التسجيل من هاتفك",
+  "Upload Recording": "رفع تسجيل",
   "Copy": "نسخ",
   "Suggested sources (verify per Policy 005)": "مصادر مقترحة (تُتحقَّق وفق سياسة 005)",
   "Content Standards": "معايير المحتوى",

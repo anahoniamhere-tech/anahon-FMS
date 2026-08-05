@@ -70,9 +70,27 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
     }
   };
 
+  // Read an audio file (Voice Memos export, WhatsApp voice note…) into the same
+  // transcription pipeline as the live recorder.
+  const uploadRecording = (form: any, file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = String(reader.result).split(",")[1] || "";
+      processMinutes(form, { base64, mimeType: file.type || "audio/mp4" });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const toggleRecording = async (form: any) => {
     if (recorder) {
       recorder.stop();
+      return;
+    }
+    // Phones over plain http (and the embedded pane) have no microphone API —
+    // browsers only expose it on secure contexts. The upload path always works.
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setRecHelp(true);
+      triggerToast("Live recording needs a secure connection — record with your phone's voice-memo app and use Upload Recording instead.", "error");
       return;
     }
     try {
@@ -327,6 +345,11 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                   className={`${recorder ? "bg-red-600 animate-pulse" : "bg-slate-200 hover:bg-slate-300 text-slate-800"} ${recorder ? "text-white" : ""} rounded px-3 py-1.5 disabled:opacity-40`}>
                   {recorder ? `⏹ ${t("Stop Recording")}` : `🎙 ${t("Record Meeting")}`}
                 </button>
+                <label className={`bg-slate-200 hover:bg-slate-300 text-slate-800 rounded px-3 py-1.5 cursor-pointer ${mtgBusy ? "opacity-40 pointer-events-none" : ""}`}>
+                  ⬆ {t("Upload Recording")}
+                  <input type="file" accept="audio/*" className="hidden" disabled={mtgBusy}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) uploadRecording(mtgForm, f); e.target.value = ""; }} />
+                </label>
                 {mtgBusy && <span className="text-slate-500 animate-pulse">{t("Transcribing…")}</span>}
                 <button onClick={() => setRecHelp(v => !v)} title={t("Record from your phone")}
                   className="bg-slate-200 hover:bg-slate-300 text-slate-800 rounded px-2.5 py-1.5">📱</button>
@@ -341,7 +364,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                         <p className="font-mono text-sm font-bold text-slate-900 break-all">{phoneAccess.urls[0].url}</p>
                         <button onClick={() => { navigator.clipboard?.writeText(phoneAccess.urls[0].url); triggerToast("Address copied."); }}
                           className="bg-slate-900 hover:bg-slate-950 text-white rounded px-2.5 py-1 text-[10px]">{t("Copy")}</button>
-                        <p className="text-slate-500">Open it on a phone on the same Wi-Fi (or in Chrome/Safari on this machine), sign in, open the Editorial Desk and press 🎙 there. The microphone works in a real browser.</p>
+                        <p className="text-slate-500">On a phone: record the meeting with the voice-memo app, then open this address, sign in, and use ⬆ Upload Recording (live 🎙 needs https, which phones refuse on plain local addresses). On this machine: open the address in Chrome/Safari and press 🎙 there.</p>
                       </>
                     ) : (
                       <p className="text-slate-500">Open the same address in Chrome/Safari on this machine and press 🎙 there — the microphone is blocked in this window.</p>

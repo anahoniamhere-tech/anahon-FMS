@@ -822,7 +822,7 @@ export default function App() {
             // user gets no confirmation that a voucher saved or a payment posted.
             role={toast.type === "error" ? "alert" : "status"}
             aria-live={toast.type === "error" ? "assertive" : "polite"}
-            className={`fixed top-4 right-4 z-50 flex items-center gap-2 rounded-lg px-4 py-3 shadow-lg text-white ${toast.type === "error" ? "bg-red-600" : "bg-emerald-600"
+            className={`fixed top-16 md:top-4 right-4 z-[60] flex items-center gap-2 rounded-lg px-4 py-3 shadow-lg text-white ${toast.type === "error" ? "bg-red-600" : "bg-emerald-600"
               }`}
           >
             <AlertCircle className="h-5 w-5" aria-hidden="true" />
