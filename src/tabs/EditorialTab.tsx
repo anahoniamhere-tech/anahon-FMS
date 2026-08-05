@@ -240,6 +240,26 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
   const MAT_ICON: Record<string, string> = { link: "🔗", photo: "🖼", video: "🎬", doc: "📄" };
 
+  // Live research on an item's open facts. Proposals only — a human logs what holds up.
+  const [research, setResearch] = useState<null | { itemId: string; busy: boolean; findings: string; sources: { title: string; url: string }[] }>(null);
+
+  const runResearch = async (item: ContentItem) => {
+    setResearch({ itemId: item.id, busy: true, findings: "", sources: [] });
+    try {
+      const res = await fetch("/api/content/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Research failed");
+      setResearch({ itemId: item.id, busy: false, findings: data.findings, sources: data.sources || [] });
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+      setResearch(null);
+    }
+  };
+
   // Drop a generated visual (or any reference file) straight onto an open item:
   // vault-filed, linked to the item, added to its materials. Watermark + AI flag
   // remain the human's Policy-021 steps.
@@ -1247,6 +1267,33 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                             {facts.map((f, i) => <li key={i}>{f}</li>)}
                           </ul>
                           <p className="text-[9px] text-slate-400 mt-0.5">{t("Each becomes a source entry below once confirmed (Policy 005).")}</p>
+
+                          {(isAssignee || isChecker || canManage) && ["In Production", "Fact-Check"].includes(item.status) && (
+                            <button onClick={() => runResearch(item)} disabled={research?.busy}
+                              className="mt-1 bg-slate-900 hover:bg-slate-950 disabled:opacity-40 text-white rounded px-3 py-1.5 text-[11px]">
+                              🔎 {research?.itemId === item.id && research.busy ? t("Researching…") : t("Research these facts")}
+                            </button>
+                          )}
+
+                          {research?.itemId === item.id && !research.busy && (
+                            <div className="mt-2 p-2 bg-white border border-slate-300 rounded text-[11px] space-y-2">
+                              <p className="whitespace-pre-wrap text-slate-700 max-h-64 overflow-y-auto">{research.findings}</p>
+                              {research.sources.length > 0 && (
+                                <div>
+                                  <p className="font-bold text-slate-600">{t("Sources found")} ({research.sources.length}) — {t("log the ones that hold up")}</p>
+                                  {research.sources.map((s, i) => (
+                                    <p key={i} className="flex items-center gap-1.5 py-0.5">
+                                      <a href={s.url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline truncate flex-1">{s.title}</a>
+                                      <button onClick={() => post("/api/content/factcheck-log", { id: item.id, source: s.title, step: s.url }, "Source logged")}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded px-2 py-0.5 text-[10px] shrink-0">+ {t("Log")}</button>
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                              <p className="text-[9px] text-amber-700">{t("AI research — verify each source before logging it (Policy 005).")}</p>
+                              <button onClick={() => setResearch(null)} className="text-slate-500 hover:text-slate-800 text-[10px]">✕ {t("Close")}</button>
+                            </div>
+                          )}
                         </div>
                       );
                     })()}

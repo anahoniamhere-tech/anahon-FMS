@@ -75,6 +75,7 @@ const CREW_ALLOWED_POSTS = new Set([
   "/api/content/factcheck-pass",   // any team member can be the named independent checker
   "/api/content/return",           // the named checker sends work back
   "/api/content/produce",          // the assignee drafts their own piece in the studio
+  "/api/content/research",
   "/api/content/draft-save",
   "/api/content/draft-delete",
   "/api/document/upload",          // reference material gathered while producing
@@ -1260,6 +1261,50 @@ async function askJson(
     return JSON.parse(r.text || "{}");
   }
   throw new Error("No ANTHROPIC_API_KEY or GEMINI_API_KEY configured — AI assist unavailable.");
+}
+
+/**
+ * One model call with real web search attached. The search runs on Anthropic's
+ * side and returns actual result blocks, so the URLs we hand back are the ones
+ * the search engine returned — not URLs the model wrote from memory. That
+ * distinction is the whole point: Policy 005 wants sources, not recollections.
+ */
+async function askWithSearch(prompt: string): Promise<{ text: string; sources: { title: string; url: string }[] }> {
+  const key = anthropicKey();
+  if (!key) throw new Error("Live research needs ANTHROPIC_API_KEY — Gemini's search grounding is not wired here.");
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const client = new Anthropic({ apiKey: key });
+
+  const messages: any[] = [{ role: "user", content: [{ type: "text", text: prompt }] }];
+  const sources: { title: string; url: string }[] = [];
+  let text = "";
+
+  // A server-tool turn can stop with pause_turn when it hits the internal
+  // iteration cap; re-send the assistant turn to let it continue.
+  for (let hop = 0; hop < 4; hop++) {
+    const msg = await client.messages.create({
+      model: "claude-opus-5",
+      max_tokens: 8000,
+      thinking: { type: "adaptive" },
+      // Roughly three searches per open fact — the model reports honestly when it
+      // runs out, but a starved budget leaves facts unresolved for no good reason.
+      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 20 } as any],
+      messages
+    });
+    for (const block of msg.content as any[]) {
+      if (block.type === "text") text += block.text;
+      if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
+        for (const r of block.content) {
+          if (r?.url && !sources.some(s => s.url === r.url)) {
+            sources.push({ title: String(r.title || r.url).slice(0, 200), url: String(r.url) });
+          }
+        }
+      }
+    }
+    if (msg.stop_reason !== "pause_turn") break;
+    messages.push({ role: "assistant", content: msg.content });
+  }
+  return { text, sources };
 }
 
 /** Same provider choice as askJson, for the one caller that wants prose back. */
@@ -2815,6 +2860,48 @@ app.post("/api/content/produce", async (req, res) => {
       required: ["reply", "draft"]
     });
     res.json({ reply: out.reply || "", draft: out.draft || null, provider: anthropicKey() ? "Claude Opus 5" : "Gemini 3.5 Flash" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Research the item's open facts against the live web. Returns findings with the
+// URLs the search actually returned — proposals only. A human logs the ones that
+// hold up, and only the named fact-checker can pass the item (Policy 005).
+app.post("/api/content/research", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!contentProduceAllowed(user, item)) {
+      return res.status(403).json({ error: "Research is for the assignee, the fact-checker, Project Officers and editors." });
+    }
+    const drafts = JSON.parse(item.draftsJson || "[]");
+    const facts = [...new Set(
+      [...`${item.brief}\n${drafts.map((d: any) => d.text).join("\n")}`.matchAll(/\[FILL:\s*([^\]]+)\]/g)
+    ].map(m => m[1].trim()))];
+    if (!facts.length) return res.status(400).json({ error: "Nothing marked [FILL] on this item — nothing to research." });
+
+    const out = await askWithSearch([
+      `You are researching open facts for an AnaHon newsroom story (Lebanon, Tripoli/North Lebanon).`,
+      `STORY: "${item.title}" — ${item.contentType}, programme ${item.stream || "—"}.`,
+      `BRIEF:\n${(item.brief || "").slice(0, 4000)}`,
+      ``,
+      `OPEN FACTS TO ESTABLISH:`,
+      ...facts.map((f, i) => `${i + 1}. ${f}`),
+      ``,
+      `Search the web and report what you can actually establish. For each fact, state:`,
+      `- the finding, with the figure/date/decision exactly as the source words it;`,
+      `- which source establishes it, and how authoritative that source is;`,
+      `- the date of the source, and whether it may now be outdated;`,
+      `- if you could NOT establish it, say so plainly and name the office or record the reporter should call instead. Never guess.`,
+      `Prefer official Lebanese sources (ministries, the Official Gazette, parliament) and established outlets. Flag any figure that appears in only one source as single-sourced.`,
+      `Write in Arabic if the brief is in Arabic. Be concise; this becomes a fact-check log, not an article.`
+    ].join("\n"));
+
+    await createAuditLog(user?.id, user?.name, "Content Research Run",
+      `"${item.title}": ${facts.length} open fact(s) researched, ${out.sources.length} source(s) returned.`);
+    res.json({ success: true, facts, findings: out.text, sources: out.sources });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
