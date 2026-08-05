@@ -112,6 +112,18 @@ export default function App() {
     document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
   }, [lang]);
 
+  // A file dropped outside a drop zone must never navigate the tab away from the
+  // app (the browser's default replaces the SPA with the file — a blank screen).
+  useEffect(() => {
+    const prevent = (e: DragEvent) => { e.preventDefault(); };
+    window.addEventListener("dragover", prevent);
+    window.addEventListener("drop", prevent);
+    return () => {
+      window.removeEventListener("dragover", prevent);
+      window.removeEventListener("drop", prevent);
+    };
+  }, []);
+
   // Filter Term
   const [searchTerm, setSearchTerm] = useState("");
 

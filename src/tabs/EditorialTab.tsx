@@ -200,13 +200,13 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const uploadChatFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = async () => {
-      const base64 = String(reader.result).split(",")[1] || "";
       try {
+        const base64 = String(reader.result).split(",")[1] || "";
         const res = await fetch("/api/document/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            filename: file.name, mimeType: file.type,
+            filename: file.name, mimeType: file.type || "application/octet-stream",
             sizeStr: `${Math.max(1, Math.round(file.size / 1024))} KB`,
             base64, category: "Reference Material",
             linkedRecordType: "Content Reference", linkedRecordId: "-",
@@ -215,19 +215,21 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Upload failed");
+        const doc = data.doc || {};
         const kind = file.type.startsWith("image/") ? "photo" : file.type.startsWith("video/") ? "video" : "doc";
         setChat(c => c ? {
           ...c,
-          materials: [...c.materials, { label: upDesc || file.name, url: `/api/document/content/${data.doc.id}`, kind, description: upDesc }],
+          materials: [...c.materials, { label: upDesc || file.name, url: doc.id ? `/api/document/content/${doc.id}` : file.name, kind, description: upDesc }],
           pendingFile: (file.type.startsWith("image/") || file.type === "application/pdf")
             ? { base64, mimeType: file.type, filename: file.name } : c.pendingFile
         } : c);
         setUpDesc("");
-        triggerToast(`${file.name} → vault (${data.doc.refNo || data.doc.id})`);
+        triggerToast(`${file.name} → vault (${doc.refNo || doc.id || "saved"})`);
       } catch (err: any) {
-        triggerToast(err.message, "error");
+        triggerToast(err?.message || "Upload failed", "error");
       }
     };
+    reader.onerror = () => triggerToast(`Could not read ${file.name}.`, "error");
     reader.readAsDataURL(file);
   };
 
@@ -523,7 +525,22 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
           onDragLeave={() => setDragOver(false)}
           onDrop={e => {
             e.preventDefault(); setDragOver(false);
-            Array.from(e.dataTransfer.files).forEach((f: File) => uploadChatFile(f));
+            try {
+              const files = Array.from(e.dataTransfer.files);
+              if (files.length) {
+                files.forEach((f: File) => uploadChatFile(f));
+                return;
+              }
+              // No files: a link/image dragged from a web page arrives as a URL.
+              const url = (e.dataTransfer.getData("text/uri-list") || e.dataTransfer.getData("text/plain")).trim().split("\n")[0];
+              if (url && /^https?:\/\//.test(url)) {
+                setChat(c => c ? { ...c, materials: [...c.materials, { label: upDesc || url, url, kind: /\.(jpe?g|png|gif|webp)([?#]|$)/i.test(url) ? "photo" : "link", description: upDesc }] } : c);
+                setUpDesc("");
+                triggerToast("Link attached.");
+              }
+            } catch (err: any) {
+              triggerToast(err?.message || "Drop failed", "error");
+            }
           }}
           className={`p-5 bg-slate-900 text-white border rounded-xl shadow-lg space-y-3 ${dragOver ? "border-red-500 border-2 border-dashed" : "border-slate-800"}`}>
           <div className="flex items-center justify-between">
