@@ -29,9 +29,18 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const [corrForm, setCorrForm] = useState({ nature: "", correction: "" });
   const [checkerPick, setCheckerPick] = useState("");
   // Idea-desk chat: local thread; the AI prefills a draft, only a human saves it.
-  const [chat, setChat] = useState<null | { messages: { role: string; text: string }[]; busy: boolean; draft: any | null }>(null);
+  // materials = links + vault uploads gathered in the panel; pendingFile = the latest
+  // image/PDF, shown to the model once on the next send.
+  const [chat, setChat] = useState<null | {
+    messages: { role: string; text: string }[]; busy: boolean; draft: any | null;
+    materials: { label: string; url: string; kind: string; description?: string }[];
+    provider: string;
+    pendingFile: { base64: string; mimeType: string; filename: string } | null;
+  }>(null);
   const [chatInput, setChatInput] = useState("");
   const [matForm, setMatForm] = useState({ label: "", url: "", kind: "link" });
+  const [linkForm, setLinkForm] = useState({ url: "", description: "", kind: "link" });
+  const [upDesc, setUpDesc] = useState("");
 
   const isEditor = EDITOR_ROLES.includes(currentUser.role);
   const canManage = isEditor || currentUser.role === "Project Officer"; // server scope-checks POs
@@ -75,19 +84,59 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
       const res = await fetch("/api/content/brainstorm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages, user: currentUser })
+        body: JSON.stringify({ messages, materials: chat.materials, attachment: chat.pendingFile, user: currentUser })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
-      setChat({
+      setChat(c => c ? {
+        ...c,
         messages: [...messages, { role: "assistant", text: data.reply }],
         busy: false,
-        draft: data.ready && data.draft ? data.draft : null
-      });
+        draft: data.ready && data.draft ? data.draft : null,
+        provider: data.provider || c.provider,
+        pendingFile: null // the model has seen it; don't resend
+      } : c);
     } catch (err: any) {
       triggerToast(err.message, "error");
       setChat(c => c ? { ...c, busy: false } : c);
     }
+  };
+
+  // Upload a reference file into the vault (GENERAL/Reference Material), then attach
+  // it to the chat's materials with its description. Images/PDFs are also shown to
+  // the model on the next send.
+  const uploadChatFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = String(reader.result).split(",")[1] || "";
+      try {
+        const res = await fetch("/api/document/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name, mimeType: file.type,
+            sizeStr: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+            base64, category: "Reference Material",
+            linkedRecordType: "Content Reference", linkedRecordId: "-",
+            user: currentUser
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Upload failed");
+        const kind = file.type.startsWith("image/") ? "photo" : file.type.startsWith("video/") ? "video" : "doc";
+        setChat(c => c ? {
+          ...c,
+          materials: [...c.materials, { label: upDesc || file.name, url: `/api/document/content/${data.doc.id}`, kind, description: upDesc }],
+          pendingFile: (file.type.startsWith("image/") || file.type === "application/pdf")
+            ? { base64, mimeType: file.type, filename: file.name } : c.pendingFile
+        } : c);
+        setUpDesc("");
+        triggerToast(`${file.name} → vault (${data.doc.refNo || data.doc.id})`);
+      } catch (err: any) {
+        triggerToast(err.message, "error");
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const MAT_ICON: Record<string, string> = { link: "🔗", photo: "🖼", video: "🎬", doc: "📄" };
@@ -238,7 +287,10 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
         <div className="p-5 bg-slate-900 text-white border border-slate-800 rounded-xl shadow-lg space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold uppercase font-mono">💡 {t("Idea Desk")}</h3>
-            <button onClick={() => setChat(null)} className="text-slate-400 hover:text-white text-xs">✕ {t("Cancel")}</button>
+            <span className="flex items-center gap-3">
+              {chat.provider && <span className="text-[10px] text-slate-400 font-mono">{t("Provided by")} {chat.provider}</span>}
+              <button onClick={() => setChat(null)} className="text-slate-400 hover:text-white text-xs">✕ {t("Cancel")}</button>
+            </span>
           </div>
           <div className="space-y-2 max-h-72 overflow-y-auto text-xs">
             {chat.messages.length === 0 && (
@@ -258,9 +310,21 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
               <p className="text-[10px] text-slate-400">
                 {chat.draft.channels.join(", ") || "no channels"} · {chat.draft.materials.length} material(s){chat.draft.legalFlag ? " · ⚖ legal review flagged" : ""}
               </p>
+              {(chat.draft.suggestedSources || []).length > 0 && (
+                <div className="pt-1 border-t border-emerald-800/50">
+                  <p className="font-bold text-emerald-300 text-[10px] uppercase">{t("Suggested sources (verify per Policy 005)")}</p>
+                  {chat.draft.suggestedSources.map((s: any, i: number) => (
+                    <p key={i} className="text-slate-300 text-[11px]">• <span className="font-bold">{s.name}</span> — {s.why}</p>
+                  ))}
+                </div>
+              )}
               <button
                 onClick={() => {
-                  setForm({ title: chat.draft.title, contentType: chat.draft.contentType, stream: chat.draft.stream, channels: chat.draft.channels, assigneeUserId: "", dueDate: "", brief: chat.draft.brief, legalFlag: chat.draft.legalFlag, materials: chat.draft.materials });
+                  const sources = (chat.draft.suggestedSources || []) as { name: string; why: string }[];
+                  const brief = chat.draft.brief + (sources.length
+                    ? `\n\nSUGGESTED SOURCES — verify per Policy 005:\n${sources.map(s => `- ${s.name} — ${s.why}`).join("\n")}`
+                    : "");
+                  setForm({ title: chat.draft.title, contentType: chat.draft.contentType, stream: chat.draft.stream, channels: chat.draft.channels, assigneeUserId: "", dueDate: "", brief, legalFlag: chat.draft.legalFlag, materials: chat.draft.materials });
                   setChat(null);
                 }}
                 className="mt-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded px-3 py-1.5">
@@ -268,19 +332,74 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
               </button>
             </div>
           )}
-          <div className="flex gap-2">
-            <textarea
-              value={chatInput}
-              onChange={e => setChatInput(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
-              rows={2}
-              placeholder={t("Describe the idea, paste reference links…")}
-              className="flex-1 bg-slate-950 text-xs px-3 py-2 rounded text-white border border-slate-800 outline-none resize-none"
-            />
-            <button onClick={sendChat} disabled={chat.busy || !chatInput.trim()}
-              className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-xs font-semibold rounded px-4 shadow shrink-0">
-              {t("Send")}
-            </button>
+          {/* Attached materials so far */}
+          {chat.materials.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 text-[10px]">
+              {chat.materials.map((m, i) => (
+                <span key={i} className="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-full px-2 py-0.5">
+                  {MAT_ICON[m.kind] || "🔗"} <span className="max-w-[160px] truncate">{m.label}</span>
+                  <button onClick={() => setChat(c => c ? { ...c, materials: c.materials.filter((_, x) => x !== i) } : c)}
+                    className="text-slate-500 hover:text-red-400">✕</button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Section 1 — the idea */}
+          <div>
+            <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">1 · {t("Brief")}</span>
+            <div className="flex gap-2">
+              <textarea
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } }}
+                rows={2}
+                placeholder={t("Describe the idea, paste reference links…")}
+                className="flex-1 bg-slate-950 text-xs px-3 py-2 rounded text-white border border-slate-800 outline-none resize-none"
+              />
+              <button onClick={sendChat} disabled={chat.busy || !chatInput.trim()}
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-xs font-semibold rounded px-4 shadow shrink-0">
+                {t("Send")}
+              </button>
+            </div>
+          </div>
+
+          {/* Section 2 — reference links with description */}
+          <div>
+            <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">2 · {t("Links")}</span>
+            <div className="flex flex-wrap gap-2">
+              <input placeholder="https://…" value={linkForm.url} onChange={e => setLinkForm({ ...linkForm, url: e.target.value })}
+                className="flex-1 min-w-[160px] bg-slate-950 text-xs px-3 py-1.5 rounded text-white border border-slate-800 outline-none" />
+              <input placeholder={t("Description")} value={linkForm.description} onChange={e => setLinkForm({ ...linkForm, description: e.target.value })}
+                className="flex-1 min-w-[140px] bg-slate-950 text-xs px-3 py-1.5 rounded text-white border border-slate-800 outline-none" />
+              <select value={linkForm.kind} onChange={e => setLinkForm({ ...linkForm, kind: e.target.value })} aria-label="Link kind"
+                className="bg-slate-950 text-xs px-2 py-1.5 rounded text-white border border-slate-800 outline-none">
+                <option value="link">🔗 Link</option>
+                <option value="photo">🖼 Photo</option>
+                <option value="video">🎬 Video</option>
+                <option value="doc">📄 Document</option>
+              </select>
+              <button
+                onClick={() => {
+                  if (!linkForm.url.trim()) return;
+                  setChat(c => c ? { ...c, materials: [...c.materials, { label: linkForm.description || linkForm.url, url: linkForm.url.trim(), kind: linkForm.kind, description: linkForm.description }] } : c);
+                  setLinkForm({ url: "", description: "", kind: "link" });
+                }}
+                className="bg-slate-800 hover:bg-slate-700 text-white text-xs rounded px-3 py-1.5">+ {t("Add Material")}</button>
+            </div>
+          </div>
+
+          {/* Section 3 — upload files (into the vault) with description */}
+          <div>
+            <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">3 · {t("Upload material")}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <input placeholder={t("Description")} value={upDesc} onChange={e => setUpDesc(e.target.value)}
+                className="flex-1 min-w-[140px] bg-slate-950 text-xs px-3 py-1.5 rounded text-white border border-slate-800 outline-none" />
+              <input type="file" aria-label={t("Upload material")}
+                onChange={e => { const f = e.target.files?.[0]; if (f) uploadChatFile(f); e.target.value = ""; }}
+                className="text-[10px] text-slate-400 file:bg-slate-800 file:text-white file:border-0 file:rounded file:px-3 file:py-1.5 file:text-xs file:mr-2 file:cursor-pointer" />
+              <span className="text-[9px] text-slate-500">→ vault · Reference Material{chat.pendingFile ? ` · 👁 ${chat.pendingFile.filename} will be shown to the model` : ""}</span>
+            </div>
           </div>
         </div>
       )}
@@ -295,7 +414,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                 + {t("New Assignment")}
               </button>
               {!chat && (
-                <button onClick={() => setChat({ messages: [], busy: false, draft: null })}
+                <button onClick={() => setChat({ messages: [], busy: false, draft: null, materials: [], provider: "", pendingFile: null })}
                   className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow">
                   💡 {t("Suggest with AI")}
                 </button>

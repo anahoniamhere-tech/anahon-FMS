@@ -2458,7 +2458,7 @@ app.post("/api/content/delete", async (req, res) => {
 // Assignment form — nothing is written to the register here.
 app.post("/api/content/brainstorm", async (req, res) => {
   try {
-    const { messages, user } = req.body;
+    const { messages, materials, attachment, user } = req.body;
     if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
       return res.status(403).json({ error: "The idea desk is for editors and Project Officers — assignments come out of the editorial meetings (Policy 002)." });
     }
@@ -2467,6 +2467,13 @@ app.post("/api/content/brainstorm", async (req, res) => {
     if (!thread.length || !thread[thread.length - 1]?.text) {
       return res.status(400).json({ error: "Say something about the idea first." });
     }
+    // Materials the editor attached in the panel (links + vault uploads), with descriptions.
+    const provided: { label: string; url: string; kind: string; description?: string }[] =
+      (Array.isArray(materials) ? materials : []).filter((m: any) => m && m.url);
+    // One reference image/PDF can be shown to the model directly.
+    const file = attachment && typeof attachment.base64 === "string" &&
+      (String(attachment.mimeType || "").startsWith("image/") || attachment.mimeType === "application/pdf")
+      ? { base64: attachment.base64, mimeType: attachment.mimeType } : undefined;
     const context = await anahonBrainContext();
     const prompt = [
       context,
@@ -2475,13 +2482,17 @@ app.post("/api/content/brainstorm", async (req, res) => {
       `Content types: ${CONTENT_TYPES.join(", ")}. Channels: ${CONTENT_CHANNELS.join(", ")}. Programmes: ${STREAMS.join(", ")}.`,
       `The editor is developing a content idea in conversation. Reference links, photo/video URLs and document links they paste are MATERIALS — collect them.`,
       `Converse briefly and concretely: sharpen the angle, suggest the right content type and channels, respect solution-journalism framing (Policy 002), and flag legal risk honestly.`,
-      `When (and only when) the idea is concrete enough to assign, set ready=true and fill draft: a title, the content type, programme, channels, a production-ready brief TAILORED to that type (an Article brief reads differently from a Reel or Podcast brief: angle, structure, key questions, visual/audio treatment as appropriate), materials collected from the conversation (label each; kind is link/photo/video/doc), and legalFlag if the story could have legal implications.`,
+      `When (and only when) the idea is concrete enough to assign, set ready=true and fill draft: a title, the content type, programme, channels, a production-ready brief TAILORED to that type (an Article brief reads differently from a Reel or Podcast brief: angle, structure, key questions, visual/audio treatment as appropriate), materials (INCLUDE every provided material below plus links pasted in conversation; label each; kind is link/photo/video/doc), suggestedSources (concrete reporting leads for THIS story: people/roles to interview, offices, records, datasets — each with why it matters; these are LEADS TO VERIFY under Policy 005, never claim them as verified), and legalFlag if the story could have legal implications.`,
       `Never invent facts, names or figures — use [FILL: …] placeholders where reporting must fill gaps.`,
+      provided.length
+        ? `\nMATERIALS PROVIDED BY THE EDITOR:\n${provided.map(m => `- [${m.kind}] ${m.label}${m.description ? ` — ${m.description}` : ""} (${m.url})`).join("\n")}`
+        : ``,
+      file ? `A reference file is attached to this message — read it and use what it shows.` : ``,
       ``,
       `CONVERSATION SO FAR:`,
       ...thread.map(m => `${m.role === "assistant" ? "IDEA DESK" : "EDITOR"}: ${m.text}`),
       ``,
-      `Reply as IDEA DESK.`
+      `Reply as IDEA DESK, in the language the editor is writing in.`
     ].join("\n");
     const out = await askJson(prompt, {
       type: "object",
@@ -2511,14 +2522,29 @@ app.post("/api/content/brainstorm", async (req, res) => {
                 },
                 required: ["label", "url", "kind"]
               }
+            },
+            suggestedSources: {
+              type: "array",
+              items: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  name: { type: "string", description: "Who/what to consult: person, role, office, record, dataset" },
+                  why: { type: "string", description: "What this source establishes for the story" }
+                },
+                required: ["name", "why"]
+              }
             }
           },
-          required: ["title", "contentType", "stream", "channels", "brief", "legalFlag", "materials"]
+          required: ["title", "contentType", "stream", "channels", "brief", "legalFlag", "materials", "suggestedSources"]
         }
       },
       required: ["reply", "ready", "draft"]
+    }, file);
+    res.json({
+      reply: out.reply || "", ready: !!out.ready, draft: out.draft || null,
+      provider: anthropicKey() ? "Claude Opus 5" : "Gemini 3.5 Flash"
     });
-    res.json({ reply: out.reply || "", ready: !!out.ready, draft: out.draft || null });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
