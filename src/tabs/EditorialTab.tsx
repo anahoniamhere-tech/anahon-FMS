@@ -235,6 +235,39 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
   const MAT_ICON: Record<string, string> = { link: "🔗", photo: "🖼", video: "🎬", doc: "📄" };
 
+  // Drop a generated visual (or any reference file) straight onto an open item:
+  // vault-filed, linked to the item, added to its materials. Watermark + AI flag
+  // remain the human's Policy-021 steps.
+  const uploadItemFile = (item: ContentItem, file: File) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const base64 = String(reader.result).split(",")[1] || "";
+        const res = await fetch("/api/document/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name, mimeType: file.type || "application/octet-stream",
+            sizeStr: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+            base64, category: "Reference Material",
+            linkedRecordType: "Content", linkedRecordId: item.id,
+            user: currentUser
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Upload failed");
+        const doc = data.doc || data.document || {};
+        const kind = file.type.startsWith("image/") ? "photo" : file.type.startsWith("video/") ? "video" : "doc";
+        await saveItem(item, { materials: [...item.materials, { label: file.name, url: doc.id ? `/api/document/content/${doc.id}` : file.name, kind }] },
+          `${file.name} attached (${doc.refNo || "vaulted"})`);
+      } catch (err: any) {
+        triggerToast(err?.message || "Upload failed", "error");
+      }
+    };
+    reader.onerror = () => triggerToast(`Could not read ${file.name}.`, "error");
+    reader.readAsDataURL(file);
+  };
+
   // Production studio: per-item drafting chat. Ephemeral thread; drafts persist
   // only when explicitly saved to the item.
   const [studio, setStudio] = useState<null | {
@@ -791,7 +824,16 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                 </div>
 
                 {open && (
-                  <div className="mt-3 ml-1 pl-3 border-l-2 border-slate-200 space-y-3">
+                  <div
+                    className="mt-3 ml-1 pl-3 border-l-2 border-slate-200 space-y-3"
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => {
+                      e.preventDefault();
+                      const working = ["Assigned", "In Production", "Fact-Check"].includes(item.status);
+                      const allowed = isAssignee || isChecker || canManage;
+                      if (!working || !allowed) return;
+                      Array.from(e.dataTransfer.files).forEach((f: File) => uploadItemFile(item, f));
+                    }}>
                     {item.brief && <p className="text-slate-600">{item.brief}</p>}
                     <p className="text-[10px] text-slate-400 font-mono flex flex-wrap items-center gap-2">
                       <span>
@@ -865,8 +907,17 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                             </details>
                           ))}
                           {working && canProduce && studio?.itemId !== item.id && (
-                            <button onClick={() => { setStudio({ itemId: item.id, messages: [], busy: false, draft: null, provider: "" }); setStudioInput(""); }}
-                              className="bg-slate-900 hover:bg-slate-950 text-white rounded px-3 py-1.5">🎬 {t("Production Studio")}</button>
+                            <span className="flex flex-wrap gap-1.5">
+                              <button onClick={() => { setStudio({ itemId: item.id, messages: [], busy: false, draft: null, provider: "" }); setStudioInput(""); }}
+                                className="bg-slate-900 hover:bg-slate-950 text-white rounded px-3 py-1.5">🎬 {t("Production Studio")}</button>
+                              {/* Policy 021 bridge: concept out, generated file dragged back onto this drawer. */}
+                              <button onClick={() => {
+                                navigator.clipboard?.writeText(`${item.title}\n\n${item.brief}`);
+                                triggerToast("Concept copied — paste it into Higgsfield, then drag the result back onto this item.");
+                                window.open("https://higgsfield.ai", "_blank");
+                              }}
+                                className="bg-slate-200 hover:bg-slate-300 text-slate-800 rounded px-3 py-1.5">🎨 Higgsfield</button>
+                            </span>
                           )}
                           {studio?.itemId === item.id && (
                             <div className="mt-2 p-3 bg-slate-900 text-white rounded-lg space-y-2">
