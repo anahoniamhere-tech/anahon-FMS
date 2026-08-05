@@ -12,3 +12,7 @@ prisma/dev.db
 *.db
 *.db-journal
 .vercel
+
+# Local database snapshots taken before schema changes — not source
+dev.db.bak-*
+prisma/dev.db.bak-*

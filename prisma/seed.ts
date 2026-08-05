@@ -140,9 +140,11 @@ const DEFAULT_DATABASE = {
     { id: "je-3", journal: "General Journal", date: "2026-06-15", description: "PV-TRF-004 Claude Pro WHT", referenceNo: "PV-TRF-004", isPosted: true, itemsJson: JSON.stringify([{ accountCode: "6400", debit: 20.00, credit: 0, projectId: "proj-trf" }, { accountCode: "1100", debit: 0, credit: 18.50, projectId: "proj-trf" }, { accountCode: "2310", debit: 0, credit: 1.50, projectId: "proj-trf" }]) }
   ],
   employees: [
-    { id: "emp-1", name: "Saad Matar", position: "Program Director", salary: 0, allowance: 0, paymentMethod: "Bank Wire", contractType: "Regular Employee", active: true },
-    { id: "emp-2", name: "Marwan El Cheikh", position: "Finance Officer", salary: 0, allowance: 0, paymentMethod: "Bank Wire", contractType: "Regular Employee", active: true },
-    { id: "emp-3", name: "Sally Kayyali", position: "Graphic Designer", salary: 0, allowance: 0, paymentMethod: "Bank Wire", contractType: "Regular Employee", active: true }
+    // paymentMethod is how the money reaches the person; bankAccountId is the account it leaves.
+    // Cash payroll is withdrawn from an account too, so bankAccountId is set either way.
+    { id: "emp-1", name: "Saad Matar", position: "Program Director", salary: 0, allowance: 0, paymentMethod: "Bank Transfer", bankAccountId: "ba-blom-usd", contractType: "Regular Employee", active: true },
+    { id: "emp-2", name: "Marwan El Cheikh", position: "Finance Officer", salary: 0, allowance: 0, paymentMethod: "Bank Transfer", bankAccountId: "ba-blom-usd", contractType: "Regular Employee", active: true },
+    { id: "emp-3", name: "Sally Kayyali", position: "Graphic Designer", salary: 0, allowance: 0, paymentMethod: "Bank Transfer", bankAccountId: "ba-blom-usd", contractType: "Regular Employee", active: true }
   ],
   timesheets: [
     { id: "ts-1", employeeId: "emp-1", month: "2026-02", totalDays: 20, allocationsJson: "[]", status: "Approved" },

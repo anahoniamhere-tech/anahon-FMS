@@ -173,3 +173,26 @@ body {
   }
 }
 
+
+/* ── Phones: wide financial tables scroll inside themselves ──────────────────
+   Numbers must stay legible, so they are never squashed to fit. Without this a
+   single wide table makes the whole page pan sideways, which breaks every screen
+   it appears on. Tables that already ship a mobile alternative (hidden md:table)
+   are untouched — they are display:none here anyway. */
+@media (max-width: 767px) {
+  main table {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  main table thead,
+  main table tbody {
+    display: table;
+    width: max-content;
+    min-width: 100%;
+  }
+  /* Keep the page itself from ever panning sideways. */
+  html, body { overflow-x: hidden; }
+}

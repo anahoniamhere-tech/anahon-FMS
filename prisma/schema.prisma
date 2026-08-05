@@ -8,11 +8,15 @@ generator client {
 }
 
 model User {
-  id     String  @id
-  name   String
-  email  String  @unique
-  role   String
-  active Boolean @default(true)
+  id             String  @id
+  name           String
+  email          String  @unique
+  role           String
+  active         Boolean @default(true)
+  // For "Project Officer": the projects this user may raise requests for.
+  projectIdsJson String  @default("[]")
+  // Programme-level scope: every project in this stream, present and future.
+  streamScope    String  @default("")
 }
 
 model Account {
@@ -44,6 +48,27 @@ model Project {
   endDate     String
   fundingType String
   status      String
+  stream      String @default("")
+}
+
+// Funding funnel: money BEFORE it lands. Deliberately a separate table so nothing
+// here can ever leak into financial reports, project lists, or balances — an
+// opportunity graduates to a Project only through /api/projects/new with bank proof.
+model Opportunity {
+  id                 String @id
+  title              String
+  donorId            String @default("")
+  stream             String @default("")
+  stage              String // Prospect | Drafting | Submitted | Awarded | Declined
+  amount             Float  @default(0)
+  currency           String @default("USD")
+  deadline           String @default("")
+  decisionDate       String @default("")
+  renewalOfProjectId String @default("")
+  notes              String @default("")
+  // Proposal workspace: {summary, problem, solution, objectives, deliverables,
+  // outputs, outcomes, budget: [{line, description, amount}], timeline: [{activity, start, end}]}
+  proposalJson       String @default("{}")
 }
 
 model BudgetLine {
@@ -67,6 +92,15 @@ model Vendor {
   active            Boolean @default(true)
   declarationSigned Boolean @default(false)
   blocked           Boolean @default(false)
+  // Whether this party is ENGAGED under a service agreement (a trainer, editor, consultant)
+  // as opposed to bought from (a subscription, a taxi, a shop). Explicit rather than inferred
+  // from `category`: a mislabelled category once let a service agreement be drafted with Apple.
+  // Defaults false — a new vendor is a supplier until someone deliberately says otherwise.
+  engageable        Boolean @default(false)
+  // Login email, when this provider is also a system user. Same link Employee.userEmail
+  // makes for timesheets — here it lets the approval queue spot a voucher whose requester
+  // is its own payee. Empty for ordinary suppliers, which is nearly all of them.
+  userEmail         String  @default("")
 }
 
 model Expense {
@@ -90,6 +124,8 @@ model Expense {
   created_at      String
   approved_at     String?
   paid_at         String?
+  // The approved procurement (RFQ or single-source waiver) authorising a >USD 300 purchase.
+  procurementId   String  @default("")
   commentsJson    String  // Serialized Comments Array [Comment]
   allocationsJson String  @default("[]") // Serialized allocations for shared cost splits
   hasAttachment   Boolean @default(false)
@@ -104,6 +140,9 @@ model Procurement {
   quotationsJson   String  // Serialized Quotations Array
   justification    String
   conflictDeclared Boolean @default(false)
+  // Waiver: fewer than 3 quotations, allowed only with a written justification.
+  singleSource     Boolean @default(false)
+  approvedBy       String  @default("")
 }
 
 model BankAccount {
@@ -125,6 +164,14 @@ model BankTransaction {
   type          String
   reconciled    Boolean @default(false)
   voucherNo     String?
+  // Outgoing money reaches a project through voucherNo -> Expense.projectId.
+  // Incoming money (donor tranches) has no voucher, so it carries the project directly.
+  projectId     String?
+  // True for lines staged from an eBLOM advice PDF, not yet on an imported statement.
+  // Pending lines never enter balances, reports, or funding proof — statements decide.
+  pending       Boolean @default(false)
+  // eBLOM "Transaction Reference" from the advice, used to dedupe re-imports.
+  noticeRef     String?
 }
 
 model JournalEntry {
@@ -147,6 +194,9 @@ model Employee {
   contractType  String
   active        Boolean @default(true)
   userEmail     String  @default("") // login email for self-service timesheets (Policy 8.5)
+  // Which of the two BLOM sub-accounts pays this person. Null means paid in cash.
+  // Same shape expenses already use: paymentMethod says how, bankAccountId says from where.
+  bankAccountId String?
 }
 
 model Timesheet {
@@ -186,6 +236,9 @@ model PartnerAccount {
 }
 
 model AppDoc {
+  // Unique document reference (ANH-DOC-NNNNN). Assigned automatically at
+  // registration; editable only by the master account (Super Admin).
+  refNo String? @unique
   id               String @id
   filename         String
   mimeType         String
@@ -195,6 +248,9 @@ model AppDoc {
   linkedRecordType String
   linkedRecordId   String
   created_at       String
+  // The person/provider this document is ABOUT (emp-* or ven-*), independent of what it is
+  // linked to (project/expense). Explicit so party files never rely on name-in-filename guessing.
+  partyId          String?
 }
 
 model AuditLog {
@@ -215,6 +271,38 @@ model ComplianceTask {
   notes    String
 }
 
+// Production stream: paying clients (earned income side). Distinct from Donor
+// (gives grants) and Vendor (we pay them) — a Client pays US for services.
+model Client {
+  id      String  @id
+  name    String
+  contact String  @default("")
+  email   String  @default("")
+  phone   String  @default("")
+  taxId   String  @default("")
+  notes   String  @default("")
+  active  Boolean @default(true)
+}
+
+// Quotations are forward-looking like Opportunities: a quote is never income.
+// Income exists only when the client's payment shows on a bank statement.
+model Quotation {
+  id          String @id
+  quoteNo     String @unique
+  clientId    String
+  title       String
+  description String @default("")
+  amount      Float  @default(0)
+  currency    String @default("USD")
+  date        String @default("")
+  validUntil  String @default("")
+  status      String @default("Draft") // Draft | Sent | Accepted | Rejected | Expired | Invoiced
+  notes       String @default("")
+  itemsJson   String @default("[]") // [{service, description, output, unitPrice, qty}]
+  termsJson   String @default("{}") // {financial, production, technical, extras}
+  paymentTxId String @default("") // statement deposit that settled this quote (bank evidence)
+}
+
 model OrgSettings {
   id                        String  @id @default("settings")
   profileName               String
@@ -225,6 +313,64 @@ model OrgSettings {
   vatRate                   Float
   approvalThresholdUSD      Float
   allowSubProjectAllocation Boolean @default(true)
+}
+
+// Physical petty-cash count: what is actually in the drawer, and when it was counted.
+// The variance against ledger 1120 is the real undocumented gap.
+model CashCount {
+  id         String @id
+  date       String
+  countedUSD Float
+  countedBy  String @default("")
+  notes      String @default("")
+  created_at String
+}
+
+// A recurring charge: what renews, when, from which account, and who pays for it.
+// matchText links it to statement lines so the last charge can be found automatically.
+model Subscription {
+  id            String @id
+  name          String
+  vendorId      String @default("")
+  matchText     String @default("")
+  amount        Float  @default(0)
+  currency      String @default("USD")
+  cycle         String @default("Monthly") // Monthly | Quarterly | Annual
+  nextRenewal   String @default("")
+  bankAccountId String @default("")
+  projectId     String @default("")
+  budgetLineId  String @default("")
+  status        String @default("Active")  // Active | Paused | Cancelled
+  // Date someone last confirmed this is still live — a status alone goes stale silently.
+  verifiedOn    String @default("")
+  notes         String @default("")
+  created_at    String
+}
+
+// One dated step in a project's life: an activity, a milestone, a report due, a payment
+// expected. Assignable, so "who is doing this" is recorded rather than assumed.
+model ProjectActivity {
+  id             String @id
+  projectId      String
+  title          String
+  detail         String @default("")
+  kind           String @default("Activity") // Activity | Milestone | Report | Payment
+  dueDate        String @default("")
+  assigneeUserId String @default("")
+  status         String @default("Planned")  // Planned | In Progress | Done | Cancelled
+  budgetLineId   String @default("")
+  source         String @default("manual")   // manual | auto | imported
+  completedOn    String @default("")
+  // Donor activity-timetable fields: "2.1.3", the Result it sits under, the Arabic
+  // title, and the periods it runs across (labels from the donor's own grid).
+  outlineNo      String @default("")
+  resultGroup    String @default("")
+  titleAr        String @default("")
+  startDate      String @default("")
+  periodsJson    String @default("[]")
+  created_at     String
+
+  @@index([projectId])
 }
 
 model FxRates {

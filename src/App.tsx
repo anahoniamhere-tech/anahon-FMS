@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import React, { useState, useEffect, useRef, FormEvent, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
+import { selfDealingRequester } from "./selfDealing";
 import {
   Building,
   User,
@@ -8,6 +9,7 @@ import {
   FolderGit2,
   Coins,
   FileText,
+  BookOpen,
   ShieldAlert,
   CheckCircle2,
   TrendingUp,
@@ -43,7 +45,62 @@ import {
   List,
   Eye
 } from "lucide-react";
-import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, BankAccount, Employee, Timesheet, FixedAsset, PartnerAccount, AppDoc, ComplianceTask, AuditLog } from "./types";
+import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, BankAccount, Employee, Timesheet, FixedAsset, PartnerAccount, AppDoc, ComplianceTask, AuditLog, Opportunity, Client, Quotation, QuotationItem, Proposal } from "./types";
+
+// Proposal sections in AnaHon's master template order (adapted per donor afterward).
+const PROPOSAL_SECTIONS: [keyof Proposal, string, string][] = [
+  ["summary", "Executive Summary", "2–4 sentences: what, for whom, how much, how long."],
+  ["problem", "Problem Statement", "What problem does this solve? Evidence, context, who is affected."],
+  ["solution", "Proposed Solution / Description", "What AnaHon will actually do, and why this approach."],
+  ["objectives", "Objectives", "Specific objectives, one per line."],
+  ["deliverables", "Deliverables", "Concrete items handed over — videos, trainings, reports…"],
+  ["outputs", "Outputs", "Countable results — N creators trained, N episodes published…"],
+  ["outcomes", "Outcomes / Expected Impact", "The change this produces for the audience/community."]
+];
+
+// AnaHon's five programs (user-defined, 31 Jul 2026) + the org-wide bucket for
+// core/backbone funding like the SKF FSTP. AnaHon itself is always the applicant.
+const STREAMS = ["AnaHon Platform", "iContent Academy", "Ahali Al Madina", "Roots & Reach", "Production", "Core / Org-wide"];
+const OPP_STAGES = ["Prospect", "Drafting", "Submitted", "Awarded", "Declined"] as const;
+const QUOTE_STATUSES = ["Draft", "Sent", "Accepted", "Rejected", "Expired", "Invoiced", "Paid"] as const;
+
+// Service catalog distilled from AnaHon's real quotations in Drive (Akkarouna,
+// Semeurs D'avenir, War Child, Kaya…). Picking one prefills the row; every field
+// stays editable. Prices are the historical list prices, not fixed.
+const SERVICE_CATALOG: { service: string; description: string; output: string; unitPrice: number }[] = [
+  { service: "Event Coverage — Photo & Video (per day)", description: "Full event coverage including photography and videography.", output: "30+ edited high-res photos per day + footage for the final edit", unitPrice: 300 },
+  { service: "Full-Day Shooting (4–6h)", description: "Photo + video shooting, one production day.", output: "Raw photo & video coverage", unitPrice: 300 },
+  { service: "Post-Production (Editing & Delivery)", description: "Video editing (sound design, color grading, horizontal & vertical export), photo selection & editing, royalty-free music licensing, final delivery.", output: "Edited deliverables, social-media ready", unitPrice: 300 },
+  { service: "Podcast Package", description: "Full podcast episode production.", output: "Full episode · poster · teaser · 2 reels · carrousel · 2× 2–5 min video · press release", unitPrice: 480 },
+  { service: "Short Videos Package", description: "Short-form video set.", output: "Vox pop on the street · infographic reel · 2× talking head", unitPrice: 450 },
+  { service: "Article / Research Paper", description: "Investigative article or research paper.", output: "1 published article", unitPrice: 150 },
+  { service: "Social Media & Website Management (monthly)", description: "Content calendar execution, scheduling & publishing, engagement, analytics reports, website content updates, team coordination.", output: "Monthly management", unitPrice: 200 },
+  { service: "Photography & Videography Training", description: "Practical training program.", output: "5 practical training sessions", unitPrice: 700 },
+  { service: "Editing Training (Premiere / Mobile)", description: "Editing training.", output: "Included within training sessions", unitPrice: 300 },
+  { service: "Content Production (training)", description: "Participants produce practical media content during the training.", output: "Participant-produced content", unitPrice: 500 },
+  { service: "Videographer (per day)", description: "", output: "1 videographer, full day", unitPrice: 250 },
+  { service: "Photographer (per day)", description: "", output: "1 photographer, full day", unitPrice: 200 },
+  { service: "360° Booth Operator (per day)", description: "360° slow-motion photo booth with operator.", output: "Booth + operator, full day", unitPrice: 250 },
+  { service: "Photo Editing", description: "", output: "Edited photo set", unitPrice: 100 },
+  { service: "Video Editing", description: "", output: "1 edited video", unitPrice: 200 },
+  { service: "Reel Editing", description: "", output: "1 edited reel (01:00–01:30)", unitPrice: 100 },
+  { service: "Trending Reels Editing (10)", description: "", output: "10 trending reels (00:30–00:45)", unitPrice: 300 },
+  { service: "Meeting Coverage", description: "Coverage of a formal meeting or roundtable.", output: "High-res photos + press release", unitPrice: 150 },
+  { service: "Event Press Package", description: "Full event media coverage.", output: "2–5 min press video report · 1 reel · high-res photos · press release", unitPrice: 350 },
+  { service: "Drone Add-on", description: "", output: "Drone footage", unitPrice: 200 },
+  { service: "Training Venue", description: "Training space for all sessions.", output: "Venue rental", unitPrice: 300 },
+  { service: "Coffee Break / Refreshments", description: "Refreshments for participants.", output: "Per training program", unitPrice: 200 },
+  { service: "Content Production Coordination", description: "", output: "Coordination across the production", unitPrice: 150 }
+];
+
+const FINANCIAL_TERMS = [
+  "This is a prepaid service. Full payment (100%) is required before the start of production. All payments in fresh USD via OMT.",
+  "The payment will be done after the delivery of the services via OMT.",
+  "Full payment on the shooting day."
+];
+const PRODUCTION_NOTE = "1. Editing for videos includes 2 sets of modifications; each additional set costs an extra 30 USD. 2. This quotation is for 1 day of production.";
+const TECHNICAL_NOTE = "High-quality outcome HD/4K. Equipment: Sony full-frame cameras, microphones, prime lenses, music copyrights, high-quality clear sound. All output compatible with social media.";
+const EXTRAS_DEFAULT = "1 Photographer ($100) — 1 Videographer ($130) — Add Drone ($200)";
 import { auth } from "./firebaseConfig";
 import {
   signInWithEmailAndPassword,
@@ -52,6 +109,178 @@ import {
   onAuthStateChanged,
   updateProfile
 } from "firebase/auth";
+
+
+// ── Arabic UI (one-click toggle) ────────────────────────────────────────────
+// Main navigation and primary actions only — data, documents and financial
+// records stay in the language they were entered in.
+const AR: Record<string, string> = {
+  // sections
+  "Overview": "نظرة عامة",
+  "Registers": "السجلات",
+  "Money Flow": "حركة الأموال",
+  "People": "الفريق",
+  "Records & Governance": "السجلات والحوكمة",
+  "Project Officer": "مسؤول المشروع",
+  // navigation
+  "Overview Dashboard": "لوحة المتابعة",
+  "Chart of Accounts": "دليل الحسابات",
+  "Donors & Projects": "المانحون والمشاريع",
+  "Programs & Funnel": "البرامج وقمع التمويل",
+  "Production & Clients": "الإنتاج والعملاء",
+  "Disbursement Vouchers": "سندات الصرف",
+  "Procurement & Bids": "المشتريات والعروض",
+  "Vendor Registry": "سجل المورّدين",
+  "Banking & Cash Reconcile": "البنك وتسوية النقد",
+  "General double-entry Ledger": "دفتر الأستاذ العام",
+  "Timesheets & Payroll Allocation": "الدوام والرواتب",
+  "Fixed Assets Roll-Forward": "الأصول الثابتة",
+  "Partner Capital Tracking": "حسابات الشركاء",
+  "Compliance Control Desk": "الامتثال والرقابة",
+  "Periodic Reports": "التقارير الدورية",
+  "My Projects & Budgets": "مشاريعي وموازناتها",
+  "Purchase Requests": "طلبات الشراء",
+  // primary actions
+  "Sign Out": "تسجيل الخروج",
+  "Save": "حفظ",
+  "Cancel": "إلغاء",
+  "Approve": "اعتماد",
+  "Add Opportunity": "إضافة فرصة",
+  "Register Client": "تسجيل عميل",
+  "New Quotation": "عرض سعر جديد",
+  "Collapse Sidebar": "طيّ القائمة",
+  "Resricted Donor Grants & Sinking Budgets": "منح المانحين المقيّدة والموازنات",
+  "AnaHon Programs & Funding Funnel": "برامج أناهون وقمع التمويل",
+  "Production Stream — Clients & Quotations": "قطاع الإنتاج — العملاء وعروض الأسعار",
+  "Official Procurement & Disbursement Vouchers": "سندات الصرف والمشتريات",
+  "Tripoli Sourcing & RFQ Comparative Sheets": "جداول مقارنة عروض الأسعار",
+  " Tripoli Vendor Master & Partners Directory": "سجل المورّدين والشركاء",
+  "Banking Statements & Cash Recon Ledger": "كشوف البنك وتسوية النقد",
+  "General double-entry General Ledger": "دفتر الأستاذ العام (القيد المزدوج)",
+  "Timesheet Allocation & Co-Funding Cost Mapping": "توزيع الدوام وتحميل الكلفة على المشاريع",
+  "Periodic Financial Reports": "التقارير المالية الدورية",
+  "Fixed Assets capitalization Register": "سجل الأصول الثابتة",
+  "Partner Capital & Draws Accounting Accounts": "رساميل الشركاء والسحوبات",
+  " Tripoli Daily Operations Expenses Sheet": "كشف المصاريف اليومية",
+  "MoF / CNSS Regulatory Compliance Desk & Audit Logs": "الامتثال لوزارة المالية والضمان وسجلات التدقيق",
+  "Accompanying Justification / Sinking rationale": "المبرر المرافق",
+  "Account": "الحساب",
+  "Account Number Code": "رقم الحساب",
+  "Acquisition Cost USD": "كلفة الشراء (دولار)",
+  "Adjustment Date": "تاريخ التسوية",
+  "Agreement Total (USD)": "قيمة الاتفاقية (دولار)",
+  "Allocation Project": "المشروع المخصّص",
+  "Allowance (USD)": "البدل (دولار)",
+  "Amount": "المبلغ",
+  "Amount (0 = not scoped)": "المبلغ (0 = غير محدّد)",
+  "Amount USD": "المبلغ بالدولار",
+  "Amount Value": "قيمة المبلغ",
+  "Asset Name / Model": "اسم الأصل / الطراز",
+  "Attach supporting Invoice/Agreement (PDF, PNG or JPEG)": "إرفاق الفاتورة أو الاتفاقية (PDF أو صورة)",
+  "Audit Justification Memo": "مذكرة التبرير",
+  "Bank Account / Payment Details": "الحساب المصرفي / تفاصيل الدفع",
+  "Base Salary (USD)": "الراتب الأساسي (دولار)",
+  "Budget Line": "بند الموازنة",
+  "Budget Line mapping": "ربط ببند الموازنة",
+  "Budget Pool (USD)": "قيمة الموازنة (دولار)",
+  "Budget line mapping": "ربط ببند الموازنة",
+  "Class Type": "التصنيف",
+  "Client": "العميل",
+  "Client Name": "اسم العميل",
+  "Comparative RFQ Title": "عنوان مقارنة العروض",
+  "Contact Email / Phone": "البريد / الهاتف",
+  "Contact Person": "الشخص المسؤول",
+  "Contract / Provider Category": "فئة المورّد / العقد",
+  "Contract Total (USD)": "قيمة العقد (دولار)",
+  "Contractor / Vendor": "المتعهّد / المورّد",
+  "Counted on": "تاريخ الجرد",
+  "Credit (USD)": "دائن (دولار)",
+  "Currency": "العملة",
+  "Currency Code": "رمز العملة",
+  "Debit (USD)": "مدين (دولار)",
+  "Decision Expected": "موعد القرار",
+  "Delivered By": "طريقة التسليم",
+  "Description": "الوصف",
+  "Description / Memo": "الوصف / ملاحظة",
+  "Descriptive Title": "العنوان",
+  "Donor": "المانح",
+  "Donor Partner": "الجهة المانحة",
+  "Email": "البريد الإلكتروني",
+  "Email Address": "البريد الإلكتروني",
+  "End": "النهاية",
+  "End Date": "تاريخ الانتهاء",
+  "Expenditure Purpose Title": "عنوان المصروف",
+  "Expense Title": "عنوان المصروف",
+  "Extras (upsells)": "خدمات إضافية",
+  "Fee per period (USD)": "الأتعاب لكل فترة (دولار)",
+  "Financial Terms": "الشروط المالية",
+  "Full Name": "الاسم الكامل",
+  "Funding Deposit (Bank Proof)": "إيداع التمويل (إثبات مصرفي)",
+  "Funding Type": "نوع التمويل",
+  "Funds Drawn From": "مصدر الأموال",
+  "Journal Reference No": "رقم القيد",
+  "Level of Effort %": "نسبة الجهد %",
+  "Method": "الطريقة",
+  "MoF Tax Registry ID (If Registered)": "الرقم الضريبي (إن وُجد)",
+  "Monthly Fee (USD)": "الأتعاب الشهرية (دولار)",
+  "Note (optional)": "ملاحظة (اختياري)",
+  "Notes": "ملاحظات",
+  "Notes in hand (USD)": "النقد الموجود (دولار)",
+  "Output / Deliverables": "المخرجات",
+  "Password": "كلمة المرور",
+  "Percentage Split (%)": "نسبة التوزيع (%)",
+  "Period ending (month)": "نهاية الفترة (شهر)",
+  "Period starting (optional)": "بداية الفترة (اختياري)",
+  "Phone": "الهاتف",
+  "Pipeline / programme": "القمع / البرنامج",
+  "Position / Title": "المنصب",
+  "Production notes (2 modification sets included, +$30/extra)": "ملاحظات الإنتاج (تعديلان مشمولان، +30$ للإضافي)",
+  "Program Stream": "البرنامج",
+  "Project": "المشروع",
+  "Project Code (Unique)": "رمز المشروع",
+  "Project Name": "اسم المشروع",
+  "Project Tag (Optional)": "المشروع (اختياري)",
+  "Provider / Vendor Name": "اسم المورّد",
+  "Qty": "الكمية",
+  "Quote Date": "تاريخ العرض",
+  "Quote № (automatic)": "رقم العرض (تلقائي)",
+  "Received on": "تاريخ الاستلام",
+  "Renewal Of (optional)": "تجديد لـ (اختياري)",
+  "Requested Currency": "العملة المطلوبة",
+  "Role / scope of services": "الدور / نطاق الخدمات",
+  "Scope / Line Breakdown": "تفاصيل النطاق",
+  "Select Partner profile": "اختر الشريك",
+  "Select Reporting Month:": "اختر شهر التقرير:",
+  "Service": "الخدمة",
+  "Service / Title": "الخدمة / العنوان",
+  "Stage": "المرحلة",
+  "Start": "البداية",
+  "Start Date": "تاريخ البدء",
+  "Statement Amount": "مبلغ الكشف",
+  "Statement Entry Memo": "بيان القيد",
+  "Status": "الحالة",
+  "Sub-Budget Mapping": "ربط ببند فرعي",
+  "Sub-Budget designated line": "البند الفرعي المحدّد",
+  "Submission Deadline": "مهلة التقديم",
+  "Target Account Vault Drawer": "الحساب / الصندوق",
+  "Target Project Mapping": "ربط بالمشروع",
+  "Target Project mapping": "ربط بالمشروع",
+  "Tax ID (for invoicing)": "الرقم الضريبي (للفوترة)",
+  "Technical notes (Sony full-frame, HD/4K, licensed music)": "ملاحظات تقنية (كاميرات Sony، جودة HD/4K، موسيقى مرخّصة)",
+  "Title": "العنوان",
+  "Transaction Type": "نوع الحركة",
+  "Type": "النوع",
+  "Unit": "سعر الوحدة",
+  "Useful Life (Years)": "العمر الإنتاجي (سنوات)",
+  "Valid Until": "صالح حتى",
+  "Vendor": "المورّد",
+  "Vendor list / Contract partner": "المورّد / الطرف المتعاقد",
+  "Vessel Project Mapping": "ربط بالمشروع",
+  "Vessel Project funding": "تمويل المشروع",
+  "What was bought": "ماذا تم شراؤه",
+  "justification / rationale": "المبرر",
+};
+const tr = (lang: string, s: string) => (lang === "ar" ? (AR[s] || s) : s);
 
 export default function App() {
   // Global App State
@@ -72,9 +301,19 @@ export default function App() {
   // Active Simulated User Role
   const [activeUserId, setActiveUserId] = useState<string>("u-1");
   const [activeTab, setActiveTab] = useState<string>("dashboard");
+  // One-click Arabic. Remembered across sessions; flips the page to RTL.
+  const [lang, setLang] = useState<string>(() => localStorage.getItem("anahon-lang") || "en");
+  const t = (s: string) => tr(lang, s);
+  const rtl = lang === "ar";
+  useEffect(() => {
+    localStorage.setItem("anahon-lang", lang);
+    document.documentElement.lang = lang === "ar" ? "ar" : "en";
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+  }, [lang]);
 
   // Filter Term
   const [searchTerm, setSearchTerm] = useState("");
+  const [vFilter, setVFilter] = useState({ from: "", to: "", type: "", status: "" });
 
   // Sub-forms and interactive options
   const [newAccountCode, setNewAccountCode] = useState("");
@@ -91,6 +330,39 @@ export default function App() {
   const [newProjectStartDate, setNewProjectStartDate] = useState("");
   const [newProjectEndDate, setNewProjectEndDate] = useState("");
   const [newProjectFundingType, setNewProjectFundingType] = useState<"Restricted Grant" | "Unrestricted Service">("Restricted Grant");
+  // The statement deposit that proves the funding — required; unproven projects are not registered.
+  const [newProjectFundingTx, setNewProjectFundingTx] = useState("");
+  const [newProjectStream, setNewProjectStream] = useState("");
+
+  // Funding funnel: the opportunity being added/edited (null = form closed)
+  const [oppForm, setOppForm] = useState<Partial<Opportunity> | null>(null);
+  // Proposal workspace: the opportunity whose proposal is being written
+  const [propForm, setPropForm] = useState<(Partial<Opportunity> & { proposal: Proposal }) | null>(null);
+  // AI assist inside the workspace: pasted call text, busy flag, last fit assessment
+  const [aiCall, setAiCall] = useState("");
+  const [callUrl, setCallUrl] = useState("");
+  const [callBusy, setCallBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiAssess, setAiAssess] = useState<{ fit: string; recommendedStream: string; rationale: string; risks: string[]; suggestedAngle: string } | null>(null);
+  // Document viewer: open scans and contracts in place. Clicking a file used to spawn a
+  // browser tab (and a download for anything the browser won't render inline), so checking
+  // one invoice against one voucher meant leaving the page.
+  const [docView, setDocView] = useState<{ id: string; filename: string; mimeType?: string } | null>(null);
+  const [docPages, setDocPages] = useState<number | null>(null); // null = still counting, 0 = failed
+  const [docText, setDocText] = useState<string | null>(null);   // extracted .docx body
+
+  // Call intake: start an opportunity FROM a call rather than typing it in
+  const [intakeOpen, setIntakeOpen] = useState(false);
+  const [intakeUrl, setIntakeUrl] = useState("");
+  const [intakeText, setIntakeText] = useState("");
+  const [intakeBusy, setIntakeBusy] = useState(false);
+  const [intake, setIntake] = useState<{ source: string; provider: string; callText: string; draft: any; assessment: any } | null>(null);
+
+  // Production stream: client / quotation being added-edited (null = form closed)
+  const [clientForm, setClientForm] = useState<Partial<Client> | null>(null);
+  const [quoteForm, setQuoteForm] = useState<Partial<Quotation> | null>(null);
+  // Off-bank settlement (OMT / BOB / Whish / cash) being recorded for a quotation
+  const [settleForm, setSettleForm] = useState<{ q: Quotation; method: string; reference: string; date: string; amount: number } | null>(null);
 
   // New Expense submission form
   const [expenseTitle, setExpenseTitle] = useState("");
@@ -98,6 +370,25 @@ export default function App() {
   const [expenseVendor, setExpenseVendor] = useState("");
   const [expenseProject, setExpenseProject] = useState("");
   const [expenseBudgetLine, setExpenseBudgetLine] = useState("");
+  // Approved procurement authorising a >USD 300 purchase (Policy 7.2).
+  const [expenseProcurement, setExpenseProcurement] = useState("");
+  // Live LAN address for phone access — re-read on load so a changed IP is never stale.
+  const [phoneAccess, setPhoneAccess] = useState<{ urls: { iface: string; url: string }[]; qr: string | null } | null>(null);
+  const [showPhoneQr, setShowPhoneQr] = useState(false);
+
+  // Project timeline step being added/edited (null = form closed).
+  const [activityForm, setActivityForm] = useState<any | null>(null);
+
+  // Subscriptions sheet (Vendor Registry) — renewal tracking with alerts.
+  const [subForm, setSubForm] = useState<any | null>(null);
+  const [subSuggestions, setSubSuggestions] = useState<any[] | null>(null);
+  const [subBusy, setSubBusy] = useState(false);
+
+  // Physical cash count form (Banking tab).
+  const [cashCountForm, setCashCountForm] = useState({ date: new Date().toLocaleDateString("en-CA"), countedUSD: "", notes: "" });
+
+  // Inline single-source waiver raised from the voucher form (null = panel closed).
+  const [inlineWaiver, setInlineWaiver] = useState<{ vendorName: string; amount: string; reason: string; retrospective: boolean } | null>(null);
   const [expenseCurrency, setExpenseCurrency] = useState<"USD" | "EUR" | "LBP">("USD");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseCustomRate, setExpenseCustomRate] = useState("");
@@ -105,8 +396,8 @@ export default function App() {
   const [aiScanning, setAiScanning] = useState(false);
   const [aiVendorScanning, setAiVendorScanning] = useState(false);
 
-  // Daily Operations placeholder states
-  const [dailySelectedDate, setDailySelectedDate] = useState<string>("2026-05-25");
+  // Daily Operations states — the cash book opens on today, not a hardcoded date
+  const [dailySelectedDate, setDailySelectedDate] = useState<string>(new Date().toISOString().split("T")[0]);
   const [dailySelectedBankId, setDailySelectedBankId] = useState<string>("");
   const [dailyTitle, setDailyTitle] = useState<string>("");
   const [dailyPurpose, setDailyPurpose] = useState<string>("");
@@ -115,9 +406,45 @@ export default function App() {
   const [dailyVendor, setDailyVendor] = useState<string>("");
   const [dailyCurrency, setDailyCurrency] = useState<"USD" | "EUR" | "LBP">("USD");
   const [dailyAmount, setDailyAmount] = useState<string>("0");
-  const handleDailyDirectSubmit = (e: React.FormEvent) => {
+  // Real daily lodger. One submit does the whole chain server-side: voucher (Posted) +
+  // bank withdrawal + balance deduction + budget-line burn + journal entry + digitized record.
+  // The old handler was a placeholder that toasted "posted" while saving nothing.
+  const [dailyBusy, setDailyBusy] = useState(false);
+  const handleDailyDirectSubmit = async (e: React.FormEvent, bankAccountId: string) => {
     e.preventDefault();
-    triggerToast("Direct operational vault transaction posted.");
+    if (!dailyTitle || !dailyProject || !dailyBudgetLine || !dailyVendor || !Number(dailyAmount)) {
+      triggerToast("Title, project, budget line, vendor and a non-zero amount are required.", "error");
+      return;
+    }
+    setDailyBusy(true);
+    try {
+      // The amount is entered in the paying account's own currency — what actually left it.
+      const payingAccount = state.bankAccounts.find(b => b.id === bankAccountId);
+      const res = await fetch("/api/expense/direct-petty-cash", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: dailyTitle,
+          purpose: dailyPurpose || dailyTitle,
+          vendorId: dailyVendor,
+          projectId: dailyProject,
+          budgetLineId: dailyBudgetLine,
+          currency: payingAccount?.currency || dailyCurrency,
+          amount: Number(dailyAmount),
+          bankAccountId,
+          user: currentUser
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to lodge daily expense.");
+      triggerToast(`${data.expense.voucherNo} posted — bank, budget line, journal and digitized record all updated.`);
+      setDailyTitle(""); setDailyPurpose(""); setDailyAmount("0");
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    } finally {
+      setDailyBusy(false);
+    }
   };
 
 
@@ -132,8 +459,13 @@ export default function App() {
   const [procVendorB, setProcVendorB] = useState("");
   const [procAmountB, setProcAmountB] = useState("");
   const [procScoreB, setProcScoreB] = useState("70");
+  const [procVendorC, setProcVendorC] = useState("");
+  const [procAmountC, setProcAmountC] = useState("");
+  const [procScoreC, setProcScoreC] = useState("60");
   const [procJustification, setProcJustification] = useState("");
   const [procConflict, setProcConflict] = useState(false);
+  // Waiver: fewer than 3 quotations, only with a written reason.
+  const [procSingleSource, setProcSingleSource] = useState(false);
 
   // Asset creation form
   const [assetName, setAssetName] = useState("");
@@ -153,6 +485,8 @@ export default function App() {
   // Vendor registration states
   const [newVendorName, setNewVendorName] = useState("");
   const [newVendorCategory, setNewVendorCategory] = useState("");
+  // Supplier by default; only ticked for someone we engage under an agreement.
+  const [newVendorEngageable, setNewVendorEngageable] = useState(false);
   const [newVendorTaxId, setNewVendorTaxId] = useState("");
   const [newVendorBankInfo, setNewVendorBankInfo] = useState("");
   const [newVendorContact, setNewVendorContact] = useState("");
@@ -171,8 +505,173 @@ export default function App() {
   const [newEmpPosition, setNewEmpPosition] = useState("");
   const [newEmpSalary, setNewEmpSalary] = useState("");
   const [newEmpAllowance, setNewEmpAllowance] = useState("");
-  const [newEmpPaymentMethod, setNewEmpPaymentMethod] = useState("");
+  // How the money reaches the employee ("Cash" | "Bank Transfer"). Cash is still drawn from a
+  // bank account first, so newEmpBankAccountId is required either way.
+  const [newEmpPaymentMethod, setNewEmpPaymentMethod] = useState("Bank Transfer");
+  const [newEmpBankAccountId, setNewEmpBankAccountId] = useState("");
   const [newEmpContractType, setNewEmpContractType] = useState("");
+
+  // Contract generation (per employee card)
+  const [contractFor, setContractFor] = useState<string | null>(null);
+  const [contractParty, setContractParty] = useState<"employee" | "vendor">("employee");
+  const [contractForm, setContractForm] = useState({
+    projectId: "", kind: "Employment", startDate: "", endDate: "", loePct: "", monthlyFee: "", contractTotal: "", role: ""
+  });
+  const [contractBusy, setContractBusy] = useState(false);
+
+  // Marking a vendor engageable permits a signed agreement in their name, so it asks for
+  // a reason and is audit-logged. Turning it off needs no reason.
+  const handleSetEngageable = async (vendorId: string, vendorName: string, engageable: boolean) => {
+    let reason = "";
+    if (engageable) {
+      reason = (window.prompt(
+        `Mark "${vendorName}" as engageable?\n\nThis allows a signed service agreement to be issued in their name. Only do this for someone you ENGAGE under an agreement (a trainer, editor, consultant) — not for a shop or subscription you buy from.\n\nReason:`
+      ) || "").trim();
+      if (!reason) return;
+    }
+    try {
+      const res = await fetch("/api/vendors/engageable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorId, engageable, reason, user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      triggerToast(`${vendorName} is now ${engageable ? "engageable — a service agreement may be issued" : "a supplier (purchases only)"}.`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  // ---- Party file: everything on record for one person/provider, in one panel ----
+  const [partyFileFor, setPartyFileFor] = useState<string | null>(null);
+
+  // Documents carry an explicit partyId (set by the 31-Jul migration, and stamped on every
+  // newly generated contract). The name heuristic survives only as a labelled safety net for
+  // future scans that arrive without a link.
+  const collectPartyFile = (partyId: string, partyName: string) => {
+    const firstName = (partyName.split(/\s+/)[0] || "").toLowerCase();
+    const linked = state.documents.filter(d => d.partyId === partyId);
+    const agreements = linked.filter(d => /contract|agreement|addendum/i.test(`${d.category} ${d.filename}`));
+    const other = linked.filter(d => !agreements.includes(d));
+    const unlinkedByName = firstName.length < 3 ? [] : state.documents.filter(d =>
+      !d.partyId &&
+      /contract|agreement|timesheet|addendum|receipt|ts_/i.test(`${d.category} ${d.filename}`) &&
+      d.filename.toLowerCase().includes(firstName));
+    const vouchers = state.expenses
+      .filter(e => e.vendorId === partyId)
+      .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+    const docsOf = (eid: string) => state.documents.filter(d => d.linkedRecordType === "Expense" && d.linkedRecordId === eid);
+    return { agreements, other, unlinkedByName, vouchers, docsOf };
+  };
+
+  /** Open a document in the in-app viewer instead of a new tab. Pass the AppDoc (or any
+   *  object carrying id/filename/mimeType). Falls back to a plain link if id is missing. */
+  const openDoc = (d: { id: string; filename?: string; mimeType?: string }) => {
+    const filename = d.filename || "document";
+    setDocView({ id: d.id, filename, mimeType: d.mimeType });
+    setDocPages(null);
+    setDocText(null);
+    if (/pdf/i.test(d.mimeType || "") || /\.pdf$/i.test(filename)) {
+      fetch(`/api/document/pages/${d.id}`)
+        .then(r => r.json())
+        .then(j => setDocPages(j.pages || 0))
+        .catch(() => setDocPages(0));
+    } else if (/\.docx$/i.test(filename)) {
+      fetch(`/api/document/docx-text/${d.id}`)
+        .then(r => r.ok ? r.text() : Promise.reject())
+        .then(t => setDocText(t))
+        .catch(() => setDocText(""));
+    }
+  };
+
+  const renderPartyFile = (partyId: string, partyName: string) => {
+    const { agreements, other, unlinkedByName, vouchers, docsOf } = collectPartyFile(partyId, partyName);
+    const total = vouchers.reduce((s, e) => s + e.convertedAmount, 0);
+    const docLink = (d: any) => (
+      <a key={d.id} href={`/api/document/content/${d.id}`} target="_blank" onClick={e => { e.preventDefault(); openDoc(d); }} rel="noreferrer"
+        className="inline-flex items-center gap-1 text-[11px] text-red-650 hover:text-red-700 hover:underline mr-3">
+        📄 {d.filename}
+      </a>
+    );
+    return (
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3 text-left">
+        <h5 className="text-xs font-bold text-slate-800 font-mono uppercase">📂 File — {partyName}</h5>
+        <div>
+          <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Contracts & agreements</p>
+          {agreements.length ? agreements.map(docLink)
+            : <p className="text-[11px] text-slate-400 italic">No contract on file for this party.</p>}
+        </div>
+        {other.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Timesheets & receipts</p>
+            {other.map(docLink)}
+          </div>
+        )}
+        {unlinkedByName.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold text-amber-600 uppercase mb-1">⚠ Unlinked documents matching this name (verify & link)</p>
+            {unlinkedByName.map(docLink)}
+          </div>
+        )}
+        <div>
+          <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">
+            Payments ({vouchers.length} voucher{vouchers.length === 1 ? "" : "s"} · {formatUSD(total)} total)
+          </p>
+          {vouchers.length === 0 ? (
+            <p className="text-[11px] text-slate-400 italic">No vouchers name this party as payee.</p>
+          ) : (
+            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+              {vouchers.map(e => {
+                const proj = state.projects.find(p => p.id === e.projectId);
+                return (
+                  <div key={e.id} className="p-2 bg-white border border-slate-100 rounded text-xs">
+                    <div className="flex justify-between font-mono">
+                      <span>{(e.created_at || "").slice(0, 10)} · {e.voucherNo} · {proj?.code || "—"}</span>
+                      <span className="font-bold">{formatIn(e.amount, e.currency)} <em className="text-[9px] text-slate-400 font-sans">{e.status}</em></span>
+                    </div>
+                    <p className="text-[11px] text-slate-600">{e.title}</p>
+                    <div className="mt-1">{docsOf(e.id).map(docLink)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // One generator, two instruments: pass employeeId for an employment contract,
+  // vendorId for a service agreement. Purchases use neither.
+  const handleGenerateContract = async (e: React.FormEvent, partyId: string, partyType: "employee" | "vendor" = "employee") => {
+    e.preventDefault();
+    setContractBusy(true);
+    try {
+      const res = await fetch("/api/contracts/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(partyType === "vendor" ? { vendorId: partyId } : { employeeId: partyId }),
+          ...contractForm, user: currentUser
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        triggerToast(`Contract ${data.reference} generated — unsigned, open it to review.`);
+        setContractFor(null);
+        setContractForm({ projectId: "", kind: "Employment", startDate: "", endDate: "", loePct: "", monthlyFee: "", contractTotal: "" });
+        refreshState();
+      } else {
+        triggerToast(data.error || "Contract generation failed.", "error");
+      }
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    } finally {
+      setContractBusy(false);
+    }
+  };
 
   // Timesheet Allocation interactive adjustment
   const [selectedTSMonth, setSelectedTSMonth] = useState("2026-05");
@@ -225,6 +724,7 @@ export default function App() {
 
   // Voucher detail drawer
   const [drawerExpenseId, setDrawerExpenseId] = useState<string | null>(null);
+  const [gapsOpen, setGapsOpen] = useState(false);
 
   // Banking ledger view controls
   const [bankFilterAcc, setBankFilterAcc] = useState<string>("");
@@ -239,7 +739,7 @@ export default function App() {
   // Export filename follows the Policy 13.4.1 pattern (YEAR_ENTITY_DOCTYPE_PERIOD).
   // Browsers take the PDF filename from document.title, so we swap it for the print only.
   const reportFileName = (meta: any) =>
-    `${meta.periodEnd.slice(0, 4)}_ANAHON_${meta.months === 12 ? "ANNUAL" : "SEMI-ANNUAL"}-FINANCIAL-REPORT_${meta.periodStart}_to_${meta.periodEnd}`;
+    `${meta.periodEnd.slice(0, 4)}_ANAHON_${meta.months === 12 ? "ANNUAL" : meta.months === 6 ? "SEMI-ANNUAL" : `${meta.months}-MONTH`}-FINANCIAL-REPORT_${meta.periodStart}_to_${meta.periodEnd}`;
 
   // Direct PDF export: writes the file with the policy filename, bypassing the OS print
   // dialog (which names the file after the host app, not the page).
@@ -283,10 +783,13 @@ export default function App() {
     setTimeout(restore, 60000); // fallback if afterprint never fires
   };
 
-  const generatePeriodReport = async (months: 6 | 12) => {
+  // Custom timeframe: when a start month is set, it wins over the preset buttons.
+  const [reportStart, setReportStart] = useState<string>("");
+  const generatePeriodReport = async (months: number) => {
     setReportLoading(true);
     try {
-      const res = await fetch(`/api/reports/period?months=${months}&end=${reportEnd}`);
+      const q = reportStart ? `start=${reportStart}&end=${reportEnd}` : `months=${months}&end=${reportEnd}`;
+      const res = await fetch(`/api/reports/period?${q}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Report generation failed.");
       setReportData(data);
@@ -310,16 +813,21 @@ export default function App() {
     if (!state?.users?.length) return;   // state is null until the backend loads
     const u = state.users.find(x => x.id === activeUserId) || state.users[0];
     if (u?.role === "Employee (Self-Service)" && activeTab !== "payroll") setActiveTab("payroll");
+    if (u?.role === "Project Officer" && !["dashboard", "projects", "expenses", "procurement"].includes(activeTab)) setActiveTab("expenses");
   }, [state, activeUserId, activeTab]);
 
 
   // Load backend state on initialization
   const refreshState = async () => {
     try {
-      const res = await fetch("/api/state");
+      // Identify the viewer so the server can narrow the payload: a Project Officer
+      // is sent only their programme's records, never the whole organisation's.
+      const uid = localStorage.getItem("anahon-uid") || "";
+      const res = await fetch(`/api/state${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`);
       if (!res.ok) throw new Error("Could not load backend finances state.");
       const data: DatabaseState = await res.json();
       setState(data);
+      fetch("/api/network/access").then(r => r.ok ? r.json() : null).then(d => d && setPhoneAccess(d)).catch(() => { });
       setEurRateInput(data.fxRates.EUR.toString());
       setLbpRateInput(data.fxRates.LBP.toString());
       setLoading(false);
@@ -347,6 +855,9 @@ export default function App() {
           if (syncRes.ok) {
             const syncData = await syncRes.json();
             setActiveUserId(syncData.user.id);
+            const prevUid = localStorage.getItem("anahon-uid");
+            localStorage.setItem("anahon-uid", syncData.user.id);
+            if (prevUid !== syncData.user.id) refreshState(); // re-fetch scoped to this user
           }
           await refreshState();
         } catch (err: any) {
@@ -408,6 +919,7 @@ export default function App() {
   };
 
   const handleFirebaseSignOut = async () => {
+    localStorage.removeItem("anahon-uid");
     try {
       await signOut(auth);
       triggerToast("Signed out successfully.");
@@ -491,7 +1003,7 @@ export default function App() {
           <form onSubmit={authTab === "signin" ? handleFirebaseSignIn : handleFirebaseSignUp} className="space-y-4 text-left">
             {authTab === "signup" && (
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Full Name</label>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("Full Name")}</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -507,7 +1019,7 @@ export default function App() {
             )}
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Email Address</label>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("Email Address")}</label>
               <div className="relative">
                 <input
                   type="email"
@@ -522,7 +1034,7 @@ export default function App() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">Password</label>
+              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("Password")}</label>
               <div className="relative">
                 <input
                   type="password"
@@ -598,8 +1110,66 @@ export default function App() {
 
   // Self-service staff (Policy 8.5) see only their own timesheet screen.
   const isSelfService = currentUser?.role === "Employee (Self-Service)";
+  // Requester-only role: raises vouchers/procurement for assigned projects, approves nothing.
+  // The server enforces this independently — the UI gating is convenience, not the control.
+  /** Derived, never stored, so it stays true if either side of the link changes. */
+  const selfDealing = (exp: { vendorId?: string; requestorId?: string }) =>
+    selfDealingRequester(exp, state.vendors, state.users);
+
+  /** Evidence gaps, derived live from state so the count can never go stale.
+   *  "Digitized*" documents are the app's own rendering of the voucher — they are not
+   *  third-party evidence, and counting them would hide exactly what this panel is for. */
+  const evidenceGaps = (() => {
+    const COUNTED = ["Approved", "Paid", "Posted"];
+    const hasProof = (expId: string) => state.documents.some(d =>
+      d.linkedRecordType === "Expense" && d.linkedRecordId === expId && !/^Digitized/i.test(d.category || ""));
+    const proj = (id: string) => state.projects.find(p => p.id === id);
+    const money = (n: number) => formatUSD(n);
+
+    const noEvidence = state.expenses
+      .filter(e => COUNTED.includes(e.status) && !hasProof(e.id))
+      .sort((a, b) => b.convertedAmount - a.convertedAmount);
+
+    const noProcurement = state.expenses
+      .filter(e => COUNTED.includes(e.status) && e.convertedAmount > 300 && !e.procurementId)
+      .sort((a, b) => b.convertedAmount - a.convertedAmount);
+
+    // Money proven in the bank against a project that has never had a voucher raised.
+    const received = (pid: string) => state.bankTransactions
+      .filter(t => t.projectId === pid && t.type === "Deposit" && !t.pending)
+      .reduce((s, t) => s + t.amount, 0);
+    const unspent = state.projects
+      .filter(p => received(p.id) > 0 && !state.expenses.some(e => e.projectId === p.id))
+      .map(p => ({ p, amount: received(p.id) }));
+
+    const pettyGap = state.accounts.find(a => a.code === "1120")?.balance || 0;
+
+    return {
+      noEvidence, noProcurement, unspent, pettyGap, money, proj,
+      total: noEvidence.length + noProcurement.length + unspent.length + (pettyGap > 0 ? 1 : 0)
+    };
+  })();
+
+  const isProjectOfficer = currentUser?.role === "Project Officer";
+  // The server already narrows a Project Officer's payload; this mirrors it in the UI.
+  const officerScopeStream = (currentUser as any)?.streamScope || "";
+  const officerProjectIds = isProjectOfficer
+    ? new Set<string>([
+        ...JSON.parse((currentUser as any)?.projectIdsJson || "[]"),
+        ...(state?.projects || []).filter(p => officerScopeStream && p.stream === officerScopeStream).map(p => p.id)
+      ])
+    : null;
+  const requestableProjects = officerProjectIds ? (state?.projects || []).filter(p => officerProjectIds.has(p.id)) : (state?.projects || []);
 
   // Helper: Converted totals
+  // A counted drawer is money we can prove; a stale count is not. 45 days is the cut-off.
+  const latestCashCount = (state?.cashCounts || [])
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+  const cashCountStale = !!latestCashCount &&
+    (Date.now() - new Date(`${latestCashCount.date}T00:00:00`).getTime()) / 86400000 > 45;
+  const countedCashUSD = latestCashCount && !cashCountStale ? latestCashCount.countedUSD : 0;
+
   const totalUSDInBank = state.bankAccounts
     .filter(b => b.active)
     .reduce((sum, b) => {
@@ -607,12 +1177,17 @@ export default function App() {
       if (b.currency === "EUR") rate = state.fxRates.EUR;
       if (b.currency === "LBP") rate = state.fxRates.LBP;
       return sum + b.balance * rate;
-    }, 0);
+    }, 0) + countedCashUSD;
 
   // Base currency converter summary format
   const formatUSD = (val: number) => {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
   };
+
+  // Bank money is shown in the currency it actually moved in — the EUR sub-account holds euros,
+  // and printing those as dollars misstates the source document.
+  const formatIn = (val: number, currency: string) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD" }).format(val);
 
   const handleCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -663,6 +1238,10 @@ export default function App() {
       triggerToast("All project fields are required.", "error");
       return;
     }
+    if (!newProjectFundingTx) {
+      triggerToast("Select the bank deposit that funds this project — unproven projects are not registered.", "error");
+      return;
+    }
 
     if (state.projects.some(p => p.code.toLowerCase() === newProjectCode.toLowerCase())) {
       triggerToast(`Project code '${newProjectCode}' already exists.`, "error");
@@ -681,6 +1260,8 @@ export default function App() {
           startDate: newProjectStartDate,
           endDate: newProjectEndDate,
           fundingType: newProjectFundingType,
+          fundingTxId: newProjectFundingTx,
+          stream: newProjectStream,
           user: currentUser
         })
       });
@@ -698,6 +1279,8 @@ export default function App() {
       setNewProjectStartDate("");
       setNewProjectEndDate("");
       setNewProjectFundingType("Restricted Grant");
+      setNewProjectFundingTx("");
+      setNewProjectStream("");
 
       refreshState();
     } catch (err: any) {
@@ -736,6 +1319,365 @@ export default function App() {
       if (selectedProjectId === projectId) {
         setSelectedProjectId(null);
       }
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  // ── Funding funnel handlers ──────────────────────────────────────────────
+  // Pipeline is forward-looking only; the server keeps it out of all financial math.
+  const saveOpportunity = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!oppForm?.title || !oppForm?.stage) {
+      triggerToast("An opportunity needs at least a title and a stage.", "error");
+      return;
+    }
+    try {
+      const res = await fetch("/api/opportunities/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...oppForm, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to save opportunity");
+      triggerToast(`Pipeline ${oppForm.id ? "updated" : "added"}: ${oppForm.title}`);
+      setOppForm(null);
+      setIntake(null);
+      setIntakeOpen(false);
+      setIntakeUrl("");
+      setIntakeText("");
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const moveOpportunity = async (opp: Opportunity, stage: string) => {
+    try {
+      const res = await fetch("/api/opportunities/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...opp, stage, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to move opportunity");
+      triggerToast(`"${opp.title}" moved to ${stage}.`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const deleteOpportunity = async (opp: Opportunity) => {
+    if (!window.confirm(`Remove "${opp.title}" from the pipeline?`)) return;
+    try {
+      const res = await fetch("/api/opportunities/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: opp.id, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to delete opportunity");
+      triggerToast(`Removed from pipeline: ${opp.title}`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  // ── Proposal workspace handlers ───────────────────────────────────────────
+  const saveProposal = async (thenGenerate: boolean) => {
+    if (!propForm?.id) return;
+    try {
+      const res = await fetch("/api/opportunities/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...propForm, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to save proposal");
+      if (thenGenerate) {
+        const docRes = await fetch("/api/opportunities/proposal-doc", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: propForm.id, user: currentUser })
+        });
+        const docData = await docRes.json();
+        if (!docRes.ok) throw new Error(docData.error || "Failed to generate proposal document");
+        openDoc({ id: docData.docId, filename: "document" });
+        triggerToast("Proposal saved and document filed to vault (GENERAL/Proposals).");
+      } else {
+        triggerToast(`Proposal saved: ${propForm.title}`);
+      }
+      setPropForm(null);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  // A call can arrive as a PDF, a Word file or a link. Extract to plain text and put it in
+  // the box so the user reads and edits it BEFORE any AI sees it.
+  const loadCallSource = async (payload: any, label: string) => {
+    setCallBusy(true);
+    try {
+      const res = await fetch("/api/opportunities/call-source", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not read that source");
+      setAiCall(prev => (prev ? `${prev}\n\n— ${label} —\n${d.text}` : `— ${label} —\n${d.text}`));
+      triggerToast(`Loaded ${d.text.length.toLocaleString()} characters from ${d.source} — review it before running the assist.`);
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+    setCallBusy(false);
+  };
+
+  // Read a call (link, file or pasted text) and let the AI propose the whole opportunity.
+  // Nothing is saved: the draft lands in the normal form so every field stays editable.
+  const runIntake = async (payload: any) => {
+    setIntakeBusy(true);
+    try {
+      const res = await fetch("/api/opportunities/intake", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not read that call");
+      setIntake(d);
+      setOppForm({
+        ...d.draft,
+        // donorName rides along so saving can register a funder we don't have yet
+        donorName: d.draft.donorIsNew ? d.draft.donorName : undefined
+      } as any);
+      setAiCall(d.callText);
+      triggerToast(`${d.provider} read the call from ${d.source} — fit: ${d.assessment.fit}. Review every field before saving.`);
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+    setIntakeBusy(false);
+  };
+
+  const intakeFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files.length) return;
+    const file = e.target.files[0];
+    e.target.value = "";
+    const base64: string = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve((r.result as string).split(",")[1]);
+      r.onerror = () => reject(new Error(`Could not read "${file.name}"`));
+      r.readAsDataURL(file);
+    });
+    await runIntake({ filename: file.name, base64 });
+  };
+
+  const loadCallFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || !e.target.files.length) return;
+    const file = e.target.files[0];
+    e.target.value = "";
+    const base64: string = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve((r.result as string).split(",")[1]);
+      r.onerror = () => reject(new Error(`Could not read "${file.name}"`));
+      r.readAsDataURL(file);
+    });
+    await loadCallSource({ filename: file.name, base64 }, file.name);
+  };
+
+  // AI prefills, humans decide: drafts fill only sections the user left empty.
+  const runAiAssist = async (mode: "assess" | "draft") => {
+    if (!propForm?.id) return;
+    setAiBusy(true);
+    try {
+      const res = await fetch("/api/opportunities/ai-assist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: propForm.id, callText: aiCall, mode, user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "AI assist failed");
+      if (mode === "assess") {
+        setAiAssess(d.result);
+      } else {
+        const merged = { ...propForm.proposal };
+        let filled = 0, kept = 0;
+        (["summary", "problem", "solution", "objectives", "deliverables", "outputs", "outcomes"] as (keyof Proposal)[]).forEach(k => {
+          const v = d.result[k];
+          if (v && !(merged[k] as string)) { (merged as any)[k] = v; filled++; }
+          else if (v) kept++;
+        });
+        setPropForm({ ...propForm, proposal: merged });
+        triggerToast(`AI drafted ${filled} empty section${filled === 1 ? "" : "s"}${kept ? ` (${kept} kept your own text)` : ""} — review every line before saving.`);
+      }
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+    setAiBusy(false);
+  };
+
+  const propBudget = propForm?.proposal.budget || [];
+  const propTimeline = propForm?.proposal.timeline || [];
+  const setProposal = (patch: Partial<Proposal>) => propForm && setPropForm({ ...propForm, proposal: { ...propForm.proposal, ...patch } });
+
+  // ── Production stream handlers (clients & quotations) ────────────────────
+  const saveClient = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!clientForm?.name) {
+      triggerToast("Client name is required.", "error");
+      return;
+    }
+    try {
+      const res = await fetch("/api/clients/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...clientForm, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to save client");
+      triggerToast(`Client ${clientForm.id ? "updated" : "registered"}: ${clientForm.name}`);
+      setClientForm(null);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const saveQuotation = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!quoteForm?.clientId || !quoteForm?.title) {
+      triggerToast("A quotation needs a client and a title.", "error");
+      return;
+    }
+    try {
+      const res = await fetch("/api/quotations/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...quoteForm, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to save quotation");
+      triggerToast(`Quotation ${quoteForm.id ? "updated" : "created"}: ${quoteForm.title}`);
+      setQuoteForm(null);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  // Line-item helpers for the quotation form. Total is always derived, never typed.
+  const quoteItems = quoteForm?.items || [];
+  const quoteTotal = quoteItems.reduce((s, it) => s + (Number(it.unitPrice) || 0) * (Number(it.qty) || 1), 0);
+  const setQuoteItem = (i: number, patch: Partial<QuotationItem>) => {
+    const items = quoteItems.map((it, idx) => (idx === i ? { ...it, ...patch } : it));
+    setQuoteForm({ ...quoteForm, items });
+  };
+  const pickCatalogService = (i: number, name: string) => {
+    const cat = SERVICE_CATALOG.find(c => c.service === name);
+    setQuoteItem(i, cat ? { service: cat.service, description: cat.description, output: cat.output, unitPrice: cat.unitPrice } : { service: name });
+  };
+  const quoteTerms = quoteForm?.terms || {};
+  const setQuoteTerms = (patch: Partial<Quotation["terms"]>) => setQuoteForm({ ...quoteForm, terms: { ...quoteTerms, ...patch } });
+
+  const generateQuoteDoc = async (q: Quotation) => {
+    try {
+      const res = await fetch("/api/quotations/generate-doc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: q.id, user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate document");
+      triggerToast(`Quotation document ${q.quoteNo} filed to vault (GENERAL/Quotations).`);
+      openDoc({ id: data.docId, filename: "document" });
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const moveQuotation = async (q: Quotation, status: string) => {
+    try {
+      const res = await fetch("/api/quotations/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...q, status, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to update quotation");
+      triggerToast(`${q.quoteNo} → ${status}`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  // Document references are auto-assigned; only the master account may amend one.
+  const editDocRef = async (doc: AppDoc) => {
+    if (currentUser.role !== "Super Admin") return;
+    const refNo = window.prompt(`Amend document reference for "${doc.filename}" (master account action, audit-logged):`, doc.refNo || "");
+    if (refNo === null || refNo === doc.refNo) return;
+    try {
+      const res = await fetch("/api/documents/set-ref", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ docId: doc.id, refNo, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to amend reference");
+      triggerToast(`Reference amended: ${refNo}`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const linkQuotePayment = async (q: Quotation, txId: string) => {
+    try {
+      const res = await fetch("/api/quotations/link-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: q.id, txId, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to link payment");
+      triggerToast(txId ? `${q.quoteNo} settled by bank deposit — status Paid.` : `${q.quoteNo} payment link removed.`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const submitOffbankSettlement = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!settleForm) return;
+    try {
+      const res = await fetch("/api/quotations/settle-offbank", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: settleForm.q.id,
+          method: settleForm.method,
+          reference: settleForm.reference,
+          date: settleForm.date,
+          amount: settleForm.amount,
+          user: currentUser
+        })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to record settlement");
+      triggerToast(`${settleForm.q.quoteNo} settled via ${settleForm.method} — recorded on the off-bank evidence account.`);
+      setSettleForm(null);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const deleteQuotation = async (q: Quotation) => {
+    if (!window.confirm(`Delete quotation ${q.quoteNo} — "${q.title}"?`)) return;
+    try {
+      const res = await fetch("/api/quotations/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: q.id, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to delete quotation");
+      triggerToast(`Deleted ${q.quoteNo}.`);
       refreshState();
     } catch (err: any) {
       triggerToast(err.message, "error");
@@ -901,6 +1843,7 @@ export default function App() {
           vendorId: expenseVendor,
           projectId: expenseProject,
           budgetLineId: expenseBudgetLine,
+          procurementId: expenseProcurement,
           currency: expenseCurrency,
           amount: expenseAmount,
           customRate: expenseCustomRate,
@@ -939,6 +1882,7 @@ export default function App() {
       setExpensePurpose("");
       setExpenseVendor("");
       setExpenseBudgetLine("");
+      setExpenseProcurement("");
       setExpenseAmount("");
       setExpenseCustomRate("");
       setEnableSharedSplit(false);
@@ -992,12 +1936,16 @@ export default function App() {
           title: procTitle,
           projectId: procProject,
           budgetLineId: procBudgetLine,
+          // Only quotations actually obtained. The form used to pad a phantom
+          // "Second Sourced Vendor" at 0 USD, which fabricated a comparison.
           quotations: [
             { vendorName: procVendorA, amount: procAmountA, currency: "USD", score: procScoreA, selected: true },
-            { vendorName: procVendorB || "Second Sourced Vendor", amount: procAmountB || "0", currency: "USD", score: procScoreB, selected: false }
+            ...(procVendorB ? [{ vendorName: procVendorB, amount: procAmountB || "0", currency: "USD", score: procScoreB, selected: false }] : []),
+            ...(procVendorC ? [{ vendorName: procVendorC, amount: procAmountC || "0", currency: "USD", score: procScoreC, selected: false }] : [])
           ],
-          justification: procJustification || "Sourced based on lowest cost compliant bid in Tripoli region.",
+          justification: procJustification,
           conflictDeclared: procConflict,
+          singleSource: procSingleSource,
           user: currentUser
         })
       });
@@ -1177,6 +2125,7 @@ export default function App() {
           taxId: newVendorTaxId,
           bankInfo: newVendorBankInfo,
           contact: newVendorContact,
+          engageable: newVendorEngageable,
           user: currentUser
         })
       });
@@ -1187,6 +2136,7 @@ export default function App() {
         setNewVendorTaxId("");
         setNewVendorBankInfo("");
         setNewVendorContact("");
+        setNewVendorEngageable(false);
         refreshState();
       } else {
         const data = await res.json();
@@ -1194,6 +2144,295 @@ export default function App() {
       }
     } catch {
       triggerToast("Error registering new vendor.", "error");
+    }
+  };
+
+  // Attach an invoice/receipt to an ALREADY-POSTED voucher. The creation form could
+  // attach one; afterwards there was no way in — so recovered receipts had nowhere to go.
+  // Two distinct paths, filed into separate vault folders:
+  //   "Invoice"  — the bill itself (what the money was for)
+  //   "Evidence" — supporting proof: distribution lists, delivery notes, photos of the purchase
+  const handleVoucherDocUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    expenseId: string,
+    voucherNo: string,
+    category: "Invoice" | "Evidence"
+  ) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files: File[] = Array.from(e.target.files);
+    e.target.value = ""; // allow re-selecting the same file after an error
+    for (const file of files) {
+      try {
+        const base64String: string = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve((reader.result as string).split(",")[1]);
+          reader.onerror = () => reject(new Error(`Could not read "${file.name}"`));
+          reader.readAsDataURL(file);
+        });
+        const res = await fetch("/api/document/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            mimeType: file.type,
+            sizeStr: `${(file.size / 1024).toFixed(0)} KB`,
+            base64: base64String,
+            category,
+            linkedRecordType: "Expense",
+            linkedRecordId: expenseId,
+            user: currentUser
+          })
+        });
+        if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
+        triggerToast(`${category} attached to ${voucherNo}: "${file.name}"`);
+      } catch (err: any) {
+        triggerToast(err.message, "error");
+      }
+    }
+    refreshState();
+  };
+
+  // Generate the provider's service invoice + payment receipt from the voucher's figures.
+  const generateProviderDoc = async (expenseId: string, voucherNo: string) => {
+    try {
+      const res = await fetch("/api/vendors/payment-doc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expenseId, user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to generate provider invoice");
+      triggerToast(`Service invoice & receipt generated for ${voucherNo} — print and have the provider sign it.`);
+      openDoc({ id: d.docId, filename: "document" });
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const submitInlineWaiver = async () => {
+    if (!inlineWaiver) return;
+    try {
+      const res = await fetch("/api/procurement/waiver-inline", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: expenseTitle || "Single-source purchase",
+          projectId: expenseProject,
+          budgetLineId: expenseBudgetLine,
+          vendorName: inlineWaiver.vendorName,
+          amount: inlineWaiver.amount || expenseAmount,
+          reason: inlineWaiver.reason,
+          retrospective: inlineWaiver.retrospective,
+          user: currentUser
+        })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to raise waiver");
+      if (d.approved) {
+        setExpenseProcurement(d.procurement.id);
+        triggerToast("Single-source waiver approved and attached to this voucher.");
+      } else {
+        triggerToast("Waiver raised — a Finance Officer or the Program Director must approve it before this voucher can be lodged.", "error");
+      }
+      setInlineWaiver(null);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const saveActivity = async (payload: any) => {
+    if (!payload.title?.trim()) { triggerToast("Give the step a title.", "error"); return; }
+    try {
+      const res = await fetch("/api/activities/save", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to save step");
+      triggerToast(`Timeline updated: ${payload.title}`);
+      setActivityForm(null);
+      refreshState();
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
+  const deleteActivity = async (a: any) => {
+    if (!window.confirm(`Remove "${a.title}" from the timeline?`)) return;
+    try {
+      const res = await fetch("/api/activities/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: a.id, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to remove");
+      triggerToast("Step removed.");
+      refreshState();
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
+  // Upload one of the four core project papers straight into its own category.
+  const handleCoreDocUpload = async (e: React.ChangeEvent<HTMLInputElement>, projectId: string, category: string) => {
+    if (!e.target.files?.length) return;
+    const file = e.target.files[0];
+    e.target.value = "";
+    try {
+      const base64: string = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve((r.result as string).split(",")[1]);
+        r.onerror = () => reject(new Error(`Could not read "${file.name}"`));
+        r.readAsDataURL(file);
+      });
+      const res = await fetch("/api/document/upload", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name, mimeType: file.type,
+          sizeStr: `${(file.size / 1024).toFixed(0)} KB`, base64,
+          category, linkedRecordType: "Project", linkedRecordId: projectId, user: currentUser
+        })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Upload failed");
+      triggerToast(`${category} filed: "${file.name}"`);
+      refreshState();
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
+  const importTimetable = async (e: React.ChangeEvent<HTMLInputElement>, projectId: string) => {
+    if (!e.target.files?.length) return;
+    const file = e.target.files[0];
+    e.target.value = "";
+    try {
+      const base64: string = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve((r.result as string).split(",")[1]);
+        r.onerror = () => reject(new Error(`Could not read "${file.name}"`));
+        r.readAsDataURL(file);
+      });
+      const res = await fetch("/api/activities/import-timetable", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, filename: file.name, base64, user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Import failed");
+      triggerToast(`${d.created} activities imported across ${d.columns.length} periods${d.meta?.title ? ` — "${String(d.meta.title).slice(0, 50)}"` : ""}.`);
+      refreshState();
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
+  const generateTimeline = async (projectId: string | null, all = false) => {
+    try {
+      const res = await fetch("/api/activities/generate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(all ? { all: true, user: currentUser } : { projectId, user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to generate");
+      triggerToast(
+        d.created || d.completed
+          ? `${d.projects} project(s): ${d.created} step(s) added, ${d.completed} already evidenced and marked done.`
+          : "Timelines are already up to date."
+      );
+      refreshState();
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
+  const saveSubscription = async (payload: any) => {
+    try {
+      const res = await fetch("/api/subscriptions/save", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to save subscription");
+      triggerToast(`Tracking ${payload.name}.`);
+      setSubForm(null);
+      refreshState();
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
+  const verifySubscription = async (sub: any, stillActive: boolean) => {
+    try {
+      const res = await fetch("/api/subscriptions/verify", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sub.id, stillActive, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to confirm");
+      triggerToast(stillActive ? `${sub.name} confirmed still active today.` : `${sub.name} marked as ended.`);
+      refreshState();
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
+  const rollSubscription = async (sub: any) => {
+    try {
+      const res = await fetch("/api/subscriptions/roll", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sub.id, user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to roll forward");
+      triggerToast(`${sub.name} → next renewal ${d.nextRenewal}.`);
+      refreshState();
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
+  const deleteSubscription = async (sub: any) => {
+    if (!window.confirm(`Stop tracking ${sub.name}?`)) return;
+    try {
+      const res = await fetch("/api/subscriptions/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sub.id, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to remove");
+      triggerToast(`Stopped tracking ${sub.name}.`);
+      refreshState();
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
+  const detectSubscriptions = async () => {
+    setSubBusy(true);
+    try {
+      const res = await fetch("/api/subscriptions/detect");
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Detection failed");
+      setSubSuggestions(d.suggestions);
+      triggerToast(`${d.suggestions.length} recurring merchant${d.suggestions.length === 1 ? "" : "s"} found on the statements.`);
+    } catch (err: any) { triggerToast(err.message, "error"); }
+    setSubBusy(false);
+  };
+
+  // Days until renewal drives the alert colour. Overdue and "due soon" are the two
+  // states worth interrupting someone for.
+  const subDaysLeft = (iso: string) => iso ? Math.ceil((new Date(`${iso}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86400000) : null;
+
+  const submitCashCount = async () => {
+    try {
+      const res = await fetch("/api/cash/count", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...cashCountForm, user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to record cash count");
+      triggerToast(`Cash count recorded: ${formatUSD(Number(cashCountForm.countedUSD))} counted · ${formatUSD(d.variance)} still undocumented.`);
+      setCashCountForm({ date: new Date().toLocaleDateString("en-CA"), countedUSD: "", notes: "" });
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const generatePayslip = async (employeeId: string, name: string, month: string) => {
+    try {
+      const res = await fetch("/api/payroll/payslip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId, month, user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to generate payslip");
+      triggerToast(`Payslip generated for ${name} — ${month}.`);
+      openDoc({ id: d.docId, filename: "document" });
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
     }
   };
 
@@ -1657,7 +2896,8 @@ export default function App() {
           position: newEmpPosition,
           salary: newEmpSalary,
           allowance: newEmpAllowance || 0,
-          paymentMethod: newEmpPaymentMethod || "Bank Audi Wire",
+          paymentMethod: newEmpPaymentMethod,
+          bankAccountId: newEmpBankAccountId,
           contractType: newEmpContractType || "Regular Employee",
           user: currentUser
         })
@@ -1668,7 +2908,8 @@ export default function App() {
         setNewEmpPosition("");
         setNewEmpSalary("");
         setNewEmpAllowance("");
-        setNewEmpPaymentMethod("");
+        setNewEmpPaymentMethod("Bank Transfer");
+        setNewEmpBankAccountId("");
         setNewEmpContractType("");
         refreshState();
       } else {
@@ -1752,12 +2993,20 @@ export default function App() {
     const purpose = e?.purpose || "";
     const voucherNo = e?.voucherNo || "";
     const term = searchTerm || "";
-    return (
+    const matchesTerm =
       title.toLowerCase().includes(term.toLowerCase()) ||
       purpose.toLowerCase().includes(term.toLowerCase()) ||
-      voucherNo.toLowerCase().includes(term.toLowerCase())
-    );
+      voucherNo.toLowerCase().includes(term.toLowerCase());
+    const day = (e?.paid_at || e?.created_at || "").slice(0, 10);
+    const cat = state?.budgetLines?.find(bl => bl.id === e?.budgetLineId)?.category || "";
+    return matchesTerm &&
+      (!vFilter.from || day >= vFilter.from) &&
+      (!vFilter.to || day <= vFilter.to) &&
+      (!vFilter.type || cat === vFilter.type) &&
+      (!vFilter.status || (e?.status || "Draft") === vFilter.status);
   });
+  const voucherTypes = [...new Set((state?.budgetLines || []).map(bl => bl.category))].sort();
+  const voucherStatuses = [...new Set((state?.expenses || []).map(e => e.status || "Draft"))].sort();
 
 
 
@@ -1771,10 +3020,14 @@ export default function App() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
+            // Errors interrupt; successes are announced politely. Without this a screen-reader
+            // user gets no confirmation that a voucher saved or a payment posted.
+            role={toast.type === "error" ? "alert" : "status"}
+            aria-live={toast.type === "error" ? "assertive" : "polite"}
             className={`fixed top-4 right-4 z-50 flex items-center gap-2 rounded-lg px-4 py-3 shadow-lg text-white ${toast.type === "error" ? "bg-red-600" : "bg-emerald-600"
               }`}
           >
-            <AlertCircle className="h-5 w-5" />
+            <AlertCircle className="h-5 w-5" aria-hidden="true" />
             <span className="text-sm font-medium">{toast.message}</span>
           </motion.div>
         )}
@@ -1812,7 +3065,7 @@ export default function App() {
                   state.vendors.filter(v => v.name.toLowerCase().includes(q)).slice(0, 3)
                     .forEach(v => hits.push({ k: "Vendor", label: v.name, sub: v.category, go: () => handleNavClick("vendors") }));
                   state.documents.filter(d => d.filename.toLowerCase().includes(q)).slice(0, 3)
-                    .forEach(d => hits.push({ k: "Document", label: d.filename, sub: d.category, go: () => handleNavClick(d.linkedRecordType === "Expense" ? "expenses" : "projects") }));
+                    .forEach(d => hits.push({ k: "Document", label: d.filename, sub: d.category, go: () => openDoc(d) }));
                   state.bankTransactions.filter(t => t.description.toLowerCase().includes(q)).slice(0, 3)
                     .forEach(t => hits.push({ k: "Bank", label: t.description.slice(0, 64), sub: `${t.date} · ${t.type}`, go: () => { setBankSearch(globalQuery); setBankFilterAcc(""); handleNavClick("banking"); } }));
                   state.employees.filter(emp => emp.name.toLowerCase().includes(q)).slice(0, 2)
@@ -1831,9 +3084,19 @@ export default function App() {
           </div>
         )}
         <div className="flex items-center gap-4">
+          {/* One-click Arabic: menus and main actions switch, and the page flips to RTL. */}
+          <button
+            onClick={() => setLang(lang === "ar" ? "en" : "ar")}
+            aria-label={lang === "ar" ? "Switch interface to English" : "تحويل الواجهة إلى العربية"}
+            title={lang === "ar" ? "Switch to English" : "التبديل إلى العربية"}
+            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer"
+          >
+            <Globe className="w-3.5 h-3.5 text-emerald-400" />
+            <span>{lang === "ar" ? "English" : "العربية"}</span>
+          </button>
           <button onClick={handleFirebaseSignOut} className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer">
             <UserCheck className="w-3.5 h-3.5 text-red-500" />
-            <span>Sign Out</span>
+            <span>{t("Sign Out")}</span>
           </button>
         </div>
       </header>
@@ -1841,6 +3104,15 @@ export default function App() {
       {/* Mobile Header */}
       <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between text-white relative z-50 h-16">
         <div className="flex items-center gap-3">
+          {/* Phones get the conventional menu button; the desktop edge-handle is hidden here. */}
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            aria-label={isOpen ? "Close menu" : "Open menu"}
+            aria-expanded={isOpen}
+            className="flex items-center justify-center h-11 w-11 -ms-1 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 transition cursor-pointer"
+          >
+            <span className="text-lg leading-none">{isOpen ? "✕" : "☰"}</span>
+          </button>
           <div className="flex h-9 w-9 items-center justify-center rounded bg-red-650 bg-red-600 text-white font-bold text-base shadow-inner">AH</div>
           <div className="flex flex-col">
             <h1 className="text-xs font-bold tracking-tight font-sans">AnaHon FMS</h1>
@@ -1850,6 +3122,14 @@ export default function App() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setLang(lang === "ar" ? "en" : "ar")}
+            className="flex items-center justify-center px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer min-h-[44px] text-[11px] font-bold text-slate-300"
+            title={lang === "ar" ? "Switch to English" : "التبديل إلى العربية"}
+            aria-label={lang === "ar" ? "Switch interface to English" : "تحويل الواجهة إلى العربية"}
+          >
+            {lang === "ar" ? "EN" : "ع"}
+          </button>
           <button 
             onClick={handleFirebaseSignOut} 
             className="flex items-center justify-center p-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px]"
@@ -1864,34 +3144,64 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden relative">
         {isOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={() => setIsOpen(false)} />}
         
-        <aside className={`fixed top-16 bottom-0 left-0 z-50 bg-slate-900 border-slate-800 shrink-0 transition-all duration-300 ease-in-out md:relative md:top-0 md:flex md:flex-col ${
-          isOpen 
-            ? 'translate-x-0 w-64 p-4 border-r' 
-            : '-translate-x-full md:translate-x-0 md:w-0 md:p-0 md:border-r-0 overflow-hidden'
+        <aside className={`fixed top-16 bottom-0 ${rtl ? "right-0" : "left-0"} z-50 bg-slate-900 border-slate-800 shrink-0 transition-all duration-300 ease-in-out md:relative md:top-0 md:flex md:flex-col overflow-y-auto ${
+          isOpen
+            ? 'translate-x-0 w-64 p-4 border-r'
+            : `${rtl ? "translate-x-full" : "-translate-x-full"} md:translate-x-0 md:w-0 md:p-0 md:border-r-0 overflow-hidden`
         }`}>
           <nav className="space-y-1 font-sans">
-            {!isSelfService && (<>
-            <p className="px-3 pt-1 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">Overview</p>
+            {isProjectOfficer && (<>
+            <p className="px-3 pt-1 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Project Officer")}</p>
+            <button onClick={() => handleNavClick("dashboard")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Activity className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Overview")}</span>
+            </button>
+            <button onClick={() => handleNavClick("projects")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <FolderGit2 className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("My Projects & Budgets")}</span>
+            </button>
+            <button onClick={() => handleNavClick("expenses")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <FileText className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Purchase Requests")}</span>
+            </button>
+            <button onClick={() => handleNavClick("procurement")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "procurement" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Layers className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Procurement & Bids")}</span>
+            </button>
+            </>)}
+
+            {!isSelfService && !isProjectOfficer && (<>
+            <p className="px-3 pt-1 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Overview")}</p>
             <button onClick={() => handleNavClick("dashboard")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Activity className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Overview Dashboard</span>
+              <span className="text-left flex-1">{t("Overview Dashboard")}</span>
             </button>
 
-            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">Registers</p>
+            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Registers")}</p>
             <button onClick={() => handleNavClick("accounts")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "accounts" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Sliders className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Chart of Accounts</span>
+              <span className="text-left flex-1">{t("Chart of Accounts")}</span>
             </button>
 
             <button onClick={() => handleNavClick("projects")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <FolderGit2 className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Donors & Projects</span>
+              <span className="text-left flex-1">{t("Donors & Projects")}</span>
             </button>
 
-            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">Money Flow</p>
+            <button onClick={() => handleNavClick("funnel")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "funnel" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Layers className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Programs & Funnel")}</span>
+            </button>
+
+            <button onClick={() => handleNavClick("production")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "production" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Briefcase className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Production & Clients")}</span>
+            </button>
+
+            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Money Flow")}</p>
             <button onClick={() => handleNavClick("expenses")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <FileText className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Disbursement Vouchers</span>
+              <span className="text-left flex-1">{t("Disbursement Vouchers")}</span>
               <span className="ml-auto bg-slate-800 text-[10px] text-slate-300 px-1.5 py-0.5 rounded-full font-mono shrink-0">
                 {state.expenses.filter(e => ["Submitted", "Under Finance Review", "Approved"].includes(e.status)).length}
               </span>
@@ -1899,51 +3209,57 @@ export default function App() {
 
             <button onClick={() => handleNavClick("procurement")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "procurement" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Layers className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Procurement & Bids</span>
+              <span className="text-left flex-1">{t("Procurement & Bids")}</span>
             </button>
 
             <button onClick={() => handleNavClick("vendors")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "vendors" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Users className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Vendor Registry</span>
+              <span className="text-left flex-1">{t("Vendor Registry")}</span>
             </button>
 
             <button onClick={() => handleNavClick("banking")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "banking" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Coins className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Banking & Cash Reconcile</span>
+              <span className="text-left flex-1">{t("Banking & Cash Reconcile")}</span>
             </button>
 
             <button onClick={() => handleNavClick("ledger")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "ledger" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Building className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">General double-entry Ledger</span>
+              <span className="text-left flex-1">{t("General double-entry Ledger")}</span>
             </button>
 
             </>)}
-            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">People</p>
+            {!isProjectOfficer && (<>
+            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("People")}</p>
             <button onClick={() => handleNavClick("payroll")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "payroll" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <User className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Timesheets & Payroll Allocation</span>
+              <span className="text-left flex-1">{t("Timesheets & Payroll Allocation")}</span>
             </button>
+            </>)}
 
-            {!isSelfService && (<>
-            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">Records & Governance</p>
+            {!isSelfService && !isProjectOfficer && (<>
+            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Records & Governance")}</p>
             <button onClick={() => handleNavClick("assets")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "assets" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <HardDrive className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Fixed Assets Roll-Forward</span>
+              <span className="text-left flex-1">{t("Fixed Assets Roll-Forward")}</span>
             </button>
 
             <button onClick={() => handleNavClick("partners")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "partners" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Briefcase className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Partner Capital Tracking</span>
+              <span className="text-left flex-1">{t("Partner Capital Tracking")}</span>
             </button>
 
             <button onClick={() => handleNavClick("compliance")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "compliance" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <ShieldAlert className="h-4 w-4 text-rose-400 shrink-0" />
-              <span className="text-left flex-1">Compliance Control Desk</span>
+              <span className="text-left flex-1">{t("Compliance Control Desk")}</span>
               <span className="ml-auto flex h-2 w-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
+            </button>
+            <button onClick={() => handleNavClick("handbooks")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "handbooks" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <BookOpen className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Policies & Handbooks")}</span>
             </button>
             <button onClick={() => handleNavClick("reports")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "reports" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <FileText className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">Periodic Reports</span>
+              <span className="text-left flex-1">{t("Periodic Reports")}</span>
             </button>
             </>)}
           </nav>
@@ -1995,7 +3311,8 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Financial Summary KPIs — each card opens its tab */}
+              {/* Financial Summary KPIs — hidden from Project Officers (requester role sees only their projects' burn) */}
+              {!isProjectOfficer && (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <button type="button" onClick={() => handleNavClick("banking")} className="text-left rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
                   <div className="flex items-center justify-between text-slate-500">
@@ -2004,6 +3321,68 @@ export default function App() {
                   </div>
                   <h3 className="mt-2 text-2xl font-bold font-mono text-slate-900">{formatUSD(totalUSDInBank)}</h3>
                   <p className="mt-1 text-xs text-slate-500">Across Bank accounts · click to open Banking</p>
+                  {/* This figure ties to the imported statements, not to the bank's realtime
+                      balance — there is no bank API; statement import IS the sync. Showing the
+                      as-of date stops it being mistaken for a live number. */}
+                  {/* What makes up the total, account by account — a headline figure with no
+                      visible parts invites the question "from where?" every single time. */}
+                  <div className="mt-1.5 space-y-0.5">
+                    {state.bankAccounts.filter(b => b.active).map(b => {
+                      const rate = b.currency === "EUR" ? state.fxRates.EUR : b.currency === "LBP" ? state.fxRates.LBP : 1;
+                      return (
+                        <div key={b.id} className="flex justify-between text-[10px] font-mono text-slate-500">
+                          <span className="truncate pr-2">{b.name}</span>
+                          <span className="shrink-0">
+                            {formatIn(b.balance, b.currency)}
+                            {b.currency !== "USD" && <span className="text-slate-400"> → {formatUSD(b.balance * rate)}</span>}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-0.5 text-[10px] text-slate-400 font-mono">
+                    source: BLOM statements as of {state.bankTransactions.filter(t => !t.pending).reduce((m, t) => t.date > m ? t.date : m, "")} · EUR at {state.fxRates?.EUR ?? "—"}
+                  </p>
+                  {(() => {
+                    // Counted notes are real money and DO count. The book balance of 1120 does
+                    // not: the difference between the two is cash drawn without documented
+                    // vouchers — a documentation gap, never "available funds".
+                    const petty = state.accounts.find(a => a.code === "1120")?.balance || 0;
+                    if (petty <= 0 && !latestCashCount) return null;
+                    return (
+                      <div className="mt-1 space-y-1">
+                        {latestCashCount && (
+                          <p className={`text-[10px] rounded px-2 py-1 leading-snug border ${cashCountStale ? "text-amber-700 bg-amber-50 border-amber-200" : "text-emerald-800 bg-emerald-50 border-emerald-200"}`}>
+                            💵 Cash counted <strong>{formatUSD(latestCashCount.countedUSD)}</strong> on {latestCashCount.date}
+                            {latestCashCount.countedBy ? ` by ${latestCashCount.countedBy}` : ""}
+                            {cashCountStale ? " — count is over 45 days old, so it is excluded from the pool above until recounted." : " — included in the pool above."}
+                          </p>
+                        )}
+                        {petty > 0 && (
+                          <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 leading-snug">
+                            ⚠️ <strong>{formatUSD(latestCashCount ? Math.max(0, petty - latestCashCount.countedUSD) : petty)}</strong> cash drawn but not yet documented
+                            {latestCashCount ? " (ledger 1120 less the counted notes)" : " (ledger 1120)"} — <em>not</em> available funds.
+                            {!latestCashCount && " Record a cash count to separate real notes in hand from this gap."}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  {(() => {
+                    // Net effect of staged advice lines, per currency — shown, never added in.
+                    const pend = state.bankTransactions.filter(t => t.pending);
+                    if (!pend.length) return null;
+                    const byCcy: Record<string, number> = {};
+                    pend.forEach(t => {
+                      const ccy = state.bankAccounts.find(ba => ba.id === t.bankAccountId)?.currency || "USD";
+                      byCcy[ccy] = (byCcy[ccy] || 0) + (t.type === "Deposit" ? t.amount : -t.amount);
+                    });
+                    return (
+                      <p className="mt-0.5 text-[10px] text-amber-600 font-mono">
+                        ⏳ pending advices: {Object.entries(byCcy).map(([c, v]) => `${v >= 0 ? "+" : "−"}${formatIn(Math.abs(v), c)}`).join(" · ")} (awaiting statement)
+                      </p>
+                    );
+                  })()}
                 </button>
 
                 <button type="button" onClick={() => handleNavClick("projects")} className="text-left rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
@@ -2035,12 +3414,54 @@ export default function App() {
                   <p className="mt-1 text-xs text-slate-500">MoF Chapter 3 · click to open Compliance</p>
                 </button>
               </div>
+              )}
+
+              {/* Phone access — read live from the machine's interfaces, so a router
+                  reassigning the IP can never leave a dead link on the wall. */}
+              {phoneAccess && phoneAccess.urls.length > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">📱 Open on your phone</p>
+                      <p className="mt-1 font-mono text-lg font-bold text-slate-900 break-all">{phoneAccess.urls[0].url}</p>
+                      <p className="mt-0.5 text-[10px] text-slate-400">
+                        Same WiFi · this Mac must be awake and running · address is read live, so it stays correct if the router changes it
+                        {phoneAccess.urls.length > 1 && ` · also: ${phoneAccess.urls.slice(1).map(u => u.url).join(", ")}`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { navigator.clipboard?.writeText(phoneAccess.urls[0].url); triggerToast("Address copied."); }}
+                        className="text-xs font-medium bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-2 transition-all"
+                      >
+                        📋 Copy
+                      </button>
+                      {phoneAccess.qr && (
+                        <button
+                          type="button"
+                          onClick={() => setShowPhoneQr(!showPhoneQr)}
+                          className="text-xs font-medium bg-slate-800 text-white hover:bg-slate-700 rounded-lg px-3 py-2 transition-all"
+                        >
+                          {showPhoneQr ? "Hide QR" : "▣ Show QR"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {showPhoneQr && phoneAccess.qr && (
+                    <div className="mt-3 flex justify-center">
+                      <div className="w-48 [&>svg]:w-full [&>svg]:h-auto bg-white p-2 rounded border border-slate-200"
+                        dangerouslySetInnerHTML={{ __html: phoneAccess.qr }} />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Active Projects Burn rates visual tracking blocks */}
               <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h3 className="text-lg font-bold text-slate-900 mb-4">Project budgets & Sinking Burn Rates</h3>
                 <div className="space-y-6">
-                  {state.projects.map(p => {
+                  {requestableProjects.map(p => {
                     const lines = state.budgetLines.filter(bl => bl.projectId === p.id);
                     const spent = lines.reduce((s, x) => s + x.actualUSD, 0);
                     const committed = lines.reduce((s, x) => s + x.committedUSD, 0);
@@ -2150,7 +3571,7 @@ export default function App() {
               {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
                 <form onSubmit={handleCreateAccount} className="p-4 bg-white border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Account Number Code</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Account Number Code")}</label>
                     <input
                       type="text"
                       placeholder="e.g. 5140"
@@ -2160,7 +3581,7 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Descriptive Title</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Descriptive Title")}</label>
                     <input
                       type="text"
                       placeholder="e.g. Travel fuel to Akkar"
@@ -2170,7 +3591,7 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Class Type</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Class Type")}</label>
                     <select
                       value={newAccountType}
                       onChange={(e) => setNewAccountType(e.target.value as any)}
@@ -2184,7 +3605,7 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Currency Code</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Currency Code")}</label>
                     <select
                       value={newAccountCurrency}
                       onChange={(e) => setNewAccountCurrency(e.target.value as any)}
@@ -2262,11 +3683,12 @@ export default function App() {
           {activeTab === "projects" && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold">Resricted Donor Grants & Sinking Budgets</h2>
+                <h2 className="text-xl font-bold">{t("Resricted Donor Grants & Sinking Budgets")}</h2>
                 <p className="text-xs text-slate-500">Track designated funding allocations, revised budget versions and project execution timelines.</p>
               </div>
 
-              {/* Donors Profiles list */}
+              {/* Donors Profiles list — not relevant to a requester-only role */}
+              {!isProjectOfficer && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {state.donors.map(d => (
                   <div key={d.id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
@@ -2282,6 +3704,68 @@ export default function App() {
                   </div>
                 ))}
               </div>
+              )}
+
+              {/* ── All project timelines at a glance ─────────────────────
+                  One place to see what is next across every project, instead of
+                  opening each workspace in turn. */}
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">🗓 Project Timelines</h3>
+                  {["Super Admin", "Finance Officer", "Program Director", "Project Officer"].includes(currentUser.role) && (
+                    <button type="button" onClick={() => generateTimeline(null, true)}
+                      className="text-xs font-medium bg-slate-800 text-white hover:bg-slate-700 rounded-lg px-3 py-2 transition-all"
+                      title="Apply the standard 8-step template to every project, marking steps done where the evidence already exists">
+                      ✨ Build / refresh all timelines
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Standard steps per project — agreement, funds, budget, start, mid-point, end, report, closeout.
+                  Steps are marked done automatically when the evidence is already in the system; a status you set by hand is never overwritten.
+                </p>
+                {(() => {
+                  const rows = requestableProjects.map(p => {
+                    const acts = state.projectActivities.filter(a => a.projectId === p.id);
+                    const open = acts.filter(a => a.status !== "Done" && a.status !== "Cancelled");
+                    const overdue = open.filter(a => a.dueDate && a.dueDate < new Date().toLocaleDateString("en-CA"));
+                    const next = open.filter(a => a.dueDate).sort((x, y) => x.dueDate.localeCompare(y.dueDate))[0];
+                    return { p, total: acts.length, done: acts.filter(a => a.status === "Done").length, overdue: overdue.length, next };
+                  }).filter(r => r.total > 0);
+                  if (!rows.length) return <p className="text-xs text-slate-400 italic">No timelines yet — press the button above to build them from what the system already knows.</p>;
+                  return (
+                    <div className="space-y-1.5">
+                      {rows.sort((a, b) => (b.overdue - a.overdue) || ((a.next?.dueDate || "9999").localeCompare(b.next?.dueDate || "9999"))).map(r => (
+                        <button key={r.p.id} type="button" onClick={() => { setSelectedProjectId(r.p.id); setProjectWorkspaceTab("folder"); }}
+                          className={`w-full text-left flex flex-wrap items-center gap-3 p-2 rounded border text-xs transition-all hover:border-slate-350 ${r.overdue ? "bg-red-50 border-red-200" : "bg-white border-slate-200"}`}>
+                          <span className="font-mono font-bold text-[10px] bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{r.p.code}</span>
+                          <span className="text-slate-600 shrink-0">{r.done}/{r.total} done</span>
+                          {r.overdue > 0 && <span className="text-red-700 font-bold shrink-0">{r.overdue} overdue</span>}
+                          <span className="flex-1 min-w-[160px] text-slate-700">
+                            {r.next ? <>next: <strong>{r.next.title}</strong> <span className="font-mono text-slate-500">{r.next.dueDate}</span></> : <span className="text-emerald-700">all steps closed</span>}
+                          </span>
+                          {(() => {
+                            // The four papers every project must carry, shown here so gaps
+                            // are visible without opening each workspace.
+                            const docs = state.documents.filter(d => d.linkedRecordType === "Project" && d.linkedRecordId === r.p.id);
+                            const hit = (re: RegExp) => docs.some(d => re.test(`${d.category} ${d.filename}`.toLowerCase()));
+                            const tt = hit(/timetable|timeline|work ?plan|year plan/) || state.projectActivities.some(a => a.projectId === r.p.id && a.source === "imported");
+                            const gaps = [
+                              !hit(/proposal|concept note/) && "proposal",
+                              !tt && "timetable",
+                              !hit(/budget/) && "budget",
+                              !hit(/agreement|contract|grant offer/) && "agreement"
+                            ].filter(Boolean);
+                            return gaps.length
+                              ? <span className="text-[10px] text-amber-700 font-bold shrink-0">missing: {gaps.join(", ")}</span>
+                              : <span className="text-[10px] text-emerald-700 font-bold shrink-0">papers complete</span>;
+                          })()}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
 
               {/* Add Project Inline form */}
               {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
@@ -2289,7 +3773,7 @@ export default function App() {
                   <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">➕ Create New Project</h3>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Project Name</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Project Name")}</label>
                       <input
                         type="text"
                         placeholder="e.g. Akkar Legal Support Clinic"
@@ -2299,7 +3783,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Project Code (Unique)</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Project Code (Unique)")}</label>
                       <input
                         type="text"
                         placeholder="e.g. AKK-2026"
@@ -2309,7 +3793,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Donor Partner</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Donor Partner")}</label>
                       <select
                         value={newProjectDonor}
                         onChange={(e) => setNewProjectDonor(e.target.value)}
@@ -2324,7 +3808,7 @@ export default function App() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Budget Pool (USD)</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Budget Pool (USD)")}</label>
                       <input
                         type="number"
                         placeholder="e.g. 50000"
@@ -2334,7 +3818,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Start Date</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Start Date")}</label>
                       <input
                         type="date"
                         value={newProjectStartDate}
@@ -2343,7 +3827,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">End Date</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("End Date")}</label>
                       <input
                         type="date"
                         value={newProjectEndDate}
@@ -2352,7 +3836,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Funding Type</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Funding Type")}</label>
                       <select
                         value={newProjectFundingType}
                         onChange={(e) => setNewProjectFundingType(e.target.value as any)}
@@ -2360,6 +3844,43 @@ export default function App() {
                       >
                         <option value="Restricted Grant">Restricted Grant</option>
                         <option value="Unrestricted Service">Unrestricted Service</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="proj-stream" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Program Stream")}</label>
+                      <select
+                        id="proj-stream"
+                        value={newProjectStream}
+                        onChange={(e) => setNewProjectStream(e.target.value)}
+                        className="finance-input w-full text-xs"
+                      >
+                        <option value="">— Assign later —</option>
+                        {STREAMS.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="proj-funding-tx" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Funding Deposit (Bank Proof)")}</label>
+                      {/* Only unclaimed statement deposits are offered — a project cannot be
+                          registered without the bank line that proves its money arrived. */}
+                      <select
+                        id="proj-funding-tx"
+                        required
+                        value={newProjectFundingTx}
+                        onChange={(e) => setNewProjectFundingTx(e.target.value)}
+                        className="finance-input w-full text-xs"
+                      >
+                        <option value="">— Select statement deposit —</option>
+                        {state.bankTransactions
+                          .filter(bt => bt.type === "Deposit" && !bt.projectId && !bt.pending)
+                          .sort((a, b) => b.date.localeCompare(a.date))
+                          .map(bt => {
+                            const acct = state.bankAccounts.find(ba => ba.id === bt.bankAccountId);
+                            return (
+                              <option key={bt.id} value={bt.id}>
+                                {bt.date} · {formatIn(bt.amount, acct?.currency || "USD")} · {bt.description.slice(0, 60)}
+                              </option>
+                            );
+                          })}
                       </select>
                     </div>
                     <div className="flex items-end">
@@ -2377,7 +3898,7 @@ export default function App() {
                   📁 Active Restricted Projects
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {state.projects.map(proj => {
+                  {requestableProjects.map(proj => {
                     const donor = state.donors.find(d => d.id === proj.donorId);
                     const isSelected = selectedProjectId === proj.id;
                     const burnTotal = state.budgetLines
@@ -2413,7 +3934,8 @@ export default function App() {
                           </span>
                         </div>
                         <h4 className="text-sm font-bold text-slate-900 font-sans mb-1">{proj.name}</h4>
-                        <p className="text-xs text-slate-500 mb-3">Donor Partner: {donor?.name || "Restricted Donor"}</p>
+                        <p className="text-xs text-slate-500 mb-1">Donor Partner: {donor?.name || "Restricted Donor"}</p>
+                        <p className="text-[10px] text-slate-400 mb-3">🏛 {proj.stream || "— program unassigned"}</p>
 
                         <div className="space-y-1 mb-3">
                           <div className="flex justify-between text-[10px] text-slate-500">
@@ -2457,6 +3979,14 @@ export default function App() {
                 const projVouchers = projExpenses.map(e => e.voucherNo);
                 const projBankTx = state.bankTransactions.filter(bt => bt.voucherNo && projVouchers.includes(bt.voucherNo));
 
+                // Donor money in. Carries projectId directly — it has no voucher to route it.
+                const projFunding = state.bankTransactions
+                  .filter(bt => bt.projectId === selectedProjectId)
+                  .sort((a, b) => a.date.localeCompare(b.date));
+                const fundingAccounts = [...new Set(projFunding.map(bt => bt.bankAccountId))]
+                  .map(id => state.bankAccounts.find(ba => ba.id === id))
+                  .filter(Boolean);
+
                 // Timesheets allocating payroll to this project
                 const projTimesheets = state.timesheets.filter(ts =>
                   ts.allocations && ts.allocations.some((alloc: any) => alloc.projectId === selectedProjectId)
@@ -2471,6 +4001,23 @@ export default function App() {
                           <h3 className="text-lg font-bold text-slate-900 font-sans">{activeProject.name} Workspace</h3>
                         </div>
                         <p className="text-xs text-slate-500">Restricted Donor: {activeDonor?.name || "Unspecified"} • Grant Pool: {formatUSD(activeProject.budgetUSD)}</p>
+                        {fundingAccounts.length > 0 ? (
+                          <p className="text-[11px] text-slate-500 mt-1">
+                            🏦 Funded into:{" "}
+                            {fundingAccounts.map((ba: any, i) => (
+                              <span key={ba.id} className="font-mono">
+                                {i > 0 && " • "}
+                                {ba.name} <span className="text-slate-400">{ba.accountNo}</span>{" "}
+                                <strong className="text-emerald-700">
+                                  {formatIn(projFunding.filter(t => t.bankAccountId === ba.id).reduce((s, t) => s + t.amount, 0), ba.currency)}
+                                </strong>
+                              </span>
+                            ))}
+                            <span className="text-slate-400 font-sans italic"> — source: BLOM statement, {projFunding.length} receipt{projFunding.length === 1 ? "" : "s"}</span>
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-amber-700 mt-1 italic">🏦 No bank receipts linked to this project — funding source unverified.</p>
+                        )}
                       </div>
 
                       {/* Sub-tab navigation */}
@@ -2497,6 +4044,235 @@ export default function App() {
                     {/* Sub-tab 1: Folder Explorer (Section 2.6 Compliance) */}
                     {projectWorkspaceTab === "folder" && (
                       <div className="space-y-6">
+
+                        {/* ── Core project documents ───────────────────────
+                            The four papers a project must always carry: what we promised
+                            (proposal), when (timetable), for how much (budget), and on what
+                            terms (signed agreement). Missing ones are stated, not hidden. */}
+                        {(() => {
+                          const projDocsAll = state.documents.filter(d => d.linkedRecordType === "Project" && d.linkedRecordId === selectedProjectId);
+                          const hasImportedTimetable = state.projectActivities.some(a => a.projectId === selectedProjectId && a.source === "imported");
+                          const match = (re: RegExp) => projDocsAll.find(d => re.test(`${d.category} ${d.filename}`.toLowerCase()));
+                          const slots = [
+                            { key: "Proposal", label: "Proposal", re: /proposal|concept note/, doc: match(/proposal|concept note/), extra: "" },
+                            { key: "Timetable", label: "Activity timetable", re: /timetable|timeline|work ?plan|year plan/, doc: match(/timetable|timeline|work ?plan|year plan/), extra: hasImportedTimetable ? "imported into the timeline below" : "" },
+                            { key: "Budget", label: "Approved budget", re: /budget/, doc: match(/budget/), extra: "" },
+                            { key: "Agreement", label: "Signed agreement", re: /agreement|contract|grant offer/, doc: match(/agreement|contract|grant offer/), extra: "" }
+                          ];
+                          const missing = slots.filter(sl => !sl.doc && !sl.extra).length;
+                          return (
+                            <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-2">
+                              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                                <h4 className="text-xs font-bold text-slate-700 uppercase font-mono">📑 Core Project Documents</h4>
+                                <span className={`text-[10px] font-bold ${missing ? "text-amber-700" : "text-emerald-700"}`}>
+                                  {missing ? `${missing} of 4 missing` : "complete"}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                                {slots.map(sl => (
+                                  <div key={sl.key} className={`p-2 rounded border text-xs ${sl.doc || sl.extra ? "bg-emerald-50/50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
+                                    <p className="text-[10px] font-bold uppercase text-slate-600">{sl.label}</p>
+                                    {sl.doc ? (
+                                      <a href={`/api/document/content/${sl.doc.id}`} target="_blank" onClick={e => { e.preventDefault(); openDoc(sl.doc); }} rel="noreferrer"
+                                        className="text-[11px] text-red-650 hover:underline break-all">📄 {sl.doc.filename}</a>
+                                    ) : sl.extra ? (
+                                      <span className="text-[11px] text-emerald-800">✓ {sl.extra}</span>
+                                    ) : (
+                                      <span className="text-[11px] text-amber-800 font-bold">missing</span>
+                                    )}
+                                    {["Super Admin", "Finance Officer", "Program Director", "Project Officer"].includes(currentUser.role) && (
+                                      <label className="block mt-1 text-[10px] font-bold text-slate-500 hover:text-red-650 cursor-pointer">
+                                        {sl.doc ? "replace / add" : "＋ upload"}
+                                        <input type="file" className="hidden" accept=".pdf,.docx,.xlsx,.xlsm,image/*"
+                                          onChange={ev => handleCoreDocUpload(ev, selectedProjectId!, sl.key)} />
+                                      </label>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                              {missing > 0 && (
+                                <p className="text-[10px] text-amber-800">
+                                  A project should always carry what was promised, when, for how much, and on what terms — these are the papers every donor audit asks for first.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* ── Project timeline ─────────────────────────────
+                            Dated, assignable steps. Overdue and due-soon are coloured,
+                            so what needs doing next is visible without being remembered. */}
+                        <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
+                            <h4 className="text-xs font-bold text-slate-700 uppercase font-mono">🗓 Project Timeline & Assignments</h4>
+                            {["Super Admin", "Finance Officer", "Program Director", "Project Officer"].includes(currentUser.role) && (
+                              <div className="flex items-center gap-2">
+                                <button type="button" onClick={() => generateTimeline(selectedProjectId!)}
+                                  className="text-[11px] font-medium bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5 transition-all"
+                                  title="Create the standard steps from this grant's start, mid-point and end dates">
+                                  ✨ Generate from grant dates
+                                </button>
+                                <label className="text-[11px] font-medium bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5 cursor-pointer transition-all"
+                                  title="Upload the donor's Activity Timetable (.xlsx) — activities, Results and period columns are read from the sheet">
+                                  📊 Import donor timetable
+                                  <input type="file" accept=".xlsx" className="hidden"
+                                    onChange={e => importTimetable(e, selectedProjectId!)} />
+                                </label>
+                                <button type="button"
+                                  onClick={() => setActivityForm({ projectId: selectedProjectId, title: "", detail: "", kind: "Activity", dueDate: "", assigneeUserId: "", status: "Planned" })}
+                                  className="text-[11px] font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 py-1.5 transition-all">
+                                  ➕ Add step
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {activityForm && activityForm.projectId === selectedProjectId && (
+                            <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                              <div className="md:col-span-2">
+                                <label htmlFor="ac-title" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">What needs doing</label>
+                                <input id="ac-title" type="text" placeholder="e.g. Hygiene kit distribution — 6 shelters"
+                                  value={activityForm.title} onChange={e => setActivityForm({ ...activityForm, title: e.target.value })}
+                                  className="finance-input w-full text-xs" />
+                              </div>
+                              <div>
+                                <label htmlFor="ac-kind" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Type</label>
+                                <select id="ac-kind" value={activityForm.kind} onChange={e => setActivityForm({ ...activityForm, kind: e.target.value })} className="finance-input w-full text-xs">
+                                  <option>Activity</option><option>Milestone</option><option>Report</option><option>Payment</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label htmlFor="ac-due" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Due</label>
+                                <input id="ac-due" type="date" value={activityForm.dueDate}
+                                  onChange={e => setActivityForm({ ...activityForm, dueDate: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                              </div>
+                              <div>
+                                <label htmlFor="ac-who" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Assign to</label>
+                                <select id="ac-who" value={activityForm.assigneeUserId} onChange={e => setActivityForm({ ...activityForm, assigneeUserId: e.target.value })} className="finance-input w-full text-xs">
+                                  <option value="">— Unassigned —</option>
+                                  {state.users.filter(u => u.active).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                </select>
+                              </div>
+                              <div className="md:col-span-2">
+                                <label htmlFor="ac-detail" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Detail (optional)</label>
+                                <input id="ac-detail" type="text" value={activityForm.detail}
+                                  onChange={e => setActivityForm({ ...activityForm, detail: e.target.value })} className="finance-input w-full text-xs" />
+                              </div>
+                              <div className="flex gap-2">
+                                <button type="button" onClick={() => saveActivity(activityForm)} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all">💾 Save</button>
+                                <button type="button" onClick={() => setActivityForm(null)} className="bg-slate-100 text-slate-600 text-xs font-medium rounded-lg px-3 py-2 hover:bg-slate-200 transition-all">Cancel</button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Donor activity timetable — the Gantt shape AnaHon submits:
+                              activities under their Result, numbered, shaded across periods. */}
+                          {(() => {
+                            const imported = state.projectActivities.filter(a => a.projectId === selectedProjectId && a.source === "imported");
+                            if (!imported.length) return null;
+                            const periodsOf = (a: any) => { try { return JSON.parse(a.periodsJson || "[]"); } catch { return []; } };
+                            const cols: string[] = [];
+                            imported.forEach(a => periodsOf(a).forEach((p: string) => { if (!cols.includes(p)) cols.push(p); }));
+                            const groups = [...new Set(imported.map(a => a.resultGroup || ""))];
+                            return (
+                              <div className="border border-slate-200 rounded-lg overflow-x-auto">
+                                <table className="w-full text-[11px]">
+                                  <caption className="text-left text-[10px] text-slate-500 p-2">
+                                    Donor activity timetable — imported. Shaded cells are the periods each activity runs in.
+                                  </caption>
+                                  <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-200">
+                                      <th scope="col" className="p-2 text-left w-8">#</th>
+                                      <th scope="col" className="p-2 text-left min-w-[220px]">Activity</th>
+                                      {cols.map(c => <th key={c} scope="col" className="p-1 text-center font-mono text-[9px] whitespace-nowrap">{c.replace(/\\/g, "/")}</th>)}
+                                      <th scope="col" className="p-2 text-left">Status</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {groups.map(g => (
+                                      <React.Fragment key={g || "none"}>
+                                        {g && (
+                                          <tr className="bg-slate-100">
+                                            <td colSpan={cols.length + 3} className="p-1.5 font-bold text-slate-700 text-[10px]">{g}</td>
+                                          </tr>
+                                        )}
+                                        {imported.filter(a => (a.resultGroup || "") === g).map(a => {
+                                          const mine = periodsOf(a);
+                                          const done = a.status === "Done";
+                                          return (
+                                            <tr key={a.id} className="border-b border-slate-100">
+                                              <td className="p-2 font-mono text-slate-500">{(a as any).outlineNo}</td>
+                                              <td className={`p-2 ${done ? "line-through text-slate-400" : "text-slate-800"}`}>
+                                                {a.title}
+                                                {(a as any).titleAr && <span dir="rtl" className="block text-[10px] text-slate-500">{(a as any).titleAr}</span>}
+                                              </td>
+                                              {cols.map(c => (
+                                                <td key={c} className={`p-1 text-center ${mine.includes(c) ? (done ? "bg-emerald-200" : "bg-red-500/80") : ""}`} title={mine.includes(c) ? `${a.title} — ${c}` : ""}>
+                                                  {mine.includes(c) ? <span className="sr-only">scheduled</span> : ""}
+                                                </td>
+                                              ))}
+                                              <td className="p-1">
+                                                <select value={a.status} onChange={e => saveActivity({ ...a, status: e.target.value })}
+                                                  aria-label={`Status for ${a.title}`} className="finance-input text-[10px] py-0.5">
+                                                  <option>Planned</option><option>In Progress</option><option>Done</option><option>Cancelled</option>
+                                                </select>
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </React.Fragment>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+                          })()}
+
+                          {(() => {
+                            const acts = state.projectActivities
+                              .filter(a => a.projectId === selectedProjectId && a.source !== "imported")
+                              .sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
+                            if (!acts.length) return <p className="text-[11px] text-slate-400 italic">No steps yet — generate the standard ones from the grant dates, or add your own.</p>;
+                            return (
+                              <ol className="space-y-1.5">
+                                {acts.map(a => {
+                                  const days = a.dueDate ? Math.ceil((new Date(`${a.dueDate}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86400000) : null;
+                                  const open = a.status !== "Done" && a.status !== "Cancelled";
+                                  const overdue = open && days !== null && days < 0;
+                                  const soon = open && days !== null && days >= 0 && days <= 14;
+                                  const who = state.users.find(u => u.id === a.assigneeUserId);
+                                  return (
+                                    <li key={a.id} className={`flex flex-wrap items-center gap-2 p-2 rounded border text-xs ${overdue ? "bg-red-50 border-red-200" : soon ? "bg-amber-50 border-amber-200" : a.status === "Done" ? "bg-emerald-50/40 border-emerald-100" : "bg-white border-slate-200"}`}>
+                                      <span className="font-mono text-[10px] text-slate-500 w-20 shrink-0">{a.dueDate || "—"}</span>
+                                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0">{a.kind}</span>
+                                      <span className={`flex-1 min-w-[140px] ${a.status === "Done" ? "line-through text-slate-400" : "text-slate-800 font-medium"}`}>
+                                        {a.title}
+                                        {a.detail && <span className="block text-[10px] font-normal text-slate-400">{a.detail}</span>}
+                                      </span>
+                                      {open && days !== null && (
+                                        <span className={`text-[10px] font-bold shrink-0 ${overdue ? "text-red-700" : soon ? "text-amber-700" : "text-slate-400"}`}>
+                                          {overdue ? `${Math.abs(days)}d overdue` : days === 0 ? "today" : `in ${days}d`}
+                                        </span>
+                                      )}
+                                      <span className="text-[10px] text-slate-500 shrink-0">{who ? `👤 ${who.name}` : "unassigned"}</span>
+                                      {["Super Admin", "Finance Officer", "Program Director", "Project Officer"].includes(currentUser.role) && (
+                                        <span className="flex items-center gap-1 shrink-0">
+                                          <select value={a.status} onChange={e => saveActivity({ ...a, status: e.target.value })}
+                                            aria-label={`Status for ${a.title}`} className="finance-input text-[10px] py-0.5">
+                                            <option>Planned</option><option>In Progress</option><option>Done</option><option>Cancelled</option>
+                                          </select>
+                                          <button onClick={() => setActivityForm({ ...a })} title="Edit" aria-label={`Edit ${a.title}`} className="text-slate-400 hover:text-slate-700">✏️</button>
+                                          <button onClick={() => deleteActivity(a)} title="Remove" aria-label={`Remove ${a.title}`} className="text-slate-400 hover:text-red-600"><Trash2 className="h-3 w-3" /></button>
+                                        </span>
+                                      )}
+                                    </li>
+                                  );
+                                })}
+                              </ol>
+                            );
+                          })()}
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                           {/* Folder A: Project Contracts & MoUs */}
@@ -2510,7 +4286,7 @@ export default function App() {
                                   ➕ Upload MoU
                                   <input
                                     type="file"
-                                    accept="application/pdf"
+                                    accept="application/pdf,image/png,image/jpeg"
                                     onChange={(e) => handleProjectDocUpload(e, activeProject.id)}
                                     className="hidden"
                                   />
@@ -2524,10 +4300,24 @@ export default function App() {
                               <div className="space-y-1.5 max-h-40 overflow-y-auto">
                                 {projDocs.map(doc => (
                                   <div key={doc.id} className="flex justify-between items-center text-xs p-2 bg-white border border-slate-100 rounded shadow-inner">
-                                    <span className="text-slate-700 truncate max-w-xs">📄 {doc.filename} ({doc.sizeStr})</span>
+                                    <span className="flex items-center gap-1.5 truncate max-w-xs">
+                                      {doc.refNo && (
+                                        <button
+                                          type="button"
+                                          onClick={() => editDocRef(doc)}
+                                          disabled={currentUser.role !== "Super Admin"}
+                                          className="text-[9px] font-mono font-bold bg-slate-100 text-slate-500 px-1 py-0.5 rounded shrink-0 hover:bg-slate-200 disabled:hover:bg-slate-100 disabled:cursor-default"
+                                          title={currentUser.role === "Super Admin" ? "Amend reference (master account)" : "Unique reference — editable by master account only"}
+                                          aria-label={`Document reference ${doc.refNo}`}
+                                        >
+                                          {doc.refNo}
+                                        </button>
+                                      )}
+                                      <span className="text-slate-700 truncate">📄 {doc.filename} ({doc.sizeStr})</span>
+                                    </span>
                                     <a
                                       href={`/api/document/content/${doc.id}`}
-                                      target="_blank"
+                                      target="_blank" onClick={e => { e.preventDefault(); openDoc(doc); }}
                                       rel="noreferrer"
                                       className="text-red-650 hover:underline font-mono text-[10px] font-bold inline-flex items-center min-h-[44px] px-2"
                                     >
@@ -2603,7 +4393,7 @@ export default function App() {
                                         {docAttached ? (
                                           <a
                                             href={`/api/document/content/${docAttached.id}`}
-                                            target="_blank"
+                                            target="_blank" onClick={e => { e.preventDefault(); openDoc(docAttached); }}
                                             rel="noreferrer"
                                             className="text-red-650 hover:underline font-bold inline-flex items-center min-h-[44px] px-2"
                                           >
@@ -2612,6 +4402,28 @@ export default function App() {
                                         ) : (
                                           <span className="text-slate-400 italic inline-flex items-center min-h-[44px] px-2">No bill PDF attached</span>
                                         )}
+                                        <label className="text-red-650 hover:underline font-bold cursor-pointer inline-flex items-center min-h-[44px] px-2" title="The bill itself">
+                                          🧾 Invoice
+                                          <input
+                                            type="file"
+                                            accept="image/*,application/pdf"
+                                            multiple
+                                            className="hidden"
+                                            aria-label={`Attach invoice to ${exp.voucherNo}`}
+                                            onChange={(ev) => handleVoucherDocUpload(ev, exp.id, exp.voucherNo, "Invoice")}
+                                          />
+                                        </label>
+                                        <label className="text-slate-500 hover:underline font-bold cursor-pointer inline-flex items-center min-h-[44px] px-2" title="Distribution lists, delivery notes, photos of the purchase">
+                                          📷 Evidence
+                                          <input
+                                            type="file"
+                                            accept="image/*,application/pdf"
+                                            multiple
+                                            className="hidden"
+                                            aria-label={`Attach supporting evidence to ${exp.voucherNo}`}
+                                            onChange={(ev) => handleVoucherDocUpload(ev, exp.id, exp.voucherNo, "Evidence")}
+                                          />
+                                        </label>
                                       </div>
                                     </div>
                                   );
@@ -2626,22 +4438,38 @@ export default function App() {
                               <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
                                 📂 4. Bank Reconciliation Statement Items
                               </h4>
-                              <span className="text-[10px] bg-slate-200 text-slate-700 font-bold font-mono px-1.5 py-0.5 rounded">{projBankTx.length} items</span>
+                              <span className="text-[10px] bg-slate-200 text-slate-700 font-bold font-mono px-1.5 py-0.5 rounded">{projFunding.length + projBankTx.length} items</span>
                             </div>
 
-                            {projBankTx.length === 0 ? (
-                              <p className="text-[11px] text-slate-400 italic py-2">No cleared bank statements linked to this project's vouchers.</p>
+                            {projFunding.length + projBankTx.length === 0 ? (
+                              <p className="text-[11px] text-slate-400 italic py-2">No cleared bank statements linked to this project.</p>
                             ) : (
                               <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                                {projFunding.map(bt => {
+                                  const account = state.bankAccounts.find(ba => ba.id === bt.bankAccountId);
+                                  return (
+                                    <div key={bt.id} className="text-xs p-2 bg-emerald-50 border border-emerald-100 rounded space-y-0.5 font-mono">
+                                      <div className="flex justify-between text-slate-800">
+                                        <span>{bt.date} • {account?.name}</span>
+                                        <span className="font-bold text-emerald-700">+{formatIn(bt.amount, account?.currency || "USD")}</span>
+                                      </div>
+                                      <p className="text-[9px] text-slate-500 font-sans italic">
+                                        Funding received • source: BLOM statement {account?.accountNo} • {bt.description}
+                                      </p>
+                                    </div>
+                                  );
+                                })}
                                 {projBankTx.map(bt => {
                                   const account = state.bankAccounts.find(ba => ba.id === bt.bankAccountId);
                                   return (
                                     <div key={bt.id} className="text-xs p-2 bg-white border border-slate-100 rounded space-y-0.5 font-mono">
                                       <div className="flex justify-between text-slate-800">
                                         <span>{bt.date} • {account?.name}</span>
-                                        <span className="font-bold text-red-600">-{formatUSD(bt.amount)}</span>
+                                        <span className="font-bold text-red-600">-{formatIn(bt.amount, account?.currency || "USD")}</span>
                                       </div>
-                                      <p className="text-[9px] text-slate-500 font-sans italic">Reconciled to: {bt.voucherNo} • {bt.description}</p>
+                                      <p className="text-[9px] text-slate-500 font-sans italic">
+                                        Reconciled to: {bt.voucherNo} • source: BLOM statement {account?.accountNo} • {bt.description}
+                                      </p>
                                     </div>
                                   );
                                 })}
@@ -2712,7 +4540,7 @@ export default function App() {
                           {/* Report configuration filters */}
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4 print:hidden">
                             <div className="flex items-center gap-3">
-                              <label className="text-xs font-bold text-slate-650 uppercase">Select Reporting Month:</label>
+                              <label className="text-xs font-bold text-slate-650 uppercase">{t("Select Reporting Month:")}</label>
                               <input
                                 type="month"
                                 value={reconMonth}
@@ -3043,20 +4871,897 @@ export default function App() {
 
 
           {/* tab content Vouchers & Expenses Lifecycle */}
+          {activeTab === "funnel" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-bold">{t("AnaHon Programs & Funding Funnel")}</h2>
+                <p className="text-xs text-slate-500">
+                  AnaHon (Civil Company 90/2023, Tripoli) is the sole applicant, implementing and financial body.
+                  Five programs sit under it. The pipeline below is forward-looking only — nothing here touches
+                  balances or reports until a bank deposit registers a real project.
+                </p>
+              </div>
+
+              {/* Program stream cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {STREAMS.map(s => {
+                  const projs = state.projects.filter(p => (p.stream || "") === s);
+                  const opps = state.opportunities.filter(o => o.stream === s && o.stage !== "Declined");
+                  const activeCount = projs.filter(p => p.status === "Active").length;
+                  const totalFunded = projs.reduce((sum, p) => sum + (p.budgetUSD || 0), 0);
+                  return (
+                    <div key={s} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-bold text-slate-900">{s}</h4>
+                        <span className="text-[10px] font-mono text-slate-400">{projs.length} funded · {activeCount} active</span>
+                      </div>
+                      {projs.length > 0 ? (
+                        <ul className="space-y-1 mb-3">
+                          {projs.map(p => (
+                            <li key={p.id} className="flex justify-between text-[11px]">
+                              <span className="font-mono text-slate-600">{p.code}</span>
+                              <span className={p.status === "Active" ? "text-emerald-700 font-bold" : "text-slate-400"}>{p.status}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 italic mb-3">No funded projects yet.</p>
+                      )}
+                      <div className="border-t border-slate-100 pt-2 space-y-1">
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-slate-400 uppercase">Funded to date</span>
+                          <strong className="font-mono text-slate-800">{formatUSD(totalFunded)}</strong>
+                        </div>
+                        <div className="flex justify-between text-[10px]">
+                          <span className="text-slate-400 uppercase">Pipeline</span>
+                          <span className="font-mono text-slate-600">{opps.length} open</span>
+                        </div>
+                        {(() => {
+                          // Restricted balance: money actually received for these projects, less
+                          // what has been documented as spent. Not a slice of the bank balance —
+                          // cash is fungible and part of it sits in the undocumented petty gap.
+                          const received = projs.reduce((sum, p) => sum + state.bankTransactions
+                            .filter(bt => bt.projectId === p.id && bt.type === "Deposit" && !bt.pending)
+                            .reduce((t, bt) => {
+                              const ccy = state.bankAccounts.find(ba => ba.id === bt.bankAccountId)?.currency || "USD";
+                              const rate = ccy === "EUR" ? state.fxRates.EUR : ccy === "LBP" ? state.fxRates.LBP : 1;
+                              return t + bt.amount * rate;
+                            }, 0), 0);
+                          const spent = projs.reduce((sum, p) => sum + state.budgetLines
+                            .filter(bl => bl.projectId === p.id)
+                            .reduce((t, bl) => t + (bl.actualUSD || 0), 0), 0);
+                          if (received === 0 && spent === 0) return null;
+                          const unspent = received - spent;
+                          return (
+                            <div className="pt-1 mt-1 border-t border-slate-100 space-y-0.5">
+                              <div className="flex justify-between text-[10px]">
+                                <span className="text-slate-400 uppercase">Received / spent</span>
+                                <span className="font-mono text-slate-600">{formatUSD(received)} / {formatUSD(spent)}</span>
+                              </div>
+                              <div className="flex justify-between text-[10px]">
+                                <span className="text-slate-400 uppercase">Unspent (restricted)</span>
+                                <strong className={`font-mono ${unspent < 0 ? "text-red-700" : "text-emerald-700"}`}>{formatUSD(unspent)}</strong>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        {s === "Production" && (
+                          <div className="flex justify-between text-[10px]">
+                            <span className="text-slate-400 uppercase">Quotes open</span>
+                            <span className="font-mono text-slate-600">{state.quotations.filter(q => ["Draft", "Sent", "Accepted"].includes(q.status)).length}</span>
+                          </div>
+                        )}
+                      </div>
+                      {activeCount === 0 && opps.length === 0 && (
+                        <p className="mt-2 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                          ⚠ Funding gap — no active project and no pipeline
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Pipeline board */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-md font-bold text-slate-800 uppercase font-mono">🎯 Donor Pipeline</h3>
+                  {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && !oppForm && (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => { setIntakeOpen(!intakeOpen); setIntake(null); }} className="bg-indigo-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-indigo-700 transition-all">
+                        🤖 {intakeOpen ? "Close call reader" : "Start from a call"}
+                      </button>
+                      <button onClick={() => setOppForm({ stage: "Prospect", currency: "USD" })} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all">
+                        ➕ Add Opportunity
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Call intake: paste the funder's link/file/text and let the AI fill the form in.
+                    Everything it proposes lands in the normal editable form — nothing is saved here. */}
+                {intakeOpen && !oppForm && (
+                  <div className="p-5 bg-indigo-50 border border-indigo-200 rounded-xl space-y-3">
+                    <h4 className="text-sm font-bold text-indigo-900 uppercase font-mono">🤖 Read a funding call</h4>
+                    <p className="text-[11px] text-indigo-800">
+                      Give it the call as a link, a file, or pasted text. It proposes the title, funder, program, amount and
+                      deadline, and assesses the fit against AnaHon's real track record. You review every field before saving.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="url"
+                        value={intakeUrl}
+                        onChange={e => setIntakeUrl(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter" && intakeUrl.trim() && !intakeBusy) { e.preventDefault(); runIntake({ url: intakeUrl.trim() }); } }}
+                        placeholder="https://… link to the call"
+                        className="finance-input flex-1 min-w-[240px] font-mono text-xs"
+                        disabled={intakeBusy}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => runIntake({ url: intakeUrl.trim() })}
+                        disabled={intakeBusy || !intakeUrl.trim()}
+                        className="bg-indigo-600 text-white text-[11px] font-bold rounded-lg px-3 py-2 hover:bg-indigo-700 disabled:bg-slate-300 transition-all"
+                      >
+                        {intakeBusy ? "Reading…" : "Read link"}
+                      </button>
+                      <label className={`text-[11px] font-bold rounded-lg px-3 py-2 cursor-pointer transition-all ${intakeBusy ? "bg-slate-200 text-slate-400" : "bg-white border border-indigo-300 text-indigo-800 hover:bg-indigo-100"}`}>
+                        📄 Upload call
+                        <input type="file" accept=".pdf,.docx,.txt,.md,.csv" className="hidden" disabled={intakeBusy} onChange={intakeFile} />
+                      </label>
+                    </div>
+                    <textarea
+                      rows={3}
+                      value={intakeText}
+                      onChange={e => setIntakeText(e.target.value)}
+                      placeholder="…or paste the call text here"
+                      className="finance-input w-full text-xs"
+                      disabled={intakeBusy}
+                    />
+                    {intakeText.trim().length >= 40 && (
+                      <button
+                        type="button"
+                        onClick={() => runIntake({ text: intakeText })}
+                        disabled={intakeBusy}
+                        className="bg-indigo-600 text-white text-[11px] font-bold rounded-lg px-3 py-2 hover:bg-indigo-700 disabled:bg-slate-300 transition-all"
+                      >
+                        {intakeBusy ? "Reading…" : "Read pasted text"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* The assessment stays visible above the prefilled form so the fit and the
+                    risks are in front of you while you decide whether to keep it. */}
+                {intake && oppForm && (
+                  <div className={`p-4 rounded-xl border text-[11px] space-y-2 ${intake.assessment.fit === "Strong" ? "bg-emerald-50 border-emerald-200"
+                    : intake.assessment.fit === "Weak" ? "bg-rose-50 border-rose-200" : "bg-amber-50 border-amber-200"}`}>
+                    <p className="font-bold text-slate-800">
+                      {intake.provider} read {intake.source} · Fit: {intake.assessment.fit} · Suggested program: {intake.assessment.recommendedStream || "—"}
+                    </p>
+                    <p className="text-slate-700">{intake.assessment.rationale}</p>
+                    {intake.assessment.risks?.length > 0 && (
+                      <ul className="list-disc ml-4 text-amber-900">{intake.assessment.risks.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>
+                    )}
+                    {intake.assessment.suggestedAngle && <p className="text-emerald-900"><strong>Angle:</strong> {intake.assessment.suggestedAngle}</p>}
+                    {intake.draft.donorIsNew && (
+                      <p className="text-indigo-900">Funder <strong>{intake.draft.donorName}</strong> isn't registered yet — saving will add it as a prospect donor.</p>
+                    )}
+                    <p className="text-slate-500 italic">Draft only. Nothing is in the pipeline until you press Save below.</p>
+                  </div>
+                )}
+
+                {oppForm && (
+                  <form onSubmit={saveOpportunity} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
+                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">{oppForm.id ? "✏️ Edit Opportunity" : "➕ New Opportunity"}</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="md:col-span-2">
+                        <label htmlFor="opp-title" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Title")}</label>
+                        <input id="opp-title" type="text" placeholder="e.g. SKF next cycle — Platform" value={oppForm.title || ""} onChange={e => setOppForm({ ...oppForm, title: e.target.value })} className="finance-input w-full font-sans text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="opp-donor" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Donor")}</label>
+                        <select id="opp-donor" value={oppForm.donorId || ""} onChange={e => setOppForm({ ...oppForm, donorId: e.target.value })} className="finance-input w-full text-xs">
+                          <option value="">— None yet (unscoped) —</option>
+                          {state.donors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="opp-stream" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Program Stream")}</label>
+                        <select id="opp-stream" value={oppForm.stream || ""} onChange={e => setOppForm({ ...oppForm, stream: e.target.value })} className="finance-input w-full text-xs">
+                          <option value="">— Unassigned —</option>
+                          {STREAMS.map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="opp-stage" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Stage")}</label>
+                        <select id="opp-stage" value={oppForm.stage || "Prospect"} onChange={e => setOppForm({ ...oppForm, stage: e.target.value as Opportunity["stage"] })} className="finance-input w-full text-xs">
+                          {OPP_STAGES.map(sg => <option key={sg} value={sg}>{sg}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="opp-amount" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Amount (0 = not scoped)")}</label>
+                        <input id="opp-amount" type="number" min="0" step="any" value={oppForm.amount ?? 0} onChange={e => setOppForm({ ...oppForm, amount: Number(e.target.value) })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="opp-currency" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Currency")}</label>
+                        <select id="opp-currency" value={oppForm.currency || "USD"} onChange={e => setOppForm({ ...oppForm, currency: e.target.value })} className="finance-input w-full text-xs">
+                          <option value="USD">USD</option>
+                          <option value="EUR">EUR</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="opp-deadline" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Submission Deadline")}</label>
+                        <input id="opp-deadline" type="date" value={oppForm.deadline || ""} onChange={e => setOppForm({ ...oppForm, deadline: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="opp-decision" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Decision Expected")}</label>
+                        <input id="opp-decision" type="date" value={oppForm.decisionDate || ""} onChange={e => setOppForm({ ...oppForm, decisionDate: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="opp-renewal" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Renewal Of (optional)")}</label>
+                        <select id="opp-renewal" value={oppForm.renewalOfProjectId || ""} onChange={e => setOppForm({ ...oppForm, renewalOfProjectId: e.target.value })} className="finance-input w-full text-xs">
+                          <option value="">— Not a renewal —</option>
+                          {state.projects.map(p => <option key={p.id} value={p.id}>{p.code}</option>)}
+                        </select>
+                      </div>
+                      <div className="md:col-span-3">
+                        <label htmlFor="opp-notes" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Notes")}</label>
+                        <textarea id="opp-notes" rows={2} value={oppForm.notes || ""} onChange={e => setOppForm({ ...oppForm, notes: e.target.value })} className="finance-input w-full font-sans text-xs" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">💾 Save</button>
+                      <button type="button" onClick={() => setOppForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Proposal workspace — AnaHon's master template; adapt into each donor's format */}
+                {propForm && (
+                  <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">📝 Proposal — {propForm.title}</h4>
+                      <p className="text-[11px] text-slate-500">AnaHon is the applicant. Donor: {state.donors.find(d => d.id === propForm.donorId)?.name || "not set"}. Write once here, then adapt into the donor's own template.</p>
+                      {/* The pipeline this call belongs to is the user's decision — the AI may
+                          recommend one, but it never moves the card. */}
+                      <div className="flex flex-wrap items-center gap-2 mt-2">
+                        <label htmlFor="prop-stream" className="text-[10px] font-bold text-slate-600 uppercase">{t("Pipeline / programme")}</label>
+                        <select
+                          id="prop-stream"
+                          value={propForm.stream || ""}
+                          onChange={e => setPropForm({ ...propForm, stream: e.target.value })}
+                          className="finance-input text-xs"
+                        >
+                          <option value="">— Unassigned —</option>
+                          {STREAMS.map(st => <option key={st} value={st}>{st}</option>)}
+                        </select>
+                        {aiAssess?.recommendedStream && aiAssess.recommendedStream !== propForm.stream && (
+                          <button
+                            type="button"
+                            onClick={() => setPropForm({ ...propForm, stream: aiAssess.recommendedStream })}
+                            className="text-[10px] font-bold text-indigo-700 hover:underline"
+                          >
+                            AI suggests {aiAssess.recommendedStream} — use it
+                          </button>
+                        )}
+                        <span className="text-[10px] text-slate-400">saved with the proposal</span>
+                      </div>
+                    </div>
+                    {/* AI assist — grounded in AnaHon's real track record, prefill only */}
+                    <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-2">
+                      <label htmlFor="ai-call" className="block text-[10px] font-bold text-indigo-800 uppercase">🧠 AI Assist — the donor's call</label>
+                      {/* Three ways in: a file, a link, or paste. All land in the same box so
+                          you can read and correct the text before the AI sees it. */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className={`text-[11px] font-bold rounded-lg px-3 py-2 cursor-pointer transition-all ${callBusy ? "bg-slate-200 text-slate-400" : "bg-white border border-indigo-300 text-indigo-800 hover:bg-indigo-100"}`}>
+                          📄 {callBusy ? "Reading…" : "Upload call (PDF / Word / text)"}
+                          <input type="file" accept=".pdf,.docx,.txt,.md,.csv" className="hidden" disabled={callBusy} onChange={loadCallFile} />
+                        </label>
+                        <input
+                          type="url"
+                          value={callUrl}
+                          onChange={e => setCallUrl(e.target.value)}
+                          placeholder="…or paste a link to the call page"
+                          aria-label="Link to the donor's call page"
+                          className="finance-input text-xs flex-1 min-w-[180px]"
+                        />
+                        <button
+                          type="button"
+                          disabled={callBusy || !callUrl.trim()}
+                          onClick={() => { loadCallSource({ url: callUrl.trim() }, callUrl.trim()); setCallUrl(""); }}
+                          className="text-[11px] font-bold bg-white border border-indigo-300 text-indigo-800 rounded-lg px-3 py-2 hover:bg-indigo-100 disabled:opacity-40 transition-all"
+                        >
+                          🔗 Fetch link
+                        </button>
+                        {aiCall && (
+                          <button type="button" onClick={() => setAiCall("")} className="text-[11px] text-slate-500 hover:text-red-600 hover:underline px-2">clear</button>
+                        )}
+                      </div>
+                      <textarea id="ai-call" rows={4} value={aiCall} onChange={e => setAiCall(e.target.value)} placeholder="…or paste the call text here: focus areas, eligibility, budget range, the questions they ask…" className="finance-input w-full text-xs" />
+                      {aiCall && <p className="text-[10px] text-indigo-700">{aiCall.length.toLocaleString()} characters loaded — edit freely before running the assist.</p>}
+                      <div className="flex gap-2">
+                        <button type="button" disabled={aiBusy} onClick={() => runAiAssist("assess")} className="bg-indigo-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-indigo-700 disabled:opacity-50 transition-all">{aiBusy ? "Thinking…" : "🔍 Assess Fit"}</button>
+                        <button type="button" disabled={aiBusy} onClick={() => runAiAssist("draft")} className="bg-indigo-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-indigo-700 disabled:opacity-50 transition-all">{aiBusy ? "Thinking…" : "✍️ Draft Empty Sections"}</button>
+                      </div>
+                      <p className="text-[10px] text-indigo-700">Grounded in AnaHon's real programs and project history from this system. Drafts fill only sections you left empty; anything the AI cannot know appears as [FILL: …]. Nothing is saved until you save.</p>
+                      {aiAssess && (
+                        <div className="p-3 bg-white border border-indigo-200 rounded-lg text-xs space-y-1.5">
+                          <p><strong>Fit: {aiAssess.fit}</strong> · Recommended program: <strong>{aiAssess.recommendedStream || "—"}</strong></p>
+                          <p className="text-slate-600">{aiAssess.rationale}</p>
+                          {aiAssess.risks?.length > 0 && (
+                            <ul className="list-disc ml-4 text-amber-800">{aiAssess.risks.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                          )}
+                          {aiAssess.suggestedAngle && <p className="text-emerald-800"><strong>Angle:</strong> {aiAssess.suggestedAngle}</p>}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {PROPOSAL_SECTIONS.map(([key, label, hint]) => (
+                        <div key={key} className={key === "summary" || key === "solution" ? "md:col-span-2" : ""}>
+                          <label htmlFor={`prop-${key}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{label}</label>
+                          <textarea id={`prop-${key}`} rows={3} placeholder={hint} value={(propForm.proposal[key] as string) || ""} onChange={e => setProposal({ [key]: e.target.value })} className="finance-input w-full font-sans text-xs" />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-600 uppercase">Activities & Timeline</span>
+                        <button type="button" onClick={() => setProposal({ timeline: [...propTimeline, { activity: "", start: "", end: "" }] })} className="text-xs bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5 font-medium text-slate-700 transition-all">➕ Add activity</button>
+                      </div>
+                      {propTimeline.map((row, i) => (
+                        <div key={i} className="grid grid-cols-2 md:grid-cols-8 gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                          <input aria-label={`Activity ${i + 1}`} type="text" placeholder="Activity" value={row.activity} onChange={e => setProposal({ timeline: propTimeline.map((r, idx) => idx === i ? { ...r, activity: e.target.value } : r) })} className="finance-input text-xs col-span-2 md:col-span-4" />
+                          <input aria-label={`Activity ${i + 1} start`} type="date" value={row.start} onChange={e => setProposal({ timeline: propTimeline.map((r, idx) => idx === i ? { ...r, start: e.target.value } : r) })} className="finance-input font-mono text-xs md:col-span-1" />
+                          <input aria-label={`Activity ${i + 1} end`} type="date" value={row.end} onChange={e => setProposal({ timeline: propTimeline.map((r, idx) => idx === i ? { ...r, end: e.target.value } : r) })} className="finance-input font-mono text-xs md:col-span-1" />
+                          <div className="md:col-span-2 flex items-center">
+                            <button type="button" onClick={() => setProposal({ timeline: propTimeline.filter((_, idx) => idx !== i) })} className="text-slate-400 hover:text-red-600 p-1 transition-colors rounded hover:bg-slate-100" title="Remove activity" aria-label={`Remove activity ${i + 1}`}><Trash2 className="h-3.5 w-3.5" /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-slate-600 uppercase">Indicative Budget ({propForm.currency})</span>
+                        <button type="button" onClick={() => setProposal({ budget: [...propBudget, { line: "", description: "", amount: 0 }] })} className="text-xs bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5 font-medium text-slate-700 transition-all">➕ Add line</button>
+                      </div>
+                      {propBudget.map((row, i) => (
+                        <div key={i} className="grid grid-cols-2 md:grid-cols-8 gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg">
+                          <input aria-label={`Budget line ${i + 1}`} type="text" placeholder="Line (e.g. Personnel)" value={row.line} onChange={e => setProposal({ budget: propBudget.map((r, idx) => idx === i ? { ...r, line: e.target.value } : r) })} className="finance-input text-xs col-span-2 md:col-span-2" />
+                          <input aria-label={`Budget line ${i + 1} description`} type="text" placeholder="Description" value={row.description} onChange={e => setProposal({ budget: propBudget.map((r, idx) => idx === i ? { ...r, description: e.target.value } : r) })} className="finance-input text-xs col-span-2 md:col-span-4" />
+                          <input aria-label={`Budget line ${i + 1} amount`} type="number" min="0" step="any" value={row.amount} onChange={e => setProposal({ budget: propBudget.map((r, idx) => idx === i ? { ...r, amount: Number(e.target.value) } : r) })} className="finance-input font-mono text-xs md:col-span-1" />
+                          <div className="md:col-span-1 flex items-center">
+                            <button type="button" onClick={() => setProposal({ budget: propBudget.filter((_, idx) => idx !== i) })} className="text-slate-400 hover:text-red-600 p-1 transition-colors rounded hover:bg-slate-100" title="Remove line" aria-label={`Remove budget line ${i + 1}`}><Trash2 className="h-3.5 w-3.5" /></button>
+                          </div>
+                        </div>
+                      ))}
+                      {propBudget.length > 0 && (
+                        <p className="text-right text-xs font-mono font-bold text-slate-800">
+                          ASK: {propForm.currency} {propBudget.reduce((s, r) => s + (Number(r.amount) || 0), 0).toLocaleString()}
+                          <span className="text-slate-400 font-sans font-normal"> — becomes the opportunity's requested amount on save</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => saveProposal(false)} className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">💾 Save Proposal</button>
+                      <button type="button" onClick={() => saveProposal(true)} className="bg-slate-800 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-700 transition-all">📄 Save + Generate Document</button>
+                      <button type="button" onClick={() => setPropForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Deadline tracker: the board answers "where is everything", this answers
+                    "what do I do next". Sorted by date, coloured by how little time is left. */}
+                {(() => {
+                  const today = new Date().toISOString().slice(0, 10);
+                  const dated = state.opportunities
+                    .filter(o => o.deadline && !["Awarded", "Declined"].includes(o.stage))
+                    .sort((a, b) => a.deadline.localeCompare(b.deadline));
+                  if (!dated.length) return null;
+                  const daysTo = (d: string) => Math.round((new Date(d).getTime() - new Date(today).getTime()) / 86400000);
+                  return (
+                    <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-bold text-slate-800 uppercase font-mono">⏳ {t("Deadlines")}</h4>
+                        <span className="text-[10px] text-slate-500">{dated.length} dated · {state.opportunities.filter(o => !o.deadline && !["Awarded", "Declined"].includes(o.stage)).length} undated</span>
+                      </div>
+                      <div className="space-y-1">
+                        {dated.map(o => {
+                          const d = daysTo(o.deadline);
+                          const tone = d < 0 ? "bg-slate-100 text-slate-500 border-slate-200"
+                            : d <= 7 ? "bg-red-50 text-red-800 border-red-200"
+                              : d <= 30 ? "bg-amber-50 text-amber-800 border-amber-200"
+                                : "bg-slate-50 text-slate-700 border-slate-200";
+                          return (
+                            <div key={o.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${tone}`}>
+                              <span className="font-mono font-bold whitespace-nowrap w-24 shrink-0">
+                                {d < 0 ? "passed" : d === 0 ? "TODAY" : `${d}d`}
+                              </span>
+                              <span className="font-mono text-[10px] opacity-70 w-20 shrink-0 hidden sm:inline">{o.deadline}</span>
+                              <span className="flex-1 font-medium truncate" title={o.title}>{o.title}</span>
+                              <span className="text-[10px] opacity-70 hidden md:inline whitespace-nowrap">{o.stream || "—"}</span>
+                              <span className="font-mono text-[10px] whitespace-nowrap">{o.amount > 0 ? `${o.currency} ${o.amount.toLocaleString()}` : "—"}</span>
+                              <span className="text-[10px] font-bold uppercase opacity-70 whitespace-nowrap hidden sm:inline">{o.stage}</span>
+                              {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && (
+                                <button onClick={() => { setPropForm({ ...o, proposal: o.proposal || {} }); setAiAssess(null); setAiCall(""); }}
+                                  className="opacity-60 hover:opacity-100 shrink-0" title="Open proposal workspace" aria-label={`Open proposal for ${o.title}`}>📝</button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-[10px] text-slate-500 italic">Red = within a week · amber = within a month. Awarded and declined are hidden.</p>
+                    </div>
+                  );
+                })()}
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  {(["Prospect", "Drafting", "Submitted", "Awarded"] as const).map(stg => {
+                    // Dated first, soonest at the top — an undated prospect never outranks a live deadline.
+                    const stageOpps = state.opportunities.filter(o => o.stage === stg)
+                      .sort((a, b) => (a.deadline ? 0 : 1) - (b.deadline ? 0 : 1) || (a.deadline || "").localeCompare(b.deadline || ""));
+                    return (
+                      <div key={stg} className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                        <h4 className="text-[10px] font-bold uppercase text-slate-500 mb-2 tracking-widest">{stg} ({stageOpps.length})</h4>
+                        <div className="space-y-2">
+                          {stageOpps.map(o => {
+                            const donor = state.donors.find(d => d.id === o.donorId);
+                            return (
+                              <div key={o.id} className="p-3 bg-white border border-slate-200 rounded-lg shadow-sm">
+                                <p className="text-xs font-bold text-slate-900 mb-0.5">{o.title}</p>
+                                <p className="text-[10px] text-slate-500">{donor?.name || "No donor yet"} · {o.stream || "unassigned"}</p>
+                                {o.amount > 0 && <p className="text-[11px] font-mono font-bold text-slate-800 mt-1">{o.currency} {o.amount.toLocaleString()}</p>}
+                                {(o.decisionDate || o.deadline) && (() => {
+                                  const d = o.deadline
+                                    ? Math.round((new Date(o.deadline).getTime() - new Date(new Date().toISOString().slice(0, 10)).getTime()) / 86400000)
+                                    : null;
+                                  const tone = d === null ? "text-amber-700"
+                                    : d < 0 ? "text-slate-400" : d <= 7 ? "text-red-700 font-bold" : d <= 30 ? "text-amber-700" : "text-slate-500";
+                                  return (
+                                    <p className={`text-[10px] mt-0.5 ${tone}`}>
+                                      📅 {o.decisionDate ? `decision ${o.decisionDate}` : `deadline ${o.deadline}`}
+                                      {d !== null && ` · ${d < 0 ? "passed" : d === 0 ? "today" : `${d}d left`}`}
+                                    </p>
+                                  );
+                                })()}
+                                {o.notes && <p className="text-[10px] text-slate-500 italic mt-1 leading-relaxed">{o.notes}</p>}
+                                {o.stage === "Awarded" && (
+                                  <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-1">
+                                    ✓ Awarded — once the deposit is on an imported statement, register the project in Donors & Projects with that deposit as proof.
+                                  </p>
+                                )}
+                                {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && (
+                                  <div className="flex items-center gap-1 mt-2">
+                                    <select value={o.stage} onChange={e => moveOpportunity(o, e.target.value)} className="finance-input text-[10px] flex-1 py-1" aria-label={`Stage for ${o.title}`}>
+                                      {OPP_STAGES.map(sg => <option key={sg} value={sg}>{sg}</option>)}
+                                    </select>
+                                    <button onClick={() => { setPropForm({ ...o, proposal: o.proposal || {} }); setAiAssess(null); setAiCall(""); }} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="Proposal workspace" aria-label={`Open proposal for ${o.title}`}>📝</button>
+                                    <button onClick={() => setOppForm({ ...o })} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="Edit" aria-label={`Edit ${o.title}`}>✏️</button>
+                                    <button onClick={() => deleteOpportunity(o)} className="text-slate-400 hover:text-red-600 p-1 transition-colors rounded hover:bg-slate-100" title="Delete" aria-label={`Delete ${o.title}`}>
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {stageOpps.length === 0 && <p className="text-[10px] text-slate-400 italic">Empty.</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {state.opportunities.some(o => o.stage === "Declined") && (
+                  <p className="text-[11px] text-slate-400">
+                    Declined: {state.opportunities.filter(o => o.stage === "Declined").map(o => o.title).join(" · ")}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "production" && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-bold">{t("Production Stream — Clients & Quotations")}</h2>
+                <p className="text-xs text-slate-500">
+                  Earned income: clients pay AnaHon for production services. A quotation is never income —
+                  income exists only when the client's payment shows on a BLOM statement (4200 service income).
+                </p>
+              </div>
+
+              {/* Clients register */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-md font-bold text-slate-800 uppercase font-mono">👥 Client Log</h3>
+                  {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && !clientForm && (
+                    <button onClick={() => setClientForm({})} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all">
+                      ➕ Register Client
+                    </button>
+                  )}
+                </div>
+
+                {clientForm && (
+                  <form onSubmit={saveClient} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
+                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">{clientForm.id ? "✏️ Edit Client" : "➕ New Client"}</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label htmlFor="cli-name" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Client Name")}</label>
+                        <input id="cli-name" type="text" placeholder="e.g. Local NGO / company" value={clientForm.name || ""} onChange={e => setClientForm({ ...clientForm, name: e.target.value })} className="finance-input w-full font-sans text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="cli-contact" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Contact Person")}</label>
+                        <input id="cli-contact" type="text" value={clientForm.contact || ""} onChange={e => setClientForm({ ...clientForm, contact: e.target.value })} className="finance-input w-full font-sans text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="cli-email" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Email")}</label>
+                        <input id="cli-email" type="email" value={clientForm.email || ""} onChange={e => setClientForm({ ...clientForm, email: e.target.value })} className="finance-input w-full font-sans text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="cli-phone" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Phone")}</label>
+                        <input id="cli-phone" type="text" value={clientForm.phone || ""} onChange={e => setClientForm({ ...clientForm, phone: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="cli-taxid" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Tax ID (for invoicing)")}</label>
+                        <input id="cli-taxid" type="text" value={clientForm.taxId || ""} onChange={e => setClientForm({ ...clientForm, taxId: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="cli-notes" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Notes")}</label>
+                        <input id="cli-notes" type="text" value={clientForm.notes || ""} onChange={e => setClientForm({ ...clientForm, notes: e.target.value })} className="finance-input w-full font-sans text-xs" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">💾 Save Client</button>
+                      <button type="button" onClick={() => setClientForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {state.clients.map(c => {
+                    const cQuotes = state.quotations.filter(q => q.clientId === c.id);
+                    const acceptedTotal = cQuotes.filter(q => ["Accepted", "Invoiced", "Paid"].includes(q.status)).reduce((s, q) => s + q.amount, 0);
+                    return (
+                      <div key={c.id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
+                        <div className="flex items-center justify-between mb-1">
+                          <h4 className="text-sm font-bold text-slate-900">{c.name}</h4>
+                          <button onClick={() => setClientForm({ ...c })} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="Edit client" aria-label={`Edit ${c.name}`}>✏️</button>
+                        </div>
+                        {(c.contact || c.email || c.phone) && (
+                          <p className="text-xs text-slate-500">{[c.contact, c.email, c.phone].filter(Boolean).join(" · ")}</p>
+                        )}
+                        {c.taxId && <p className="text-[10px] text-slate-400 font-mono">Tax ID: {c.taxId}</p>}
+                        {c.notes && (
+                          <div className="mt-2 p-2 bg-slate-50 border border-slate-105 rounded text-[11px] text-slate-600 leading-relaxed italic">ℹ️ {c.notes}</div>
+                        )}
+                        <div className="border-t border-slate-100 mt-3 pt-2 flex justify-between text-[10px]">
+                          <span className="text-slate-400 uppercase">{cQuotes.length} quotation{cQuotes.length === 1 ? "" : "s"}</span>
+                          <strong className="font-mono text-slate-800">accepted: {formatUSD(acceptedTotal)}</strong>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {state.clients.length === 0 && <p className="text-xs text-slate-400 italic">No clients registered yet.</p>}
+                </div>
+              </div>
+
+              {/* Quotations log */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-md font-bold text-slate-800 uppercase font-mono">📄 Quotations</h3>
+                  {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && !quoteForm && (
+                    <button onClick={() => setQuoteForm({
+                      status: "Draft",
+                      currency: "USD",
+                      date: new Date().toISOString().slice(0, 10),
+                      items: [{ service: "", description: "", output: "", unitPrice: 0, qty: 1 }],
+                      terms: { financial: FINANCIAL_TERMS[1], production: PRODUCTION_NOTE, technical: TECHNICAL_NOTE, extras: EXTRAS_DEFAULT }
+                    })} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all" disabled={state.clients.length === 0}>
+                      ➕ New Quotation
+                    </button>
+                  )}
+                </div>
+
+                {quoteForm && (
+                  <form onSubmit={saveQuotation} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
+                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">{quoteForm.id ? `✏️ Edit ${quoteForm.quoteNo}` : "➕ New Quotation"}</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label htmlFor="qt-client" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Client")}</label>
+                        <select id="qt-client" value={quoteForm.clientId || ""} onChange={e => setQuoteForm({ ...quoteForm, clientId: e.target.value })} className="finance-input w-full text-xs">
+                          <option value="">— Select client —</option>
+                          {state.clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                      <div className="md:col-span-2">
+                        <label htmlFor="qt-title" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Service / Title")}</label>
+                        <input id="qt-title" type="text" placeholder="e.g. Event video production — 2-day shoot + edit" value={quoteForm.title || ""} onChange={e => setQuoteForm({ ...quoteForm, title: e.target.value })} className="finance-input w-full font-sans text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="qt-status" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Status")}</label>
+                        <select id="qt-status" value={quoteForm.status || "Draft"} onChange={e => setQuoteForm({ ...quoteForm, status: e.target.value as Quotation["status"] })} className="finance-input w-full text-xs">
+                          {QUOTE_STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="qt-no" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Quote № (automatic)")}</label>
+                        <input id="qt-no" type="text" placeholder={currentUser.role === "Super Admin" ? "blank = auto · master override" : "assigned automatically"} value={quoteForm.quoteNo || ""} onChange={e => setQuoteForm({ ...quoteForm, quoteNo: e.target.value })} disabled={!!quoteForm.id || currentUser.role !== "Super Admin"} className="finance-input w-full font-mono text-xs disabled:opacity-60" />
+                      </div>
+                      <div>
+                        <label htmlFor="qt-amount" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{quoteItems.length ? "Total (from lines)" : "Amount"}</label>
+                        <input id="qt-amount" type="number" min="0" step="any" value={quoteItems.length ? quoteTotal : (quoteForm.amount ?? "")} onChange={e => setQuoteForm({ ...quoteForm, amount: Number(e.target.value) })} disabled={quoteItems.length > 0} className="finance-input w-full font-mono text-xs disabled:opacity-60" />
+                      </div>
+                      <div>
+                        <label htmlFor="qt-currency" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Currency")}</label>
+                        <select id="qt-currency" value={quoteForm.currency || "USD"} onChange={e => setQuoteForm({ ...quoteForm, currency: e.target.value })} className="finance-input w-full text-xs">
+                          <option value="USD">USD</option>
+                          <option value="EUR">EUR</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="qt-date" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Quote Date")}</label>
+                        <input id="qt-date" type="date" value={quoteForm.date || ""} onChange={e => setQuoteForm({ ...quoteForm, date: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="qt-valid" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Valid Until")}</label>
+                        <input id="qt-valid" type="date" value={quoteForm.validUntil || ""} onChange={e => setQuoteForm({ ...quoteForm, validUntil: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label htmlFor="qt-desc" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Scope / Line Breakdown")}</label>
+                        <textarea id="qt-desc" rows={2} placeholder="What's included — deliverables, days, crew, equipment…" value={quoteForm.description || ""} onChange={e => setQuoteForm({ ...quoteForm, description: e.target.value })} className="finance-input w-full font-sans text-xs" />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label htmlFor="qt-notes" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Notes")}</label>
+                        <textarea id="qt-notes" rows={2} value={quoteForm.notes || ""} onChange={e => setQuoteForm({ ...quoteForm, notes: e.target.value })} className="finance-input w-full font-sans text-xs" />
+                      </div>
+
+                      {/* Line items — pick from the real AnaHon service catalog, everything editable */}
+                      <div className="md:col-span-4 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-600 uppercase">Line Items</span>
+                          <button type="button" onClick={() => setQuoteForm({ ...quoteForm, items: [...quoteItems, { service: "", description: "", output: "", unitPrice: 0, qty: 1 }] })} className="text-xs bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5 font-medium text-slate-700 transition-all">
+                            ➕ Add line
+                          </button>
+                        </div>
+                        {quoteItems.map((it, i) => (
+                          <div key={i} className="grid grid-cols-2 md:grid-cols-12 gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                            <div className="col-span-2 md:col-span-3">
+                              <label htmlFor={`qi-svc-${i}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Service")}</label>
+                              <select id={`qi-svc-${i}`} value={SERVICE_CATALOG.some(c => c.service === it.service) ? it.service : "__custom"} onChange={e => pickCatalogService(i, e.target.value === "__custom" ? "" : e.target.value)} className="finance-input w-full text-xs mb-1">
+                                <option value="__custom">✏️ Custom service…</option>
+                                {SERVICE_CATALOG.map(c => <option key={c.service} value={c.service}>{c.service} — ${c.unitPrice}</option>)}
+                              </select>
+                              <input aria-label={`Service name, line ${i + 1}`} type="text" placeholder="Service name" value={it.service} onChange={e => setQuoteItem(i, { service: e.target.value })} className="finance-input w-full text-xs" />
+                            </div>
+                            <div className="col-span-2 md:col-span-3">
+                              <label htmlFor={`qi-desc-${i}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Description")}</label>
+                              <textarea id={`qi-desc-${i}`} rows={3} value={it.description} onChange={e => setQuoteItem(i, { description: e.target.value })} className="finance-input w-full text-xs" />
+                            </div>
+                            <div className="col-span-2 md:col-span-3">
+                              <label htmlFor={`qi-out-${i}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Output / Deliverables")}</label>
+                              <textarea id={`qi-out-${i}`} rows={3} value={it.output} onChange={e => setQuoteItem(i, { output: e.target.value })} className="finance-input w-full text-xs" />
+                            </div>
+                            <div className="md:col-span-1">
+                              <label htmlFor={`qi-price-${i}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Unit")}</label>
+                              <input id={`qi-price-${i}`} type="number" min="0" step="any" value={it.unitPrice} onChange={e => setQuoteItem(i, { unitPrice: Number(e.target.value) })} className="finance-input w-full font-mono text-xs" />
+                            </div>
+                            <div className="md:col-span-1">
+                              <label htmlFor={`qi-qty-${i}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Qty")}</label>
+                              <input id={`qi-qty-${i}`} type="number" min="1" step="1" value={it.qty} onChange={e => setQuoteItem(i, { qty: Number(e.target.value) })} className="finance-input w-full font-mono text-xs" />
+                            </div>
+                            <div className="md:col-span-1 flex md:flex-col items-center md:items-end justify-between md:justify-start gap-1">
+                              <span className="text-[11px] font-mono font-bold text-slate-800 md:mt-6">{((Number(it.unitPrice) || 0) * (Number(it.qty) || 1)).toLocaleString()}</span>
+                              <button type="button" onClick={() => setQuoteForm({ ...quoteForm, items: quoteItems.filter((_, idx) => idx !== i) })} className="text-slate-400 hover:text-red-600 p-1 transition-colors rounded hover:bg-slate-100" title="Remove line" aria-label={`Remove line ${i + 1}`}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {quoteItems.length > 0 && (
+                          <p className="text-right text-xs font-mono font-bold text-slate-800">TOTAL: {quoteForm.currency || "USD"} {quoteTotal.toLocaleString()}</p>
+                        )}
+                      </div>
+
+                      {/* Standard note blocks — printed on the generated document */}
+                      <div className="md:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                        <div className="md:col-span-2">
+                          <span className="text-[10px] font-bold text-slate-600 uppercase">Standard Notes (printed on the document)</span>
+                        </div>
+                        <div>
+                          <label htmlFor="qt-fin" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Financial Terms")}</label>
+                          <select id="qt-fin" value={quoteTerms.financial && FINANCIAL_TERMS.includes(quoteTerms.financial) ? quoteTerms.financial : (quoteTerms.financial ? "__custom" : "")} onChange={e => { if (e.target.value !== "__custom") setQuoteTerms({ financial: e.target.value }); }} className="finance-input w-full text-xs mb-1">
+                            <option value="">— None —</option>
+                            {FINANCIAL_TERMS.map(t => <option key={t} value={t}>{t.slice(0, 70)}…</option>)}
+                            <option value="__custom">✏️ Custom…</option>
+                          </select>
+                          <textarea aria-label="Financial terms text" rows={2} value={quoteTerms.financial || ""} onChange={e => setQuoteTerms({ financial: e.target.value })} className="finance-input w-full text-xs" />
+                        </div>
+                        <div>
+                          <label htmlFor="qt-extras" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Extras (upsells)")}</label>
+                          <textarea id="qt-extras" rows={2} value={quoteTerms.extras || ""} onChange={e => setQuoteTerms({ extras: e.target.value })} className="finance-input w-full text-xs" />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input type="checkbox" id="qt-prod" checked={!!quoteTerms.production} onChange={e => setQuoteTerms({ production: e.target.checked ? PRODUCTION_NOTE : "" })} />
+                          <label htmlFor="qt-prod" className="text-xs text-slate-700">{t("Production notes (2 modification sets included, +$30/extra)")}</label>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input type="checkbox" id="qt-tech" checked={!!quoteTerms.technical} onChange={e => setQuoteTerms({ technical: e.target.checked ? TECHNICAL_NOTE : "" })} />
+                          <label htmlFor="qt-tech" className="text-xs text-slate-700">{t("Technical notes (Sony full-frame, HD/4K, licensed music)")}</label>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">💾 Save Quotation</button>
+                      <button type="button" onClick={() => setQuoteForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
+                    </div>
+                  </form>
+                )}
+
+                {/* Payment-match suggestions: unclaimed statement deposits whose account
+                    currency + amount (±1%) fit an open quote. Human confirms — never auto-linked. */}
+                {(() => {
+                  const claimedTx = new Set(state.quotations.map(q => q.paymentTxId).filter(Boolean));
+                  const suggestions = state.quotations
+                    .filter(q => !q.paymentTxId && ["Sent", "Accepted", "Invoiced"].includes(q.status))
+                    .map(q => ({
+                      q,
+                      txs: state.bankTransactions.filter(bt =>
+                        bt.type === "Deposit" && !bt.pending && !bt.projectId && !claimedTx.has(bt.id) &&
+                        (state.bankAccounts.find(ba => ba.id === bt.bankAccountId)?.currency || "USD") === q.currency &&
+                        Math.abs(bt.amount - q.amount) <= Math.max(1, q.amount * 0.01))
+                    }))
+                    .filter(s => s.txs.length > 0);
+                  if (!suggestions.length) return null;
+                  return (
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                      <p className="text-[11px] font-bold text-amber-800 uppercase">🏦 Possible payment matches on the bank statement</p>
+                      {suggestions.map(({ q, txs }) => txs.map(tx => {
+                        const acct = state.bankAccounts.find(ba => ba.id === tx.bankAccountId);
+                        return (
+                          <div key={`${q.id}-${tx.id}`} className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
+                            <span><strong>{q.quoteNo}</strong> ({q.currency} {q.amount.toLocaleString()}) ↔ deposit {tx.date} · {formatIn(tx.amount, acct?.currency || "USD")} · "{tx.description.slice(0, 50)}"</span>
+                            {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && (
+                              <button onClick={() => linkQuotePayment(q, tx.id)} className="bg-emerald-600 text-white text-[10px] font-bold rounded px-2 py-1 hover:bg-emerald-700 transition-all">
+                                ✓ Confirm settlement
+                              </button>
+                            )}
+                          </div>
+                        );
+                      }))}
+                    </div>
+                  );
+                })()}
+
+                {/* Off-bank settlement: OMT / BOB / Whish / cash. Evidence ref mandatory. */}
+                {settleForm && (
+                  <form onSubmit={submitOffbankSettlement} className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
+                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">💵 Record off-bank payment — {settleForm.q.quoteNo}</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <label htmlFor="st-method" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Method")}</label>
+                        <select id="st-method" value={settleForm.method} onChange={e => setSettleForm({ ...settleForm, method: e.target.value })} className="finance-input w-full text-xs">
+                          {["OMT", "BOB Finance", "Whish", "Cash"].map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="st-ref" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{settleForm.method === "Cash" ? "Signed receipt №" : "Transfer reference"}</label>
+                        <input id="st-ref" type="text" required placeholder={settleForm.method === "Cash" ? "receipt number" : "e.g. 512-045-8198"} value={settleForm.reference} onChange={e => setSettleForm({ ...settleForm, reference: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="st-date" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Received on")}</label>
+                        <input id="st-date" type="date" value={settleForm.date} onChange={e => setSettleForm({ ...settleForm, date: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="st-amount" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Amount received ({settleForm.q.currency})</label>
+                        <input id="st-amount" type="number" min="0" step="any" value={settleForm.amount} onChange={e => setSettleForm({ ...settleForm, amount: Number(e.target.value) })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-400">Recorded as a deposit on the off-bank evidence account (like the FPU BOB Finance tranches). No evidence reference, no booking.</p>
+                    <div className="flex gap-2">
+                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">💾 Record settlement</button>
+                      <button type="button" onClick={() => setSettleForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
+                    </div>
+                  </form>
+                )}
+
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-[10px] uppercase text-slate-500">
+                        <th scope="col" className="p-3">Quote №</th>
+                        <th scope="col" className="p-3">Date</th>
+                        <th scope="col" className="p-3">Client</th>
+                        <th scope="col" className="p-3">Service</th>
+                        <th scope="col" className="p-3 text-right">Amount</th>
+                        <th scope="col" className="p-3">Valid Until</th>
+                        <th scope="col" className="p-3">Status</th>
+                        <th scope="col" className="p-3">Payment</th>
+                        <th scope="col" className="p-3"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {state.quotations.sort((a, b) => b.date.localeCompare(a.date)).map(q => {
+                        const client = state.clients.find(c => c.id === q.clientId);
+                        return (
+                          <tr key={q.id} className="border-b border-slate-100 hover:bg-slate-50">
+                            <td className="p-3 font-mono font-bold text-slate-700">{q.quoteNo}</td>
+                            <td className="p-3 font-mono text-slate-500">{q.date}</td>
+                            <td className="p-3 text-slate-700">{client?.name || q.clientId}</td>
+                            <td className="p-3 text-slate-700">{q.title}</td>
+                            <td className="p-3 text-right font-mono font-bold text-slate-800">{q.currency} {q.amount.toLocaleString()}</td>
+                            <td className="p-3 font-mono text-slate-500">{q.validUntil || "—"}</td>
+                            <td className="p-3">
+                              {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) ? (
+                                <select value={q.status} onChange={e => moveQuotation(q, e.target.value)} className="finance-input text-[10px] py-1" aria-label={`Status for ${q.quoteNo}`}>
+                                  {QUOTE_STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
+                                </select>
+                              ) : (
+                                <span className="text-[10px] font-bold">{q.status}</span>
+                              )}
+                            </td>
+                            <td className="p-3 whitespace-nowrap">
+                              {q.paymentTxId ? (() => {
+                                const tx = state.bankTransactions.find(bt => bt.id === q.paymentTxId);
+                                return (
+                                  <span className="text-[10px] font-bold text-emerald-700">
+                                    🏦 settled {tx?.date || ""}
+                                    {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                                      <button onClick={() => linkQuotePayment(q, "")} className="ml-1 text-slate-400 hover:text-red-600" title="Unlink payment" aria-label={`Unlink payment for ${q.quoteNo}`}>✕</button>
+                                    )}
+                                  </span>
+                                );
+                              })() : (
+                                <span className="inline-flex items-center gap-1">
+                                  <span className="text-[10px] text-slate-400">—</span>
+                                  {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && !["Rejected", "Expired"].includes(q.status) && (
+                                    <button onClick={() => setSettleForm({ q, method: "OMT", reference: "", date: new Date().toLocaleDateString("en-CA"), amount: q.amount })} className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100" title="Record off-bank payment (OMT / BOB / Whish / cash)" aria-label={`Record off-bank payment for ${q.quoteNo}`}>💵</button>
+                                  )}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-3 whitespace-nowrap">
+                              <button onClick={() => generateQuoteDoc(q)} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="Generate client document" aria-label={`Generate document for ${q.quoteNo}`}>📄</button>
+                              <button onClick={() => setQuoteForm({ ...q })} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="Edit" aria-label={`Edit ${q.quoteNo}`}>✏️</button>
+                              <button onClick={() => deleteQuotation(q)} className="text-slate-400 hover:text-red-600 p-1 transition-colors rounded hover:bg-slate-100" title="Delete" aria-label={`Delete ${q.quoteNo}`}>
+                                <Trash2 className="h-3.5 w-3.5 inline" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {state.quotations.length === 0 && (
+                        <tr><td colSpan={9} className="p-4 text-center text-slate-400 italic">No quotations yet — register a client, then create the first quote.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  💡 When an accepted quote is delivered and invoiced, the client's payment arrives on the BLOM
+                  statement and books as service income (4200) — same route as the SKF service payments.
+                </p>
+              </div>
+            </div>
+          )}
+
           {activeTab === "expenses" && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold">Official Procurement & Disbursement Vouchers</h2>
+                <h2 className="text-xl font-bold">{t("Official Procurement & Disbursement Vouchers")}</h2>
                 <p className="text-xs text-slate-500">Every item must be fully supported by digital quotes, conflict declaration checks, project mapping and mult-level signatures.</p>
               </div>
 
               {/* Expense submission Drawer form */}
-              {["Super Admin", "Finance Officer", "Project Lead"].includes(currentUser.role) && (
+              {["Super Admin", "Finance Officer", "Project Lead", "Project Officer"].includes(currentUser.role) && (
                 <div className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm">
                   <h3 className="text-sm font-bold text-slate-950 uppercase border-b border-slate-100 pb-2 mb-4">Lodge Disbursement Voucher PV-2026</h3>
                   <form onSubmit={handleExpenseSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Expenditure Purpose Title</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t("Expenditure Purpose Title")}</label>
                       <input
                         type="text"
                         placeholder="e.g. Media panel catering"
@@ -3065,8 +5770,94 @@ export default function App() {
                         className="finance-input w-full"
                       />
                     </div>
+                    {Number(expenseAmount) > 300 && (
+                      <div className="md:col-span-2">
+                        <label htmlFor="exp-procurement" className="block text-xs font-bold text-slate-700 mb-1">
+                          Procurement authority <span className="font-normal text-slate-500">(required above USD 300 — Policy 7.2)</span>
+                        </label>
+                        <select
+                          id="exp-procurement"
+                          value={expenseProcurement}
+                          onChange={(e) => setExpenseProcurement(e.target.value)}
+                          className="finance-input w-full"
+                        >
+                          <option value="">— Select the approved comparison or waiver —</option>
+                          {state.procurements
+                            .filter(pr => pr.status === "Approved" && pr.projectId === expenseProject)
+                            .map(pr => (
+                              <option key={pr.id} value={pr.id}>
+                                {pr.title}{(pr as any).singleSource ? " — SINGLE SOURCE (waiver)" : " — 3-quote comparison"}
+                              </option>
+                            ))}
+                        </select>
+                        {expenseProject && !expenseProcurement && !inlineWaiver && (
+                          <p className="text-[10px] text-slate-500 mt-1">
+                            Three quotations? Lodge the comparison in Procurement &amp; Bids.{" "}
+                            Competition genuinely not possible?{" "}
+                            <button
+                              type="button"
+                              onClick={() => setInlineWaiver({ vendorName: "", amount: expenseAmount || "", reason: "", retrospective: false })}
+                              className="font-bold text-amber-700 hover:underline"
+                            >
+                              ＋ raise a single-source waiver here
+                            </button>
+                          </p>
+                        )}
+
+                        {inlineWaiver && (
+                          <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                            <p className="text-[11px] font-bold text-amber-900">Single-source waiver — competition was not possible</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                              <input
+                                type="text"
+                                placeholder="Supplier this waiver covers"
+                                aria-label="Waiver supplier"
+                                value={inlineWaiver.vendorName}
+                                onChange={(e) => setInlineWaiver({ ...inlineWaiver, vendorName: e.target.value })}
+                                className="finance-input w-full text-xs"
+                              />
+                              <input
+                                type="number"
+                                placeholder="Price covered (USD)"
+                                aria-label="Waiver amount"
+                                value={inlineWaiver.amount}
+                                onChange={(e) => setInlineWaiver({ ...inlineWaiver, amount: e.target.value })}
+                                className="finance-input w-full font-mono text-xs"
+                              />
+                            </div>
+                            <textarea
+                              rows={2}
+                              aria-label="Waiver justification"
+                              placeholder="Why competition was not possible, and how you judged the price reasonable (min. 30 characters)"
+                              value={inlineWaiver.reason}
+                              onChange={(e) => setInlineWaiver({ ...inlineWaiver, reason: e.target.value })}
+                              className="finance-input w-full text-xs"
+                            />
+                            <label className="flex items-center gap-2 text-[11px] text-amber-900">
+                              <input
+                                type="checkbox"
+                                checked={inlineWaiver.retrospective}
+                                onChange={(e) => setInlineWaiver({ ...inlineWaiver, retrospective: e.target.checked })}
+                              />
+                              The purchase was already made — record this waiver as retrospective
+                            </label>
+                            <div className="flex gap-2">
+                              <button type="button" onClick={submitInlineWaiver} className="bg-amber-700 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-amber-800 transition-all">
+                                Save waiver &amp; attach
+                              </button>
+                              <button type="button" onClick={() => setInlineWaiver(null)} className="bg-slate-100 text-slate-600 text-xs font-medium rounded-lg px-3 py-2 hover:bg-slate-200 transition-all">
+                                Cancel
+                              </button>
+                            </div>
+                            <p className="text-[10px] text-amber-800">
+                              Creates the same procurement record as the Bids tab — approved on the spot if your role allows, otherwise sent for approval. Recorded in the audit trail either way.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Accompanying Justification / Sinking rationale</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t("Accompanying Justification / Sinking rationale")}</label>
                       <input
                         type="text"
                         placeholder="Why this expense is needed"
@@ -3076,20 +5867,20 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Target Project Mapping</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t("Target Project Mapping")}</label>
                       <select
                         value={expenseProject}
                         onChange={(e) => setExpenseProject(e.target.value)}
                         className="finance-input w-full"
                       >
                         <option value="">-- Select Project Sinking Code --</option>
-                        {state.projects.map(p => (
+                        {requestableProjects.map(p => (
                           <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
                         ))}
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Sub-Budget designated line</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t("Sub-Budget designated line")}</label>
                       <select
                         value={expenseBudgetLine}
                         onChange={(e) => setExpenseBudgetLine(e.target.value)}
@@ -3102,7 +5893,7 @@ export default function App() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Vendor list / Contract partner</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t("Vendor list / Contract partner")}</label>
                       <select
                         value={expenseVendor}
                         onChange={(e) => setExpenseVendor(e.target.value)}
@@ -3115,7 +5906,7 @@ export default function App() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Requested Currency</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t("Requested Currency")}</label>
                       <select
                         value={expenseCurrency}
                         onChange={(e) => setExpenseCurrency(e.target.value as any)}
@@ -3127,7 +5918,7 @@ export default function App() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Amount Value</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t("Amount Value")}</label>
                       <input
                         type="number"
                         placeholder="Amount"
@@ -3155,10 +5946,10 @@ export default function App() {
                       </div>
                     )}
                     <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">Attach supporting Invoice/Agreement (PDF)</label>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t("Attach supporting Invoice/Agreement (PDF, PNG or JPEG)")}</label>
                       <input
                         type="file"
-                        accept="application/pdf"
+                        accept="application/pdf,image/png,image/jpeg"
                         onChange={handleFileDrop}
                         className="finance-input w-full text-xs"
                       />
@@ -3202,7 +5993,7 @@ export default function App() {
                           {splitAllocations.map((alloc, idx) => (
                             <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Allocation Project</label>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">{t("Allocation Project")}</label>
                                 <select
                                   value={alloc.projectId}
                                   onChange={(e) => {
@@ -3214,13 +6005,13 @@ export default function App() {
                                   className="finance-input w-full text-xs bg-white"
                                 >
                                   <option value="">-- Select Project --</option>
-                                  {state.projects.map(p => (
+                                  {requestableProjects.map(p => (
                                     <option key={p.id} value={p.id}>{p.code} - {p.name}</option>
                                   ))}
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Budget Line mapping</label>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">{t("Budget Line mapping")}</label>
                                 <select
                                   value={alloc.budgetLineId}
                                   onChange={(e) => {
@@ -3237,7 +6028,7 @@ export default function App() {
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Percentage Split (%)</label>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">{t("Percentage Split (%)")}</label>
                                 <input
                                   type="number"
                                   min="1"
@@ -3298,17 +6089,42 @@ export default function App() {
 
               {/* Vouchers directory */}
               <div className="space-y-4">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center justify-between gap-4 flex-wrap">
                   <h3 className="text-md font-bold text-slate-950 uppercase font-mono">Ledger Vouchers Logs</h3>
-                  <div className="flex items-center gap-2 bg-white px-3 py-1.5 border border-slate-200 rounded-lg max-w-xs">
-                    <Search className="h-4 w-4 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Search voucher history..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="text-xs outline-none bg-transparent"
-                    />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 border border-slate-200 rounded-lg max-w-xs">
+                      <Search className="h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search voucher history..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="text-xs outline-none bg-transparent"
+                      />
+                    </div>
+                    <input type="date" title="From date" value={vFilter.from}
+                      onChange={(e) => setVFilter({ ...vFilter, from: e.target.value })}
+                      className="text-xs bg-white px-2 py-1.5 border border-slate-200 rounded-lg" />
+                    <input type="date" title="To date" value={vFilter.to}
+                      onChange={(e) => setVFilter({ ...vFilter, to: e.target.value })}
+                      className="text-xs bg-white px-2 py-1.5 border border-slate-200 rounded-lg" />
+                    <select value={vFilter.type}
+                      onChange={(e) => setVFilter({ ...vFilter, type: e.target.value })}
+                      className="text-xs bg-white px-2 py-1.5 border border-slate-200 rounded-lg">
+                      <option value="">All types</option>
+                      {voucherTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    <select value={vFilter.status}
+                      onChange={(e) => setVFilter({ ...vFilter, status: e.target.value })}
+                      className="text-xs bg-white px-2 py-1.5 border border-slate-200 rounded-lg">
+                      <option value="">All statuses</option>
+                      {voucherStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    {(vFilter.from || vFilter.to || vFilter.type || vFilter.status) && (
+                      <button onClick={() => setVFilter({ from: "", to: "", type: "", status: "" })}
+                        className="text-xs text-red-600 font-bold px-2 py-1.5 hover:underline">Clear</button>
+                    )}
+                    <span className="text-[10px] font-mono text-slate-500">{filteredExpenses.length} shown</span>
                   </div>
                 </div>
 
@@ -3318,9 +6134,25 @@ export default function App() {
                     const proj = state?.projects?.find(p => p.id === exp.projectId);
                     const expComments = exp.comments && Array.isArray(exp.comments) ? exp.comments : [];
                     const expAllocations = exp.allocations && Array.isArray(exp.allocations) ? exp.allocations : [];
+                    // Bills vs. supporting proof — filed separately, listed separately.
+                    const expDocs = state.documents.filter(d => d.linkedRecordType === "Expense" && d.linkedRecordId === exp.id);
+                    const expEvidence = expDocs.filter(d => d.category === "Evidence");
+                    const expInvoices = expDocs.filter(d => d.category !== "Evidence");
+
+                    const conflict = selfDealing(exp);
 
                     return (
-                      <div key={exp.id} className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
+                      <div key={exp.id} className={`p-6 bg-white border rounded-xl shadow-sm space-y-4 ${conflict ? "border-amber-300 ring-1 ring-amber-200" : "border-slate-200"}`}>
+                        {conflict && (
+                          <div className="flex items-start gap-2 -mt-1 p-2.5 bg-amber-50 border border-amber-200 rounded-lg">
+                            <span className="text-sm leading-none pt-0.5">⚠️</span>
+                            <p className="text-[11px] text-amber-900 leading-relaxed">
+                              <strong>Related-party voucher.</strong> {conflict.name} raised this and is also the payee
+                              ({vendor?.name || "this provider"}). Permitted — they cannot approve it themselves (§4.3) — but
+                              confirm the deliverable and rate against their service agreement before signing.
+                            </p>
+                          </div>
+                        )}
                         <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-3 gap-2">
                           <div>
                             <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold font-mono mr-2">{exp.voucherNo || "PV-N/A"}</span>
@@ -3543,10 +6375,63 @@ export default function App() {
                           )}
 
                           {/* Render voucher PDF details */}
-                          <div className="ml-auto text-xs text-slate-500 font-mono flex items-center gap-1">
-                            {exp.hasAttachment ? "📄 Invoice Attachments secured" : "⚠️ Attachments required to close"}
+                          <div className="ml-auto text-xs text-slate-500 font-mono flex items-center gap-1 flex-wrap justify-end">
+                            {expInvoices.length
+                              ? `📄 Invoice secured${expInvoices.length > 1 ? ` (${expInvoices.length})` : ""}`
+                              : "⚠️ Invoice required to close"}
+                            {["Super Admin", "Finance Officer", "Project Lead", "Project Officer"].includes(currentUser.role) && (<>
+                              <label className="text-red-650 hover:underline font-bold cursor-pointer inline-flex items-center min-h-[44px] px-2" title="The bill itself">
+                                🧾 {expInvoices.length ? "Add invoice" : "Attach invoice"}
+                                <input
+                                  type="file"
+                                  accept="image/*,application/pdf"
+                                  multiple
+                                  className="hidden"
+                                  aria-label={`Attach invoice to ${exp.voucherNo}`}
+                                  onChange={(ev) => handleVoucherDocUpload(ev, exp.id, exp.voucherNo, "Invoice")}
+                                />
+                              </label>
+                              {state.vendors.find(v => v.id === exp.vendorId)?.engageable && (
+                                <button
+                                  onClick={() => generateProviderDoc(exp.id, exp.voucherNo)}
+                                  className="text-emerald-700 hover:underline font-bold inline-flex items-center min-h-[44px] px-2"
+                                  title="Generate the provider's service invoice & payment receipt for signature"
+                                >
+                                  🖨️ Provider invoice
+                                </button>
+                              )}
+                              <label className="text-slate-500 hover:underline font-bold cursor-pointer inline-flex items-center min-h-[44px] px-2" title="Distribution lists, delivery notes, photos of the purchase">
+                                📷 Evidence{expEvidence.length ? ` (${expEvidence.length})` : ""}
+                                <input
+                                  type="file"
+                                  accept="image/*,application/pdf"
+                                  multiple
+                                  className="hidden"
+                                  aria-label={`Attach supporting evidence to ${exp.voucherNo}`}
+                                  onChange={(ev) => handleVoucherDocUpload(ev, exp.id, exp.voucherNo, "Evidence")}
+                                />
+                              </label>
+                            </>)}
                           </div>
                         </div>
+
+                        {expDocs.length > 0 && (
+                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] px-1">
+                            {expDocs.map(d => (
+                              <a
+                                key={d.id}
+                                href={`/api/document/content/${d.id}`}
+                                target="_blank" onClick={e => { e.preventDefault(); openDoc(d); }}
+                                rel="noreferrer"
+                                className="text-slate-500 hover:text-red-650 hover:underline inline-flex items-center gap-1"
+                                title={`${d.category} · ${d.sizeStr}`}
+                              >
+                                {d.category === "Evidence" ? "📷" : "🧾"} {d.filename}
+                                {d.refNo && <span className="font-mono text-slate-400">{d.refNo}</span>}
+                              </a>
+                            ))}
+                          </div>
+                        )}
 
                         {/* Audit Trail Timeline and Internal conversations */}
                         {expComments.length > 0 && (
@@ -3574,15 +6459,15 @@ export default function App() {
           {activeTab === "procurement" && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold">Tripoli Sourcing & RFQ Comparative Sheets</h2>
+                <h2 className="text-xl font-bold">{t("Tripoli Sourcing & RFQ Comparative Sheets")}</h2>
                 <p className="text-xs text-slate-500">Internal policy (Section 7.2) demands at least 3 compared quotations for any procurement exceeding 300 USD. Stricter donor thresholds apply on top when required.</p>
               </div>
 
               {/* Submit bid comparison */}
-              {["Super Admin", "Finance Officer", "Project Lead"].includes(currentUser.role) && (
+              {["Super Admin", "Finance Officer", "Project Lead", "Project Officer"].includes(currentUser.role) && (
                 <form onSubmit={handleProcurementSubmit} className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Comparative RFQ Title</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t("Comparative RFQ Title")}</label>
                     <input
                       type="text"
                       placeholder="e.g. Sourcing 3 tripod screens"
@@ -3592,20 +6477,20 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Vessel Project Mapping</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t("Vessel Project Mapping")}</label>
                     <select
                       value={procProject}
                       onChange={(e) => setProcProject(e.target.value)}
                       className="finance-input w-full"
                     >
                       <option value="">-- Select Project Sinking Code --</option>
-                      {state.projects.map(p => (
+                      {requestableProjects.map(p => (
                         <option key={p.id} value={p.id}>{p.code}</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Sub-Budget Mapping</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t("Sub-Budget Mapping")}</label>
                     <select
                       value={procBudgetLine}
                       onChange={(e) => setProcBudgetLine(e.target.value)}
@@ -3674,8 +6559,54 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* Sourced Option C — Policy 7.2 needs three compared bids */}
                   <div className="border border-slate-105 p-3 rounded bg-slate-50 space-y-2">
-                    <label className="block text-xs font-bold text-slate-700">Audit Justification Memo</label>
+                    <span className="text-[10px] font-bold text-slate-500 block">THIRD COMPETING BID</span>
+                    <input
+                      type="text"
+                      placeholder="Vendor C Name"
+                      value={procVendorC}
+                      onChange={(e) => setProcVendorC(e.target.value)}
+                      className="finance-input w-full bg-white"
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="number"
+                        placeholder="Bid USD"
+                        value={procAmountC}
+                        onChange={(e) => setProcAmountC(e.target.value)}
+                        className="finance-input w-full bg-white font-mono"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Rating %"
+                        value={procScoreC}
+                        onChange={(e) => setProcScoreC(e.target.value)}
+                        className="finance-input w-full bg-white font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Single-source waiver — documented exception, never a silent bypass */}
+                  <div className="md:col-span-3 border border-amber-200 bg-amber-50 p-3 rounded space-y-2">
+                    <label className="flex items-center gap-2 text-xs font-bold text-amber-900">
+                      <input
+                        type="checkbox"
+                        checked={procSingleSource}
+                        onChange={(e) => setProcSingleSource(e.target.checked)}
+                      />
+                      Single source — competition was not possible
+                    </label>
+                    <p className="text-[10px] text-amber-800">
+                      Tick only when fewer than three quotations are genuinely obtainable (sole supplier, emergency response,
+                      a cooperative that issues the coupons). A written reason of at least 30 characters is required below,
+                      it is approved as a waiver, and it is recorded in the audit trail — donors accept a justified
+                      exception, not a missing comparison.
+                    </p>
+                  </div>
+
+                  <div className="border border-slate-105 p-3 rounded bg-slate-50 space-y-2">
+                    <label className="block text-xs font-bold text-slate-700">{t("Audit Justification Memo")}</label>
                     <textarea
                       placeholder="Memo rationale..."
                       value={procJustification}
@@ -3735,8 +6666,9 @@ export default function App() {
                       ))}
                     </div>
 
-                    <div className="mt-3 p-3 bg-slate-100 text-xs rounded text-slate-700 font-mono italic">
-                      ℹ️ <strong>Selection Memo:</strong> "{pr.justification}"
+                    <div className={`mt-3 p-3 text-xs rounded font-mono italic ${(pr as any).singleSource ? "bg-amber-50 border border-amber-200 text-amber-900" : "bg-slate-100 text-slate-700"}`}>
+                      {(pr as any).singleSource ? "⚠️" : "ℹ️"} <strong>{(pr as any).singleSource ? "Single-source waiver — competition waived. Stated reason:" : "Selection Memo:"}</strong> "{pr.justification}"
+                      {(pr as any).approvedBy && <span className="block mt-1 not-italic text-[10px]">Approved by {(pr as any).approvedBy}</span>}
                     </div>
 
                     {pr.status === "Under Evaluation" && ["Super Admin", "Program Director"].includes(currentUser.role) && (
@@ -3775,6 +6707,177 @@ export default function App() {
                 </p>
               </div>
 
+              {/* ── Subscriptions & renewals ─────────────────────────────────
+                  Small recurring charges are the easiest money to lose track of:
+                  each one is trivial, the total is not. */}
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">🔁 Subscriptions & Renewals</h3>
+                  <div className="flex items-center gap-2">
+                    {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                      <>
+                        <button type="button" disabled={subBusy} onClick={detectSubscriptions}
+                          className="text-xs font-medium bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-2 disabled:opacity-50 transition-all">
+                          {subBusy ? "Scanning…" : "🔍 Find in statements"}
+                        </button>
+                        <button type="button" onClick={() => setSubForm({ name: "", amount: "", currency: "USD", cycle: "Monthly", nextRenewal: "", status: "Active", bankAccountId: "ba-blom-usd", matchText: "", notes: "" })}
+                          className="text-xs font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 py-2 transition-all">
+                          ➕ Track a subscription
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {(() => {
+                  const active = state.subscriptions.filter(x => x.status === "Active");
+                  const monthly = active.reduce((sum, x) => sum + (x.amount || 0) / (x.cycle === "Annual" ? 12 : x.cycle === "Quarterly" ? 3 : 1), 0);
+                  if (!active.length) return null;
+                  return (
+                    <div className="flex flex-wrap gap-4 text-xs">
+                      <span className="text-slate-500">Active: <strong className="text-slate-800">{active.length}</strong></span>
+                      <span className="text-slate-500">Monthly equivalent: <strong className="font-mono text-slate-800">{formatUSD(monthly)}</strong></span>
+                      <span className="text-slate-500">Annualised: <strong className="font-mono text-slate-800">{formatUSD(monthly * 12)}</strong></span>
+                    </div>
+                  );
+                })()}
+
+                {subForm && (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                    <div className="md:col-span-2">
+                      <label htmlFor="sb-name" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Subscription</label>
+                      <input id="sb-name" type="text" placeholder="e.g. Anthropic Claude Max" value={subForm.name}
+                        onChange={e => setSubForm({ ...subForm, name: e.target.value })} className="finance-input w-full text-xs" />
+                    </div>
+                    <div>
+                      <label htmlFor="sb-amt" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Amount</label>
+                      <input id="sb-amt" type="number" min="0" step="any" value={subForm.amount}
+                        onChange={e => setSubForm({ ...subForm, amount: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                    </div>
+                    <div>
+                      <label htmlFor="sb-cycle" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Cycle</label>
+                      <select id="sb-cycle" value={subForm.cycle} onChange={e => setSubForm({ ...subForm, cycle: e.target.value })} className="finance-input w-full text-xs">
+                        <option>Monthly</option><option>Quarterly</option><option>Annual</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor="sb-next" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Next renewal</label>
+                      <input id="sb-next" type="date" value={subForm.nextRenewal}
+                        onChange={e => setSubForm({ ...subForm, nextRenewal: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                    </div>
+                    <div>
+                      <label htmlFor="sb-acct" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Paid from</label>
+                      <select id="sb-acct" value={subForm.bankAccountId} onChange={e => setSubForm({ ...subForm, bankAccountId: e.target.value })} className="finance-input w-full text-xs">
+                        <option value="">—</option>
+                        {state.bankAccounts.filter(b => b.active).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label htmlFor="sb-note" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Note (optional)</label>
+                      <input id="sb-note" type="text" value={subForm.notes} onChange={e => setSubForm({ ...subForm, notes: e.target.value })} className="finance-input w-full text-xs" />
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={() => saveSubscription(subForm)} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all">💾 Save</button>
+                      <button type="button" onClick={() => setSubForm(null)} className="bg-slate-100 text-slate-600 text-xs font-medium rounded-lg px-3 py-2 hover:bg-slate-200 transition-all">Cancel</button>
+                    </div>
+                  </div>
+                )}
+
+                {subSuggestions && (
+                  <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-2">
+                    <p className="text-[11px] font-bold text-indigo-900">Recurring merchants on the statements — not yet tracked</p>
+                    {subSuggestions.length === 0 && <p className="text-[11px] text-indigo-700">Nothing untracked found.</p>}
+                    {subSuggestions.map(sug => (
+                      <div key={sug.key} className="flex flex-wrap items-center justify-between gap-2 text-xs bg-white border border-indigo-100 rounded px-2 py-1.5">
+                        <span className="text-slate-700">
+                          <strong>{sug.key}</strong> · {sug.charges} charges · last {sug.lastCharge} · typically {formatUSD(sug.typicalAmount)}
+                          {sug.varies && <span className="text-amber-700"> (amount varies)</span>} · looks {sug.cycle.toLowerCase()}
+                        </span>
+                        <button type="button"
+                          onClick={() => { setSubForm({ name: sug.key, amount: String(sug.typicalAmount), currency: "USD", cycle: sug.cycle, nextRenewal: sug.suggestedNextRenewal, status: "Active", bankAccountId: sug.bankAccountId, matchText: sug.key, notes: `Detected from ${sug.charges} statement charges; last ${sug.lastCharge}.` }); setSubSuggestions(null); }}
+                          className="text-[11px] font-bold text-indigo-700 hover:underline">＋ track this</button>
+                      </div>
+                    ))}
+                    <button type="button" onClick={() => setSubSuggestions(null)} className="text-[10px] text-slate-500 hover:underline">close</button>
+                  </div>
+                )}
+
+                {state.subscriptions.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">Nothing tracked yet — "Find in statements" proposes the recurring charges already on your bank feed.</p>
+                ) : (
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-[10px] uppercase text-slate-500">
+                        <th scope="col" className="p-2">Subscription</th>
+                        <th scope="col" className="p-2 text-right">Amount</th>
+                        <th scope="col" className="p-2">Cycle</th>
+                        <th scope="col" className="p-2">Next renewal</th>
+                        <th scope="col" className="p-2">Paid from</th>
+                        <th scope="col" className="p-2">Status</th>
+                        <th scope="col" className="p-2">Still active?</th>
+                        <th scope="col" className="p-2"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {state.subscriptions.slice().sort((a, b) => (a.nextRenewal || "9999").localeCompare(b.nextRenewal || "9999")).map(sub => {
+                        const days = subDaysLeft(sub.nextRenewal);
+                        const overdue = days !== null && days < 0 && sub.status === "Active";
+                        const soon = days !== null && days >= 0 && days <= 7 && sub.status === "Active";
+                        return (
+                          <tr key={sub.id} className={`border-b border-slate-100 ${overdue ? "bg-red-50" : soon ? "bg-amber-50" : ""}`}>
+                            <td className="p-2 font-bold text-slate-800">{sub.name}{sub.notes && <span className="block text-[10px] font-normal text-slate-400">{sub.notes}</span>}</td>
+                            <td className="p-2 text-right font-mono">{sub.currency} {sub.amount.toLocaleString()}</td>
+                            <td className="p-2 text-slate-600">{sub.cycle}</td>
+                            <td className="p-2 font-mono">
+                              {sub.nextRenewal || "—"}
+                              {sub.status === "Active" && days !== null && (
+                                <span className={`block text-[10px] font-bold ${overdue ? "text-red-700" : soon ? "text-amber-700" : "text-slate-400"}`}>
+                                  {overdue ? `${Math.abs(days)}d overdue` : days === 0 ? "renews today" : `in ${days}d`}
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-2 text-slate-500">{state.bankAccounts.find(b => b.id === sub.bankAccountId)?.name || "—"}</td>
+                            <td className="p-2">
+                              <select value={sub.status} onChange={e => saveSubscription({ ...sub, status: e.target.value })}
+                                aria-label={`Status for ${sub.name}`} className="finance-input text-[10px] py-1">
+                                <option>Active</option><option>Paused</option><option>Cancelled</option>
+                              </select>
+                            </td>
+                            <td className="p-2 whitespace-nowrap">
+                              {(() => {
+                                const v = (sub as any).verifiedOn;
+                                const vDays = v ? Math.floor((Date.now() - new Date(`${v}T00:00:00`).getTime()) / 86400000) : null;
+                                const stale = vDays === null || vDays > 90;
+                                return (
+                                  <span className="inline-flex items-center gap-1">
+                                    <button onClick={() => verifySubscription(sub, true)} title="Confirm it is still running today"
+                                      className="text-[10px] font-bold text-emerald-700 hover:underline">✓ yes</button>
+                                    <button onClick={() => { if (window.confirm(`Mark ${sub.name} as no longer running?`)) verifySubscription(sub, false); }}
+                                      title="No longer running — mark cancelled"
+                                      className="text-[10px] font-bold text-slate-400 hover:text-red-600 hover:underline">✕ no</button>
+                                    <span className={`block text-[9px] ${stale ? "text-amber-700 font-bold" : "text-slate-400"}`}>
+                                      {v ? (vDays === 0 ? "checked today" : `checked ${vDays}d ago`) : "never checked"}
+                                    </span>
+                                  </span>
+                                );
+                              })()}
+                            </td>
+                            <td className="p-2 whitespace-nowrap">
+                              {sub.nextRenewal && sub.status === "Active" && (
+                                <button onClick={() => rollSubscription(sub)} title="Paid — roll to the next period" aria-label={`Roll ${sub.name} forward`}
+                                  className="text-emerald-700 hover:underline font-bold px-1">✓ paid</button>
+                              )}
+                              <button onClick={() => setSubForm({ ...sub, amount: String(sub.amount) })} title="Edit" aria-label={`Edit ${sub.name}`} className="text-slate-400 hover:text-slate-700 px-1">✏️</button>
+                              <button onClick={() => deleteSubscription(sub)} title="Stop tracking" aria-label={`Stop tracking ${sub.name}`} className="text-slate-400 hover:text-red-600 px-1"><Trash2 className="h-3.5 w-3.5 inline" /></button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+
               {/* Register New Vendor Form */}
               {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
                 <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
@@ -3796,7 +6899,7 @@ export default function App() {
                   </div>
                   <form onSubmit={handleVendorRegister} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Provider / Vendor Name</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Provider / Vendor Name")}</label>
                       <input
                         type="text"
                         placeholder="e.g. Layale El-Khatib (Consultant)"
@@ -3807,7 +6910,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Contract / Provider Category</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Contract / Provider Category")}</label>
                       <select
                         required
                         value={newVendorCategory}
@@ -3816,15 +6919,33 @@ export default function App() {
                       >
                         <option value="">-- Choose Category --</option>
                         <option value="Consultant / Freelancer">Consultant / Freelancer</option>
-                        <option value="Service Provider">Service Provider</option>
+                        <option value="Service Provider">Service Provider (engaged under agreement)</option>
+                        <option value="Software Subscriptions">Software Subscriptions</option>
                         <option value="General Supplier">General Supplier</option>
+                        <option value="Transportation">Transportation</option>
+                        <option value="Telecommunications">Telecommunications</option>
                         <option value="Landlord">Landlord (Rent Services)</option>
                         <option value="Government / Tax Authority">Government / Tax Authority</option>
                         <option value="Other">Other Category</option>
                       </select>
+                      {/* Explicit, not inferred from the category — a mislabelled category
+                          must never be enough to permit a signed agreement. */}
+                      <label htmlFor="vendor-engageable" className="mt-2 flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          id="vendor-engageable"
+                          checked={newVendorEngageable}
+                          onChange={(e) => setNewVendorEngageable(e.target.checked)}
+                          className="h-4 w-4 mt-0.5 cursor-pointer"
+                        />
+                        <span className="text-[10px] text-slate-600 leading-snug">
+                          We <strong>engage</strong> this party under a service agreement<br />
+                          <span className="text-slate-400">Leave unticked for anyone we simply buy from — a shop, a taxi, a subscription. Only ticked vendors can be issued an agreement.</span>
+                        </span>
+                      </label>
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">MoF Tax Registry ID (If Registered)</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("MoF Tax Registry ID (If Registered)")}</label>
                       <input
                         type="text"
                         placeholder="e.g. MoF-9382LB (or leave blank/N/A)"
@@ -3834,7 +6955,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Contact Email / Phone</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Contact Email / Phone")}</label>
                       <input
                         type="text"
                         placeholder="e.g. consultant@anahon.org"
@@ -3844,7 +6965,7 @@ export default function App() {
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Bank Account / Payment Details</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Bank Account / Payment Details")}</label>
                       <input
                         type="text"
                         placeholder="e.g. Bank Audi Tripoli, Account 2981..."
@@ -3879,14 +7000,24 @@ export default function App() {
                       <th className="px-6 py-3 hidden md:table-cell">Tax Registry ID</th>
                       <th className="px-6 py-3 hidden md:table-cell">Audit Disclosures</th>
                       <th className="px-6 py-3 hidden md:table-cell">Sanctions Rating</th>
+                      <th className="px-6 py-3">Engagement</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm font-sans">
                     {state.vendors.map(v => (
-                      <tr key={v.id} className="hover:bg-slate-50">
+                      <React.Fragment key={v.id}>
+                      <tr className="hover:bg-slate-50">
                         <td className="px-6 py-4">
                           <p className="font-bold text-slate-900">{v.name}</p>
                           <span className="text-[11px] text-slate-550 font-mono">{v.contact}</span>
+                          <button
+                            type="button"
+                            onClick={() => setPartyFileFor(partyFileFor === v.id ? null : v.id)}
+                            aria-expanded={partyFileFor === v.id}
+                            className="block text-[10px] font-bold text-slate-500 hover:text-red-650 hover:underline mt-0.5 min-h-[24px]"
+                          >
+                            {partyFileFor === v.id ? "▾ close file" : "📂 open file (agreement + invoices)"}
+                          </button>
                         </td>
                         <td className="px-6 py-4 font-medium text-slate-700">{v.category}</td>
                         <td className="px-6 py-4 font-mono font-medium hidden md:table-cell">{v.taxId}</td>
@@ -3906,11 +7037,134 @@ export default function App() {
                             </span>
                           )}
                         </td>
+                        <td className="px-6 py-4">
+                          {/* Only engagement-type vendors can hold an agreement. A software
+                              subscription or a taxi is a purchase — it needs a voucher, not a contract. */}
+                          {(() => {
+                            const canManage = ["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role);
+                            if (!v.engageable) {
+                              return (
+                                <div className="space-y-0.5">
+                                  <span className="text-[10px] text-slate-400 italic block">Supplier — purchases only</span>
+                                  {canManage && !v.blocked && v.active && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSetEngageable(v.id, v.name, true)}
+                                      className="text-[10px] text-slate-500 hover:text-red-650 hover:underline"
+                                    >
+                                      mark engageable…
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            }
+                            if (v.blocked || !v.active) return <span className="text-[10px] text-slate-400 italic">Engageable · unavailable</span>;
+                            if (!canManage) return <span className="text-[10px] text-emerald-700">Engageable</span>;
+                            return (
+                              <div className="space-y-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => { setContractFor(contractFor === v.id ? null : v.id); setContractParty("vendor"); }}
+                                  aria-expanded={contractFor === v.id}
+                                  className="text-[10px] font-bold text-red-650 hover:text-red-700 hover:underline min-h-[44px] md:min-h-0 md:py-1 block"
+                                >
+                                  {contractFor === v.id ? "✕ Cancel" : "📄 Service agreement"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetEngageable(v.id, v.name, false)}
+                                  className="text-[10px] text-slate-400 hover:text-slate-700 hover:underline"
+                                >
+                                  revert to supplier
+                                </button>
+                              </div>
+                            );
+                          })()}
+                        </td>
                       </tr>
+                      {partyFileFor === v.id && (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-3 bg-slate-50/60">
+                            {renderPartyFile(v.id, v.name)}
+                          </td>
+                        </tr>
+                      )}
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>
               </div>
+
+              {/* Service agreement generator — vendors only. Figures are typed by a human;
+                  nothing is inferred, because an agreement is a signed instrument. */}
+              {contractFor && contractParty === "vendor" && (() => {
+                const v = state.vendors.find(x => x.id === contractFor);
+                if (!v) return null;
+                return (
+                  <form
+                    onSubmit={(e) => handleGenerateContract(e, v.id, "vendor")}
+                    aria-label={`Generate service agreement for ${v.name}`}
+                    className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3"
+                  >
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <h3 className="text-sm font-bold text-slate-900">📄 Service agreement — {v.name}</h3>
+                      <span className="text-[10px] font-mono text-slate-500">{v.category}{v.taxId ? ` · Tax ID ${v.taxId}` : ""}</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                      <div className="md:col-span-2">
+                        <label htmlFor="sa-role" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Role / scope of services")}</label>
+                        <input id="sa-role" type="text" placeholder={`e.g. Field logistics & volunteer coordination (blank = "${v.category}")`}
+                          value={contractForm.role}
+                          onChange={(e) => setContractForm({ ...contractForm, role: e.target.value })}
+                          className="finance-input w-full text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="sa-project" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Project")}</label>
+                        <select id="sa-project" required value={contractForm.projectId}
+                          onChange={(e) => setContractForm({ ...contractForm, projectId: e.target.value })}
+                          className="finance-input w-full text-xs">
+                          <option value="">— Select —</option>
+                          {state.projects.filter(p => p.status === "Active").map(p => (
+                            <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="sa-start" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Start")}</label>
+                        <input id="sa-start" type="date" required value={contractForm.startDate}
+                          onChange={(e) => setContractForm({ ...contractForm, startDate: e.target.value })}
+                          className="finance-input w-full text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="sa-end" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("End")}</label>
+                        <input id="sa-end" type="date" required value={contractForm.endDate}
+                          onChange={(e) => setContractForm({ ...contractForm, endDate: e.target.value })}
+                          className="finance-input w-full text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="sa-fee" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Fee per period (USD)")}</label>
+                        <input id="sa-fee" type="number" step="0.01" required value={contractForm.monthlyFee}
+                          onChange={(e) => setContractForm({ ...contractForm, monthlyFee: e.target.value })}
+                          className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="sa-total" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Agreement Total (USD)")}</label>
+                        <input id="sa-total" type="number" step="0.01" required value={contractForm.contractTotal}
+                          onChange={(e) => setContractForm({ ...contractForm, contractTotal: e.target.value })}
+                          className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <button type="submit" disabled={contractBusy}
+                        className="bg-slate-900 hover:bg-slate-955 disabled:opacity-50 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all min-h-[44px]">
+                        {contractBusy ? "Generating…" : "Generate agreement"}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-500 italic">
+                      Fees are payable against the provider's invoice on delivery — not against a timesheet.
+                      Generated unsigned and filed in the project's vault folder. Never backdate: issue a dated addendum instead (Policy §6.8).
+                    </p>
+                  </form>
+                );
+              })()}
             </div>
           )}
 
@@ -3920,7 +7174,7 @@ export default function App() {
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-bold">Banking Statements & Cash Recon Ledger</h2>
+                  <h2 className="text-xl font-bold">{t("Banking Statements & Cash Recon Ledger")}</h2>
                   <p className="text-xs text-slate-500">Match raw physical statements to vouchers to evaluate reconciliatory variances.</p>
                 </div>
               </div>
@@ -3929,7 +7183,7 @@ export default function App() {
               {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
                 <form onSubmit={handleBankReconcile} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                   <div className="md:col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Target Account Vault Drawer</label>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Target Account Vault Drawer")}</label>
                     <select
                       value={recBank}
                       onChange={(e) => setRecBank(e.target.value)}
@@ -3942,7 +7196,7 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Transaction Type</label>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Transaction Type")}</label>
                     <select
                       value={recType}
                       onChange={(e) => setRecType(e.target.value as "Deposit" | "Withdrawal")}
@@ -3953,7 +7207,7 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Statement Entry Memo</label>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Statement Entry Memo")}</label>
                     <input
                       type="text"
                       placeholder="e.g. Bank charge ref 3381"
@@ -3963,7 +7217,7 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Statement Amount</label>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Statement Amount")}</label>
                     <input
                       type="number"
                       placeholder="Raw Currency value"
@@ -4062,7 +7316,7 @@ export default function App() {
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-bold">General double-entry General Ledger</h2>
+                  <h2 className="text-xl font-bold">{t("General double-entry General Ledger")}</h2>
                   <p className="text-xs text-slate-500">Every single transaction emits balanced matching debits and credits across appropriate asset/cost centers.</p>
                 </div>
                 {/* Print command */}
@@ -4150,7 +7404,7 @@ export default function App() {
                   <form onSubmit={handleAdjustmentSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Adjustment Date</label>
+                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Adjustment Date")}</label>
                         <input
                           type="date"
                           required
@@ -4160,7 +7414,7 @@ export default function App() {
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Journal Reference No</label>
+                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Journal Reference No")}</label>
                         <input
                           type="text"
                           placeholder="e.g. ADJ-2026-05"
@@ -4170,7 +7424,7 @@ export default function App() {
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Description / Memo</label>
+                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Description / Memo")}</label>
                         <input
                           type="text"
                           required
@@ -4198,7 +7452,7 @@ export default function App() {
                         {adjItems.map((item, idx) => (
                           <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-slate-50 p-3 rounded-lg border border-slate-200">
                             <div className="md:col-span-4">
-                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Account</label>
+                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">{t("Account")}</label>
                               <select
                                 required
                                 value={item.accountCode}
@@ -4219,7 +7473,7 @@ export default function App() {
                             </div>
 
                             <div className="md:col-span-2">
-                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Debit (USD)</label>
+                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">{t("Debit (USD)")}</label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -4237,7 +7491,7 @@ export default function App() {
                             </div>
 
                             <div className="md:col-span-2">
-                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Credit (USD)</label>
+                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">{t("Credit (USD)")}</label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -4255,7 +7509,7 @@ export default function App() {
                             </div>
 
                             <div className="md:col-span-3">
-                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Project Tag (Optional)</label>
+                              <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">{t("Project Tag (Optional)")}</label>
                               <select
                                 value={item.projectId}
                                 onChange={(e) => {
@@ -4358,7 +7612,7 @@ export default function App() {
           {activeTab === "payroll" && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold">Timesheet Allocation & Co-Funding Cost Mapping</h2>
+                <h2 className="text-xl font-bold">{t("Timesheet Allocation & Co-Funding Cost Mapping")}</h2>
                 <p className="text-xs text-slate-500">
                   Donor rules mandate personnel compensation matches timesheet percentage logs signed by project leaders.
                 </p>
@@ -4368,58 +7622,81 @@ export default function App() {
               {["Super Admin", "HR / Payroll Officer"].includes(currentUser.role) && (
                 <form onSubmit={handleEmployeeRegister} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Full Name</label>
+                    <label htmlFor="emp-name" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Full Name")}</label>
                     <input
                       type="text"
                       placeholder="e.g. Farah Shami"
                       required
+                      id="emp-name"
                       value={newEmpName}
                       onChange={(e) => setNewEmpName(e.target.value)}
                       className="finance-input w-full text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Position / Title</label>
+                    <label htmlFor="emp-position" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Position / Title")}</label>
                     <input
                       type="text"
                       placeholder="e.g. Community Coordinator"
                       required
+                      id="emp-position"
                       value={newEmpPosition}
                       onChange={(e) => setNewEmpPosition(e.target.value)}
                       className="finance-input w-full text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Base Salary (USD)</label>
+                    <label htmlFor="emp-salary" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Base Salary (USD)")}</label>
                     <input
                       type="number"
                       placeholder="Monthly Base"
                       required
+                      id="emp-salary"
                       value={newEmpSalary}
                       onChange={(e) => setNewEmpSalary(e.target.value)}
                       className="finance-input w-full font-mono text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Allowance (USD)</label>
+                    <label htmlFor="emp-allowance" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Allowance (USD)")}</label>
                     <input
                       type="number"
                       placeholder="Monthly Allowance"
+                      id="emp-allowance"
                       value={newEmpAllowance}
                       onChange={(e) => setNewEmpAllowance(e.target.value)}
                       className="finance-input w-full font-mono text-xs"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Payment Method</label>
+                    <label htmlFor="emp-bank-account" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Funds Drawn From")}</label>
+                    {/* Options come from the real bank accounts, so this list cannot drift away
+                        from the accounts AnaHon actually holds. Required even for cash — cash
+                        salaries are withdrawn from one of these accounts first. */}
                     <select
+                      id="emp-bank-account"
+                      value={newEmpBankAccountId}
+                      onChange={(e) => setNewEmpBankAccountId(e.target.value)}
+                      className="finance-input w-full text-xs"
+                      required
+                    >
+                      <option value="">— Select account —</option>
+                      {(state.bankAccounts || []).filter(ba => ba.active).map(ba => (
+                        <option key={ba.id} value={ba.id}>🏦 {ba.name} · {ba.accountNo}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="emp-delivery" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Delivered By")}</label>
+                    <select
+                      id="emp-delivery"
                       value={newEmpPaymentMethod}
                       onChange={(e) => setNewEmpPaymentMethod(e.target.value)}
                       className="finance-input w-full text-xs"
+                      required
                     >
-                      <option value="Bank Audi Wire">Bank Audi Wire</option>
-                      <option value="Petty Cash USD">Petty Cash USD</option>
-                      <option value="USD Cash Check">USD Cash Check</option>
+                      <option value="Bank Transfer">🏦 Bank transfer to employee</option>
+                      <option value="Cash">💵 Cash withdrawn from that account</option>
                     </select>
                   </div>
                   <button type="submit" className="bg-slate-900 hover:bg-slate-955 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
@@ -4443,6 +7720,47 @@ export default function App() {
                         <div>
                           <h4 className="text-sm font-bold text-slate-900">{emp.name}</h4>
                           <p className="text-xs text-slate-500">{emp.position} • Base: {formatUSD(emp.salary)} + {formatUSD(emp.allowance)} allowance</p>
+                          {(() => {
+                            const payAcct = state.bankAccounts.find(ba => ba.id === emp.bankAccountId);
+                            if (!payAcct) return (
+                              <p className="text-[11px] text-amber-700 italic mt-0.5">⚠ No source account on file — payroll cannot be traced to the bank.</p>
+                            );
+                            const isCash = emp.paymentMethod === "Cash";
+                            return (
+                              <p className="text-[11px] text-slate-500 mt-0.5 font-mono">
+                                <span aria-hidden="true">{isCash ? "💵" : "🏦"}</span> {isCash ? "Cash withdrawn from" : "Bank transfer from"}{" "}
+                                {payAcct.name} <span className="text-slate-400">{payAcct.accountNo}</span>
+                              </p>
+                            );
+                          })()}
+                          {["Super Admin", "HR / Payroll Officer", "Finance Officer"].includes(currentUser.role) && (
+                            <button
+                              type="button"
+                              onClick={() => { setContractFor(contractFor === emp.id ? null : emp.id); setContractParty("employee"); }}
+                              aria-expanded={contractFor === emp.id}
+                              className="mt-1.5 text-[10px] font-bold text-red-650 hover:text-red-700 hover:underline min-h-[44px] md:min-h-0 md:py-1"
+                            >
+                              {contractFor === emp.id ? "✕ Cancel contract" : "📄 Employment contract"}
+                            </button>
+                          )}
+                          {["Super Admin", "Finance Officer", "HR / Payroll Officer"].includes(currentUser.role) && (
+                            <button
+                              type="button"
+                              onClick={() => generatePayslip(emp.id, emp.name, selectedTSMonth)}
+                              className="block text-[10px] font-bold text-emerald-700 hover:underline mt-0.5 min-h-[24px]"
+                              title={`Payslip for ${selectedTSMonth} from the employee record and that month's timesheet`}
+                            >
+                              🧾 Payslip {selectedTSMonth}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setPartyFileFor(partyFileFor === emp.id ? null : emp.id)}
+                            aria-expanded={partyFileFor === emp.id}
+                            className="block text-[10px] font-bold text-slate-500 hover:text-red-650 hover:underline mt-0.5 min-h-[24px]"
+                          >
+                            {partyFileFor === emp.id ? "▾ close file" : "📂 open file (contracts + documents)"}
+                          </button>
                         </div>
                         <span className={`inline-block mt-1 px-2.5 py-0.5 rounded-full font-bold text-[10px] ${activeTimesheet?.status === "Approved" ? "bg-emerald-100 text-emerald-700"
                           : activeTimesheet || enteredPool > 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-500"
@@ -4450,6 +7768,78 @@ export default function App() {
                           ● Month: {selectedTSMonth} • {activeTimesheet?.status || (enteredPool > 0 ? "Draft Pending" : "No donor allocation")}
                         </span>
                       </div>
+
+                      {partyFileFor === emp.id && renderPartyFile(emp.id, emp.name)}
+
+                      {/* Contract generator — figures are typed by a human, never inferred from
+                          salary, because a contract is a signed instrument. */}
+                      {contractFor === emp.id && contractParty === "employee" && (
+                        <form
+                          onSubmit={(e) => handleGenerateContract(e, emp.id, "employee")}
+                          aria-label={`Generate employment contract for ${emp.name}`}
+                          className="p-4 bg-slate-50 border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-4 gap-3 items-end"
+                        >
+                          <div>
+                            <label htmlFor={`ct-project-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Project")}</label>
+                            <select id={`ct-project-${emp.id}`} required value={contractForm.projectId}
+                              onChange={(e) => setContractForm({ ...contractForm, projectId: e.target.value })}
+                              className="finance-input w-full text-xs">
+                              <option value="">— Select —</option>
+                              {state.projects.filter(p => p.status === "Active").map(p => (
+                                <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label htmlFor={`ct-kind-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Type")}</label>
+                            <select id={`ct-kind-${emp.id}`} value={contractForm.kind}
+                              onChange={(e) => setContractForm({ ...contractForm, kind: e.target.value })}
+                              className="finance-input w-full text-xs">
+                              <option value="Employment">Employment contract</option>
+                              <option value="Service">Service agreement (staff on deliverables)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label htmlFor={`ct-start-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Start")}</label>
+                            <input id={`ct-start-${emp.id}`} type="date" required value={contractForm.startDate}
+                              onChange={(e) => setContractForm({ ...contractForm, startDate: e.target.value })}
+                              className="finance-input w-full text-xs" />
+                          </div>
+                          <div>
+                            <label htmlFor={`ct-end-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("End")}</label>
+                            <input id={`ct-end-${emp.id}`} type="date" required value={contractForm.endDate}
+                              onChange={(e) => setContractForm({ ...contractForm, endDate: e.target.value })}
+                              className="finance-input w-full text-xs" />
+                          </div>
+                          <div>
+                            <label htmlFor={`ct-loe-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Level of Effort %")}</label>
+                            <input id={`ct-loe-${emp.id}`} type="number" min="0" max="100" placeholder="optional"
+                              value={contractForm.loePct}
+                              onChange={(e) => setContractForm({ ...contractForm, loePct: e.target.value })}
+                              className="finance-input w-full font-mono text-xs" />
+                          </div>
+                          <div>
+                            <label htmlFor={`ct-fee-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Monthly Fee (USD)")}</label>
+                            <input id={`ct-fee-${emp.id}`} type="number" step="0.01" required value={contractForm.monthlyFee}
+                              onChange={(e) => setContractForm({ ...contractForm, monthlyFee: e.target.value })}
+                              className="finance-input w-full font-mono text-xs" />
+                          </div>
+                          <div>
+                            <label htmlFor={`ct-total-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Contract Total (USD)")}</label>
+                            <input id={`ct-total-${emp.id}`} type="number" step="0.01" required value={contractForm.contractTotal}
+                              onChange={(e) => setContractForm({ ...contractForm, contractTotal: e.target.value })}
+                              className="finance-input w-full font-mono text-xs" />
+                          </div>
+                          <button type="submit" disabled={contractBusy}
+                            className="bg-slate-900 hover:bg-slate-955 disabled:opacity-50 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all min-h-[44px]">
+                            {contractBusy ? "Generating…" : "Generate contract"}
+                          </button>
+                          <p className="md:col-span-4 text-[10px] text-slate-500 italic">
+                            Generated unsigned and filed in the project's vault folder. Countersignatory is taken
+                            from the authorised signatories on record. Never backdate — issue a dated addendum instead (Policy §6.8).
+                          </p>
+                        </form>
+                      )}
 
                       {/* Allocations inputs */}
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -4582,21 +7972,31 @@ export default function App() {
             <div className="space-y-6">
               <style>{`@media print { body * { visibility: hidden; } #period-report, #period-report * { visibility: visible; } #period-report { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; } }`}</style>
               <div>
-                <h2 className="text-xl font-bold">Periodic Financial Reports</h2>
+                <h2 className="text-xl font-bold">{t("Periodic Financial Reports")}</h2>
                 <p className="text-xs text-slate-500">Semi-annual and annual reporting per Policy 11.2 — budget vs actual, income, cash position, compliance status.</p>
               </div>
 
               <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-wrap items-end gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Period ending (month)</label>
-                  <input type="month" value={reportEnd} onChange={e => setReportEnd(e.target.value)} className="finance-input text-xs" />
+                  <label htmlFor="report-start" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Period starting (optional)")}</label>
+                  <input id="report-start" type="month" value={reportStart} onChange={e => setReportStart(e.target.value)} className="finance-input text-xs" />
                 </div>
+                <div>
+                  <label htmlFor="report-end" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Period ending (month)")}</label>
+                  <input id="report-end" type="month" value={reportEnd} onChange={e => setReportEnd(e.target.value)} className="finance-input text-xs" />
+                </div>
+                {reportStart ? (
+                  <button disabled={reportLoading} onClick={() => generatePeriodReport(0)} className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded px-4 py-2.5 disabled:opacity-50">
+                    {reportLoading ? "Generating…" : `Generate ${reportStart} → ${reportEnd} Report`}
+                  </button>
+                ) : (<>
                 <button disabled={reportLoading} onClick={() => generatePeriodReport(6)} className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 disabled:opacity-50">
                   {reportLoading ? "Generating…" : "Generate 6-Month Report"}
                 </button>
                 <button disabled={reportLoading} onClick={() => generatePeriodReport(12)} className="bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold rounded px-4 py-2.5 disabled:opacity-50">
                   {reportLoading ? "Generating…" : "Generate Annual Report"}
                 </button>
+                </>)}
                 {reportData && (
                   <div className="ml-auto flex items-center gap-3">
                     <span className="text-[10px] text-slate-500 font-mono hidden md:block" title="Filename used when saving as PDF (Policy 13.4.1)">
@@ -4619,7 +8019,8 @@ export default function App() {
                     <p className="text-xs text-slate-600">Period: {reportData.meta.periodStart} → {reportData.meta.periodEnd} · Basis: {reportData.meta.basis} · Generated: {reportData.meta.generatedAt.slice(0, 16).replace("T", " ")} UTC</p>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4 text-center">
+                  {/* Stacks on phones — three currency figures side by side at 375px overlap. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
                     <div className="p-3 border border-slate-200 rounded"><p className="text-[10px] uppercase font-bold text-slate-500">Income received</p><p className="text-lg font-mono font-bold">{formatUSD(reportData.totals.incomeInPeriod)}</p></div>
                     <div className="p-3 border border-slate-200 rounded"><p className="text-[10px] uppercase font-bold text-slate-500">Expenditure</p><p className="text-lg font-mono font-bold">{formatUSD(reportData.totals.expenditureInPeriod)}</p></div>
                     <div className="p-3 border border-slate-200 rounded"><p className="text-[10px] uppercase font-bold text-slate-500">Vouchers</p><p className="text-lg font-mono font-bold">{reportData.totals.vouchersInPeriod}</p></div>
@@ -4705,7 +8106,7 @@ export default function App() {
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-bold">Fixed Assets capitalization Register</h2>
+                  <h2 className="text-xl font-bold">{t("Fixed Assets capitalization Register")}</h2>
                   <p className="text-xs text-slate-500 md:max-w-xl">
                     Sinking cost models with straight-line automatic depreciation trackers mapped to physical serial numbers.
                   </p>
@@ -4716,7 +8117,7 @@ export default function App() {
               {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
                 <form onSubmit={handleCapitalizeAsset} className="p-4 bg-white border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Asset Name / Model</label>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Asset Name / Model")}</label>
                     <input
                       type="text"
                       placeholder="e.g. Sony FX6 camera"
@@ -4726,7 +8127,7 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Acquisition Cost USD</label>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Acquisition Cost USD")}</label>
                     <input
                       type="number"
                       placeholder="Amount"
@@ -4736,7 +8137,7 @@ export default function App() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Vessel Project funding</label>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Vessel Project funding")}</label>
                     <select
                       value={assetProject}
                       onChange={(e) => setAssetProject(e.target.value)}
@@ -4749,7 +8150,7 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Useful Life (Years)</label>
+                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Useful Life (Years)")}</label>
                     <select
                       value={assetLife}
                       onChange={(e) => setAssetLife(e.target.value)}
@@ -4836,7 +8237,7 @@ export default function App() {
           {activeTab === "partners" && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold">Partner Capital & Draws Accounting Accounts</h2>
+                <h2 className="text-xl font-bold">{t("Partner Capital & Draws Accounting Accounts")}</h2>
                 <p className="text-xs text-slate-500 md:max-w-xl">
                   Civil company regulations dictate partner loan drawdowns and equity contributions be fully aligned with monthly petty cash limits.
                 </p>
@@ -4846,7 +8247,7 @@ export default function App() {
               {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
                 <form className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Select Partner profile</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t("Select Partner profile")}</label>
                     <select
                       value={drawPartner}
                       onChange={(e) => setDrawPartner(e.target.value)}
@@ -4859,7 +8260,7 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1">Amount USD</label>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">{t("Amount USD")}</label>
                     <input
                       type="number"
                       placeholder="USD Value"
@@ -4956,7 +8357,9 @@ export default function App() {
               {(() => {
                 const selectedBankId = dailySelectedBankId || ((state?.bankAccounts || [])[0]?.id || "");
                 const selectedAccount = (state?.bankAccounts || []).find(b => b.id === selectedBankId);
-                const accountTransactions = (state?.bankTransactions || []).filter(t => t.bankAccountId === selectedBankId);
+                // Pending advice lines never enter balance math — statements decide.
+                const accountTransactions = (state?.bankTransactions || []).filter(t => t.bankAccountId === selectedBankId && !t.pending);
+                const pendingTransactions = (state?.bankTransactions || []).filter(t => t.bankAccountId === selectedBankId && t.pending);
 
                 const dailyDeposits = accountTransactions
                   .filter(t => t.date === dailySelectedDate && t.type === "Deposit")
@@ -5012,6 +8415,190 @@ export default function App() {
                         <p className="text-[10px] text-slate-400">End-of-day reconciled reserve</p>
                       </div>
                     </div>
+
+                    {/* Pending eBLOM advices — staged, not yet on a statement */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                        <h4 className="text-xs font-bold text-amber-900 uppercase font-mono">
+                          ⏳ Pending eBLOM advices ({pendingTransactions.length})
+                        </h4>
+                        {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                          <label className="text-[11px] font-bold text-amber-800 hover:text-amber-950 cursor-pointer inline-flex items-center gap-1 min-h-[44px] px-2 border border-amber-300 rounded bg-white">
+                            📥 Import eBLOM advice PDF
+                            <input
+                              type="file"
+                              accept="application/pdf"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = "";
+                                if (!file) return;
+                                const b64 = await new Promise<string>((resolve, reject) => {
+                                  const r = new FileReader();
+                                  r.onload = () => resolve(String(r.result).split(",")[1] || "");
+                                  r.onerror = reject;
+                                  r.readAsDataURL(file);
+                                });
+                                try {
+                                  const res = await fetch("/api/bank/import-notice", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ base64: b64, user: currentUser })
+                                  });
+                                  const data = await res.json();
+                                  if (!res.ok) throw new Error(data.error);
+                                  triggerToast(`Advice imported: ${data.staged} staged as pending, ${data.results.length - data.staged} skipped, ${data.cleared} confirmed by statement.`);
+                                  refreshState();
+                                } catch (err: any) {
+                                  triggerToast(err.message, "error");
+                                }
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+                      {pendingTransactions.length === 0 ? (
+                        <p className="text-[11px] text-amber-700 italic">
+                          None. Download a transaction advice PDF from eBLOM and import it here to stage recent
+                          activity before the next statement — pending lines never change balances or reports.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                          {pendingTransactions.map(t => (
+                            <div key={t.id} className="flex justify-between items-center text-xs p-2 bg-white border border-amber-200 rounded font-mono">
+                              <span className="text-slate-700 truncate">{t.date} • {t.description}</span>
+                              <span className={`font-bold ${t.type === "Deposit" ? "text-emerald-700" : "text-amber-700"}`}>
+                                {t.type === "Deposit" ? "+" : "−"}{formatIn(t.amount, selectedAccount?.currency || "USD")} <em className="text-[9px] text-amber-600 font-sans">PENDING</em>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Physical cash count — turns "cash on hand" from an inferred book
+                        figure into a counted fact, and sizes the undocumented gap. */}
+                    {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                          <h4 className="text-xs font-bold font-mono uppercase text-slate-800">💵 Count the cash drawer</h4>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            ledger 1120 book: {formatUSD(state.accounts.find(a => a.code === "1120")?.balance || 0)}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                          <div>
+                            <label htmlFor="cc-date" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Counted on")}</label>
+                            <input id="cc-date" type="date" value={cashCountForm.date}
+                              onChange={(e) => setCashCountForm({ ...cashCountForm, date: e.target.value })}
+                              className="finance-input w-full font-mono text-xs" />
+                          </div>
+                          <div>
+                            <label htmlFor="cc-amount" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Notes in hand (USD)")}</label>
+                            <input id="cc-amount" type="number" min="0" step="any" placeholder="e.g. 420"
+                              value={cashCountForm.countedUSD}
+                              onChange={(e) => setCashCountForm({ ...cashCountForm, countedUSD: e.target.value })}
+                              className="finance-input w-full font-mono text-xs" />
+                          </div>
+                          <div>
+                            <label htmlFor="cc-notes" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Note (optional)")}</label>
+                            <input id="cc-notes" type="text" placeholder="who was present, where counted"
+                              value={cashCountForm.notes}
+                              onChange={(e) => setCashCountForm({ ...cashCountForm, notes: e.target.value })}
+                              className="finance-input w-full text-xs" />
+                          </div>
+                          <button type="button" onClick={submitCashCount}
+                            className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">
+                            💾 Record count
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-slate-500">
+                          Counted notes are treated as available funds. The difference against the 1120 book balance is cash drawn
+                          without documented vouchers — it stays visible as a gap, never as available money. A count older than 45 days is excluded until recounted.
+                        </p>
+                        {state.cashCounts.length > 0 && (
+                          <div className="text-[10px] font-mono text-slate-500 space-y-0.5">
+                            {state.cashCounts.slice(0, 3).map(c => (
+                              <div key={c.id} className="flex justify-between">
+                                <span>{c.date} · counted by {c.countedBy || "—"}{c.notes ? ` · ${c.notes}` : ""}</span>
+                                <span className="font-bold text-slate-700">{formatUSD(c.countedUSD)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ⚡ Daily direct expense — the one form for day-to-day spending.
+                        Posts the full chain in a single submit; nothing to approve later
+                        because the money has already left (Policy: record same day). */}
+                    {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && (
+                      <form
+                        onSubmit={(e) => handleDailyDirectSubmit(e, selectedBankId)}
+                        aria-label="Lodge a daily direct expense"
+                        className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3"
+                      >
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                          <h4 className="text-xs font-bold font-mono uppercase text-slate-800">⚡ Lodge Daily Direct Expense</h4>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            pays from: {selectedAccount?.name} {selectedAccount?.accountNo} — one submit posts voucher · bank · budget · ledger · digitized record
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
+                          <div className="md:col-span-2">
+                            <label htmlFor="daily-title" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("What was bought")}</label>
+                            <input id="daily-title" type="text" required placeholder="e.g. Fuel for distribution run"
+                              value={dailyTitle} onChange={(e) => setDailyTitle(e.target.value)}
+                              className="finance-input w-full text-xs" />
+                          </div>
+                          <div>
+                            <label htmlFor="daily-vendor" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Vendor")}</label>
+                            <select id="daily-vendor" required value={dailyVendor}
+                              onChange={(e) => setDailyVendor(e.target.value)} className="finance-input w-full text-xs">
+                              <option value="">— Select —</option>
+                              {state.vendors.filter(v => v.active && !v.blocked).map(v => (
+                                <option key={v.id} value={v.id}>{v.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label htmlFor="daily-project" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Project")}</label>
+                            <select id="daily-project" required value={dailyProject}
+                              onChange={(e) => { setDailyProject(e.target.value); setDailyBudgetLine(""); }}
+                              className="finance-input w-full text-xs">
+                              <option value="">— Select —</option>
+                              {state.projects.filter(p => p.status === "Active").map(p => (
+                                <option key={p.id} value={p.id}>{p.code}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label htmlFor="daily-bl" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Budget Line")}</label>
+                            <select id="daily-bl" required value={dailyBudgetLine}
+                              onChange={(e) => setDailyBudgetLine(e.target.value)} className="finance-input w-full text-xs">
+                              <option value="">— Select —</option>
+                              {state.budgetLines.filter(bl => bl.projectId === dailyProject).map(bl => (
+                                <option key={bl.id} value={bl.id}>{bl.code} — {bl.description.slice(0, 40)}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label htmlFor="daily-amount" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Amount ({selectedAccount?.currency})</label>
+                            <input id="daily-amount" type="number" step="0.01" min="0.01" required
+                              value={dailyAmount} onChange={(e) => setDailyAmount(e.target.value)}
+                              className="finance-input w-full font-mono text-xs" />
+                          </div>
+                          <button type="submit" disabled={dailyBusy}
+                            className="bg-slate-900 hover:bg-slate-955 disabled:opacity-50 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all min-h-[44px]">
+                            {dailyBusy ? "Posting…" : "Post expense"}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-slate-500 italic">
+                          For same-day cash/card spending with the receipt in hand. Larger or planned purchases go through
+                          Expenses → voucher → approval instead. Attach the receipt afterwards from the voucher drawer.
+                        </p>
+                      </form>
+                    )}
 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                       {/* Left: Reconciled Transactions Index */}
@@ -5092,7 +8679,7 @@ export default function App() {
 
                             <form onSubmit={handleDailyDirectSubmit} className="space-y-3">
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Expense Title</label>
+                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Expense Title")}</label>
                                 <input
                                   type="text"
                                   placeholder="e.g. Taxi to ministry"
@@ -5103,7 +8690,7 @@ export default function App() {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">justification / rationale</label>
+                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("justification / rationale")}</label>
                                 <input
                                   type="text"
                                   placeholder="e.g. Urgent transport"
@@ -5113,7 +8700,7 @@ export default function App() {
                                 />
                               </div>
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Target Project mapping</label>
+                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Target Project mapping")}</label>
                                 <select
                                   required
                                   value={dailyProject}
@@ -5127,7 +8714,7 @@ export default function App() {
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Budget line mapping</label>
+                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Budget line mapping")}</label>
                                 <select
                                   value={dailyBudgetLine}
                                   onChange={(e) => setDailyBudgetLine(e.target.value)}
@@ -5140,7 +8727,7 @@ export default function App() {
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Contractor / Vendor</label>
+                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Contractor / Vendor")}</label>
                                 <select
                                   value={dailyVendor}
                                   onChange={(e) => setDailyVendor(e.target.value)}
@@ -5154,7 +8741,7 @@ export default function App() {
                               </div>
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                  <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Currency</label>
+                                  <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Currency")}</label>
                                   <select
                                     value={dailyCurrency}
                                     onChange={(e) => setDailyCurrency(e.target.value as any)}
@@ -5166,7 +8753,7 @@ export default function App() {
                                   </select>
                                 </div>
                                 <div>
-                                  <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">Amount</label>
+                                  <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Amount")}</label>
                                   <input
                                     type="number"
                                     required
@@ -5196,14 +8783,141 @@ export default function App() {
           )}
 
           {/* tab content Compliance & AI Audit Desk */}
+          {activeTab === "handbooks" && (() => {
+            const books = state.documents
+              .filter(d => d.category === "Handbook")
+              // The filename carries a policy number as a suffix — order by it, not alphabetically.
+              .map(d => ({ d, no: (d.filename.match(/_(\d{3})\.docx$/) || [])[1] || "" }))
+              .sort((a, b) => a.no.localeCompare(b.no) || a.d.filename.localeCompare(b.d.filename));
+            const pretty = (f: string) => f
+              .replace(/\.docx$/i, "").replace(/_\d{3}$/, "")
+              .replace(/^Ana[Hh]on[_\s-]*/i, "").replace(/[_]+/g, " ").trim();
+            const nums = books.map(b => b.no).filter(Boolean);
+            const gaps = Array.from({ length: 20 }, (_, i) => String(i + 1).padStart(3, "0"))
+              .filter(n => !nums.includes(n) && n <= (nums[nums.length - 1] || "000"));
+            const dupes = [...new Set(nums.filter((n, i) => nums.indexOf(n) !== i))];
+
+            return (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-slate-900">Policies & Handbooks</h2>
+                  <p className="text-sm text-slate-500 mt-1">
+                    AnaHon's institutional policies. Funders ask for these by name — the ARIJ form has a
+                    policies checklist. Click any one to read it here.
+                  </p>
+                </div>
+
+                {(gaps.length > 0 || dupes.length > 0) && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900">
+                    <strong>Numbering:</strong>{" "}
+                    {gaps.length > 0 && <>missing {gaps.join(", ")}. </>}
+                    {dupes.length > 0 && <>number {dupes.join(", ")} used twice. </>}
+                    Either the missing ones were never written, or they exist and are not here.
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {books.map(({ d, no }) => (
+                    <button key={d.id} onClick={() => openDoc(d)}
+                      className="text-left p-4 bg-white border border-slate-200 rounded-xl hover:border-red-300 hover:shadow-md transition flex items-start gap-3">
+                      <span className="text-lg leading-none pt-0.5">📘</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-slate-900 truncate">{pretty(d.filename)}</p>
+                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          {no && `#${no} · `}{d.refNo} · {d.sizeStr}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                {!books.length && (
+                  <p className="text-sm text-slate-500">No handbooks registered yet.</p>
+                )}
+              </div>
+            );
+          })()}
+
           {activeTab === "compliance" && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold">MoF / CNSS Regulatory Compliance Desk & Audit Logs</h2>
+                <h2 className="text-xl font-bold">{t("MoF / CNSS Regulatory Compliance Desk & Audit Logs")}</h2>
                 <p className="text-xs text-slate-500">
                   AnaHon Media Platform adheres to robust Lebanese Civil Partnership guidelines. Trigger automated AI Audit logs inspections below.
                 </p>
               </div>
+
+              {/* Team & Roles — master account only. Role authority lives in the DB (server middleware). */}
+              {currentUser.role === "Super Admin" && (
+                <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">👥 Team & Roles (master account)</h3>
+                  <p className="text-[11px] text-slate-500">Project Officers can raise vouchers and procurement requests for their assigned projects only — the server refuses everything else, including approving their own requests (§4.3).</p>
+                  <div className="space-y-2">
+                    {state.users.filter(u => u.active).map(u => {
+                      const assigned = new Set<string>(JSON.parse((u as any).projectIdsJson || "[]"));
+                      const setRole = async (role: string, projectIds: string[], streamScope?: string) => {
+                        try {
+                          const res = await fetch("/api/users/set-role", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ userId: u.id, role, projectIds, streamScope: streamScope ?? (u as any).streamScope ?? "", user: currentUser })
+                          });
+                          if (!res.ok) throw new Error((await res.json()).error || "Failed to set role");
+                          triggerToast(`${u.name} → ${role}`);
+                          refreshState();
+                        } catch (err: any) {
+                          triggerToast(err.message, "error");
+                        }
+                      };
+                      return (
+                        <div key={u.id} className="flex flex-wrap items-center gap-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                          <span className="font-bold text-slate-800 min-w-[140px]">{u.name}</span>
+                          <span className="text-slate-400 font-mono text-[10px]">{u.email}</span>
+                          <select
+                            value={u.role}
+                            onChange={e => setRole(e.target.value, [...assigned])}
+                            aria-label={`Role for ${u.name}`}
+                            className="finance-input text-xs py-1"
+                            disabled={u.id === currentUser.id}
+                          >
+                            {["Super Admin", "Finance Officer", "Program Director", "Project Officer", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer", "Employee (Self-Service)"].map(r => <option key={r} value={r}>{r}</option>)}
+                          </select>
+                          {u.role === "Project Officer" && (
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] text-slate-500 uppercase font-bold">Programme:</span>
+                              <select
+                                value={(u as any).streamScope || ""}
+                                onChange={e => setRole(u.role, [...assigned], e.target.value)}
+                                aria-label={`Programme scope for ${u.name}`}
+                                className="finance-input text-xs py-1"
+                              >
+                                <option value="">— none (named projects only) —</option>
+                                {STREAMS.map(st => <option key={st} value={st}>{st}</option>)}
+                              </select>
+                              <span className="text-[10px] text-slate-400">every project in that programme, now and later</span>
+                              <span className="text-[10px] text-slate-500 uppercase font-bold">Also:</span>
+                              {state.projects.map(p => (
+                                <label key={p.id} className="flex items-center gap-1 text-[10px] font-mono text-slate-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={assigned.has(p.id)}
+                                    onChange={e => {
+                                      const next = new Set(assigned);
+                                      if (e.target.checked) next.add(p.id); else next.delete(p.id);
+                                      setRole(u.role, [...next]);
+                                    }}
+                                  />
+                                  {p.code}
+                                </label>
+                              ))}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Org broad FX update configuration details inline */}
               <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
@@ -5334,7 +9048,7 @@ export default function App() {
                         <span className="text-slate-800 pl-2">{log.action}:</span>
                         <span className="text-slate-650 pl-1">"{log.details}"</span>
                       </div>
-                      <span className="text-slate-400 font-normal shrink-0">{log.timestamp.split("T")[1].replace("Z", "")}</span>
+                      <span className="text-slate-400 font-normal shrink-0">{(log.timestamp.split("T")[1] || log.timestamp).replace("Z", "")}</span>
                     </div>
                   ))}
                 </div>
@@ -5345,6 +9059,177 @@ export default function App() {
 
         </main>
       </div>
+
+      {/* Missing-evidence button. Always visible, because a documentation gap you have to go
+          looking for is a gap nobody looks for. Counts are derived, never stored. */}
+      {evidenceGaps.total > 0 && !gapsOpen && (
+        <button
+          onClick={() => setGapsOpen(true)}
+          title="Documents missing against posted spend"
+          className="fixed bottom-5 right-5 z-[95] flex items-center gap-2 px-4 py-3 rounded-full shadow-lg
+                     bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-colors"
+        >
+          <span className="text-base leading-none">📄</span>
+          <span>{evidenceGaps.total} missing</span>
+        </button>
+      )}
+
+      {gapsOpen && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-[96]" onClick={() => setGapsOpen(false)} />
+          <div className="fixed inset-y-0 right-0 w-full max-w-2xl z-[97] bg-slate-50 shadow-2xl flex flex-col">
+            <div className="flex items-center gap-3 px-5 py-4 bg-slate-900 text-white shrink-0">
+              <span className="text-lg">📄</span>
+              <div className="flex-1">
+                <p className="font-bold text-sm">Missing documents</p>
+                <p className="text-[11px] text-slate-400">Derived live from the register — nothing here is stored</p>
+              </div>
+              <button onClick={() => setGapsOpen(false)} aria-label="Close" className="text-slate-300 hover:text-white text-xl px-2">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {evidenceGaps.pettyGap > 0 && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-xs font-bold text-red-900">Cash drawn with no voucher — {evidenceGaps.money(evidenceGaps.pettyGap)}</p>
+                  <p className="text-[11px] text-red-800 mt-1">
+                    Ledger 1120. This is money out of the bank that no voucher accounts for. It is a
+                    documentation gap, not available funds.
+                  </p>
+                  <button onClick={() => { setGapsOpen(false); handleNavClick("banking"); }}
+                    className="mt-2 text-[11px] font-bold text-red-700 hover:underline">Open Banking →</button>
+                </div>
+              )}
+
+              {[
+                { key: "ev", title: "Posted spend with no third-party evidence", rows: evidenceGaps.noEvidence,
+                  note: "No invoice, receipt or contract on file. The app's own digitized copy of the voucher does not count." },
+                { key: "pr", title: "Over $300 with no procurement record", rows: evidenceGaps.noProcurement,
+                  note: "Policy requires an RFQ or an approved single-source waiver above USD 300." }
+              ].map(group => group.rows.length > 0 && (
+                <div key={group.key} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
+                    <p className="text-xs font-bold text-amber-900">
+                      {group.title} — {group.rows.length} · {evidenceGaps.money(group.rows.reduce((s, e) => s + e.convertedAmount, 0))}
+                    </p>
+                    <p className="text-[10px] text-amber-800 mt-0.5">{group.note}</p>
+                  </div>
+                  <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
+                    {group.rows.map(e => (
+                      <button key={e.id}
+                        onClick={() => { setGapsOpen(false); handleNavClick("expenses"); setDrawerExpenseId(e.id); }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold text-slate-500 w-28 shrink-0">{e.voucherNo}</span>
+                        <span className="text-[11px] flex-1 truncate text-slate-800">{e.title}</span>
+                        <span className="text-[10px] text-slate-400 shrink-0">{evidenceGaps.proj(e.projectId)?.code || "—"}</span>
+                        <span className="text-[11px] font-mono font-bold text-slate-900 shrink-0">{evidenceGaps.money(e.convertedAmount)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {evidenceGaps.unspent.length > 0 && (
+                <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
+                    <p className="text-xs font-bold text-amber-900">Funded projects with no vouchers at all — {evidenceGaps.unspent.length}</p>
+                    <p className="text-[10px] text-amber-800 mt-0.5">Bank-confirmed money received, but nothing has ever been booked against it.</p>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {evidenceGaps.unspent.map(({ p, amount }) => (
+                      <button key={p.id}
+                        onClick={() => { setGapsOpen(false); setSelectedProjectId(p.id); handleNavClick("projects"); }}
+                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold text-slate-500 w-28 shrink-0">{p.code}</span>
+                        <span className="text-[11px] flex-1 truncate text-slate-800">{p.name}</span>
+                        <span className="text-[11px] font-mono font-bold text-slate-900 shrink-0">{evidenceGaps.money(amount)} received</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Document viewer — scans, contracts and generated papers open here rather than in a
+          new tab. z above the voucher drawer so an invoice can be checked against its voucher. */}
+      {docView && (() => {
+        const src = `/api/document/content/${docView.id}`;
+        const mt = (docView.mimeType || "").toLowerCase();
+        const ext = (docView.filename.split(".").pop() || "").toLowerCase();
+        const isImage = mt.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "heic"].includes(ext);
+        const isPdf = mt.includes("pdf") || ext === "pdf";
+        const isText = mt.startsWith("text/") || ["txt", "md", "csv", "json", "html"].includes(ext);
+        return (
+          <>
+            <div className="fixed inset-0 bg-black/70 z-[100]" onClick={() => setDocView(null)} />
+            <div className="fixed inset-3 md:inset-8 z-[110] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
+              <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 text-white shrink-0">
+                <span className="text-lg">📄</span>
+                <p className="flex-1 text-sm font-mono truncate" title={docView.filename}>{docView.filename}</p>
+                <a href={src} download={docView.filename}
+                  className="text-[11px] bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-1.5 transition-colors">⬇ Download</a>
+                <a href={src} target="_blank" rel="noreferrer"
+                  className="text-[11px] bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-1.5 transition-colors">↗ New tab</a>
+                <button onClick={() => setDocView(null)} aria-label="Close document viewer"
+                  className="text-slate-300 hover:text-white text-xl leading-none px-2">✕</button>
+              </div>
+              <div className="flex-1 bg-slate-100 overflow-auto">
+                {isImage ? (
+                  <div className="min-h-full flex items-center justify-center p-4">
+                    <img src={src} alt={docView.filename} className="max-w-full max-h-full object-contain shadow-lg" />
+                  </div>
+                ) : isPdf ? (
+                  // Rendered server-side to PNG: no browser PDF plugin is involved, so this
+                  // works in embedded webviews and browsers where an <iframe> shows blank.
+                  docPages === null ? (
+                    <p className="h-full flex items-center justify-center text-sm text-slate-500">Rendering {docView.filename}…</p>
+                  ) : docPages === 0 ? (
+                    <p className="h-full flex items-center justify-center text-sm text-red-600">Couldn't render this PDF. Download it to open locally.</p>
+                  ) : (
+                    <div className="flex flex-col items-center gap-4 p-4">
+                      {Array.from({ length: docPages }, (_, i) => (
+                        <img key={i} src={`/api/document/page/${docView.id}/${i}`} alt={`Page ${i + 1}`}
+                          className="max-w-full shadow-lg bg-white" loading={i < 2 ? "eager" : "lazy"} />
+                      ))}
+                      {docPages > 1 && <p className="text-xs text-slate-500 pb-2">{docPages} pages</p>}
+                    </div>
+                  )
+                ) : /\.docx$/i.test(docView.filename) ? (
+                  // Text extracted server-side. Not the original formatting, but readable in place —
+                  // Download still gives the real Word file when the layout matters.
+                  docText === null ? (
+                    <p className="h-full flex items-center justify-center text-sm text-slate-500">Reading {docView.filename}…</p>
+                  ) : docText === "" ? (
+                    <p className="h-full flex items-center justify-center text-sm text-red-600">Couldn't read this Word file. Download it to open locally.</p>
+                  ) : (
+                    <div className="max-w-3xl mx-auto p-6 md:p-10 bg-white min-h-full">
+                      <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-4">
+                        Text view · formatting not preserved
+                      </p>
+                      <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-800">{docText}</div>
+                    </div>
+                  )
+                ) : isText ? (
+                  <iframe src={src} title={docView.filename} className="w-full h-full border-0 bg-white" />
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center gap-3 text-center p-8">
+                    <p className="text-4xl">📎</p>
+                    <p className="text-sm text-slate-700 font-medium">{docView.filename}</p>
+                    <p className="text-xs text-slate-500 max-w-sm">
+                      This file type can't be shown in the browser — Word and Excel files have to be opened
+                      in their own application. Download it, or open it from the document vault.
+                    </p>
+                    <a href={src} download={docView.filename}
+                      className="text-xs bg-red-600 text-white rounded-lg px-4 py-2 hover:bg-red-700 transition-colors">⬇ Download</a>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Voucher detail drawer — the full chain of one expense in a side panel */}
       {drawerExpenseId && (() => {
@@ -5411,7 +9296,7 @@ export default function App() {
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Documents ({docs.length})</p>
                   {docs.length === 0 && <p className="text-xs text-slate-400">No documents linked to this voucher.</p>}
                   {docs.map(d => (
-                    <a key={d.id} href={`/api/document/content/${d.id}`} target="_blank" rel="noreferrer"
+                    <a key={d.id} href={`/api/document/content/${d.id}`} target="_blank" onClick={e => { e.preventDefault(); openDoc(d); }} rel="noreferrer"
                       className="flex items-center gap-2 py-1.5 border-t border-slate-100 text-xs hover:bg-slate-50 px-1 rounded">
                       <span className="text-[9px] font-bold uppercase text-slate-400 w-24 shrink-0">{d.category}</span>
                       <span className="flex-1 truncate text-blue-700 underline decoration-dotted">{d.filename}</span>
@@ -5442,15 +9327,15 @@ export default function App() {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed top-1/2 -translate-y-1/2 z-[60] flex h-11 w-8 items-center justify-center rounded-r-xl bg-slate-800 border-y border-r border-slate-700 hover:bg-slate-700 text-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer text-xs font-mono font-bold ${
-          isOpen 
-            ? 'left-64' 
-            : 'left-0'
+        className={`hidden md:flex fixed top-1/2 -translate-y-1/2 z-[60] h-11 w-8 items-center justify-center ${rtl ? "rounded-l-xl border-l" : "rounded-r-xl border-r"} bg-slate-800 border-y border-slate-700 hover:bg-slate-700 text-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer text-xs font-mono font-bold ${
+          rtl
+            ? (isOpen ? 'right-64' : 'right-0')
+            : (isOpen ? 'left-64' : 'left-0')
         }`}
         style={{ minWidth: '32px', minHeight: '44px' }}
         title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
       >
-        {isOpen ? "◀" : "▶"}
+        {isOpen === rtl ? "▶" : "◀"}
       </button>
     </div>
   );

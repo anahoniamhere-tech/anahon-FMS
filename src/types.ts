@@ -33,6 +33,40 @@ export interface Project {
   endDate: string;
   fundingType: "Restricted Grant" | "Unrestricted Service";
   status: "Active" | "Completed" | "Pending";
+  /** Which of AnaHon's five programs this project belongs to ("" = unassigned). */
+  stream?: string;
+}
+
+export interface ProposalBudgetRow { line: string; description: string; amount: number }
+export interface ProposalTimelineRow { activity: string; start: string; end: string }
+/** Master proposal workspace on an opportunity — adapted into each donor's own template. */
+export interface Proposal {
+  summary?: string;
+  problem?: string;
+  solution?: string;
+  objectives?: string;
+  deliverables?: string;
+  outputs?: string;
+  outcomes?: string;
+  budget?: ProposalBudgetRow[];
+  timeline?: ProposalTimelineRow[];
+}
+
+/** Funding funnel: an ask BEFORE money lands. Never part of financial data —
+ *  graduates to a Project only via bank-proof project creation. */
+export interface Opportunity {
+  id: string;
+  title: string;
+  donorId: string;
+  stream: string;
+  stage: "Prospect" | "Drafting" | "Submitted" | "Awarded" | "Declined";
+  amount: number;
+  currency: string;
+  deadline: string;
+  decisionDate: string;
+  renewalOfProjectId: string;
+  notes: string;
+  proposal: Proposal;
 }
 
 export interface Donor {
@@ -41,6 +75,45 @@ export interface Donor {
   country: string;
   contactEmail: string;
   notes: string;
+}
+
+/** Production stream: a client pays US for services (vs Donor = grants, Vendor = we pay them). */
+export interface Client {
+  id: string;
+  name: string;
+  contact: string;
+  email: string;
+  phone: string;
+  taxId: string;
+  notes: string;
+  active: boolean;
+}
+
+export interface QuotationItem {
+  service: string;
+  description: string;
+  output: string;
+  unitPrice: number;
+  qty: number;
+}
+
+/** A quotation is never income — income exists only when the payment is on a bank statement. */
+export interface Quotation {
+  id: string;
+  quoteNo: string;
+  clientId: string;
+  title: string;
+  description: string;
+  amount: number;
+  currency: string;
+  date: string;
+  validUntil: string;
+  status: "Draft" | "Sent" | "Accepted" | "Rejected" | "Expired" | "Invoiced" | "Paid";
+  notes: string;
+  items: QuotationItem[];
+  terms: { financial?: string; production?: string; technical?: string; extras?: string };
+  /** Statement deposit that settled this quote — bank evidence, set via link-payment. */
+  paymentTxId: string;
 }
 
 export interface Vendor {
@@ -53,6 +126,10 @@ export interface Vendor {
   active: boolean;
   declarationSigned: boolean;
   blocked: boolean;
+  /** True only for parties we ENGAGE under a service agreement, never for suppliers we buy from. */
+  engageable?: boolean;
+  /** Login email, when this provider is also a system user. Empty for ordinary suppliers. */
+  userEmail?: string;
 }
 
 export interface Expense {
@@ -97,6 +174,9 @@ export interface Procurement {
   }[];
   justification: string;
   conflictDeclared: boolean;
+  /** Waiver: fewer than 3 quotations, allowed only with a written justification. */
+  singleSource?: boolean;
+  approvedBy?: string;
 }
 
 export interface BankAccount {
@@ -118,6 +198,12 @@ export interface BankTransaction {
   type: "Deposit" | "Withdrawal";
   reconciled: boolean;
   voucherNo?: string;
+  /** Set on incoming donor money, which has no voucher to route it to a project. */
+  projectId?: string;
+  /** Staged from an eBLOM advice PDF, awaiting statement confirmation. Excluded from balances, reports and funding proof. */
+  pending?: boolean;
+  /** eBLOM advice "Transaction Reference" — dedupe key for re-imports. */
+  noticeRef?: string;
 }
 
 export interface JournalEntry {
@@ -142,10 +228,13 @@ export interface Employee {
   position: string;
   salary: number;
   allowance: number;
+  /** "Cash" or "Bank Transfer". When "Bank Transfer", bankAccountId says which account. */
   paymentMethod: string;
   contractType: string;
   active: boolean;
   userEmail?: string; // login email for self-service timesheets (Policy 8.5)
+  /** Which BLOM sub-account pays this person. Null/absent means cash. */
+  bankAccountId?: string;
 }
 
 export interface Timesheet {
@@ -187,8 +276,62 @@ export interface PartnerAccount {
   currentAccountBalance: number;
 }
 
+/** Physical petty-cash count. Variance against ledger 1120 = the undocumented gap. */
+export interface CashCount {
+  id: string;
+  date: string;
+  countedUSD: number;
+  countedBy: string;
+  notes: string;
+  created_at: string;
+}
+
+/** A recurring charge: what renews, when, and out of which account. */
+export interface Subscription {
+  id: string;
+  name: string;
+  vendorId: string;
+  matchText: string;
+  amount: number;
+  currency: string;
+  cycle: "Monthly" | "Quarterly" | "Annual";
+  nextRenewal: string;
+  bankAccountId: string;
+  projectId: string;
+  budgetLineId: string;
+  status: "Active" | "Paused" | "Cancelled";
+  /** Date someone last confirmed it is still running. */
+  verifiedOn?: string;
+  notes: string;
+  created_at: string;
+}
+
+/** One dated, assignable step in a project's life. */
+export interface ProjectActivity {
+  id: string;
+  projectId: string;
+  title: string;
+  detail: string;
+  kind: "Activity" | "Milestone" | "Report" | "Payment";
+  dueDate: string;
+  assigneeUserId: string;
+  status: "Planned" | "In Progress" | "Done" | "Cancelled";
+  budgetLineId: string;
+  source: string;
+  completedOn: string;
+  /** Donor timetable shape: "2.1.3", its Result heading, Arabic title, period labels. */
+  outlineNo?: string;
+  resultGroup?: string;
+  titleAr?: string;
+  startDate?: string;
+  periodsJson?: string;
+  created_at: string;
+}
+
 export interface AppDoc {
   id: string;
+  /** Unique document reference (ANH-DOC-NNNNN) — auto-assigned, master-account edit only. */
+  refNo?: string | null;
   filename: string;
   mimeType: string;
   sizeStr: string;
@@ -196,6 +339,8 @@ export interface AppDoc {
   category: "Voucher" | "Contract" | "Receipt" | "AuditFile";
   linkedRecordType: string;
   linkedRecordId: string;
+  /** The person/provider (emp-* / ven-*) this document is about — drives the party file view. */
+  partyId?: string | null;
   created_at: string;
 }
 
@@ -240,7 +385,7 @@ export interface Account {
 }
 
 export interface DatabaseState {
-  users: { id: string; name: string; email: string; role: string; active: boolean }[];
+  users: { id: string; name: string; email: string; role: string; active: boolean; projectIdsJson?: string; streamScope?: string }[];
   accounts: Account[];
   donors: Donor[];
   projects: Project[];
@@ -258,6 +403,12 @@ export interface DatabaseState {
   documents: AppDoc[];
   auditLogs: AuditLog[];
   complianceTasks: ComplianceTask[];
+  opportunities: Opportunity[];
+  cashCounts: CashCount[];
+  subscriptions: Subscription[];
+  projectActivities: ProjectActivity[];
+  clients: Client[];
+  quotations: Quotation[];
   orgSettings: OrgSettings;
   fxRates: { EUR: number; LBP: number };
 }
