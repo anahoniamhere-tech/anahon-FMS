@@ -1019,13 +1019,29 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
             const blockers = publishBlockers({ ...item, checksJson: JSON.stringify(item.checks || {}) });
             return (
               <div key={item.id} className="py-3 text-xs">
-                <div className="flex flex-wrap items-center gap-2 cursor-pointer" onClick={() => setOpenId(open ? null : item.id)}>
+                <div className="flex flex-wrap items-center gap-2 cursor-pointer"
+                  onClick={() => {
+                    // Collapsing the row unmounts the studio with it — same warning.
+                    if (open && studio?.itemId === item.id && studio.draft
+                      && !window.confirm(t("You have a draft that is not saved to this story yet. Close and lose it?"))) return;
+                    setOpenId(open ? null : item.id);
+                  }}>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLE[item.status]}`}>{t(item.status)}</span>
                   <span className="font-bold text-slate-900">{item.title}</span>
                   <span className="text-slate-400">{item.contentType}{item.stream ? ` · ${item.stream}` : ""}</span>
                   {item.factCheckTag && <span className="text-emerald-700 flex items-center gap-0.5 text-[10px] font-bold"><CheckCircle2 className="h-3 w-3" /> {t("Fact-checked")}</span>}
                   {item.legalFlag && <span className="text-red-700 flex items-center gap-0.5 text-[10px] font-bold"><ShieldAlert className="h-3 w-3" /> {t("Legal review required")}</span>}
                   {item.aiAssisted && <span className="text-indigo-700 text-[10px] font-bold" title={t("AI used")}>🤖 AI{item.aiDisclosed ? " ✓" : ""}</span>}
+                  {item.drafts.length > 0 && (
+                    <span className="text-slate-600 text-[10px] font-bold bg-slate-100 rounded-full px-2 py-0.5" title={item.drafts.map(d => d.label).join(" · ")}>
+                      📝 {item.drafts.length} {t("Drafts")}
+                    </span>
+                  )}
+                  {item.materials.length > 0 && (
+                    <span className="text-slate-500 text-[10px]" title={item.materials.map(m => m.label).join(" · ")}>
+                      📎 {item.materials.length}
+                    </span>
+                  )}
                   {item.corrections.length > 0 && <span className="text-amber-700 text-[10px] font-bold">{item.corrections.length} {t("Corrections")}</span>}
                   <span className="ml-auto text-slate-500 font-mono">{nameOf(item.assigneeUserId)}{item.dueDate ? ` · ${item.dueDate}` : ""}</span>
                 </div>
@@ -1132,7 +1148,13 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                                 <span className="font-bold uppercase text-[10px] font-mono">🎬 {t("Production Studio")}</span>
                                 <span className="flex items-center gap-3">
                                   {studio.provider && <span className="text-[9px] text-slate-400 font-mono">{t("Provided by")} {studio.provider}</span>}
-                                  <button onClick={() => setStudio(null)} className="text-slate-400 hover:text-white text-[10px]">✕</button>
+                                  <button
+                                    onClick={() => {
+                                      // Studio conversations are not persisted — warn before a ready draft is lost.
+                                      if (studio.draft && !window.confirm(t("You have a draft that is not saved to this story yet. Close and lose it?"))) return;
+                                      setStudio(null);
+                                    }}
+                                    className="text-slate-400 hover:text-white text-[10px]">✕</button>
                                 </span>
                               </div>
                               <div className="flex flex-wrap gap-1.5">
@@ -1156,7 +1178,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                                 <div className="p-2 bg-emerald-950/60 border border-emerald-700 rounded text-[11px] space-y-1">
                                   <p className="font-bold text-emerald-300">{studio.draft.label} <span className="font-normal">({studio.draft.kind})</span></p>
                                   <p className="whitespace-pre-wrap text-slate-300 max-h-40 overflow-y-auto">{studio.draft.text}</p>
-                                  <button onClick={async () => { if (await post("/api/content/draft-save", { id: item.id, ...studio.draft }, "Draft saved to item")) setStudio(s => s ? { ...s, draft: null } : s); }}
+                                  <button onClick={async () => { if (await post("/api/content/draft-save", { id: item.id, ...studio.draft }, `${studio.draft.label} → "${item.title.slice(0, 40)}${item.title.length > 40 ? "…" : ""}"`)) setStudio(s => s ? { ...s, draft: null } : s); }}
                                     className="bg-emerald-600 hover:bg-emerald-700 rounded px-2.5 py-1 text-[10px] font-semibold">💾 {t("Save Draft to Item")}</button>
                                 </div>
                               )}
