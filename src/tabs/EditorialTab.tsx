@@ -19,7 +19,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 const EDITOR_ROLES = ["Production Manager", "Program Director", "Super Admin"];
 
-export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast }: SharedProps) {
+export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess }: SharedProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [form, setForm] = useState<any | null>(null);
@@ -44,6 +44,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   // Meeting recorder + minutes processing
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [mtgBusy, setMtgBusy] = useState(false);
+  const [recHelp, setRecHelp] = useState(false); // mic unavailable → offer phone/browser link
 
   // Open the Idea Desk pre-seeded with a documented meeting topic. The user still
   // presses Send — no surprise model calls.
@@ -94,7 +95,9 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
       setRecorder(rec);
       triggerToast("Recording — press Stop when the meeting ends");
     } catch {
-      triggerToast("Microphone access refused — paste the transcript instead.", "error");
+      // Blocked mic (e.g. the in-app browser pane) → offer the LAN link/QR instead.
+      setRecHelp(true);
+      triggerToast("Microphone unavailable here — open the app on your phone or browser to record.", "error");
     }
   };
 
@@ -325,8 +328,30 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                   {recorder ? `⏹ ${t("Stop Recording")}` : `🎙 ${t("Record Meeting")}`}
                 </button>
                 {mtgBusy && <span className="text-slate-500 animate-pulse">{t("Transcribing…")}</span>}
+                <button onClick={() => setRecHelp(v => !v)} title={t("Record from your phone")}
+                  className="bg-slate-200 hover:bg-slate-300 text-slate-800 rounded px-2.5 py-1.5">📱</button>
                 <span className="text-[9px] text-slate-400">Zoom/Meet: download their transcript and paste it — no integration needed. Recordings are archived in the vault.</span>
               </div>
+              {recHelp && (
+                <div className="mt-2 p-3 bg-white border border-slate-300 rounded-lg flex flex-wrap items-center gap-4">
+                  <div className="text-[11px] space-y-1 flex-1 min-w-[220px]">
+                    <p className="font-bold text-slate-700">{t("Record from your phone")}</p>
+                    {phoneAccess && phoneAccess.urls.length > 0 ? (
+                      <>
+                        <p className="font-mono text-sm font-bold text-slate-900 break-all">{phoneAccess.urls[0].url}</p>
+                        <button onClick={() => { navigator.clipboard?.writeText(phoneAccess.urls[0].url); triggerToast("Address copied."); }}
+                          className="bg-slate-900 hover:bg-slate-950 text-white rounded px-2.5 py-1 text-[10px]">{t("Copy")}</button>
+                        <p className="text-slate-500">Open it on a phone on the same Wi-Fi (or in Chrome/Safari on this machine), sign in, open the Editorial Desk and press 🎙 there. The microphone works in a real browser.</p>
+                      </>
+                    ) : (
+                      <p className="text-slate-500">Open the same address in Chrome/Safari on this machine and press 🎙 there — the microphone is blocked in this window.</p>
+                    )}
+                  </div>
+                  {phoneAccess?.qr && (
+                    <div className="w-28 h-28 shrink-0 [&_svg]:w-full [&_svg]:h-full" dangerouslySetInnerHTML={{ __html: phoneAccess.qr }} />
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <button onClick={async () => { if (await post("/api/meetings/save", { kind: "Weekly Editorial", ...mtgForm }, "Meeting recorded")) setMtgForm(null); }}

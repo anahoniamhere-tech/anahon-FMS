@@ -222,6 +222,8 @@ export const AR: Record<string, string> = {
   "Transcribing…": "جارٍ التفريغ…",
   "Topics discussed": "المواضيع المطروحة",
   "Elaborate": "تطوير الفكرة",
+  "Record from your phone": "التسجيل من هاتفك",
+  "Copy": "نسخ",
   "Suggested sources (verify per Policy 005)": "مصادر مقترحة (تُتحقَّق وفق سياسة 005)",
   "Content Standards": "معايير المحتوى",
   "Fact-Check Log": "سجل التحقق",
