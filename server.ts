@@ -2620,7 +2620,8 @@ app.post("/api/content/brainstorm", async (req, res) => {
       `The editor is developing a content idea in conversation. Reference links, photo/video URLs and document links they paste are MATERIALS — collect them.`,
       `Converse briefly and concretely: sharpen the angle, suggest the right content type and channels, respect solution-journalism framing (Policy 002), and flag legal risk honestly.`,
       `When (and only when) the idea is concrete enough to assign, set ready=true and fill draft: a title, the content type, programme, channels, a production-ready brief TAILORED to that type (an Article brief reads differently from a Reel or Podcast brief: angle, structure, key questions, visual/audio treatment as appropriate), materials (INCLUDE every provided material below plus links pasted in conversation; label each; kind is link/photo/video/doc), suggestedSources (concrete reporting leads for THIS story: people/roles to interview, offices, records, datasets — each with why it matters; these are LEADS TO VERIFY under Policy 005, never claim them as verified), and legalFlag if the story could have legal implications.`,
-      `Never invent facts, names or figures — use [FILL: …] placeholders where reporting must fill gaps.`,
+      `SOURCES — name the institution, office, role or record precisely: that IS the source, and the reporter reaches it without knowing a person's name. Do NOT append a [FILL: name] to every source line; it adds noise. Name a person only when you are confident, and then mark it "يُثبَّت عند الاتصال / confirm on contact". Reserve [FILL: …] for FACTS a draft would otherwise state without verification — figures, dates, capacities, official decisions.`,
+      `Never invent facts, names or figures.`,
       provided.length
         ? `\nMATERIALS PROVIDED BY THE EDITOR:\n${provided.map(m => `- [${m.kind}] ${m.label}${m.description ? ` — ${m.description}` : ""} (${m.url})`).join("\n")}`
         : ``,
@@ -2787,6 +2788,7 @@ app.post("/api/content/produce", async (req, res) => {
       `VISUALS — the golden transparency rule: prefer the provided real photos for factual coverage. You MAY propose an AI-generated visual concept when it amplifies the message (describe it for the designer), but it must NEVER depict real events/people as documentary reality, and it must carry a visible AI watermark/label. Never present AI imagery as a real photo.`,
       `TRANSPARENCY DISCLAIMER — every Article Draft ends with: "أُعدّ هذا المحتوى بمساعدة الذكاء الاصطناعي وراجعه فريق تحرير أناهون. / This content was prepared with AI assistance and reviewed by AnaHon's editorial team." Captions/carousels end with a short label like "(محتوى بمساعدة AI)". Scripts note it in the credits line.`,
       `Solution-journalism framing, balanced, no invented facts, respect source confidentiality. Write in the language the user is working in.`,
+      `[FILL: …] marks a FACT the fact-check log has not yet confirmed — a figure, date, capacity, official decision. Do not scatter it over names of offices or roles, which are reporting targets, not gaps.`,
       `When your reply contains a usable piece, ALSO return it in draft {label, kind, text} so it can be saved to the item; otherwise draft = null.`,
       ``,
       `CONVERSATION:`,
