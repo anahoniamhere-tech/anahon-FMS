@@ -2589,9 +2589,9 @@ app.post("/api/meetings/save", async (req, res) => {
     if (known.length !== ids.length) {
       return res.status(400).json({ error: "Attendance list contains an unknown user." });
     }
-    const cleanTopics = (Array.isArray(topics) ? topics : [])
-      .filter((tp: any) => tp && typeof tp.topic === "string" && tp.topic.trim())
-      .map((tp: any) => ({ topic: String(tp.topic).slice(0, 300), note: String(tp.note || "").slice(0, 500) }));
+    const cleanTopics = topics !== undefined
+      ? cleanMeetingTopics(topics, await prisma.user.findMany({ where: { active: true }, select: { id: true, name: true } }))
+      : [];
     const existing = await prisma.editorialMeeting.findUnique({ where: { kind_date: { kind: mtgKind, date } } });
     const data = {
       attendeesJson: JSON.stringify(ids),
@@ -2742,6 +2742,30 @@ app.post("/api/content/draft-delete", async (req, res) => {
   }
 });
 
+// Topics carry who took responsibility in the meeting (extracted, never invented).
+// assigneeName is matched against the roster → assigneeUserId; unmatched names keep
+// the text so the humans see what the minutes said.
+function cleanMeetingTopics(raw: any, team: { id: string; name: string }[]) {
+  const findUser = (name: string) => {
+    const n = String(name || "").trim().toLowerCase();
+    if (!n) return null;
+    return team.find(u => u.name.toLowerCase() === n)
+      || team.find(u => u.name.toLowerCase().split(" ")[0] === n.split(" ")[0])
+      || null;
+  };
+  return (Array.isArray(raw) ? raw : [])
+    .filter((tp: any) => tp && typeof tp.topic === "string" && tp.topic.trim())
+    .map((tp: any) => {
+      const matched = findUser(tp.assigneeName);
+      return {
+        topic: String(tp.topic).slice(0, 300),
+        note: String(tp.note || "").slice(0, 500),
+        assigneeName: matched?.name || String(tp.assigneeName || "").slice(0, 80),
+        assigneeUserId: matched?.id || String(tp.assigneeUserId || "")
+      };
+    });
+}
+
 // Paste path: any tool's transcript or typed minutes → structured topics on the
 // meeting row. Zoom/Meet need no integration — their own transcript export pastes here.
 app.post("/api/meetings/extract-topics", async (req, res) => {
@@ -2759,12 +2783,15 @@ app.post("/api/meetings/extract-topics", async (req, res) => {
       return res.status(400).json({ error: "Paste the meeting minutes or transcript first (at least a few lines)." });
     }
     if (!aiConfigured()) return res.status(400).json({ error: "No AI provider configured — add ANTHROPIC_API_KEY or GEMINI_API_KEY to .env." });
+    const team = await prisma.user.findMany({ where: { active: true } });
     const out = await askJson([
       `You are processing minutes of an AnaHon editorial meeting (${mtgKind}, ${date}).`,
+      `TEAM ROSTER: ${team.map(u => `${u.name} (${u.role})`).join(", ")}.`,
       `From the minutes below, extract: a clean summary of the meeting (2-5 sentences, same language as the minutes),`,
       `the week's editorial direction if one was discussed (1-2 sentences, else empty string),`,
       `and the CONTENT TOPICS discussed — each topic is a potential story/content idea with a short note of what was said about it.`,
-      `Only extract topics actually present in the minutes. Never invent.`,
+      `For each topic, if the minutes say or clearly imply WHO takes responsibility for it, set assigneeName to that person's EXACT roster name; otherwise "".`,
+      `Only extract what is actually present in the minutes. Never invent topics or assignments.`,
       ``,
       `MINUTES:`,
       String(minutes).slice(0, 30000)
@@ -2779,14 +2806,14 @@ app.post("/api/meetings/extract-topics", async (req, res) => {
           items: {
             type: "object",
             additionalProperties: false,
-            properties: { topic: { type: "string" }, note: { type: "string" } },
-            required: ["topic", "note"]
+            properties: { topic: { type: "string" }, note: { type: "string" }, assigneeName: { type: "string" } },
+            required: ["topic", "note", "assigneeName"]
           }
         }
       },
       required: ["summary", "direction", "topics"]
     });
-    const topics = (out.topics || []).map((tp: any) => ({ topic: String(tp.topic).slice(0, 300), note: String(tp.note || "").slice(0, 500) }));
+    const topics = cleanMeetingTopics(out.topics, team);
     const existing = await prisma.editorialMeeting.findUnique({ where: { kind_date: { kind: mtgKind, date } } });
     const data = {
       minutes: String(minutes),
@@ -2836,6 +2863,7 @@ app.post("/api/meetings/transcribe", async (req, res) => {
     const buffer = Buffer.from(audio.base64, "base64");
     fs.writeFileSync(path.join(dir, fname), buffer);
 
+    const team = await prisma.user.findMany({ where: { active: true } });
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const r = await ai.models.generateContent({
       model: "gemini-3.5-flash",
@@ -2843,10 +2871,11 @@ app.post("/api/meetings/transcribe", async (req, res) => {
         { inlineData: { mimeType: audio.mimeType, data: audio.base64 } },
         { text: [
           `This is a recording of an AnaHon editorial meeting (${mtgKind}, ${date}), likely in Arabic (Lebanese) and/or English.`,
-          `Return STRICT JSON: {"minutes": string, "summary": string, "direction": string, "topics": [{"topic": string, "note": string}]}.`,
+          `TEAM ROSTER: ${team.map(u => u.name).join(", ")}.`,
+          `Return STRICT JSON: {"minutes": string, "summary": string, "direction": string, "topics": [{"topic": string, "note": string, "assigneeName": string}]}.`,
           `minutes = clean readable minutes of what was said (same language as spoken, speaker turns where clear).`,
           `summary = 2-5 sentences. direction = the editorial direction for the week if discussed, else "".`,
-          `topics = the content topics/story ideas discussed, each with a note of what was said. Only what is actually in the recording — never invent.`
+          `topics = the content topics/story ideas discussed, each with a note of what was said; assigneeName = the roster name of whoever took responsibility for it in the meeting, else "". Only what is actually in the recording — never invent.`
         ].join("\n") }
       ] }],
       config: { responseMimeType: "application/json" }
@@ -2855,7 +2884,7 @@ app.post("/api/meetings/transcribe", async (req, res) => {
     try { out = JSON.parse(r.text || "{}"); } catch { return res.status(500).json({ error: "Transcription returned unreadable output — try again or paste the transcript." }); }
 
     const meetingRow = await prisma.editorialMeeting.findUnique({ where: { kind_date: { kind: mtgKind, date } } });
-    const topics = (out.topics || []).map((tp: any) => ({ topic: String(tp.topic).slice(0, 300), note: String(tp.note || "").slice(0, 500) }));
+    const topics = cleanMeetingTopics(out.topics, team);
     const data = {
       minutes: String(out.minutes || ""),
       topicsJson: JSON.stringify(topics),

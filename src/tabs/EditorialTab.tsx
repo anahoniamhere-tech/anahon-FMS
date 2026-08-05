@@ -41,6 +41,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const [matForm, setMatForm] = useState({ label: "", url: "", kind: "link" });
   const [linkForm, setLinkForm] = useState({ url: "", description: "", kind: "link" });
   const [upDesc, setUpDesc] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   // Meeting recorder + minutes processing
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [mtgBusy, setMtgBusy] = useState(false);
@@ -327,9 +328,21 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                   {m.topics.map((tp, i) => (
                     <span key={i} title={tp.note} className="flex items-center gap-1.5 bg-white border border-slate-300 rounded-full px-2.5 py-1">
                       {tp.topic}
+                      {tp.assigneeName && <span className="text-[10px] text-indigo-700 font-bold">→ {tp.assigneeName}</span>}
                       {canManage && (
-                        <button onClick={() => elaborateTopic(m, tp)}
-                          className="text-[10px] bg-slate-900 text-white rounded-full px-2 py-0.5 hover:bg-slate-700">💡 {t("Elaborate")}</button>
+                        <>
+                          <button onClick={() => elaborateTopic(m, tp)}
+                            className="text-[10px] bg-slate-900 text-white rounded-full px-2 py-0.5 hover:bg-slate-700">💡 {t("Elaborate")}</button>
+                          <button
+                            title={t("New Assignment")}
+                            onClick={() => setForm({
+                              title: tp.topic, contentType: "Post", stream: "", channels: [],
+                              assigneeUserId: tp.assigneeUserId || "", dueDate: "",
+                              brief: `${tp.note}${tp.note ? "\n" : ""}(${t("Topics discussed")} — ${m.date})`,
+                              legalFlag: false, materials: []
+                            })}
+                            className="text-[10px] bg-red-600 text-white rounded-full px-2 py-0.5 hover:bg-red-700">➕</button>
+                        </>
                       )}
                     </span>
                   ))}
@@ -477,7 +490,14 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
 
       {/* Idea desk — brainstorm chat; AI prefills, only a human saves (house rule) */}
       {canManage && chat && (
-        <div className="p-5 bg-slate-900 text-white border border-slate-800 rounded-xl shadow-lg space-y-3">
+        <div
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => {
+            e.preventDefault(); setDragOver(false);
+            Array.from(e.dataTransfer.files).forEach((f: File) => uploadChatFile(f));
+          }}
+          className={`p-5 bg-slate-900 text-white border rounded-xl shadow-lg space-y-3 ${dragOver ? "border-red-500 border-2 border-dashed" : "border-slate-800"}`}>
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold uppercase font-mono">💡 {t("Idea Desk")}</h3>
             <span className="flex items-center gap-3">
@@ -591,7 +611,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
               <input type="file" aria-label={t("Upload material")}
                 onChange={e => { const f = e.target.files?.[0]; if (f) uploadChatFile(f); e.target.value = ""; }}
                 className="text-[10px] text-slate-400 file:bg-slate-800 file:text-white file:border-0 file:rounded file:px-3 file:py-1.5 file:text-xs file:mr-2 file:cursor-pointer" />
-              <span className="text-[9px] text-slate-500">→ vault · Reference Material{chat.pendingFile ? ` · 👁 ${chat.pendingFile.filename} will be shown to the model` : ""}</span>
+              <span className="text-[9px] text-slate-500">{t("or drag files anywhere onto this panel")} → vault · Reference Material{chat.pendingFile ? ` · 👁 ${chat.pendingFile.filename} will be shown to the model` : ""}</span>
             </div>
           </div>
         </div>

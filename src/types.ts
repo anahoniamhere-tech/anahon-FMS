@@ -434,7 +434,7 @@ export interface EditorialMeeting {
   direction: string;
   notes: string;
   minutes: string;
-  topics: { topic: string; note: string }[];
+  topics: { topic: string; note: string; assigneeName?: string; assigneeUserId?: string }[];
   recordedBy: string;
   created_at: string;
 }
