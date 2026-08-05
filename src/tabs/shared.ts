@@ -24,6 +24,19 @@ export interface SharedProps {
   // Projects the active user may raise requests against (role-scoped)
   requestableProjects: Project[];
   isProjectOfficer: boolean;
+  isSelfService: boolean;
   // LAN access info fetched alongside state (dashboard's phone panel)
   phoneAccess: { urls: { iface: string; url: string }[]; qr: string | null } | null;
+  // Contract generation + party files — shared by payroll (employees) and vendors
+  contractFor: any;
+  setContractFor: (v: any) => void;
+  contractParty: "employee" | "vendor";
+  setContractParty: (v: "employee" | "vendor") => void;
+  contractForm: any;
+  setContractForm: (v: any) => void;
+  contractBusy: boolean;
+  handleGenerateContract: (e: any, partyId: string, partyType?: "employee" | "vendor") => Promise<void>;
+  partyFileFor: any;
+  setPartyFileFor: (v: any) => void;
+  renderPartyFile: (partyId: string, partyName: string) => any;
 }
