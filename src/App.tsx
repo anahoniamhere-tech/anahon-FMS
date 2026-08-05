@@ -43,7 +43,8 @@ import {
   ArrowLeft,
   Grid,
   List,
-  Eye
+  Eye,
+  Newspaper
 } from "lucide-react";
 import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, BankAccount, Employee, Timesheet, FixedAsset, PartnerAccount, AppDoc, ComplianceTask, AuditLog, Opportunity, Client, Quotation, QuotationItem, Proposal } from "./types";
 
@@ -66,6 +67,7 @@ import ReportsTab from "./tabs/ReportsTab";
 import AssetsTab from "./tabs/AssetsTab";
 import AccountsTab from "./tabs/AccountsTab";
 import HandbooksTab from "./tabs/HandbooksTab";
+import EditorialTab from "./tabs/EditorialTab";
 import { SharedProps } from "./tabs/shared";
 import { auth } from "./firebaseConfig";
 import {
@@ -331,7 +333,8 @@ export default function App() {
     if (!state?.users?.length) return;   // state is null until the backend loads
     const u = state.users.find(x => x.id === activeUserId) || state.users[0];
     if (u?.role === "Employee (Self-Service)" && activeTab !== "payroll") setActiveTab("payroll");
-    if (u?.role === "Project Officer" && !["dashboard", "projects", "expenses", "procurement"].includes(activeTab)) setActiveTab("expenses");
+    if (u?.role === "Project Officer" && !["dashboard", "projects", "expenses", "procurement", "editorial"].includes(activeTab)) setActiveTab("expenses");
+    if (["Reporter", "Content Creator", "Podcaster"].includes(u?.role || "") && activeTab !== "editorial") setActiveTab("editorial");
   }, [state, activeUserId, activeTab]);
 
 
@@ -628,6 +631,8 @@ export default function App() {
 
   // Self-service staff (Policy 8.5) see only their own timesheet screen.
   const isSelfService = currentUser?.role === "Employee (Self-Service)";
+  // Content crew (Policy 002 production team) see only the editorial desk.
+  const isContentCrew = ["Reporter", "Content Creator", "Podcaster"].includes(currentUser?.role || "");
 
   /** Evidence gaps, derived live from state so the count can never go stale.
    *  "Digitized*" documents are the app's own rendering of the voucher — they are not
@@ -961,9 +966,21 @@ export default function App() {
               <Layers className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">{t("Procurement & Bids")}</span>
             </button>
+            <button onClick={() => handleNavClick("editorial")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "editorial" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Newspaper className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Editorial Desk")}</span>
+            </button>
             </>)}
 
-            {!isSelfService && !isProjectOfficer && (<>
+            {isContentCrew && (<>
+            <p className="px-3 pt-1 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Content Team")}</p>
+            <button onClick={() => handleNavClick("editorial")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "editorial" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Newspaper className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Editorial Desk")}</span>
+            </button>
+            </>)}
+
+            {!isSelfService && !isProjectOfficer && !isContentCrew && (<>
             <p className="px-3 pt-1 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Overview")}</p>
             <button onClick={() => handleNavClick("dashboard")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Activity className="h-4 w-4 shrink-0" />
@@ -989,6 +1006,11 @@ export default function App() {
             <button onClick={() => handleNavClick("production")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "production" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Briefcase className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">{t("Production & Clients")}</span>
+            </button>
+
+            <button onClick={() => handleNavClick("editorial")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "editorial" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Newspaper className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Editorial Desk")}</span>
             </button>
 
             <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Money Flow")}</p>
@@ -1021,7 +1043,7 @@ export default function App() {
             </button>
 
             </>)}
-            {!isProjectOfficer && (<>
+            {!isProjectOfficer && !isContentCrew && (<>
             <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("People")}</p>
             <button onClick={() => handleNavClick("payroll")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "payroll" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <User className="h-4 w-4 shrink-0" />
@@ -1029,7 +1051,7 @@ export default function App() {
             </button>
             </>)}
 
-            {!isSelfService && !isProjectOfficer && (<>
+            {!isSelfService && !isProjectOfficer && !isContentCrew && (<>
             <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Records & Governance")}</p>
             <button onClick={() => handleNavClick("assets")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "assets" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <HardDrive className="h-4 w-4 shrink-0" />
@@ -1100,6 +1122,8 @@ export default function App() {
           {activeTab === "funnel" && <FunnelTab {...shared} />}
 
           {activeTab === "production" && <ProductionTab {...shared} />}
+
+          {activeTab === "editorial" && <EditorialTab {...shared} />}
 
           {activeTab === "expenses" && <ExpensesTab {...shared} />}
 

@@ -15,6 +15,8 @@ export const PROPOSAL_SECTIONS: [keyof Proposal, string, string][] = [
 // core/backbone funding like the SKF FSTP. AnaHon itself is always the applicant.
 export const STREAMS = ["AnaHon Platform", "iContent Academy", "Ahali Al Madina", "Roots & Reach", "Production", "Core / Org-wide"];
 export const OPP_STAGES = ["Prospect", "Drafting", "Submitted", "Awarded", "Declined"] as const;
+// Editorial vocabulary lives in editorialGates.ts (shared with the server's enforcement).
+export { CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./editorialGates";
 export const QUOTE_STATUSES = ["Draft", "Sent", "Accepted", "Rejected", "Expired", "Invoiced", "Paid"] as const;
 
 // Service catalog distilled from AnaHon's real quotations in Drive (Akkarouna,

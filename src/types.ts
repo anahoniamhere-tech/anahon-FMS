@@ -385,6 +385,42 @@ export interface Account {
   active: boolean;
 }
 
+/**
+ * One piece of content moving through the editorial pipeline (Policies 002 & 005).
+ * The enforcement fields — named fact-checker, dual approval slots, legal attestation,
+ * checks — are what make "published" mean "policy-compliant".
+ */
+export interface ContentItem {
+  id: string;
+  title: string;
+  contentType: string;
+  stream: string;
+  channels: string[];
+  brief: string;
+  status: "Assigned" | "In Production" | "Fact-Check" | "Editorial Review" | "Approved" | "Published";
+  assigneeUserId: string;
+  dueDate: string;
+  assignedMeetingDate: string;
+  reviewedMeetingDate: string;
+  factCheckerUserId: string;
+  factCheckLog: { source: string; step: string; date: string }[];
+  factCheckPassedAt: string;
+  checks: Record<string, boolean>;
+  legalFlag: boolean;
+  legalReviewedBy: string;
+  legalReviewNote: string;
+  legalRecordedBy: string;
+  legalRecordedAt: string;
+  pmApprovedBy: string;
+  pmApprovedAt: string;
+  pdApprovedBy: string;
+  pdApprovedAt: string;
+  factCheckTag: boolean;
+  publishedAt: string;
+  corrections: { date: string; nature: string; correction: string; by: string }[];
+  created_at: string;
+}
+
 export interface DatabaseState {
   users: { id: string; name: string; email: string; role: string; active: boolean; projectIdsJson?: string; streamScope?: string }[];
   accounts: Account[];
@@ -408,6 +444,7 @@ export interface DatabaseState {
   cashCounts: CashCount[];
   subscriptions: Subscription[];
   projectActivities: ProjectActivity[];
+  contentItems: ContentItem[];
   clients: Client[];
   quotations: Quotation[];
   orgSettings: OrgSettings;

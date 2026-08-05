@@ -7,6 +7,8 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef } from "./docgen.js";
+import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
+import { STREAMS } from "./src/constants.js";
 
 dotenv.config();
 
@@ -42,7 +44,27 @@ const PO_ALLOWED_POSTS = new Set([
   "/api/activities/save",           // may plan their own projects' timeline (scope-checked inside)
   "/api/activities/generate",
   "/api/document/upload",
-  "/api/expense/scan-invoice"
+  "/api/expense/scan-invoice",
+  // Policy 002: each Project Officer runs their programme's content operations.
+  "/api/content/save",
+  "/api/content/start",
+  "/api/content/submit-factcheck",
+  "/api/content/factcheck-log",
+  "/api/content/factcheck-pass",
+  "/api/content/return"
+]);
+// Content crew (Policy 002 production team: reporters, content creators, podcasters)
+// are content-only accounts: they act on the editorial pipeline and nothing else —
+// same containment idea as the Project Officer gate. loadState also gives these roles
+// no financial domain; this closes the write side.
+const CONTENT_CREW_ROLES = ["Reporter", "Content Creator", "Podcaster"];
+const CREW_ALLOWED_POSTS = new Set([
+  "/api/auth/sync",
+  "/api/content/start",
+  "/api/content/submit-factcheck",
+  "/api/content/factcheck-log",
+  "/api/content/factcheck-pass",   // any team member can be the named independent checker
+  "/api/content/return"            // the named checker sends work back
 ]);
 // Money-moving/control endpoints where an anonymous request is not acceptable.
 const IDENTITY_REQUIRED_POSTS = new Set([
@@ -53,7 +75,20 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/vendors/engageable",
   "/api/partners/draw",
   "/api/journal-entry/adjustment",
-  "/api/timesheets/approve"
+  "/api/timesheets/approve",
+  // Editorial pipeline: every action is a policy-enforcement step — its audit line
+  // must carry a real identity (Policies 002 & 005).
+  "/api/content/save",
+  "/api/content/start",
+  "/api/content/submit-factcheck",
+  "/api/content/factcheck-log",
+  "/api/content/factcheck-pass",
+  "/api/content/return",
+  "/api/content/approve",
+  "/api/content/legal-record",
+  "/api/content/publish",
+  "/api/content/correction",
+  "/api/content/delete"
 ]);
 
 app.use(async (req: any, res, next) => {
@@ -74,6 +109,9 @@ app.use(async (req: any, res, next) => {
       req.dbUser = dbUser;
       if (dbUser.role === "Project Officer" && !PO_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "Project Officers can raise purchase requests and upload evidence only — this action needs the Finance Officer or master account." });
+      }
+      if (CONTENT_CREW_ROLES.includes(dbUser.role) && !CREW_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "Content-team accounts act on the editorial pipeline only — this action needs an editor or finance role." });
       }
     }
     next();
@@ -181,6 +219,7 @@ async function loadState(viewer?: any) {
     projectActivities,
     clients,
     quotations,
+    contentItems,
     orgSettingsRaw,
     fxRatesRaw
   ] = await Promise.all([
@@ -208,6 +247,7 @@ async function loadState(viewer?: any) {
     prisma.projectActivity.findMany({ orderBy: { dueDate: "asc" } }),
     prisma.client.findMany(),
     prisma.quotation.findMany(),
+    prisma.contentItem.findMany({ orderBy: { created_at: "desc" } }),
     prisma.orgSettings.findFirst(),
     prisma.fxRates.findFirst()
   ]);
@@ -234,7 +274,31 @@ async function loadState(viewer?: any) {
     allocations: JSON.parse(t.allocationsJson || "[]")
   }));
 
+  const formattedContent = contentItems.map(c => ({
+    ...c,
+    channels: JSON.parse(c.channelsJson || "[]"),
+    checks: JSON.parse(c.checksJson || "{}"),
+    factCheckLog: JSON.parse(c.factCheckJson || "[]"),
+    corrections: JSON.parse(c.correctionsJson || "[]")
+  }));
+
   let visibleProjects = fundedOnly(projects, bankTransactions);
+
+  // Content crew (Policy 002 production team) get the editorial register and the people
+  // directory — no financial domain ever leaves the server for these roles.
+  if (viewer && CONTENT_CREW_ROLES.includes(viewer.role)) {
+    return {
+      users, accounts: [], donors: [], projects: [], budgetLines: [], vendors: [],
+      expenses: [], procurements: [], bankAccounts: [], bankTransactions: [],
+      journalEntries: [], employees: [], timesheets: [], fixedAssets: [],
+      partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: [],
+      opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
+      clients: [], quotations: [],
+      contentItems: formattedContent, // the whole board — the daily production meeting is collective
+      orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
+      fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
+    };
+  }
 
   // A Project Officer is confined to their programme: they receive only their projects'
   // records, and none of the organisation-wide financial data. Filtering here — not in the
@@ -245,6 +309,8 @@ async function loadState(viewer?: any) {
     const myProjectIds = new Set(visibleProjects.map(p => p.id));
     const myExpenses = formattedExpenses.filter(e => myProjectIds.has(e.projectId));
     const myExpenseIds = new Set(myExpenses.map(e => e.id));
+    const poStreams = new Set(visibleProjects.map(p => p.stream).filter(Boolean));
+    if (viewer.streamScope) poStreams.add(viewer.streamScope);
     return {
       users, accounts: [], donors,
       projects: visibleProjects,
@@ -267,6 +333,10 @@ async function loadState(viewer?: any) {
       opportunities: [], cashCounts: [], subscriptions: [],
       projectActivities: projectActivities.filter(a => myProjectIds.has(a.projectId)),
       clients: [], quotations: [],
+      // Policy 002: POs run their programme's content — plus anything they personally
+      // author or fact-check in another programme.
+      contentItems: formattedContent.filter(c =>
+        poStreams.has(c.stream) || c.assigneeUserId === viewer.id || c.factCheckerUserId === viewer.id),
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
     };
@@ -317,6 +387,8 @@ async function loadState(viewer?: any) {
     subscriptions,
     // Project timelines: dated, assignable steps per project.
     projectActivities,
+    // Editorial pipeline (Policies 002 & 005) — content register with enforcement fields.
+    contentItems: formattedContent,
     // Production stream — clients pay us; a quotation is never income until
     // the payment shows on a bank statement.
     clients,
@@ -1390,7 +1462,9 @@ app.post("/api/opportunities/delete", async (req, res) => {
 
 // Assign a user's role (and, for Project Officers, their project scope).
 // MASTER ACCOUNT ONLY. Role authority is the database — see the middleware above.
-const ASSIGNABLE_ROLES = ["Super Admin", "Finance Officer", "Program Director", "Project Officer", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer", "Employee (Self-Service)"];
+const ASSIGNABLE_ROLES = ["Super Admin", "Finance Officer", "Program Director", "Project Officer", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer", "Employee (Self-Service)",
+  // Editorial roles named by Policy 002 ("Programs Director" is the existing Program Director).
+  "Production Manager", "Reporter", "Content Creator", "Podcaster"];
 
 app.post("/api/users/set-role", async (req, res) => {
   try {
@@ -1983,6 +2057,368 @@ app.get("/api/subscriptions/detect", async (req, res) => {
       })
       .sort((a, b) => b.charges - a.charges);
     res.json({ suggestions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Editorial pipeline (Policies 002 & 005) ─────────────────────────────────
+// The register enforces the signed editorial and fact-checking policies: named
+// independent fact-checker (≠ author), dual approval by two distinct officers,
+// legal attestation when flagged, a publish gate, and dated public corrections.
+// One narrow route per transition; every route writes its own audit line.
+
+const CONTENT_EDITOR_ROLES = ["Production Manager", "Program Director", "Super Admin"];
+
+// Streams a Project Officer may run content for: their scoped projects' programmes
+// plus their streamScope. Null = caller is not a PO (role gates decide instead).
+async function poContentStreams(dbUser: any): Promise<Set<string> | null> {
+  const scope = await scopedProjectIds(dbUser);
+  if (!scope) return null;
+  const projs = await prisma.project.findMany({ where: { id: { in: [...scope] } }, select: { stream: true } });
+  const streams = new Set(projs.map(p => p.stream).filter(Boolean));
+  if (dbUser?.streamScope) streams.add(dbUser.streamScope);
+  return streams;
+}
+
+// Null when the caller may manage content in this stream; otherwise the refusal text.
+async function contentManageBlock(req: any, stream: string): Promise<string | null> {
+  const user = req.body?.user;
+  if (CONTENT_EDITOR_ROLES.includes(user?.role)) return null;
+  if (user?.role === "Project Officer") {
+    const streams = await poContentStreams(req.dbUser);
+    if (streams && streams.has(stream)) return null;
+    return "This programme is outside your project-officer scope.";
+  }
+  return "Editorial management needs the Production Manager, the Programs Director or the master account.";
+}
+
+app.post("/api/content/save", async (req, res) => {
+  try {
+    const { id, title, contentType, stream, channels, brief, assigneeUserId, dueDate,
+            assignedMeetingDate, reviewedMeetingDate, checks, legalFlag, user } = req.body;
+    if (!title) return res.status(400).json({ error: "Give the content item a title." });
+    const block = await contentManageBlock(req, stream || "");
+    if (block) return res.status(403).json({ error: block });
+    if (contentType && !CONTENT_TYPES.includes(contentType)) {
+      return res.status(400).json({ error: `Content type must be one of: ${CONTENT_TYPES.join(", ")} (Policy 002).` });
+    }
+    if (stream && !STREAMS.includes(stream)) {
+      return res.status(400).json({ error: `Programme must be one of: ${STREAMS.join(", ")}.` });
+    }
+    const chan: string[] = Array.isArray(channels) ? channels : [];
+    const badChan = chan.filter(c => !CONTENT_CHANNELS.includes(c));
+    if (badChan.length) {
+      return res.status(400).json({ error: `Unknown channel(s): ${badChan.join(", ")}. Policy 002 channels: ${CONTENT_CHANNELS.join(", ")}.` });
+    }
+    for (const [d, label] of [[dueDate, "Due date"], [assignedMeetingDate, "Assigned-meeting date"], [reviewedMeetingDate, "Reviewed-meeting date"]]) {
+      if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return res.status(400).json({ error: `${label} must be YYYY-MM-DD.` });
+    }
+    let assigneeName = "";
+    if (assigneeUserId) {
+      const a = await prisma.user.findUnique({ where: { id: assigneeUserId } });
+      if (!a || !a.active) return res.status(400).json({ error: "Assignee must be an active user." });
+      assigneeName = a.name;
+    }
+    const checkKeys = new Set(CONTENT_CHECKS.map(([k]) => k));
+    const cleanChecks: Record<string, boolean> = {};
+    if (checks && typeof checks === "object") {
+      for (const [k, v] of Object.entries(checks)) if (checkKeys.has(k)) cleanChecks[k] = !!v;
+    }
+
+    const existing = id ? await prisma.contentItem.findUnique({ where: { id } }) : null;
+    if (id && !existing) return res.status(404).json({ error: "Content item not found." });
+    if (existing && existing.status === "Published") {
+      return res.status(403).json({ error: "Published content is a permanent record — issue a public correction instead (Policy 005)." });
+    }
+
+    const data = {
+      title,
+      contentType: contentType || "Post",
+      stream: stream || "",
+      channelsJson: JSON.stringify(chan),
+      brief: brief || "",
+      assigneeUserId: assigneeUserId || "",
+      dueDate: dueDate || "",
+      reviewedMeetingDate: reviewedMeetingDate || "",
+      checksJson: JSON.stringify(cleanChecks),
+      legalFlag: !!legalFlag
+    };
+    const item = existing
+      ? await prisma.contentItem.update({ where: { id }, data })
+      : await prisma.contentItem.create({ data: {
+          id: `content-${Date.now()}`, ...data,
+          // Policy 002: assignments come out of the daily production meeting.
+          assignedMeetingDate: assignedMeetingDate || localDate(),
+          created_at: new Date().toISOString()
+        } });
+    await createAuditLog(user?.id, user?.name,
+      existing ? "Content Item Updated" : "Content Assigned",
+      existing
+        ? `"${item.title}" edited in status ${item.status}.`
+        : `"${item.title}" (${item.contentType}) — ${item.stream || "no programme"}, assigned to ${assigneeName || "unassigned"}, due ${item.dueDate || "no date"} (daily meeting ${item.assignedMeetingDate}).`);
+    res.json({ success: true, item });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/start", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (item.status !== "Assigned") {
+      return res.status(400).json({ error: `Only Assigned content can start production (currently ${item.status}).` });
+    }
+    if (user?.id !== item.assigneeUserId) {
+      const block = await contentManageBlock(req, item.stream);
+      if (block) return res.status(403).json({ error: "Only the assignee or an editor can start production." });
+    }
+    const updated = await prisma.contentItem.update({ where: { id }, data: { status: "In Production" } });
+    await createAuditLog(user?.id, user?.name, "Content Production Started", `"${item.title}" moved to In Production.`);
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/submit-factcheck", async (req, res) => {
+  try {
+    const { id, factCheckerUserId, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (item.status !== "In Production") {
+      return res.status(400).json({ error: `Only In Production content can go to fact-check (currently ${item.status}).` });
+    }
+    if (user?.id !== item.assigneeUserId) {
+      const block = await contentManageBlock(req, item.stream);
+      if (block) return res.status(403).json({ error: "Only the assignee or an editor can submit for fact-check." });
+    }
+    const checker = factCheckerUserId ? await prisma.user.findUnique({ where: { id: factCheckerUserId } }) : null;
+    if (!checker || !checker.active) {
+      return res.status(400).json({ error: "Name an active user as the fact-checker (Policy 005: assign a dedicated individual responsible for verifying the facts)." });
+    }
+    // Policy 005 impartiality — same segregation spirit as the §4.3 voucher rule.
+    if (factCheckerUserId === item.assigneeUserId) {
+      return res.status(403).json({ error: `Policy 005 impartiality: the fact-checker must not be the author — assign someone other than ${checker.name}.` });
+    }
+    const updated = await prisma.contentItem.update({ where: { id }, data: { status: "Fact-Check", factCheckerUserId } });
+    await createAuditLog(user?.id, user?.name, "Content Sent to Fact-Check",
+      `"${item.title}" → independent fact-check by ${checker.name} (not the author — Policy 005).`);
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/factcheck-log", async (req, res) => {
+  try {
+    const { id, source, step, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!["In Production", "Fact-Check"].includes(item.status)) {
+      return res.status(400).json({ error: `Sources are logged during production or fact-check (currently ${item.status}).` });
+    }
+    if (!source) return res.status(400).json({ error: "Name the source (Policy 005: detailed records of all sources and verification steps)." });
+    const allowed = user?.id === item.factCheckerUserId || user?.id === item.assigneeUserId || CONTENT_EDITOR_ROLES.includes(user?.role);
+    if (!allowed) return res.status(403).json({ error: "Only the assignee, the named fact-checker or an editor can log sources." });
+    const log = JSON.parse(item.factCheckJson || "[]");
+    log.push({ source, step: step || "", date: localDate() });
+    const updated = await prisma.contentItem.update({ where: { id }, data: { factCheckJson: JSON.stringify(log) } });
+    await createAuditLog(user?.id, user?.name, "Fact-Check Source Recorded",
+      `"${item.title}": ${source}${step ? " — " + step : ""}.`);
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/factcheck-pass", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (item.status !== "Fact-Check") {
+      return res.status(400).json({ error: `Only content in Fact-Check can pass (currently ${item.status}).` });
+    }
+    // The NAMED person is the policy — no editor or master-account stand-in here.
+    if (user?.id !== item.factCheckerUserId) {
+      return res.status(403).json({ error: "Only the named fact-checker can pass this item (Policy 005: independent review by the assigned individual)." });
+    }
+    const log = JSON.parse(item.factCheckJson || "[]");
+    if (!log.length) {
+      return res.status(403).json({ error: "Log at least one source or verification step first (Policy 005: detailed records of all sources and verification steps)." });
+    }
+    const updated = await prisma.contentItem.update({ where: { id },
+      data: { status: "Editorial Review", factCheckPassedAt: new Date().toISOString() } });
+    await createAuditLog(user?.id, user?.name, "Content Fact-Check Passed",
+      `"${item.title}" verified by ${user?.name}: ${log.length} source/step record(s) → Editorial Review.`);
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/return", async (req, res) => {
+  try {
+    const { id, reason, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!reason) return res.status(400).json({ error: "Give a reason for returning the item." });
+    if (!["Fact-Check", "Editorial Review"].includes(item.status)) {
+      return res.status(400).json({ error: `Only content in Fact-Check or Editorial Review can be returned (currently ${item.status}).` });
+    }
+    const isChecker = user?.id === item.factCheckerUserId;
+    const isEditor = CONTENT_EDITOR_ROLES.includes(user?.role);
+    if (item.status === "Fact-Check" && !isChecker && !isEditor) {
+      return res.status(403).json({ error: "Only the named fact-checker or an editor can return this item." });
+    }
+    if (item.status === "Editorial Review" && !isEditor) {
+      return res.status(403).json({ error: "Only an editor can return content from editorial review." });
+    }
+    // Changed content voids prior sign-offs — one rule, no matrix.
+    const updated = await prisma.contentItem.update({ where: { id }, data: {
+      status: "In Production", factCheckPassedAt: "",
+      pmApprovedBy: "", pmApprovedAt: "", pdApprovedBy: "", pdApprovedAt: ""
+    } });
+    await createAuditLog(user?.id, user?.name, "Content Returned for Revision",
+      `"${item.title}" sent back from ${item.status}: ${reason}. Prior fact-check and approvals voided.`);
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/approve", async (req, res) => {
+  try {
+    const { id, slot, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (item.status !== "Editorial Review") {
+      return res.status(400).json({ error: `Approvals happen in Editorial Review (currently ${item.status}).` });
+    }
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
+      return res.status(403).json({ error: "Approval needs the Production Manager, the Programs Director or the master account (Policy 002)." });
+    }
+    if (user?.id === item.assigneeUserId) {
+      return res.status(403).json({ error: "You authored this item — a different officer must approve it (§4.3 segregation of duties)." });
+    }
+    // Role → slot; the master account may stand in for ONE empty slot, never both.
+    let target: "pm" | "pd";
+    if (user?.role === "Production Manager") target = "pm";
+    else if (user?.role === "Program Director") target = "pd";
+    else target = slot === "pd" ? "pd" : slot === "pm" ? "pm" : (!item.pmApprovedBy ? "pm" : "pd");
+    const mine = target === "pm" ? item.pmApprovedBy : item.pdApprovedBy;
+    const other = target === "pm" ? item.pdApprovedBy : item.pmApprovedBy;
+    if (mine) return res.status(400).json({ error: `The ${target === "pm" ? "Production Manager" : "Programs Director"} slot is already approved.` });
+    if (other === user?.id) {
+      return res.status(403).json({ error: "You already hold the other approval — Policy 002 requires the Production Manager AND the Programs Director, two different people." });
+    }
+    const now = new Date().toISOString();
+    const data: any = target === "pm"
+      ? { pmApprovedBy: user.id, pmApprovedAt: now }
+      : { pdApprovedBy: user.id, pdApprovedAt: now };
+    const both = target === "pm" ? !!item.pdApprovedBy : !!item.pmApprovedBy;
+    if (both) data.status = "Approved";
+    const updated = await prisma.contentItem.update({ where: { id }, data });
+    await createAuditLog(user?.id, user?.name,
+      target === "pm" ? "Content Approved — Production Manager" : "Content Approved — Programs Director",
+      `"${item.title}" approved by ${user?.name}${both ? " — both approvals in place." : "; awaiting the second approval."}`);
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/legal-record", async (req, res) => {
+  try {
+    const { id, legalReviewedBy, legalReviewNote, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
+      return res.status(403).json({ error: "Recording a legal review needs an editor role." });
+    }
+    if (!["Editorial Review", "Approved"].includes(item.status)) {
+      return res.status(400).json({ error: `Legal review is recorded during Editorial Review or after approval (currently ${item.status}).` });
+    }
+    if (!legalReviewedBy) {
+      return res.status(400).json({ error: "Name who performed the legal review (Policy 002: stories with potential legal implications are reviewed by the legal team)." });
+    }
+    const updated = await prisma.contentItem.update({ where: { id }, data: {
+      legalReviewedBy, legalReviewNote: legalReviewNote || "",
+      legalRecordedBy: user?.id || "", legalRecordedAt: new Date().toISOString()
+    } });
+    await createAuditLog(user?.id, user?.name, "Content Legal Review Recorded",
+      `"${item.title}": reviewed by ${legalReviewedBy} — recorded by ${user?.name}.`);
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/publish", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
+      return res.status(403).json({ error: "Publishing needs the Production Manager, the Programs Director or the master account (Policy 002)." });
+    }
+    // The whole point: the same blocker list the UI shows is what the server enforces.
+    const blockers = publishBlockers(item);
+    if (blockers.length) return res.status(403).json({ error: blockers.join(" ") });
+    const updated = await prisma.contentItem.update({ where: { id }, data: {
+      status: "Published", publishedAt: new Date().toISOString(), factCheckTag: true
+    } });
+    const channels = JSON.parse(item.channelsJson || "[]");
+    await createAuditLog(user?.id, user?.name, "Content Published",
+      `"${item.title}" (${item.contentType}) published to ${channels.join(", ") || "no channel"} — fact-checked tag applied; PM+PD dual approval on record.`);
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/correction", async (req, res) => {
+  try {
+    const { id, nature, correction, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
+      return res.status(403).json({ error: "Issuing a correction needs an editor role." });
+    }
+    if (item.status !== "Published") {
+      return res.status(400).json({ error: "Corrections apply to published content — unpublished work is just edited." });
+    }
+    if (!nature || !correction) {
+      return res.status(400).json({ error: "State the nature of the error and the correction (Policy 005: public record with date and details)." });
+    }
+    const corrections = JSON.parse(item.correctionsJson || "[]");
+    corrections.push({ date: localDate(), nature, correction, by: user?.name || "" });
+    const updated = await prisma.contentItem.update({ where: { id }, data: { correctionsJson: JSON.stringify(corrections) } });
+    await createAuditLog(user?.id, user?.name, "Content Correction Issued",
+      `"${item.title}": ${nature} — correction appended ${localDate()}; original noted, status remains Published.`);
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/content/delete", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
+      return res.status(403).json({ error: "Removing a content item needs an editor role." });
+    }
+    if (item.status === "Published") {
+      return res.status(403).json({ error: "Published content is a permanent record and cannot be deleted — append a correction instead (Policy 005)." });
+    }
+    await prisma.contentItem.delete({ where: { id } });
+    await createAuditLog(user?.id, user?.name, "Content Item Removed", `Removed "${item.title}" (${item.status}).`);
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

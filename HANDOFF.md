@@ -543,3 +543,54 @@ git checkout main && git merge feat/reports-ai-scan-bank-import && git push
 # generate a report via API (6 or 12 months)
 curl -s "http://localhost:3000/api/reports/period?months=12&end=2026-07" | python3 -m json.tool | head -40
 ```
+
+---
+
+# Session addendum — 5 Aug 2026 (App.tsx split + editorial pipeline)
+
+## A. App.tsx split (refactor/split-app, merged to main)
+
+`src/App.tsx` went from 9,830 lines to ~1,200: 16 tab components extracted to `src/tabs/*Tab.tsx`,
+each taking the single `SharedProps` interface (`src/tabs/shared.ts`); constants → `src/constants.ts`,
+Arabic dictionary → `src/i18n.ts`, iContent inventory page → `src/IcontentInvPage.tsx`. No behavior
+change; verified by build + full browser QA across tabs and roles.
+
+**Incident, resolved:** fast-forwarding `main` deleted the gitignored `prisma/dev.db` (old `main`
+still *tracked* a stale copy; checkout clobbered the ignored file, the merge then removed it).
+Recovered byte-exact from the still-running server's open file descriptor (Node inspector →
+positional reads), verified by `PRAGMA integrity_check` + row counts, reinstalled, backed up.
+Rule going forward: **no ref tracks `dev.db` anymore on any local branch** — but old commits still
+contain it, so checking out a pre-Aug-3 commit will resurrect a stale copy at the path. `git stash`
+/ copy the live DB aside first. (origin/main is stale and still tracks it — push main when ready.)
+
+## B. Editorial pipeline (feat/editorial-pipeline) — Policies 002 & 005 as code
+
+The signed handbooks are the spec; the system enforces them (same philosophy as §4.3 on vouchers):
+
+- **Model** `ContentItem` (schema + migration `20260805120000_content_item`). States:
+  Assigned → In Production → Fact-Check → Editorial Review → Approved → Published.
+- **Gates, all server-side** (`/api/content/*`, 11 routes; shared pure logic in
+  `src/editorialGates.ts`, same dual-use pattern as `selfDealing.ts`):
+  - fact-checker must be a named active user ≠ author (005 impartiality);
+  - only the named checker can pass fact-check, and only with ≥1 logged source/step (005);
+  - dual approval: Production Manager + Programs Director slots, **two distinct humans**;
+    Super Admin may stand in for one empty slot, never both (002);
+  - `legalFlag` ⇒ legal attestation before publish (002; free-text reviewer, no legal login);
+  - publish requires all 7 content standards ticked (002) — `publishBlockers()` produces the
+    same reason list for the server 403 and the disabled UI button;
+  - published items: immutable (no edit/delete), corrections append dated + public (002/005);
+  - returning an item voids fact-check pass and both approvals.
+- **Roles added** (User.role strings): Production Manager, Reporter, Content Creator, Podcaster.
+  Crew roles are content-only: POST allowlist (`CREW_ALLOWED_POSTS`) + a `loadState` branch that
+  ships them **zero financial domains**. POs see their programmes' content (+ items they author
+  or check); their redirect allowlist now includes `editorial`.
+- **UI**: `src/tabs/EditorialTab.tsx` — derived weekly-meeting card (past 7 days published /
+  next 7 due, "Mark Reviewed"), assignment form, status-filtered register, per-item drawer
+  (standards checklist with policy sentences as tooltips, fact-check log, approval slots,
+  legal panel, corrections, status×role actions).
+- **Check**: `npx tsx scripts/check-editorial-gates.ts` — 16 pure asserts on the publish gate.
+- **QA run (5 Aug)**: full state machine exercised via API — every refusal fired with its
+  policy-cited message; 14 audit lines; roles reverted; QA row removed via SQL (published items
+  are undeletable by design, which the QA itself verified).
+
+Out of scope, unchanged: auth token verification (§4.2, 31 Aug), performance metrics, notifications.

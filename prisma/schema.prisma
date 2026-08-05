@@ -378,3 +378,39 @@ model FxRates {
   EUR Float
   LBP Float
 }
+
+// Editorial pipeline (signed Policies 002 & 005): content moves
+// Assigned → In Production → Fact-Check → Editorial Review → Approved → Published.
+// Fact-check source log, dual approval (Production Manager + Programs Director, two
+// distinct users), legal attestation and post-publish corrections live on the row —
+// the register enforces the signed policies, it does not invent workflow.
+model ContentItem {
+  id                  String  @id
+  title               String
+  contentType         String  @default("Post")   // CONTENT_TYPES — Policy 002 "infographics, reels, …"
+  stream              String  @default("")       // programme (STREAMS) — POs own their programme's content
+  channelsJson        String  @default("[]")     // subset of CONTENT_CHANNELS (Policy 002 channels)
+  brief               String  @default("")
+  status              String  @default("Assigned") // CONTENT_STATUSES
+  assigneeUserId      String  @default("")       // Reporter / Content Creator / Podcaster
+  dueDate             String  @default("")       // YYYY-MM-DD — the daily meeting sets deadlines
+  assignedMeetingDate String  @default("")       // which daily production meeting assigned it
+  reviewedMeetingDate String  @default("")       // which weekly editorial meeting reviewed it
+  factCheckerUserId   String  @default("")       // named at submit; must differ from assignee (Policy 005 impartiality)
+  factCheckJson       String  @default("[]")     // [{source, step, date}] — "detailed records of all sources and verification steps"
+  factCheckPassedAt   String  @default("")       // set only by the named fact-checker; cleared when returned
+  checksJson          String  @default("{}")     // CONTENT_CHECKS booleans — each a Policy 002 sentence
+  legalFlag           Boolean @default(false)    // "potential legal implications" (Policy 002)
+  legalReviewedBy     String  @default("")       // attestation: who performed the review (free text — no legal login exists)
+  legalReviewNote     String  @default("")
+  legalRecordedBy     String  @default("")       // app user who recorded the attestation
+  legalRecordedAt     String  @default("")
+  pmApprovedBy        String  @default("")       // userId — Production Manager approval slot
+  pmApprovedAt        String  @default("")
+  pdApprovedBy        String  @default("")       // userId — Programs Director approval slot, distinct user
+  pdApprovedAt        String  @default("")
+  factCheckTag        Boolean @default(false)    // Policy 005 "tags or labels" — set at publish
+  publishedAt         String  @default("")
+  correctionsJson     String  @default("[]")     // [{date, nature, correction, by}] — dated public record
+  created_at          String
+}
