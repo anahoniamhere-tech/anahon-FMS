@@ -39,6 +39,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   }>(null);
   const [chatInput, setChatInput] = useState("");
   const [matForm, setMatForm] = useState({ label: "", url: "", kind: "link" });
+  const [pasteDraft, setPasteDraft] = useState({ label: "", kind: "Article Draft", text: "" });
   const [linkForm, setLinkForm] = useState({ url: "", description: "", kind: "link" });
   const [upDesc, setUpDesc] = useState("");
   const [dragOver, setDragOver] = useState(false);
@@ -1149,6 +1150,26 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                               </span>
                             </details>
                           ))}
+                          {/* Written elsewhere? Attach it without the AI — the fact-checker
+                              reads the Drafts list, not the materials list. */}
+                          {working && canProduce && (
+                            <details className="mb-1.5">
+                              <summary className="cursor-pointer text-[10px] text-slate-500 hover:text-slate-800">✎ {t("Paste a draft written elsewhere")}</summary>
+                              <div className="flex flex-wrap gap-2 mt-1">
+                                <input placeholder={t("Label")} value={pasteDraft.label} onChange={e => setPasteDraft({ ...pasteDraft, label: e.target.value })} className="finance-input flex-1 min-w-[120px]" />
+                                <select value={pasteDraft.kind} onChange={e => setPasteDraft({ ...pasteDraft, kind: e.target.value })} aria-label={t("Type")} className="finance-input py-1">
+                                  {["Article Draft", "Script", "Outline", "Carousel", "Caption", "Questions", "Other"].map(k => <option key={k} value={k}>{k}</option>)}
+                                </select>
+                                <textarea placeholder={t("Paste the text…")} value={pasteDraft.text} onChange={e => setPasteDraft({ ...pasteDraft, text: e.target.value })} rows={3} className="finance-input w-full" />
+                                <button
+                                  onClick={async () => {
+                                    if (!pasteDraft.text.trim() || !pasteDraft.label.trim()) { triggerToast("Give the draft a label and its text.", "error"); return; }
+                                    if (await post("/api/content/draft-save", { id: item.id, ...pasteDraft }, `Saved to "${item.title}"`)) setPasteDraft({ label: "", kind: "Article Draft", text: "" });
+                                  }}
+                                  className="bg-slate-900 hover:bg-slate-950 text-white rounded px-3 py-1.5">💾 {t("Save Draft to Item")}</button>
+                              </div>
+                            </details>
+                          )}
                           {working && canProduce && studio?.itemId !== item.id && (
                             <span className="flex flex-wrap gap-1.5">
                               <button onClick={() => { setStudio({ itemId: item.id, messages: [], busy: false, draft: null, provider: "" }); setStudioInput(""); }}

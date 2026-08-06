@@ -1220,11 +1220,25 @@ function anthropicKey(): string | undefined {
   return k;
 }
 
+/** Tokens and rough cost of the last model call, for the audit line. Opus 5 is
+ *  $5/M in, $25/M out — the numbers that decide whether a feature is affordable. */
+let lastUsage = "";
+function usageNote(u: any, model = "opus"): string {
+  if (!u) return "";
+  const i = u.input_tokens || 0, o = u.output_tokens || 0;
+  const cost = model === "opus" ? (i * 5 + o * 25) / 1_000_000 : 0;
+  return ` [in ${(i / 1000).toFixed(1)}k · out ${(o / 1000).toFixed(1)}k${cost ? ` ≈ $${cost.toFixed(3)}` : ""}]`;
+}
+/** Appended to the next audit line so spend is visible where the work is logged. */
+export function takeUsage(): string { const u = lastUsage; lastUsage = ""; return u; }
+
 async function askJson(
-  prompt: string, schema: Record<string, any>, file?: Attachment
+  prompt: string, schema: Record<string, any>, file?: Attachment,
+  effort: "low" | "medium" | "high" = "medium"
 ): Promise<any> {
   const key = anthropicKey();
   if (key) {
+    try {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
     const client = new Anthropic({ apiKey: key });
     // Claude takes PDFs as a document block and everything else as an image block.
@@ -1239,14 +1253,22 @@ async function askJson(
       model: "claude-opus-5",
       max_tokens: 16000,
       thinking: { type: "adaptive" },
-      output_config: { format: { type: "json_schema", schema } },
+      // Effort is the main cost dial: routine extraction runs cheap, drafting runs deep.
+      output_config: { format: { type: "json_schema", schema }, effort },
       messages: [{ role: "user", content }]
     });
     if (msg.stop_reason === "refusal") throw new Error("The model declined this request.");
     // Truncated output would JSON.parse into a misleading "couldn't read the document" error.
     if (msg.stop_reason === "max_tokens") throw new Error("Response was cut off before completing (max_tokens).");
+    lastUsage = usageNote(msg.usage);
     const text = msg.content.find(b => b.type === "text");
     return JSON.parse((text && "text" in text ? text.text : "") || "{}");
+    } catch (err: any) {
+      // Out of credits, rate-limited, or provider down: fall through to Gemini
+      // rather than failing the feature. Only a missing fallback key is fatal.
+      if (!process.env.GEMINI_API_KEY) throw err;
+      console.warn(`[ai] Claude call failed (${err?.message?.slice(0, 120)}) — falling back to Gemini.`);
+    }
   }
   if (process.env.GEMINI_API_KEY) {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -1258,6 +1280,7 @@ async function askJson(
       contents: [{ role: "user", parts }],
       config: { responseMimeType: "application/json" }
     });
+    lastUsage = " [Gemini free tier]";
     return JSON.parse(r.text || "{}");
   }
   throw new Error("No ANTHROPIC_API_KEY or GEMINI_API_KEY configured — AI assist unavailable.");
@@ -1291,6 +1314,7 @@ async function askWithSearch(prompt: string): Promise<{ text: string; sources: {
       tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 20 } as any],
       messages
     });
+    lastUsage = usageNote(msg.usage);
     for (const block of msg.content as any[]) {
       if (block.type === "text") text += block.text;
       if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
@@ -2723,7 +2747,7 @@ app.post("/api/content/brainstorm", async (req, res) => {
         }
       },
       required: ["reply", "ready", "draft"]
-    }, file);
+    }, file, "high");
     res.json({
       reply: out.reply || "", ready: !!out.ready, draft: out.draft || null,
       provider: anthropicKey() ? "Claude Opus 5" : "Gemini 3.5 Flash"
@@ -2858,7 +2882,7 @@ app.post("/api/content/produce", async (req, res) => {
         }
       },
       required: ["reply", "draft"]
-    });
+    }, undefined, "high");
     res.json({ reply: out.reply || "", draft: out.draft || null, provider: anthropicKey() ? "Claude Opus 5" : "Gemini 3.5 Flash" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -2899,7 +2923,7 @@ app.post("/api/content/research", async (req, res) => {
       `Write in Arabic if the brief is in Arabic. Be concise; this becomes a fact-check log, not an article.`
     ].join("\n"));
 
-    await createAuditLog(user?.id, user?.name, "Content Research Run",
+    await createAuditLog(user?.id, user?.name, "Content Research Run" + takeUsage(),
       `"${item.title}": ${facts.length} open fact(s) researched, ${out.sources.length} source(s) returned.`);
     res.json({ success: true, facts, findings: out.text, sources: out.sources });
   } catch (err: any) {
@@ -3019,7 +3043,7 @@ app.post("/api/meetings/extract-topics", async (req, res) => {
         }
       },
       required: ["summary", "direction", "topics"]
-    });
+    }, undefined, "low");   // reading minutes needs care, not deliberation
     const topics = cleanMeetingTopics(out.topics, team);
     const existing = await prisma.editorialMeeting.findUnique({ where: { kind_date: { kind: mtgKind, date } } });
     const data = {
@@ -3033,7 +3057,7 @@ app.post("/api/meetings/extract-topics", async (req, res) => {
     const meeting = existing
       ? await prisma.editorialMeeting.update({ where: { id: existing.id }, data })
       : await prisma.editorialMeeting.create({ data: { id: `mtg-${Date.now()}`, kind: mtgKind, date, attendeesJson: "[]", ...data, created_at: new Date().toISOString() } });
-    await createAuditLog(user?.id, user?.name, "Meeting Minutes Processed",
+    await createAuditLog(user?.id, user?.name, "Meeting Minutes Processed" + takeUsage(),
       `${mtgKind} of ${date}: minutes captured, ${topics.length} topic(s) extracted.`);
     res.json({ success: true, meeting, topics });
   } catch (err: any) {
