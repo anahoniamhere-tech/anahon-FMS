@@ -1292,11 +1292,22 @@ async function askJson(
  * the search engine returned — not URLs the model wrote from memory. That
  * distinction is the whole point: Policy 005 wants sources, not recollections.
  */
-async function askWithSearch(prompt: string): Promise<{ text: string; sources: { title: string; url: string }[] }> {
+async function askWithSearch(
+  prompt: string,
+  mode: "sources" | "search" = "sources"
+): Promise<{ text: string; sources: { title: string; url: string }[] }> {
   const key = anthropicKey();
   if (!key) throw new Error("Live research needs ANTHROPIC_API_KEY — Gemini's search grounding is not wired here.");
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   const client = new Anthropic({ apiKey: key });
+
+  // "sources": fetch only the URLs the newsroom supplied — each page read once,
+  //   no discovery rounds. "search": open web discovery, where cost compounds
+  //   because every round re-processes everything gathered so far.
+  const tools = mode === "sources"
+    ? [{ type: "web_fetch_20260209", name: "web_fetch", max_uses: 10 } as any]
+    : [{ type: "web_search_20260209", name: "web_search", max_uses: 10 } as any,
+       { type: "web_fetch_20260209", name: "web_fetch", max_uses: 6 } as any];
 
   const messages: any[] = [{ role: "user", content: [{ type: "text", text: prompt }] }];
   const sources: { title: string; url: string }[] = [];
@@ -1309,20 +1320,24 @@ async function askWithSearch(prompt: string): Promise<{ text: string; sources: {
       model: "claude-opus-5",
       max_tokens: 8000,
       thinking: { type: "adaptive" },
-      // Roughly three searches per open fact — the model reports honestly when it
-      // runs out, but a starved budget leaves facts unresolved for no good reason.
-      tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 20 } as any],
+      tools,
       messages
     });
     lastUsage = usageNote(msg.usage);
+    const keep = (url?: string, title?: string) => {
+      if (url && !sources.some(s => s.url === url)) {
+        sources.push({ title: String(title || url).slice(0, 200), url: String(url) });
+      }
+    };
     for (const block of msg.content as any[]) {
       if (block.type === "text") text += block.text;
+      // Search returns a list of results; fetch returns the single page it read.
       if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
-        for (const r of block.content) {
-          if (r?.url && !sources.some(s => s.url === r.url)) {
-            sources.push({ title: String(r.title || r.url).slice(0, 200), url: String(r.url) });
-          }
-        }
+        for (const r of block.content) keep(r?.url, r?.title);
+      }
+      if (block.type === "web_fetch_tool_result") {
+        const c = block.content;
+        keep(c?.url, c?.document?.title || c?.url);
       }
     }
     if (msg.stop_reason !== "pause_turn") break;
@@ -2894,11 +2909,20 @@ app.post("/api/content/produce", async (req, res) => {
 // hold up, and only the named fact-checker can pass the item (Policy 005).
 app.post("/api/content/research", async (req, res) => {
   try {
-    const { id, user } = req.body;
+    const { id, mode, user } = req.body;
+    const runMode: "sources" | "search" = mode === "search" ? "search" : "sources";
     const item = await prisma.contentItem.findUnique({ where: { id } });
     if (!item) return res.status(404).json({ error: "Content item not found." });
     if (!contentProduceAllowed(user, item)) {
       return res.status(403).json({ error: "Research is for the assignee, the fact-checker, Project Officers and editors." });
+    }
+    // The newsroom's own links — the reporter chose these, so reading them is both
+    // cheaper than discovery and closer to what Policy 005 asks for.
+    const ownLinks: string[] = JSON.parse(item.materialsJson || "[]")
+      .filter((m: any) => /^https?:\/\//i.test(m.url))
+      .map((m: any) => `${m.label} — ${m.url}`);
+    if (runMode === "sources" && !ownLinks.length) {
+      return res.status(400).json({ error: "No source links attached to this item yet. Add them under Materials & References, or run open web search instead." });
     }
     const drafts = JSON.parse(item.draftsJson || "[]");
     const facts = [...new Set(
@@ -2914,18 +2938,21 @@ app.post("/api/content/research", async (req, res) => {
       `OPEN FACTS TO ESTABLISH:`,
       ...facts.map((f, i) => `${i + 1}. ${f}`),
       ``,
-      `Search the web and report what you can actually establish. For each fact, state:`,
+      runMode === "sources"
+        ? `READ ONLY THESE SOURCES — the newsroom supplied them. Fetch each one and report what it establishes. Do not search for others; if a fact is not in these pages, say so and name the office or record to call.\n${ownLinks.map((l, i) => `${i + 1}. ${l}`).join("\n")}`
+        : `Search the web and report what you can actually establish.${ownLinks.length ? ` Start from the newsroom's own links, then search only for what they don't answer:\n${ownLinks.map((l, i) => `${i + 1}. ${l}`).join("\n")}` : ""}`,
+      `For each fact, state:`,
       `- the finding, with the figure/date/decision exactly as the source words it;`,
       `- which source establishes it, and how authoritative that source is;`,
       `- the date of the source, and whether it may now be outdated;`,
       `- if you could NOT establish it, say so plainly and name the office or record the reporter should call instead. Never guess.`,
       `Prefer official Lebanese sources (ministries, the Official Gazette, parliament) and established outlets. Flag any figure that appears in only one source as single-sourced.`,
       `Write in Arabic if the brief is in Arabic. Be concise; this becomes a fact-check log, not an article.`
-    ].join("\n"));
+    ].join("\n"), runMode);
 
     await createAuditLog(user?.id, user?.name, "Content Research Run" + takeUsage(),
-      `"${item.title}": ${facts.length} open fact(s) researched, ${out.sources.length} source(s) returned.`);
-    res.json({ success: true, facts, findings: out.text, sources: out.sources });
+      `"${item.title}": ${facts.length} open fact(s), ${runMode === "sources" ? `${ownLinks.length} supplied source(s) read` : "open web search"}, ${out.sources.length} source(s) returned.`);
+    res.json({ success: true, mode: runMode, facts, findings: out.text, sources: out.sources });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

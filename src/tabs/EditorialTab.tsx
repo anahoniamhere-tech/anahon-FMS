@@ -244,13 +244,13 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   // Live research on an item's open facts. Proposals only — a human logs what holds up.
   const [research, setResearch] = useState<null | { itemId: string; busy: boolean; findings: string; sources: { title: string; url: string }[] }>(null);
 
-  const runResearch = async (item: ContentItem) => {
+  const runResearch = async (item: ContentItem, mode: "sources" | "search" = "sources") => {
     setResearch({ itemId: item.id, busy: true, findings: "", sources: [] });
     try {
       const res = await fetch("/api/content/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, user: currentUser })
+        body: JSON.stringify({ id: item.id, mode, user: currentUser })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Research failed");
@@ -1290,10 +1290,19 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                           <p className="text-[9px] text-slate-400 mt-0.5">{t("Each becomes a source entry below once confirmed (Policy 005).")}</p>
 
                           {(isAssignee || isChecker || canManage) && ["In Production", "Fact-Check"].includes(item.status) && (
-                            <button onClick={() => runResearch(item)} disabled={research?.busy}
-                              className="mt-1 bg-slate-900 hover:bg-slate-950 disabled:opacity-40 text-white rounded px-3 py-1.5 text-[11px]">
-                              🔎 {research?.itemId === item.id && research.busy ? t("Researching…") : t("Research these facts")}
-                            </button>
+                            <span className="flex flex-wrap items-center gap-1.5 mt-1">
+                              <button onClick={() => runResearch(item, "sources")} disabled={research?.busy || item.materials.filter(m => /^https?:\/\//.test(m.url)).length === 0}
+                                title={t("Reads only the links attached to this story — no open search")}
+                                className="bg-slate-900 hover:bg-slate-950 disabled:opacity-40 text-white rounded px-3 py-1.5 text-[11px]">
+                                📖 {research?.itemId === item.id && research.busy ? t("Researching…") : t("Read my sources")}
+                                <span className="opacity-60"> · {item.materials.filter(m => /^https?:\/\//.test(m.url)).length} · ~$0.10</span>
+                              </button>
+                              <button onClick={() => { if (window.confirm(t("Open web search costs roughly ten times more than reading your own sources. Continue?"))) runResearch(item, "search"); }}
+                                disabled={research?.busy}
+                                className="bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-slate-800 rounded px-3 py-1.5 text-[11px]">
+                                🌐 {t("Search the web")} <span className="opacity-60">· ~$2</span>
+                              </button>
+                            </span>
                           )}
 
                           {research?.itemId === item.id && !research.busy && (
