@@ -67,6 +67,7 @@ export interface Opportunity {
   renewalOfProjectId: string;
   notes: string;
   link: string;
+  samples: { url: string; title: string }[];
   proposal: Proposal;
 }
 

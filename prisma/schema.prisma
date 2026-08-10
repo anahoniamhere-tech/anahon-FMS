@@ -69,6 +69,10 @@ model Opportunity {
   // The call itself — the page you apply on. Kept as its own field, not buried in notes,
   // so every opportunity can be re-opened and re-checked at its source.
   link               String @default("")
+  // Published AnaHon work submitted as evidence with this application: [{url, title}].
+  // Nearly every funder asks for samples, and the same pieces get reused across
+  // applications — so they are links you can click, not prose in `notes`.
+  samplesJson        String @default("[]")
   // Proposal workspace: {summary, problem, solution, objectives, deliverables,
   // outputs, outcomes, budget: [{line, description, amount}], timeline: [{activity, start, end}]}
   proposalJson       String @default("{}")

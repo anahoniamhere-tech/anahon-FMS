@@ -420,7 +420,8 @@ async function loadState(viewer?: any) {
     // Funding funnel — forward-looking pipeline only, never financial data.
     opportunities: opportunities.map(o => ({
       ...o,
-      proposal: JSON.parse(o.proposalJson || "{}")
+      proposal: JSON.parse(o.proposalJson || "{}"),
+      samples: (() => { try { return JSON.parse(o.samplesJson || "[]"); } catch { return []; } })()
     })),
     // Physical cash counts — the counted figure is real money; the variance against
     // ledger 1120 is the undocumented gap.
@@ -1044,7 +1045,7 @@ const OPP_STAGES = ["Prospect", "Drafting", "Submitted", "Awarded", "Declined"];
 
 app.post("/api/opportunities/save", async (req, res) => {
   try {
-    const { id, title, donorId, donorName, stream, stage, amount, currency, deadline, decisionDate, renewalOfProjectId, notes, link, proposal, user } = req.body;
+    const { id, title, donorId, donorName, stream, stage, amount, currency, deadline, decisionDate, renewalOfProjectId, notes, link, samples, proposal, user } = req.body;
     if (!title || !stage) return res.status(400).json({ error: "Title and stage are required." });
     // A stored link is one the user will click. Only ever store http(s) — never a
     // javascript: or data: URL that a pasted call could smuggle in.
@@ -1055,6 +1056,21 @@ app.post("/api/opportunities/save", async (req, res) => {
     })();
     if (link && String(link).trim() && !cleanLink) {
       return res.status(400).json({ error: "The link must be a full http(s) web address." });
+    }
+    // Samples are evidence shown to a funder — a bad URL there is a broken claim.
+    // Reject the whole save rather than silently dropping one.
+    let cleanSamples: { url: string; title: string }[] | undefined;
+    if (samples !== undefined) {
+      if (!Array.isArray(samples)) return res.status(400).json({ error: "Samples must be a list." });
+      cleanSamples = [];
+      for (const s of samples) {
+        const url = String(s?.url || "").trim();
+        if (!url) continue;
+        try {
+          if (!["http:", "https:"].includes(new URL(url).protocol)) throw new Error();
+        } catch { return res.status(400).json({ error: `Not a valid http(s) link: ${url.slice(0, 80)}` }); }
+        cleanSamples.push({ url, title: String(s?.title || "").trim().slice(0, 300) });
+      }
     }
     if (!OPP_STAGES.includes(stage)) return res.status(400).json({ error: `Stage must be one of: ${OPP_STAGES.join(", ")}` });
     if (donorId && !(await prisma.donor.findUnique({ where: { id: donorId } }))) {
@@ -1085,6 +1101,7 @@ app.post("/api/opportunities/save", async (req, res) => {
       notes: notes || "",
       link: cleanLink
     } as any;
+    if (cleanSamples !== undefined) data.samplesJson = JSON.stringify(cleanSamples);
     // Entering Drafting means someone is about to write an application. Give them the
     // skeleton every funder asks for — sections, a timeline, and budget lines in AnaHon's
     // real cost shape — rather than a blank page. Only ever fills an EMPTY workspace.

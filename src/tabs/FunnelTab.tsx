@@ -477,6 +477,35 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                         <p className="text-[10px] text-slate-400 mt-1">{t("The page you apply on — so anyone can re-check the call.")}</p>
                       </div>
                       <div className="md:col-span-3">
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Work Samples")}</label>
+                        <p className="text-[10px] text-slate-400 mb-1.5">{t("Published AnaHon work sent as evidence with this application.")}</p>
+                        {(oppForm.samples || []).map((s: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 mb-1">
+                            <a href={s.url} target="_blank" rel="noopener noreferrer" dir="ltr" className="text-[11px] text-blue-700 hover:underline truncate flex-1">
+                              {s.title || s.url}
+                            </a>
+                            <button type="button" title={t("Remove")}
+                              onClick={() => setOppForm({ ...oppForm, samples: (oppForm.samples || []).filter((_: any, j: number) => j !== i) })}
+                              className="text-[10px] text-slate-400 hover:text-red-600 shrink-0 px-1">✕</button>
+                          </div>
+                        ))}
+                        <div className="flex flex-col sm:flex-row gap-2 mt-1">
+                          <input id="opp-sample-url" type="url" inputMode="url" placeholder="https://anahon.org/…" dir="ltr"
+                            className="finance-input flex-1 font-mono text-xs" />
+                          <input id="opp-sample-title" type="text" placeholder={t("What it is (optional)")} className="finance-input flex-1 text-xs" />
+                          <button type="button" className="bg-slate-100 text-slate-700 text-xs font-medium rounded-lg px-3 py-2 hover:bg-slate-200 shrink-0"
+                            onClick={() => {
+                              const u = document.getElementById("opp-sample-url") as HTMLInputElement;
+                              const ti = document.getElementById("opp-sample-title") as HTMLInputElement;
+                              const url = u.value.trim();
+                              if (!url) return;
+                              try { new URL(url); } catch { triggerToast("That is not a valid link — include https://"); return; }
+                              setOppForm({ ...oppForm, samples: [...(oppForm.samples || []), { url, title: ti.value.trim() }] });
+                              u.value = ""; ti.value = "";
+                            }}>+ {t("Add Sample")}</button>
+                        </div>
+                      </div>
+                      <div className="md:col-span-3">
                         <label htmlFor="opp-notes" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Notes")}</label>
                         <textarea id="opp-notes" rows={2} value={oppForm.notes || ""} onChange={e => setOppForm({ ...oppForm, notes: e.target.value })} className="finance-input w-full font-sans text-xs" />
                       </div>
@@ -705,6 +734,17 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                                     className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-700 hover:text-blue-900 hover:underline mt-1 max-w-full">
                                     🔗 <span className="truncate">{(() => { try { return new URL(o.link).hostname.replace(/^www\./, ""); } catch { return o.link; } })()}</span>
                                   </a>
+                                )}
+                                {!!(o.samples || []).length && (
+                                  <div className="mt-1 pt-1 border-t border-slate-100">
+                                    <p className="text-[9px] font-bold text-slate-400 uppercase">{t("Work Samples")} · {o.samples.length}</p>
+                                    {o.samples.map((s, i) => (
+                                      <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
+                                        className="block text-[10px] text-blue-700 hover:underline truncate">
+                                        ▸ {s.title || (() => { try { return decodeURIComponent(new URL(s.url).pathname).replace(/\/$/, "").split("/").pop() || s.url; } catch { return s.url; } })()}
+                                      </a>
+                                    ))}
+                                  </div>
                                 )}
                                 {o.stage === "Awarded" && (
                                   <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-1">
