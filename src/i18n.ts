@@ -149,6 +149,8 @@ export const AR: Record<string, string> = {
   "Sub-Budget Mapping": "ربط ببند فرعي",
   "Sub-Budget designated line": "البند الفرعي المحدّد",
   "Submission Deadline": "مهلة التقديم",
+  "Call / Application Link": "رابط الدعوة / التقديم",
+  "The page you apply on — so anyone can re-check the call.": "الصفحة التي تقدّم عبرها — ليتمكن أي شخص من مراجعة الدعوة مجددًا.",
   "Target Account Vault Drawer": "الحساب / الصندوق",
   "Target Project Mapping": "ربط بالمشروع",
   "Target Project mapping": "ربط بالمشروع",

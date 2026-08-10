@@ -472,6 +472,11 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                         </select>
                       </div>
                       <div className="md:col-span-3">
+                        <label htmlFor="opp-link" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Call / Application Link")}</label>
+                        <input id="opp-link" type="url" inputMode="url" placeholder="https://…" value={oppForm.link || ""} onChange={e => setOppForm({ ...oppForm, link: e.target.value })} className="finance-input w-full font-mono text-xs" dir="ltr" />
+                        <p className="text-[10px] text-slate-400 mt-1">{t("The page you apply on — so anyone can re-check the call.")}</p>
+                      </div>
+                      <div className="md:col-span-3">
                         <label htmlFor="opp-notes" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Notes")}</label>
                         <textarea id="opp-notes" rows={2} value={oppForm.notes || ""} onChange={e => setOppForm({ ...oppForm, notes: e.target.value })} className="finance-input w-full font-sans text-xs" />
                       </div>
@@ -695,6 +700,12 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                                   );
                                 })()}
                                 {o.notes && <p className="text-[10px] text-slate-500 italic mt-1 leading-relaxed">{o.notes}</p>}
+                                {o.link && (
+                                  <a href={o.link} target="_blank" rel="noopener noreferrer" dir="ltr"
+                                    className="inline-flex items-center gap-1 text-[10px] font-medium text-blue-700 hover:text-blue-900 hover:underline mt-1 max-w-full">
+                                    🔗 <span className="truncate">{(() => { try { return new URL(o.link).hostname.replace(/^www\./, ""); } catch { return o.link; } })()}</span>
+                                  </a>
+                                )}
                                 {o.stage === "Awarded" && (
                                   <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-1">
                                     ✓ Awarded — once the deposit is on an imported statement, register the project in Donors & Projects with that deposit as proof.

@@ -1044,8 +1044,18 @@ const OPP_STAGES = ["Prospect", "Drafting", "Submitted", "Awarded", "Declined"];
 
 app.post("/api/opportunities/save", async (req, res) => {
   try {
-    const { id, title, donorId, donorName, stream, stage, amount, currency, deadline, decisionDate, renewalOfProjectId, notes, proposal, user } = req.body;
+    const { id, title, donorId, donorName, stream, stage, amount, currency, deadline, decisionDate, renewalOfProjectId, notes, link, proposal, user } = req.body;
     if (!title || !stage) return res.status(400).json({ error: "Title and stage are required." });
+    // A stored link is one the user will click. Only ever store http(s) — never a
+    // javascript: or data: URL that a pasted call could smuggle in.
+    const cleanLink = (() => {
+      const s = String(link || "").trim();
+      if (!s) return "";
+      try { return ["http:", "https:"].includes(new URL(s).protocol) ? s : ""; } catch { return ""; }
+    })();
+    if (link && String(link).trim() && !cleanLink) {
+      return res.status(400).json({ error: "The link must be a full http(s) web address." });
+    }
     if (!OPP_STAGES.includes(stage)) return res.status(400).json({ error: `Stage must be one of: ${OPP_STAGES.join(", ")}` });
     if (donorId && !(await prisma.donor.findUnique({ where: { id: donorId } }))) {
       return res.status(400).json({ error: "Unknown donor. Register the donor first, or leave donor empty for an unscoped prospect." });
@@ -1072,7 +1082,8 @@ app.post("/api/opportunities/save", async (req, res) => {
       deadline: deadline || "",
       decisionDate: decisionDate || "",
       renewalOfProjectId: renewalOfProjectId || "",
-      notes: notes || ""
+      notes: notes || "",
+      link: cleanLink
     } as any;
     // Entering Drafting means someone is about to write an application. Give them the
     // skeleton every funder asks for — sections, a timeline, and budget lines in AnaHon's
@@ -1384,7 +1395,7 @@ class BadCallSource extends Error { }
 
 // A call arrives as a link, a PDF, a Word file or pasted text. Turn any of them into
 // readable text. Extraction only: the caller decides what happens to it next.
-async function extractCallText(body: any): Promise<{ source: string; text: string }> {
+async function extractCallText(body: any): Promise<{ source: string; text: string; link?: string }> {
   const { url, filename, base64, text: pasted } = body;
 
   if (pasted && String(pasted).trim().length >= 40) {
@@ -1417,7 +1428,7 @@ async function extractCallText(body: any): Promise<{ source: string; text: strin
       .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
       .replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim();
     if (text.length < 40) throw new BadCallSource("That page had almost no readable text (it may need JavaScript). Save it as a PDF and upload that.");
-    return { source: u.hostname, text: text.slice(0, 40000) };
+    return { source: u.hostname, text: text.slice(0, 40000), link: u.toString() };
   }
 
   if (!filename || !base64) throw new BadCallSource("Provide a link, a PDF/Word/text file, or paste the call text.");
@@ -1476,7 +1487,7 @@ app.post("/api/opportunities/call-source", async (req, res) => {
 app.post("/api/opportunities/intake", async (req, res) => {
   try {
     const { user } = req.body;
-    const { source, text: callText } = await extractCallText(req.body);
+    const { source, text: callText, link: callLink } = await extractCallText(req.body);
     const [context, donors] = await Promise.all([anahonBrainContext(), prisma.donor.findMany()]);
 
     const STREAMS = ["AnaHon Platform", "iContent Academy", "Ahali Al Madina", "Roots & Reach", "Production", "Core / Org-wide"];
@@ -1535,6 +1546,7 @@ app.post("/api/opportunities/intake", async (req, res) => {
         currency: ["USD", "EUR", "LBP"].includes(raw.currency) ? raw.currency : "USD",
         deadline: iso(raw.deadline),
         stage: "Prospect",
+        link: callLink || "",
         notes: [
           `Source: ${source}`,
           raw.whatTheyFund ? `Funds: ${raw.whatTheyFund}` : "",
