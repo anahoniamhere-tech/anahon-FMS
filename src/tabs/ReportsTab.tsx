@@ -162,6 +162,13 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                           })}
                         </tbody>
                       </table>
+                      {/* Recognition policy decides whether these five lines mean anything.
+                          If grant income is booked on receipt, the surplus is an artefact. */}
+                      {reportData.recognition?.map((f: any) => (
+                        <p key={f.rule} className="text-[10px] text-red-900 bg-red-50 border border-red-200 rounded px-2 py-1.5 mt-2">
+                          <span className="font-bold">{t("Recognition rule")} {f.rule}: </span>{tr(f.ar, f.en)}
+                        </p>
+                      ))}
                       {/* A restricted-grant surplus is unspent donor money, not a cushion.
                           Saying so here stops the figure being read as free cash. */}
                       {reportData.statement.surplus > 0 && (

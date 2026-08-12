@@ -150,6 +150,7 @@ export const AR: Record<string, string> = {
   "Sub-Budget designated line": "البند الفرعي المحدّد",
   "Submission Deadline": "مهلة التقديم",
   "Surplus & Deficit Statement": "بيان الفائض والعجز",
+  "Recognition rule": "قاعدة الاعتراف",
   "Five lines. Each one subtracts from the one above. Taken from the posted ledger, not from voucher rollups.": "خمسة سطور، كل سطر يُطرح مما فوقه. مستخرجة من القيود المرحّلة، لا من تجميعات السندات.",
   "A surplus on restricted grants is unspent donor money carried forward, not free cash — read it against the restricted balances above.": "الفائض على المنح المقيّدة هو أموال مانحين غير منفقة مُرحّلة، وليس سيولة حرة — اقرأه مقابل الأرصدة المقيّدة أعلاه.",
   "Postings the statement could not place": "قيود لم يستطع البيان تصنيفها",

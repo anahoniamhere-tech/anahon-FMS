@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
-import { buildStatement, STATEMENT_LINES } from "./src/statement.js";
+import { buildStatement, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
 
 dotenv.config();
@@ -5302,19 +5302,23 @@ app.get("/api/reports/period", async (req, res) => {
     // Surplus-and-deficit statement, straight off the posted journal — the ledger of
     // record, not the expense/deposit rollups above. Those answer "what did each project
     // spend"; this answers "did the organisation end the period up or down".
+    const journalForStatement = journal.map(j => ({
+      date: j.date,
+      isPosted: j.isPosted,
+      items: (() => { try { return JSON.parse(j.itemsJson || "[]"); } catch { return []; } })()
+    }));
     const statement = buildStatement(
-      journal.map(j => ({
-        date: j.date,
-        isPosted: j.isPosted,
-        items: (() => { try { return JSON.parse(j.itemsJson || "[]"); } catch { return []; } })()
-      })),
+      journalForStatement,
       accounts,
       start.toISOString().slice(0, 10),
       new Date(end.getTime() - 86400000).toISOString().slice(0, 10)
     );
+    // Checked across the whole ledger, not just the window: recognition policy is a
+    // property of how the books are kept, not of the period you happen to be reading.
+    const recognition = recognitionFlags(journalForStatement, accounts);
 
     res.json({
-      statement, statementLines: STATEMENT_LINES,
+      statement, statementLines: STATEMENT_LINES, recognition,
       meta: {
         title: months === 12 ? "Annual Financial Report" : "Semi-Annual Financial Report (6 Months)",
         periodStart: start.toISOString().slice(0, 10),
