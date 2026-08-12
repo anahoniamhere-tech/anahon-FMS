@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
-import { buildStatement, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
+import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
 
 dotenv.config();
@@ -5317,8 +5317,29 @@ app.get("/api/reports/period", async (req, res) => {
     // property of how the books are kept, not of the period you happen to be reading.
     const recognition = recognitionFlags(journalForStatement, accounts);
 
+    // Restricted money received but not yet delivered against. Same definition the
+    // funnel uses — received minus spent — because the ledger does not defer it.
+    const unspentRestricted = projects
+      .filter(p => p.fundingType === "Restricted Grant")
+      .reduce((sum, p) => {
+        const received = bankTx
+          .filter(t => t.type === "Deposit" && !t.pending && t.projectId === p.id)
+          .reduce((s, t) => {
+            const acc = bankAccounts.find(a => a.id === t.bankAccountId);
+            return s + (acc?.currency === "EUR" ? t.amount * (fx?.EUR || 1.08) : acc?.currency === "LBP" ? t.amount * 0.000011 : t.amount);
+          }, 0);
+        const spent = budgetLines.filter(b => b.projectId === p.id).reduce((s, b) => s + (b.actualUSD || 0), 0);
+        return sum + Math.max(0, received - spent);
+      }, 0);
+
+    const balanceSheet = buildBalanceSheet(
+      journalForStatement, accounts,
+      new Date(end.getTime() - 86400000).toISOString().slice(0, 10),
+      +unspentRestricted.toFixed(2)
+    );
+
     res.json({
-      statement, statementLines: STATEMENT_LINES, recognition,
+      statement, statementLines: STATEMENT_LINES, recognition, balanceSheet,
       meta: {
         title: months === 12 ? "Annual Financial Report" : "Semi-Annual Financial Report (6 Months)",
         periodStart: start.toISOString().slice(0, 10),

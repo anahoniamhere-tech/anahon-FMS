@@ -1,7 +1,7 @@
 // Pure asserts on the five-line surplus/deficit statement. Opens no DB — the datasource
 // URL is hardcoded in schema.prisma, so purity beats copying the real books around.
 //   npx tsx scripts/check-statement.ts
-import { bucketFor, buildStatement, STATEMENT_LINES } from "../src/statement.js";
+import { bucketFor, buildStatement, buildBalanceSheet, STATEMENT_LINES } from "../src/statement.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean) => {
@@ -91,6 +91,39 @@ const u = buildStatement(
 );
 ok("unclassified reports 9999", u.unclassified.length === 1 && u.unclassified[0].code === "9999");
 ok("it does not silently land in a bucket", u.direct === 0 && u.operating === 0 && u.income === 0);
+
+// The balance sheet, reproduced from the worked example in the training deck:
+// an outlet that closed the year in surplus and still misses March payroll.
+console.log("\nbalance sheet — the deck's worked example");
+const BS_ACCOUNTS = [
+  { code: "1100", name: "Bank - USD", type: "Asset" },
+  { code: "1210", name: "Donor Receivable", type: "Asset" },
+  { code: "1220", name: "Trade Receivable — invoices sent", type: "Asset" },
+  { code: "1510", name: "Fixed Assets - Equipment", type: "Asset" },
+  { code: "2300", name: "Payroll Payable", type: "Liability" },
+  { code: "2500", name: "Loan from founder", type: "Liability" }
+];
+const bs = buildBalanceSheet([
+  je("2026-12-31", [{ accountCode: "1100", debit: 22000 }]),
+  je("2026-12-31", [{ accountCode: "1210", debit: 9000 }]),   // grant approved, not yet paid
+  je("2026-12-31", [{ accountCode: "1220", debit: 6500 }]),   // invoice sent, not yet paid
+  je("2026-12-31", [{ accountCode: "1510", debit: 5500 }]),   // equipment
+  je("2026-12-31", [{ accountCode: "2300", credit: 9500 }]),  // unpaid salaries, 1 month
+  je("2026-12-31", [{ accountCode: "2500", credit: 8000 }])   // founder loan
+], BS_ACCOUNTS, "2026-12-31", 18000);                          // restricted grant not yet spent
+
+ok("total assets 43,000", bs.totalOwn === 43000);
+ok("total liabilities 35,500 (incl. unspent restricted)", bs.totalOwe === 35500);
+ok("net reserves 7,500", bs.netReserves === 7500);
+ok("cash in the bank 22,000", bs.cash === 22000);
+ok("free cash only 4,000 — reserves say 7,500", bs.freeCash === 4000);
+ok("15,500 owed to the outlet has not arrived", bs.receivable === 15500);
+ok("unspent restricted appears on what-you-owe",
+  bs.owe.some(r => /not yet spent/i.test(r.name) && r.amount === 18000));
+ok("healthy reserves, and still cannot make payroll of 9,500", bs.netReserves > 0 && bs.freeCash < 9500);
+
+console.log("\nbalance sheet — equipment is owned but cannot pay a salary");
+ok("equipment is not counted as cash", bs.cash === 22000 && bs.totalOwn - bs.cash === 21000);
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nAll statement checks passed.\n");
 process.exit(failed ? 1 : 0);

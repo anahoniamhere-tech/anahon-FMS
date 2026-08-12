@@ -197,6 +197,54 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                     </div>
                   )}
 
+                  {reportData.balanceSheet && (() => {
+                    const bs = reportData.balanceSheet;
+                    const panel = (title: string, ar: string, sub: string, rows: any[], total: number, totalLabel: string, edge: string) => (
+                      <div className={`border-l-4 ${edge} bg-slate-50 rounded p-3`}>
+                        <p className="font-bold text-xs">{title} <span className="text-slate-500 font-normal" dir="rtl">{ar}</span></p>
+                        <p className="text-[10px] text-slate-500 italic mb-2">{sub}</p>
+                        {rows.map((r: any) => (
+                          <div key={r.code + r.name} className="flex justify-between text-[11px] py-0.5">
+                            <span className={r.isReceivable ? "text-blue-700" : "text-slate-700"}>{r.name.split(" (")[0].slice(0, 34)}</span>
+                            <span className="font-mono">{formatUSD(r.amount)}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between text-xs font-bold border-t border-slate-300 mt-1 pt-1">
+                          <span>{totalLabel}</span><span className="font-mono">{formatUSD(total)}</span>
+                        </div>
+                      </div>
+                    );
+                    return (
+                      <div>
+                        <h3 className="font-bold text-xs uppercase tracking-wider mb-1">{t("The Balance Sheet")}</h3>
+                        <p className="text-[10px] text-slate-500 mb-2">
+                          {t("The statement above says whether you had a good year. This says whether you survive a bad one.")}
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          {panel(t("What you own"), "ما تملكه", t("Cash, equipment, money owed to you"), bs.own, bs.totalOwn, t("Total assets"), "border-blue-600")}
+                          {panel(t("What you owe"), "ما تدين به", t("Unpaid salaries, loans, unspent restricted grants"), bs.owe, bs.totalOwe, t("Total liabilities"), "border-slate-900")}
+                          <div className="border-l-4 border-red-600 bg-slate-50 rounded p-3">
+                            <p className="font-bold text-xs">{t("What is left")} <span className="text-slate-500 font-normal" dir="rtl">صافي الاحتياطي</span></p>
+                            <p className="text-[10px] text-slate-500 italic mb-2">{t("Reserves = own − owe")}</p>
+                            <div className="flex justify-between text-[11px] py-0.5"><span>{t("Total assets")}</span><span className="font-mono">{formatUSD(bs.totalOwn)}</span></div>
+                            <div className="flex justify-between text-[11px] py-0.5"><span>{t("less total liabilities")}</span><span className="font-mono">({formatUSD(bs.totalOwe)})</span></div>
+                            <div className="flex justify-between text-[11px] py-0.5 text-red-700 font-bold"><span>{t("Free cash, right now")}</span><span className="font-mono">{formatUSD(bs.freeCash)}</span></div>
+                            <div className="flex justify-between text-xs font-bold border-t border-slate-300 mt-1 pt-1 text-red-700">
+                              <span>{t("Net reserves")}</span><span className="font-mono">{formatUSD(bs.netReserves)}</span>
+                            </div>
+                          </div>
+                        </div>
+                        {/* The whole point of the exercise: reserves can look healthy while
+                            almost none of the bank balance is actually yours to spend. */}
+                        <p className="text-[10px] bg-slate-900 text-white rounded px-3 py-2 mt-2 leading-relaxed">
+                          <span className="text-red-300 font-bold">{t("Solvency is a cash question, not a surplus question.")} </span>
+                          {t("Of the")} {formatUSD(bs.cash)} {t("in the bank,")} {formatUSD(bs.unspentRestricted)} {t("is restricted grant committed to work not yet delivered — about")} {formatUSD(bs.freeCash)} {t("is genuinely free.")}
+                          {bs.receivable > 0 && <> {formatUSD(bs.receivable)} {t("owed to the outlet has not arrived.")}</>}
+                        </p>
+                      </div>
+                    );
+                  })()}
+
                   <div>
                     <h3 className="font-bold text-xs uppercase tracking-wider mb-2">1. Budget vs Actual by Project</h3>
                     {reportData.perProject.map((p: any) => (

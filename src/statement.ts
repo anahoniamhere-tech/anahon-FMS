@@ -84,6 +84,106 @@ export interface Statement {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
+// ── The balance sheet, in three questions ───────────────────────────────────
+// What you own · ما تملكه — cash, equipment, money owed to you
+// What you owe · ما تدين به — unpaid salaries, loans, unspent restricted grants
+// What is left · صافي الاحتياطي — reserves, the buffer between a bad year and closing
+//
+// The statement above says whether you had a good year. This says whether you
+// survive a bad one — and they answer differently. Reserves can read healthy while
+// most of the bank balance is restricted grant committed to work not yet done.
+// So this reports FREE CASH separately: solvency is a cash question, not a
+// surplus question.
+
+export interface BalanceSheetRow { code: string; name: string; amount: number; isCash?: boolean; isReceivable?: boolean }
+
+export interface BalanceSheet {
+  asOf: string;
+  own: BalanceSheetRow[];
+  owe: BalanceSheetRow[];
+  totalOwn: number;
+  totalOwe: number;
+  /** own − owe. The buffer. */
+  netReserves: number;
+  /** Cash and bank balances only. */
+  cash: number;
+  /** Restricted grant money received but not yet spent — owed as delivery, not as debt. */
+  unspentRestricted: number;
+  /** cash − unspentRestricted. What you could actually pay a salary from today. */
+  freeCash: number;
+  /** Money owed TO you that has not arrived — an asset you cannot spend. */
+  receivable: number;
+}
+
+const IS_CASH = /bank|cash|petty/i;
+const IS_RECEIVABLE = /receivable|advance/i;
+
+/**
+ * Balance sheet as at `asOf` (YYYY-MM-DD), cumulative from the start of the ledger.
+ *
+ * `unspentRestricted` is passed in rather than read off a liability account,
+ * because the ledger does not currently defer grant income (see recognitionFlags).
+ * Until it does, the only honest source is received-minus-spent per restricted
+ * project — the same figure the funnel shows — and it is added to what you owe,
+ * since undelivered work is an obligation whichever account it sits in.
+ */
+export function buildBalanceSheet(
+  entries: StatementEntry[],
+  accounts: StatementAccount[],
+  asOf: string,
+  unspentRestricted = 0
+): BalanceSheet {
+  const byCode = new Map(accounts.map(a => [a.code, a]));
+  const bal = new Map<string, number>();
+
+  for (const e of entries) {
+    if (e.isPosted === false) continue;
+    const d = String(e.date || "").slice(0, 10);
+    if (!d || d > asOf) continue;
+    for (const it of e.items || []) {
+      const acc = byCode.get(it.accountCode);
+      if (!acc || (acc.type !== "Asset" && acc.type !== "Liability")) continue;
+      const debit = Number(it.debit) || 0;
+      const credit = Number(it.credit) || 0;
+      // Assets carry a debit balance, liabilities a credit balance; both positive here.
+      const delta = acc.type === "Asset" ? debit - credit : credit - debit;
+      bal.set(acc.code, (bal.get(acc.code) || 0) + delta);
+    }
+  }
+
+  const rowsFor = (type: string): BalanceSheetRow[] =>
+    accounts
+      .filter(a => a.type === type)
+      .map(a => ({
+        code: a.code, name: a.name, amount: r2(bal.get(a.code) || 0),
+        isCash: type === "Asset" && IS_CASH.test(a.name),
+        isReceivable: type === "Asset" && IS_RECEIVABLE.test(a.name)
+      }))
+      .filter(r => r.amount !== 0)
+      .sort((a, b) => a.code.localeCompare(b.code));
+
+  const own = rowsFor("Asset");
+  const owe = rowsFor("Liability");
+
+  const cash = r2(own.filter(r => r.isCash).reduce((s, r) => s + r.amount, 0));
+  const receivable = r2(own.filter(r => r.isReceivable).reduce((s, r) => s + r.amount, 0));
+
+  if (unspentRestricted > 0) {
+    owe.push({ code: "—", name: "Restricted grants received, not yet spent", amount: r2(unspentRestricted) });
+  }
+
+  const totalOwn = r2(own.reduce((s, r) => s + r.amount, 0));
+  const totalOwe = r2(owe.reduce((s, r) => s + r.amount, 0));
+
+  return {
+    asOf, own, owe, totalOwn, totalOwe,
+    netReserves: r2(totalOwn - totalOwe),
+    cash, unspentRestricted: r2(unspentRestricted),
+    freeCash: r2(cash - unspentRestricted),
+    receivable
+  };
+}
+
 // ── Grant income recognition ────────────────────────────────────────────────
 // Three rules decide whether a set of accounts is readable or misleading:
 //
