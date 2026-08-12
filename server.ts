@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
+import { buildStatement, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
 
 dotenv.config();
@@ -5124,6 +5125,17 @@ function renderReportHtml(r: any): string {
   <div class="kpi"><span>Expenditure</span><b>${usd(r.totals.expenditureInPeriod)}</b></div>
   <div class="kpi"><span>Vouchers</span><b>${r.totals.vouchersInPeriod}</b></div>
 </div>
+${r.statement ? `<h3>Surplus &amp; Deficit Statement · بيان الفائض والعجز</h3>
+<table class="avoid">${(r.statementLines || []).map((l: any) => {
+    const v = r.statement[l.key];
+    const bold = l.computed ? ' style="font-weight:700;background:#f1f1f1"' : "";
+    return `<tr${bold}><td style="width:34px;color:#888">${l.less ? "less" : l.computed ? "=" : ""}</td>` +
+      `<td>${esc(l.en)} <span style="color:#777">${esc(l.ar)}</span></td>` +
+      `<td style="color:#777;font-size:9px">${esc(l.note)}</td>` +
+      `<td class="r">${usd(v)}</td></tr>`;
+  }).join("")}</table>
+${r.statement.surplus > 0 ? `<p style="font-size:9px;color:#7a5b00">A surplus on restricted grants is unspent donor money carried forward, not free cash.</p>` : ""}
+${(r.statement.unclassified || []).length ? `<p style="font-size:9px;color:#9b1c1c">Unplaced postings: ${r.statement.unclassified.map((u: any) => `${esc(u.code)} (${usd(u.amount)})`).join(", ")}</p>` : ""}` : ""}
 <h3>1. Budget vs Actual by Project</h3>${projects}
 <div class="two avoid">
   <div><h3>2. Expenditure by Category</h3><table>${Object.entries(r.byCategory).map(([c, v]: any) => `<tr><td>${esc(c)}</td><td class="r">${usd(v)}</td></tr>`).join("")}</table></div>
@@ -5233,10 +5245,11 @@ app.get("/api/reports/period", async (req, res) => {
       return d >= start && d < end;
     };
 
-    const [allProjects, budgetLines, expenses, bankAccounts, bankTx, tasks, donors, fx] = await Promise.all([
+    const [allProjects, budgetLines, expenses, bankAccounts, bankTx, tasks, donors, fx, journal, accounts] = await Promise.all([
       prisma.project.findMany(), prisma.budgetLine.findMany(), prisma.expense.findMany(),
       prisma.bankAccount.findMany({ where: { active: true } }), prisma.bankTransaction.findMany(),
-      prisma.complianceTask.findMany(), prisma.donor.findMany(), prisma.fxRates.findFirst()
+      prisma.complianceTask.findMany(), prisma.donor.findMany(), prisma.fxRates.findFirst(),
+      prisma.journalEntry.findMany(), prisma.account.findMany()
     ]);
     // Reports are donor-facing — unproven projects must not appear in them either.
     const projects = fundedOnly(allProjects, bankTx);
@@ -5286,7 +5299,22 @@ app.get("/api/reports/period", async (req, res) => {
     const deposits = allDeposits.filter(d => !d.internal);
     const internalMovements = allDeposits.filter(d => d.internal);
 
+    // Surplus-and-deficit statement, straight off the posted journal — the ledger of
+    // record, not the expense/deposit rollups above. Those answer "what did each project
+    // spend"; this answers "did the organisation end the period up or down".
+    const statement = buildStatement(
+      journal.map(j => ({
+        date: j.date,
+        isPosted: j.isPosted,
+        items: (() => { try { return JSON.parse(j.itemsJson || "[]"); } catch { return []; } })()
+      })),
+      accounts,
+      start.toISOString().slice(0, 10),
+      new Date(end.getTime() - 86400000).toISOString().slice(0, 10)
+    );
+
     res.json({
+      statement, statementLines: STATEMENT_LINES,
       meta: {
         title: months === 12 ? "Annual Financial Report" : "Semi-Annual Financial Report (6 Months)",
         periodStart: start.toISOString().slice(0, 10),

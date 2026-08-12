@@ -135,6 +135,61 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                     <div className="p-3 border border-slate-200 rounded"><p className="text-[10px] uppercase font-bold text-slate-500">Vouchers</p><p className="text-lg font-mono font-bold">{reportData.totals.vouchersInPeriod}</p></div>
                   </div>
 
+                  {reportData.statement && (
+                    <div>
+                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2">
+                        {t("Surplus & Deficit Statement")}
+                      </h3>
+                      <p className="text-[10px] text-slate-500 mb-2">
+                        {t("Five lines. Each one subtracts from the one above. Taken from the posted ledger, not from voucher rollups.")}
+                      </p>
+                      <table className="w-full text-xs">
+                        <tbody>
+                          {reportData.statementLines?.map((line: any) => {
+                            const v = reportData.statement[line.key] as number;
+                            const isTotal = !!line.computed;
+                            return (
+                              <tr key={line.key} className={isTotal ? "bg-slate-100 font-bold" : "border-t border-slate-100"}>
+                                <td className="py-1.5 pr-2 w-8 text-slate-400 font-mono text-[10px]">{line.less ? "less" : isTotal ? "=" : ""}</td>
+                                <td className="py-1.5 pr-2">
+                                  <span className={isTotal ? "text-slate-900" : "text-slate-800"}>{line.en}</span>
+                                  <span className="text-slate-500 mr-2 ml-2" dir="rtl">{line.ar}</span>
+                                </td>
+                                <td className="py-1.5 pr-2 text-slate-500 text-[10px] hidden md:table-cell">{line.note}</td>
+                                <td className={`py-1.5 text-right font-mono ${v < 0 ? "text-red-700" : ""}`}>{formatUSD(v)}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                      {/* A restricted-grant surplus is unspent donor money, not a cushion.
+                          Saying so here stops the figure being read as free cash. */}
+                      {reportData.statement.surplus > 0 && (
+                        <p className="text-[10px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mt-2">
+                          {t("A surplus on restricted grants is unspent donor money carried forward, not free cash — read it against the restricted balances above.")}
+                        </p>
+                      )}
+                      {!!reportData.statement.unclassified?.length && (
+                        <p className="text-[10px] text-red-800 bg-red-50 border border-red-200 rounded px-2 py-1.5 mt-2">
+                          {t("Postings the statement could not place")}: {reportData.statement.unclassified.map((u: any) => `${u.code} (${formatUSD(u.amount)})`).join(", ")}
+                        </p>
+                      )}
+                      <details className="mt-2">
+                        <summary className="text-[10px] text-slate-500 cursor-pointer">{t("Accounts behind these lines")}</summary>
+                        <table className="w-full text-[11px] mt-1">
+                          <tbody>{reportData.statement.rows.map((r: any) => (
+                            <tr key={r.code} className="border-t border-slate-100">
+                              <td className="py-0.5 pr-2 font-mono text-slate-500">{r.code}</td>
+                              <td className="pr-2">{r.name}</td>
+                              <td className="pr-2 text-slate-400 text-[10px]">{r.bucket}</td>
+                              <td className="text-right font-mono">{formatUSD(r.amount)}</td>
+                            </tr>
+                          ))}</tbody>
+                        </table>
+                      </details>
+                    </div>
+                  )}
+
                   <div>
                     <h3 className="font-bold text-xs uppercase tracking-wider mb-2">1. Budget vs Actual by Project</h3>
                     {reportData.perProject.map((p: any) => (
