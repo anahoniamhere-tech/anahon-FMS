@@ -651,13 +651,27 @@ export default function App() {
    *  third-party evidence, and counting them would hide exactly what this panel is for. */
   const evidenceGaps = (() => {
     const COUNTED = ["Approved", "Paid", "Posted"];
+    // Proof means a document AnaHon did not author after the fact. Neither the app's own
+    // digitized copy nor a reconstructed voucher qualifies — both are our own reconstruction
+    // of a record, and counting them would let the gap close itself.
     const hasProof = (expId: string) => state.documents.some(d =>
-      d.linkedRecordType === "Expense" && d.linkedRecordId === expId && !/^Digitized/i.test(d.category || ""));
+      d.linkedRecordType === "Expense" && d.linkedRecordId === expId
+      && !/^Digitized/i.test(d.category || "") && !/^Reconstructed Voucher/i.test(d.category || ""));
     const proj = (id: string) => state.projects.find(p => p.id === id);
     const money = (n: number) => formatUSD(n);
 
+    // A reconstructed voucher is AnaHon's own document reissued because the signed hard copy was
+    // lost on a closed grant. It is a documented position, not independent evidence — so it neither
+    // counts as proof nor sits in the unexplained pile. Three states, and the difference is stated.
+    const isReconstructed = (expId: string) => state.documents.some(d =>
+      d.linkedRecordType === "Expense" && d.linkedRecordId === expId && /^Reconstructed Voucher/i.test(d.category || ""));
+
+    const reconstructed = state.expenses
+      .filter(e => COUNTED.includes(e.status) && !hasProof(e.id) && isReconstructed(e.id))
+      .sort((a, b) => b.convertedAmount - a.convertedAmount);
+
     const noEvidence = state.expenses
-      .filter(e => COUNTED.includes(e.status) && !hasProof(e.id))
+      .filter(e => COUNTED.includes(e.status) && !hasProof(e.id) && !isReconstructed(e.id))
       .sort((a, b) => b.convertedAmount - a.convertedAmount);
 
     const noProcurement = state.expenses
@@ -675,7 +689,7 @@ export default function App() {
     const pettyGap = state.accounts.find(a => a.code === "1120")?.balance || 0;
 
     return {
-      noEvidence, noProcurement, unspent, pettyGap, money, proj,
+      noEvidence, reconstructed, noProcurement, unspent, pettyGap, money, proj,
       total: noEvidence.length + noProcurement.length + unspent.length + (pettyGap > 0 ? 1 : 0)
     };
   })();
@@ -1215,6 +1229,20 @@ export default function App() {
                   </p>
                   <button onClick={() => { setGapsOpen(false); handleNavClick("banking"); }}
                     className="mt-2 text-[11px] font-bold text-red-700 hover:underline">Open Banking →</button>
+                </div>
+              )}
+
+              {evidenceGaps.reconstructed.length > 0 && (
+                <div className="p-3 bg-slate-100 border border-slate-300 rounded-lg">
+                  <p className="text-xs font-bold text-slate-800">
+                    Reconstructed vouchers — {evidenceGaps.reconstructed.length} · {evidenceGaps.money(evidenceGaps.reconstructed.reduce((s, e) => s + e.convertedAmount, 0))}
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-1">
+                    Closed grants whose signed hard copies could not be located. AnaHon's own voucher was
+                    reissued from the approved budget, the financial report the funder accepted, and the
+                    expense register — each one stating on its face that the original is unavailable.
+                    Not counted as independent evidence, and not left unexplained.
+                  </p>
                 </div>
               )}
 
