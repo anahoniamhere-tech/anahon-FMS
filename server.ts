@@ -553,6 +553,42 @@ app.post("/api/users/create", async (req, res) => {
   }
 });
 
+// Deactivate / reactivate an account. Former staff keep their history (audit log,
+// approvals, assignments) but can no longer sign in — the login check refuses
+// inactive users. Only the master account; never on itself.
+app.post("/api/users/set-active", async (req, res) => {
+  try {
+    const { userId, active, user } = req.body;
+    if (user?.role !== "Super Admin") return res.status(403).json({ error: "Only a Super Admin may deactivate or reactivate accounts." });
+    const target = await prisma.user.findUnique({ where: { id: userId } });
+    if (!target) return res.status(404).json({ error: "User not found." });
+    if (target.id === user.id) return res.status(400).json({ error: "You cannot deactivate your own master account." });
+    const updated = await prisma.user.update({ where: { id: userId }, data: { active: !!active } });
+    await createAuditLog(user.id, user.name, active ? "User Account Reactivated" : "User Account Deactivated",
+      `${target.name} <${target.email}> (${target.role}) ${active ? "can sign in again" : "can no longer sign in; history retained"}.`);
+    res.json({ success: true, user: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Same for the personnel record (payroll/HR lists). Kept separate from the login
+// account on purpose: a contractor can have one without the other.
+app.post("/api/employees/set-active", async (req, res) => {
+  try {
+    const { employeeId, active, user } = req.body;
+    if (!["Super Admin", "HR / Payroll Officer"].includes(user?.role)) return res.status(403).json({ error: "Needs the master account or the HR / Payroll Officer." });
+    const target = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!target) return res.status(404).json({ error: "Employee not found." });
+    const updated = await prisma.employee.update({ where: { id: employeeId }, data: { active: !!active } });
+    await createAuditLog(user.id, user.name, active ? "Employee Reactivated" : "Employee Deactivated",
+      `${target.name} (${target.position}) marked ${active ? "active" : "inactive"}.`);
+    res.json({ success: true, employee: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/calendar.ics", async (req, res) => {
   try {
     const [meetings, items, users] = await Promise.all([
