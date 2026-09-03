@@ -1064,6 +1064,10 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                     </span>
                   )}
                   {item.corrections.length > 0 && <span className="text-amber-700 text-[10px] font-bold">{item.corrections.length} {t("Corrections")}</span>}
+                  {item.websiteUrl && (
+                    <a href={item.websiteUrl} target="_blank" rel="noopener" onClick={ev => ev.stopPropagation()}
+                      className="text-sky-700 text-[10px] font-bold underline" title={item.websiteUrl}>🔗 {t("View on website")}</a>
+                  )}
                   <span className="ml-auto text-slate-500 font-mono">{nameOf(item.assigneeUserId)}{item.dueDate ? ` · ${item.dueDate}` : ""}</span>
                 </div>
 

@@ -423,6 +423,7 @@ export interface ContentItem {
   pdApprovedAt: string;
   factCheckTag: boolean;
   publishedAt: string;
+  websiteUrl?: string;         // live page on the website, set by the publish hook
   corrections: { date: string; nature: string; correction: string; by: string }[];
   materials: { label: string; url: string; kind: "link" | "photo" | "video" | "doc" }[];
   drafts: { label: string; kind: string; text: string; date: string; by: string }[];

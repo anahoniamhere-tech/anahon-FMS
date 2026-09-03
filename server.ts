@@ -2441,6 +2441,11 @@ async function notifySite(id: string, why: string) {
     });
     const j: any = await r.json().catch(() => ({}));
     console.log(`[site] ${why} ${id}: ${r.status} ${j.url || j.error || ""}`);
+    // remember where the site put it, so the desk can link straight to the live page
+    if (r.ok && j.url) {
+      const base = (process.env.SITE_PUBLIC_URL || SITE_URL).replace(/\/$/, "");
+      await prisma.contentItem.update({ where: { id }, data: { websiteUrl: base + j.url } });
+    }
   } catch (e: any) {
     console.log(`[site] ${why} ${id}: site unreachable at ${SITE_URL} — ${e.message}`);
   }
