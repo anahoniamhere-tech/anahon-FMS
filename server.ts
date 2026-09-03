@@ -612,6 +612,8 @@ app.post("/api/state", async (req, res) => {
     }
 
     const currentAccounts = await prisma.account.findMany();
+    // In a container the interface list is the container's own network; the deployment sets the real address.
+    if (process.env.FMS_PUBLIC_URL) urls.splice(0, urls.length, { iface: "public", url: process.env.FMS_PUBLIC_URL });
     const existingCodes = new Set(currentAccounts.map(a => a.code));
     const newAc = accounts.find((a: any) => !existingCodes.has(a.code));
 
@@ -5165,7 +5167,7 @@ const CHROME_PATHS = [
 
 async function htmlToPdf(html: string): Promise<Buffer> {
   const { spawn } = await import("child_process");
-  const chrome = CHROME_PATHS.find(p => fs.existsSync(p));
+  const chrome = CHROME_PATHS.find(p => p && fs.existsSync(p));
   if (!chrome) throw new Error("No Chrome/Chromium found for PDF rendering.");
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "anahon-report-"));
@@ -5612,10 +5614,16 @@ if (process.env.NODE_ENV !== "production") {
   });
 }
 
-if (process.env.NODE_ENV !== "production") {
+// Listen everywhere except on Vercel, which imports the exported app instead.
+if (!process.env.VERCEL) {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`AnaHon Financial Operations Server running on port ${PORT}`);
   });
 }
 
 export default app;
+  process.env.CHROME_PATH || "",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/google-chrome",
+    ...(process.env.CHROME_NO_SANDBOX ? ["--no-sandbox", "--disable-dev-shm-usage"] : []), // containers run as uid without user namespaces

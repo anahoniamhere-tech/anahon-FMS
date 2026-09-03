@@ -1,6 +1,6 @@
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 generator client {
@@ -445,4 +445,55 @@ model EditorialMeeting {
   created_at    String
 
   @@unique([kind, date])
+}
+
+// People met at trainings, conferences and events — the networking register.
+// Deliberately NOT Client/Vendor/Donor: those are billing and funding parties in the
+// books, and a roster of forty boot-camp participants does not belong in production
+// revenue. Nothing here ever touches a ledger.
+model NetworkContact {
+  id         String  @id
+  name       String
+  nameAr     String  @default("")
+  org        String  @default("")
+  role       String  @default("")
+  country    String  @default("")
+  email      String  @default("")
+  phone      String  @default("")
+  links      String  @default("")                // profile URLs, one per line
+  kind       String  @default("Participant")     // Trainer | Participant | Organiser | Speaker | Other
+  metAt      String  @default("")                // the event
+  metOn      String  @default("")                // YYYY-MM-DD
+  stream     String  @default("")                // STREAMS — which programme this contact serves
+  followUp   String  @default("")                // what we actually want from them
+  followUpBy String  @default("")                // YYYY-MM-DD
+  status     String  @default("New")             // New | Contacted | Warm | Dormant
+  notes      String  @default("")
+  created_at String
+
+  @@index([metAt])
+}
+
+// Software the newsroom evaluates and uses. Separate from Subscription on purpose:
+// Subscription is a money record that drives bank matching and renewal alerts, so a
+// register of free tools would bury the real charges. A tool graduates INTO a
+// subscription when it starts costing — `subscriptionId` is that bridge.
+model Tool {
+  id             String @id
+  name           String
+  url            String @default("")
+  category       String @default("Other")
+  purpose        String @default("")            // what we actually use it for
+  stream         String @default("")            // STREAMS — which programme
+  status         String @default("Evaluating")  // Evaluating | Trialling | In use | Dropped
+  pricing        String @default("Free")        // Free | Free tier | Trial | Paid | Pay-as-you-go
+  owner          String @default("")            // who on the team owns it
+  source         String @default("")            // where we found it (event, person)
+  addedOn        String @default("")            // YYYY-MM-DD
+  reviewBy       String @default("")            // YYYY-MM-DD — a trial with no date silently lapses
+  subscriptionId String @default("")            // set once it becomes a real charge
+  notes          String @default("")
+  created_at     String
+
+  @@index([category])
 }

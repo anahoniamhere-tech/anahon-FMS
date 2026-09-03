@@ -1,0 +1,16 @@
+# AnaHon FMS on TrueNAS SCALE.  See DEPLOY-TRUENAS.md.
+services:
+  fms:
+    build: .
+    container_name: anahon-fms
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    env_file: .env            # GEMINI_API_KEY, ANTHROPIC_API_KEY, FIREBASE_PROJECT_ID — never on the SMB share
+    environment:
+      FMS_PUBLIC_URL: http://anahon.local:3100   # shown in "open on your phone"; must be a Firebase-authorized domain
+    volumes:
+      - ${FMS_DATA:-/mnt/mainpool/anahon/fms}/db:/data/db
+      - ${FMS_DATA:-/mnt/mainpool/anahon/fms}/vault:/data/vault
+      - ${FMS_DATA:-/mnt/mainpool/anahon/fms}/calendar-feed.json:/app/dist/.calendar-feed.json:ro
+    shm_size: 512m            # chromium PDF rendering
