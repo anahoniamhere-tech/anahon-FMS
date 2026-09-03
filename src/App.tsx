@@ -73,6 +73,7 @@ import EditorialTab from "./tabs/EditorialTab";
 import NetworkTab from "./tabs/NetworkTab";
 import ToolsTab from "./tabs/ToolsTab";
 import ArchiveTab from "./tabs/ArchiveTab";
+import SocialTab from "./tabs/SocialTab";
 import { SharedProps } from "./tabs/shared";
 import { auth } from "./firebaseConfig";
 import {
@@ -1262,6 +1263,10 @@ export default function App() {
               <span className="h-4 w-4 shrink-0 text-center leading-4">🗂</span>
               <span className="text-left flex-1">{t("Archive")}</span>
             </button>
+            <button onClick={() => handleNavClick("social")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "social" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <span className="h-4 w-4 shrink-0 text-center leading-4">📣</span>
+              <span className="text-left flex-1">{t("Social desk")}</span>
+            </button>
 
             <button onClick={() => handleNavClick("compliance")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "compliance" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <ShieldAlert className="h-4 w-4 text-rose-400 shrink-0" />
@@ -1362,6 +1367,7 @@ export default function App() {
           {activeTab === "network" && <NetworkTab {...shared} />}
           {activeTab === "tools" && <ToolsTab {...shared} />}
           {activeTab === "archive" && <ArchiveTab {...shared} />}
+          {activeTab === "social" && <SocialTab {...shared} />}
           {activeTab === "handbooks" && <HandbooksTab {...shared} />}
 
           {activeTab === "mydesk" && <MyDeskTab {...shared} />}

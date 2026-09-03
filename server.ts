@@ -3033,6 +3033,104 @@ app.post("/api/archive/publish", async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
+// ---- Social desk (moved from the website, 3 Sep 2026) ---------------------------
+// Meta Graph API for the AnaHon Facebook Page and the linked Instagram account.
+//   Facebook   publish · edit text · delete  (+ "unpublished" admin-only posts for tests)
+//   Instagram  publish (public HTTPS image) · delete — captions cannot be edited (Meta)
+// Nothing posts on its own: every write is a deliberate call from the desk.
+const GRAPH = "https://graph.facebook.com/v25.0";
+const META_PAGE_TOKEN = () => (process.env.META_PAGE_TOKEN || "").trim();
+const META_PAGE_ID = () => (process.env.META_PAGE_ID || "").trim();
+async function graph(p: string, { method = "GET", params = {} as Record<string, string>, token = META_PAGE_TOKEN() } = {}) {
+  const url = new URL(GRAPH + p);
+  if (method === "GET") for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  url.searchParams.set("access_token", token);
+  const init: any = { method };
+  if (method !== "GET") { init.body = new URLSearchParams(params); init.headers = { "content-type": "application/x-www-form-urlencoded" }; }
+  const r = await fetch(url, init);
+  const j: any = await r.json().catch(() => ({}));
+  if (j.error) {
+    const e = j.error;
+    const hint = e.code === 190 ? " — token expired or revoked; run: node scripts/meta-token.mjs <explorer-token>"
+      : (e.code === 200 || e.code === 10) ? " — the token lacks pages_manage_posts / instagram_content_publish" : "";
+    throw new Error(`${e.message}${hint}`);
+  }
+  return j;
+}
+const needToken = () => { if (!META_PAGE_TOKEN()) throw new Error("No META_PAGE_TOKEN in the FMS .env — generate one with scripts/meta-token.mjs, then add META_PAGE_TOKEN and META_PAGE_ID to the NAS .env and restart."); };
+const igAccountId = async () => (await graph(`/${META_PAGE_ID()}`, { params: { fields: "instagram_business_account" } })).instagram_business_account?.id;
+
+app.get("/api/social/status", async (_req, res) => {
+  try {
+    needToken();
+    const dbg: any = await graph("/debug_token", { params: { input_token: META_PAGE_TOKEN() } }).then(d => d.data ?? {}).catch(e => ({ error: String(e.message) }));
+    const page: any = META_PAGE_ID() ? await graph(`/${META_PAGE_ID()}`, { params: { fields: "name,fan_count,instagram_business_account{id,username,followers_count}" } }) : {};
+    const igId = page.instagram_business_account?.id;
+    const igQuotaUsed = igId ? await graph(`/${igId}/content_publishing_limit`).then((d: any) => d.data?.[0]?.quota_usage ?? null).catch(() => null) : null;
+    res.json({ ok: true, page: { id: META_PAGE_ID(), name: page.name, followers: page.fan_count }, instagram: page.instagram_business_account ?? null, igQuotaUsed,
+      token: { valid: dbg.is_valid ?? false, expires: dbg.expires_at ? new Date(dbg.expires_at * 1000).toISOString() : "never", scopes: dbg.scopes ?? [],
+        canPublishFB: (dbg.scopes ?? []).includes("pages_manage_posts"), canPublishIG: (dbg.scopes ?? []).includes("instagram_content_publish"), error: dbg.error } });
+  } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
+});
+app.get("/api/social/list", async (_req, res) => {
+  try {
+    needToken();
+    const fb: any = await graph(`/${META_PAGE_ID()}/posts`, { params: { fields: "id,message,created_time,permalink_url,full_picture,is_published", limit: "25" } }).catch(e => ({ error: String(e.message), data: [] }));
+    const igId = await igAccountId().catch(() => null);
+    const ig: any = igId ? await graph(`/${igId}/media`, { params: { fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp", limit: "25" } }).catch(e => ({ error: String(e.message), data: [] })) : { data: [] };
+    res.json({ ok: true, fb: fb.data ?? [], ig: ig.data ?? [], fbError: fb.error, igError: ig.error });
+  } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
+});
+app.post("/api/social/publish", async (req, res) => {
+  try {
+    const { target, message, link, imageUrl, unpublished, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Posting to social media needs an editor role." });
+    needToken();
+    if (target === "fb") {
+      if (!String(message || "").trim() && !link) throw new Error("a post needs a message or a link");
+      const params: Record<string, string> = { message: message ?? "" };
+      if (link) params.link = link;
+      if (unpublished) params.published = "false";   // admin-only, invisible to the audience — the safe test
+      const r: any = await graph(`/${META_PAGE_ID()}/feed`, { method: "POST", params });
+      await createAuditLog(user?.id, user?.name, "Social Post Published", `Facebook${unpublished ? " (unpublished, admins only)" : ""}: "${String(message || "").slice(0, 80)}" → ${r.id}`);
+      return res.json({ ok: true, id: r.id, url: `https://facebook.com/${r.id}`, unpublished: !!unpublished });
+    }
+    if (target === "ig") {
+      const igId = await igAccountId(); if (!igId) throw new Error("no Instagram account linked to this Page");
+      if (!/^https:\/\//.test(imageUrl || "")) throw new Error("Instagram needs a public HTTPS image URL — Meta fetches the file itself");
+      const c: any = await graph(`/${igId}/media`, { method: "POST", params: { image_url: imageUrl, caption: message ?? "" } });
+      const r: any = await graph(`/${igId}/media_publish`, { method: "POST", params: { creation_id: c.id } });
+      await createAuditLog(user?.id, user?.name, "Social Post Published", `Instagram: "${String(message || "").slice(0, 80)}" → ${r.id}`);
+      return res.json({ ok: true, id: r.id });
+    }
+    throw new Error("target must be fb or ig");
+  } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
+});
+app.post("/api/social/edit", async (req, res) => {
+  try {
+    const { target, postId, message, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing posts needs an editor role." });
+    needToken();
+    if (target === "ig") throw new Error("Instagram captions cannot be edited through the API — Meta has never exposed it. Delete and repost, or edit in the app.");
+    if (!postId) throw new Error("postId required");
+    await graph(`/${postId}`, { method: "POST", params: { message: message ?? "" } });
+    await createAuditLog(user?.id, user?.name, "Social Post Edited", `Facebook ${postId}: "${String(message || "").slice(0, 80)}"`);
+    res.json({ ok: true, id: postId });
+  } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
+});
+app.post("/api/social/delete", async (req, res) => {
+  try {
+    const { target, postId, confirm, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Deleting posts needs an editor role." });
+    needToken();
+    if (confirm !== "yes") throw new Error('delete needs confirm:"yes"');
+    if (!postId) throw new Error("postId required");
+    await graph(`/${postId}`, { method: "DELETE" });
+    await createAuditLog(user?.id, user?.name, "Social Post Deleted", `${target === "ig" ? "Instagram" : "Facebook"} ${postId} deleted.`);
+    res.json({ ok: true, deleted: postId });
+  } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
 // Retract: the piece comes off the website. The record stays Published — with the
 // reason and date — because Policy 005 forbids silent edits to the published record.
 app.post("/api/content/retract", async (req, res) => {
