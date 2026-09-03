@@ -2387,6 +2387,22 @@ app.get("/api/subscriptions/detect", async (req, res) => {
 
 const CONTENT_EDITOR_ROLES = ["Production Manager", "Program Director", "Super Admin"];
 
+// After the desk's last gate, tell the website to render the piece. The site
+// re-reads this database and refuses anything not Published, so the call carries
+// no authority of its own — and publishing here never depends on it succeeding.
+const SITE_URL = process.env.SITE_URL || "http://localhost:4321";
+async function notifySite(id: string, why: string) {
+  try {
+    const r = await fetch(`${SITE_URL}/__publish`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id })
+    });
+    const j: any = await r.json().catch(() => ({}));
+    console.log(`[site] ${why} ${id}: ${r.status} ${j.url || j.error || ""}`);
+  } catch (e: any) {
+    console.log(`[site] ${why} ${id}: site unreachable at ${SITE_URL} — ${e.message}`);
+  }
+}
+
 // Streams a Project Officer may run content for: their scoped projects' programmes
 // plus their streamScope. Null = caller is not a PO (role gates decide instead).
 async function poContentStreams(dbUser: any): Promise<Set<string> | null> {
@@ -2704,6 +2720,7 @@ app.post("/api/content/publish", async (req, res) => {
       status: "Published", publishedAt: new Date().toISOString(), factCheckTag: true
     } });
     const channels = JSON.parse(item.channelsJson || "[]");
+    if (!channels.length || channels.includes("Website")) void notifySite(id, "publish");
     await createAuditLog(user?.id, user?.name, "Content Published",
       `"${item.title}" (${item.contentType}) published to ${channels.join(", ") || "no channel"} — fact-checked tag applied; PM+PD dual approval on record.`);
     res.json({ success: true, item: updated });
@@ -2729,6 +2746,7 @@ app.post("/api/content/correction", async (req, res) => {
     const corrections = JSON.parse(item.correctionsJson || "[]");
     corrections.push({ date: localDate(), nature, correction, by: user?.name || "" });
     const updated = await prisma.contentItem.update({ where: { id }, data: { correctionsJson: JSON.stringify(corrections) } });
+    { const ch = JSON.parse(item.channelsJson || "[]"); if (!ch.length || ch.includes("Website")) void notifySite(id, "correction"); }
     await createAuditLog(user?.id, user?.name, "Content Correction Issued",
       `"${item.title}": ${nature} — correction appended ${localDate()}; original noted, status remains Published.`);
     res.json({ success: true, item: updated });
