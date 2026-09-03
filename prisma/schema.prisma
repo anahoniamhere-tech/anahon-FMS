@@ -1,5 +1,5 @@
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -8,11 +8,15 @@ generator client {
 }
 
 model User {
-  id     String  @id
-  name   String
-  email  String  @unique
-  role   String
-  active Boolean @default(true)
+  id             String  @id
+  name           String
+  email          String  @unique
+  role           String
+  active         Boolean @default(true)
+  // For "Project Officer": the projects this user may raise requests for.
+  projectIdsJson String  @default("[]")
+  // Programme-level scope: every project in this stream, present and future.
+  streamScope    String  @default("")
 }
 
 model Account {
@@ -44,6 +48,34 @@ model Project {
   endDate     String
   fundingType String
   status      String
+  stream      String @default("")
+}
+
+// Funding funnel: money BEFORE it lands. Deliberately a separate table so nothing
+// here can ever leak into financial reports, project lists, or balances — an
+// opportunity graduates to a Project only through /api/projects/new with bank proof.
+model Opportunity {
+  id                 String @id
+  title              String
+  donorId            String @default("")
+  stream             String @default("")
+  stage              String // Prospect | Drafting | Submitted | Awarded | Declined
+  amount             Float  @default(0)
+  currency           String @default("USD")
+  deadline           String @default("")
+  decisionDate       String @default("")
+  renewalOfProjectId String @default("")
+  notes              String @default("")
+  // The call itself — the page you apply on. Kept as its own field, not buried in notes,
+  // so every opportunity can be re-opened and re-checked at its source.
+  link               String @default("")
+  // Published AnaHon work submitted as evidence with this application: [{url, title}].
+  // Nearly every funder asks for samples, and the same pieces get reused across
+  // applications — so they are links you can click, not prose in `notes`.
+  samplesJson        String @default("[]")
+  // Proposal workspace: {summary, problem, solution, objectives, deliverables,
+  // outputs, outcomes, budget: [{line, description, amount}], timeline: [{activity, start, end}]}
+  proposalJson       String @default("{}")
 }
 
 model BudgetLine {
@@ -67,6 +99,15 @@ model Vendor {
   active            Boolean @default(true)
   declarationSigned Boolean @default(false)
   blocked           Boolean @default(false)
+  // Whether this party is ENGAGED under a service agreement (a trainer, editor, consultant)
+  // as opposed to bought from (a subscription, a taxi, a shop). Explicit rather than inferred
+  // from `category`: a mislabelled category once let a service agreement be drafted with Apple.
+  // Defaults false — a new vendor is a supplier until someone deliberately says otherwise.
+  engageable        Boolean @default(false)
+  // Login email, when this provider is also a system user. Same link Employee.userEmail
+  // makes for timesheets — here it lets the approval queue spot a voucher whose requester
+  // is its own payee. Empty for ordinary suppliers, which is nearly all of them.
+  userEmail         String  @default("")
 }
 
 model Expense {
@@ -90,6 +131,8 @@ model Expense {
   created_at      String
   approved_at     String?
   paid_at         String?
+  // The approved procurement (RFQ or single-source waiver) authorising a >USD 300 purchase.
+  procurementId   String  @default("")
   commentsJson    String  // Serialized Comments Array [Comment]
   allocationsJson String  @default("[]") // Serialized allocations for shared cost splits
   hasAttachment   Boolean @default(false)
@@ -104,6 +147,9 @@ model Procurement {
   quotationsJson   String  // Serialized Quotations Array
   justification    String
   conflictDeclared Boolean @default(false)
+  // Waiver: fewer than 3 quotations, allowed only with a written justification.
+  singleSource     Boolean @default(false)
+  approvedBy       String  @default("")
 }
 
 model BankAccount {
@@ -125,6 +171,14 @@ model BankTransaction {
   type          String
   reconciled    Boolean @default(false)
   voucherNo     String?
+  // Outgoing money reaches a project through voucherNo -> Expense.projectId.
+  // Incoming money (donor tranches) has no voucher, so it carries the project directly.
+  projectId     String?
+  // True for lines staged from an eBLOM advice PDF, not yet on an imported statement.
+  // Pending lines never enter balances, reports, or funding proof — statements decide.
+  pending       Boolean @default(false)
+  // eBLOM "Transaction Reference" from the advice, used to dedupe re-imports.
+  noticeRef     String?
 }
 
 model JournalEntry {
@@ -146,6 +200,10 @@ model Employee {
   paymentMethod String
   contractType  String
   active        Boolean @default(true)
+  userEmail     String  @default("") // login email for self-service timesheets (Policy 8.5)
+  // Which of the two BLOM sub-accounts pays this person. Null means paid in cash.
+  // Same shape expenses already use: paymentMethod says how, bankAccountId says from where.
+  bankAccountId String?
 }
 
 model Timesheet {
@@ -185,6 +243,9 @@ model PartnerAccount {
 }
 
 model AppDoc {
+  // Unique document reference (ANH-DOC-NNNNN). Assigned automatically at
+  // registration; editable only by the master account (Super Admin).
+  refNo String? @unique
   id               String @id
   filename         String
   mimeType         String
@@ -194,6 +255,11 @@ model AppDoc {
   linkedRecordType String
   linkedRecordId   String
   created_at       String
+  // The person/provider this document is ABOUT (emp-* or ven-*), independent of what it is
+  // linked to (project/expense). Explicit so party files never rely on name-in-filename guessing.
+  partyId          String?
+  contentHash      String @default("") // sha256 of the bytes — the same file never files twice
+  note             String @default("") // editable description shown in the materials library
 }
 
 model AuditLog {
@@ -214,6 +280,38 @@ model ComplianceTask {
   notes    String
 }
 
+// Production stream: paying clients (earned income side). Distinct from Donor
+// (gives grants) and Vendor (we pay them) — a Client pays US for services.
+model Client {
+  id      String  @id
+  name    String
+  contact String  @default("")
+  email   String  @default("")
+  phone   String  @default("")
+  taxId   String  @default("")
+  notes   String  @default("")
+  active  Boolean @default(true)
+}
+
+// Quotations are forward-looking like Opportunities: a quote is never income.
+// Income exists only when the client's payment shows on a bank statement.
+model Quotation {
+  id          String @id
+  quoteNo     String @unique
+  clientId    String
+  title       String
+  description String @default("")
+  amount      Float  @default(0)
+  currency    String @default("USD")
+  date        String @default("")
+  validUntil  String @default("")
+  status      String @default("Draft") // Draft | Sent | Accepted | Rejected | Expired | Invoiced
+  notes       String @default("")
+  itemsJson   String @default("[]") // [{service, description, output, unitPrice, qty}]
+  termsJson   String @default("{}") // {financial, production, technical, extras}
+  paymentTxId String @default("") // statement deposit that settled this quote (bank evidence)
+}
+
 model OrgSettings {
   id                        String  @id @default("settings")
   profileName               String
@@ -226,8 +324,176 @@ model OrgSettings {
   allowSubProjectAllocation Boolean @default(true)
 }
 
+// Physical petty-cash count: what is actually in the drawer, and when it was counted.
+// The variance against ledger 1120 is the real undocumented gap.
+model CashCount {
+  id         String @id
+  date       String
+  countedUSD Float
+  countedBy  String @default("")
+  notes      String @default("")
+  created_at String
+}
+
+// A recurring charge: what renews, when, from which account, and who pays for it.
+// matchText links it to statement lines so the last charge can be found automatically.
+model Subscription {
+  id            String @id
+  name          String
+  vendorId      String @default("")
+  matchText     String @default("")
+  amount        Float  @default(0)
+  currency      String @default("USD")
+  cycle         String @default("Monthly") // Monthly | Quarterly | Annual
+  nextRenewal   String @default("")
+  bankAccountId String @default("")
+  projectId     String @default("")
+  budgetLineId  String @default("")
+  status        String @default("Active")  // Active | Paused | Cancelled
+  // Date someone last confirmed this is still live — a status alone goes stale silently.
+  verifiedOn    String @default("")
+  notes         String @default("")
+  created_at    String
+}
+
+// One dated step in a project's life: an activity, a milestone, a report due, a payment
+// expected. Assignable, so "who is doing this" is recorded rather than assumed.
+model ProjectActivity {
+  id             String @id
+  projectId      String
+  title          String
+  detail         String @default("")
+  kind           String @default("Activity") // Activity | Milestone | Report | Payment
+  dueDate        String @default("")
+  assigneeUserId String @default("")
+  status         String @default("Planned")  // Planned | In Progress | Done | Cancelled
+  budgetLineId   String @default("")
+  source         String @default("manual")   // manual | auto | imported
+  completedOn    String @default("")
+  // Donor activity-timetable fields: "2.1.3", the Result it sits under, the Arabic
+  // title, and the periods it runs across (labels from the donor's own grid).
+  outlineNo      String @default("")
+  resultGroup    String @default("")
+  titleAr        String @default("")
+  startDate      String @default("")
+  periodsJson    String @default("[]")
+  created_at     String
+
+  @@index([projectId])
+}
+
 model FxRates {
   id  String @id @default("rates")
   EUR Float
   LBP Float
+}
+
+// Editorial pipeline (signed Policies 002 & 005): content moves
+// Assigned → In Production → Fact-Check → Editorial Review → Approved → Published.
+// Fact-check source log, dual approval (Production Manager + Programs Director, two
+// distinct users), legal attestation and post-publish corrections live on the row —
+// the register enforces the signed policies, it does not invent workflow.
+model ContentItem {
+  id                  String  @id
+  title               String
+  contentType         String  @default("Post")   // CONTENT_TYPES — Policy 002 "infographics, reels, …"
+  stream              String  @default("")       // programme (STREAMS) — POs own their programme's content
+  channelsJson        String  @default("[]")     // subset of CONTENT_CHANNELS (Policy 002 channels)
+  brief               String  @default("")
+  status              String  @default("Assigned") // CONTENT_STATUSES
+  assigneeUserId      String  @default("")       // Reporter / Content Creator / Podcaster
+  dueDate             String  @default("")       // YYYY-MM-DD — the daily meeting sets deadlines
+  assignedMeetingDate String  @default("")       // which daily production meeting assigned it
+  reviewedMeetingDate String  @default("")       // which weekly editorial meeting reviewed it
+  factCheckerUserId   String  @default("")       // named at submit; must differ from assignee (Policy 005 impartiality)
+  factCheckJson       String  @default("[]")     // [{source, step, date}] — "detailed records of all sources and verification steps"
+  factCheckPassedAt   String  @default("")       // set only by the named fact-checker; cleared when returned
+  checksJson          String  @default("{}")     // CONTENT_CHECKS booleans — each a Policy 002 sentence
+  legalFlag           Boolean @default(false)    // "potential legal implications" (Policy 002)
+  legalReviewedBy     String  @default("")       // attestation: who performed the review (free text — no legal login exists)
+  legalReviewNote     String  @default("")
+  legalRecordedBy     String  @default("")       // app user who recorded the attestation
+  legalRecordedAt     String  @default("")
+  pmApprovedBy        String  @default("")       // userId — Production Manager approval slot
+  pmApprovedAt        String  @default("")
+  pdApprovedBy        String  @default("")       // userId — Programs Director approval slot, distinct user
+  pdApprovedAt        String  @default("")
+  factCheckTag        Boolean @default(false)    // Policy 005 "tags or labels" — set at publish
+  publishedAt         String  @default("")
+  correctionsJson     String  @default("[]")     // [{date, nature, correction, by}] — dated public record
+  materialsJson       String  @default("[]")     // [{label, url, kind: link|photo|video|doc}] — reference material
+  draftsJson          String  @default("[]")     // [{label, kind, text, date, by}] — production drafts the fact-checker verifies
+  aiAssisted          Boolean @default(false)    // set automatically when an AI draft is saved; manual toggle for outside tools
+  aiDisclosed         Boolean @default(false)    // attestation: watermark/disclaimer on the published piece (golden rule)
+  created_at          String
+}
+
+// One held editorial meeting (Policy 002 defines both kinds with participants and
+// agenda). The weekly card derives its agenda from the content register; this row
+// records what the derivation can't know: who attended, the week's direction, and
+// the decisions taken. One row per meeting day per kind.
+model EditorialMeeting {
+  id            String @id
+  kind          String @default("Weekly Editorial") // Weekly Editorial | Daily Production
+  date          String                              // YYYY-MM-DD
+  attendeesJson String @default("[]")               // userIds present (002 names the expected roles)
+  direction     String @default("")                 // "Planning for upcoming content and coverage" (002)
+  notes         String @default("")                 // issues addressed, decisions, performance review (002)
+  minutes       String @default("")                 // pasted transcript or in-app recording transcription
+  topicsJson    String @default("[]")               // [{topic, note}] — documented topics, seeds for the idea desk
+  recordedBy    String @default("")
+  created_at    String
+
+  @@unique([kind, date])
+}
+
+// People met at trainings, conferences and events — the networking register.
+// Deliberately NOT Client/Vendor/Donor: those are billing and funding parties in the
+// books, and a roster of forty boot-camp participants does not belong in production
+// revenue. Nothing here ever touches a ledger.
+model NetworkContact {
+  id         String  @id
+  name       String
+  nameAr     String  @default("")
+  org        String  @default("")
+  role       String  @default("")
+  country    String  @default("")
+  email      String  @default("")
+  phone      String  @default("")
+  links      String  @default("")                // profile URLs, one per line
+  kind       String  @default("Participant")     // Trainer | Participant | Organiser | Speaker | Other
+  metAt      String  @default("")                // the event
+  metOn      String  @default("")                // YYYY-MM-DD
+  stream     String  @default("")                // STREAMS — which programme this contact serves
+  followUp   String  @default("")                // what we actually want from them
+  followUpBy String  @default("")                // YYYY-MM-DD
+  status     String  @default("New")             // New | Contacted | Warm | Dormant
+  notes      String  @default("")
+  created_at String
+
+  @@index([metAt])
+}
+
+// Software the newsroom evaluates and uses. Separate from Subscription on purpose:
+// Subscription is a money record that drives bank matching and renewal alerts, so a
+// register of free tools would bury the real charges. A tool graduates INTO a
+// subscription when it starts costing — `subscriptionId` is that bridge.
+model Tool {
+  id             String @id
+  name           String
+  url            String @default("")
+  category       String @default("Other")
+  purpose        String @default("")            // what we actually use it for
+  stream         String @default("")            // STREAMS — which programme
+  status         String @default("Evaluating")  // Evaluating | Trialling | In use | Dropped
+  pricing        String @default("Free")        // Free | Free tier | Trial | Paid | Pay-as-you-go
+  owner          String @default("")            // who on the team owns it
+  source         String @default("")            // where we found it (event, person)
+  addedOn        String @default("")            // YYYY-MM-DD
+  reviewBy       String @default("")            // YYYY-MM-DD — a trial with no date silently lapses
+  subscriptionId String @default("")            // set once it becomes a real charge
+  notes          String @default("")
+  created_at     String
+
+  @@index([category])
 }

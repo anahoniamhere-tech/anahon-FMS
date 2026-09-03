@@ -1,0 +1,13 @@
+node_modules
+dist
+.env*
+!.env.example
+*.db
+*.db-*
+prisma/dev.db*
+.calendar-feed.json
+exports
+.git
+.antigravity
+*.log
+.DS_Store
