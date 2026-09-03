@@ -426,6 +426,8 @@ export interface ContentItem {
   websiteUrl?: string;         // live page on the website, set by the publish hook
   retractedAt?: string;        // taken off the website (record stays)
   retractReason?: string;
+  coverPath?: string;          // vault-relative cover image (GENERAL/Cover/…)
+  coverProvider?: string;      // higgsfield | gemini | upload
   corrections: { date: string; nature: string; correction: string; by: string }[];
   materials: { label: string; url: string; kind: "link" | "photo" | "video" | "doc" }[];
   drafts: { label: string; kind: string; text: string; date: string; by: string }[];

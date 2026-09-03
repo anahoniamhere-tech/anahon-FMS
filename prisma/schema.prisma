@@ -430,6 +430,8 @@ model ContentItem {
   websiteUrl          String  @default("")       // where the site put it — written back by the publish hook
   retractedAt         String  @default("")       // taken off the website; the record stays (Policy 005)
   retractReason       String  @default("")
+  coverPath           String  @default("")       // vault-relative path of the cover image (GENERAL/Cover/…)
+  coverProvider       String  @default("")       // higgsfield | gemini | upload
   correctionsJson     String  @default("[]")     // [{date, nature, correction, by}] — dated public record
   materialsJson       String  @default("[]")     // [{label, url, kind: link|photo|video|doc}] — reference material
   draftsJson          String  @default("[]")     // [{label, kind, text, date, by}] — production drafts the fact-checker verifies

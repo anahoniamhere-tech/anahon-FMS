@@ -42,6 +42,7 @@ app.use(express.json({ limit: "50mb" }));
 // requests (for assigned projects only), upload evidence, and read. Every other
 // mutation is refused server-side.
 const PO_ALLOWED_POSTS = new Set([
+  "/api/content/cover",
   "/api/auth/sync",
   "/api/expense/new",
   "/api/procurement/new",
@@ -72,6 +73,7 @@ const PO_ALLOWED_POSTS = new Set([
 // no financial domain; this closes the write side.
 const CONTENT_CREW_ROLES = ["Reporter", "Content Creator", "Podcaster"];
 const CREW_ALLOWED_POSTS = new Set([
+  "/api/content/cover",
   "/api/auth/sync",
   "/api/content/start",
   "/api/content/submit-factcheck",
@@ -2783,6 +2785,110 @@ app.post("/api/content/publish", async (req, res) => {
       `"${item.title}" (${item.contentType}) published to ${channels.join(", ") || "no channel"} — fact-checked tag applied; PM+PD dual approval on record.`);
     // after the audit row is committed — the site reads this database and must not race the write
     if (!channels.length || channels.includes("Website")) void notifySite(id, "publish");
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- Cover images ----------------------------------------------------------
+// Higgsfield (Soul) is the default; Gemini the fallback; an upload always works.
+// Both generators return raw bytes; the route files them in the vault like any
+// other document, so the cover has a refNo, a hash and an audit line.
+const HF_ID = process.env.HIGGSFIELD_API_KEY_ID || "";
+const HF_SECRET = process.env.HIGGSFIELD_API_KEY_SECRET || "";
+async function coverFromHiggsfield(prompt: string): Promise<{ buffer: Buffer; mime: string }> {
+  if (!HF_ID || !HF_SECRET) throw new Error("Higgsfield API key not configured (HIGGSFIELD_API_KEY_ID / HIGGSFIELD_API_KEY_SECRET).");
+  const auth = `Key ${HF_ID}:${HF_SECRET}`;
+  const submit = (body: any) => fetch("https://api.higgsfield.ai/higgsfield-ai/soul/v2/standard", {
+    method: "POST", headers: { Authorization: auth, "content-type": "application/json" }, body: JSON.stringify(body)
+  });
+  // 16:9 suits a cover; if Soul rejects the parameter, fall back to the documented minimal body
+  let r = await submit({ prompt, aspect_ratio: "16:9" });
+  if (r.status >= 400 && r.status < 500) r = await submit({ prompt });
+  if (!r.ok) throw new Error(`Higgsfield ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const job: any = await r.json();
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    await new Promise(res => setTimeout(res, 3000));
+    const st: any = await (await fetch(job.status_url, { headers: { Authorization: auth } })).json();
+    if (st.status === "completed") {
+      const url = st.images?.[0]?.url;
+      if (!url) throw new Error("Higgsfield completed without an image");
+      const img = await fetch(url);
+      return { buffer: Buffer.from(await img.arrayBuffer()), mime: img.headers.get("content-type") || "image/jpeg" };
+    }
+    if (["failed", "nsfw", "canceled"].includes(st.status)) throw new Error(`Higgsfield ${st.status}${st.error ? ": " + st.error : ""}`);
+  }
+  throw new Error("Higgsfield timed out after 3 minutes");
+}
+async function coverFromGemini(prompt: string): Promise<{ buffer: Buffer; mime: string }> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("GEMINI_API_KEY not configured.");
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${key}`, {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseModalities: ["IMAGE"] } })
+  });
+  const j: any = await r.json();
+  if (j.error) throw new Error(`Gemini: ${j.error.message}`);
+  const part = (j.candidates?.[0]?.content?.parts || []).find((p: any) => p.inlineData);
+  if (!part) throw new Error("Gemini returned no image");
+  return { buffer: Buffer.from(part.inlineData.data, "base64"), mime: part.inlineData.mimeType || "image/png" };
+}
+
+// The cover image itself — public-facing, so no login needed to view it.
+app.get("/api/cover/:id", async (req, res) => {
+  try {
+    const item = await prisma.contentItem.findUnique({ where: { id: req.params.id } });
+    if (!item?.coverPath || item.coverPath.includes("..")) return res.status(404).end();
+    const file = path.join(VAULT_ROOT, item.coverPath);
+    if (!fs.existsSync(file)) return res.status(404).end();
+    res.setHeader("Cache-Control", "public, max-age=300");
+    res.sendFile(file);
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+app.post("/api/content/cover", async (req, res) => {
+  try {
+    const { id, provider, prompt, docId, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!contentProduceAllowed(user, item)) return res.status(403).json({ error: "Only the working team can set this item's cover." });
+    if (item.retractedAt) return res.status(400).json({ error: "This piece was retracted — no cover changes." });
+
+    let coverPath = "", how = "";
+    if (docId) {
+      const doc = await prisma.appDoc.findUnique({ where: { id: docId } });
+      if (!doc || !String(doc.base64 || "").startsWith("file://")) return res.status(400).json({ error: "That document is not a stored file." });
+      coverPath = String(doc.base64).slice("file://".length); how = "upload";
+    } else {
+      how = provider === "gemini" ? "gemini" : "higgsfield";
+      const text = String(prompt || "").trim() ||
+        `Editorial cover photograph for an independent Lebanese newsroom in Tripoli. Subject: ${item.title}. ${item.brief || ""} Photojournalistic, realistic, natural light, no text, no logos, no watermark, wide 16:9 composition.`;
+      const gen = how === "gemini" ? await coverFromGemini(text) : await coverFromHiggsfield(text);
+      const ext = gen.mime.includes("png") ? "png" : gen.mime.includes("webp") ? "webp" : "jpg";
+      const stem = String(item.title || "cover").toLowerCase().replace(/[^\w؀-ۿ]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "cover";
+      const fname = `${stem}-${Date.now()}.${ext}`;
+      const dir = path.join(VAULT_ROOT, "GENERAL", "Cover");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, fname), gen.buffer);
+      const contentHash = crypto.createHash("sha256").update(gen.buffer).digest("hex");
+      const doc = await prisma.appDoc.create({ data: {
+        id: `doc-${Date.now()}`, refNo: await nextDocRef(prisma), filename: fname, mimeType: gen.mime,
+        sizeStr: `${Math.max(1, Math.round(gen.buffer.length / 1024))} KB`, base64: `file://GENERAL/Cover/${fname}`,
+        category: "Cover", linkedRecordType: "Content", linkedRecordId: id, contentHash, created_at: new Date().toISOString()
+      } });
+      coverPath = `GENERAL/Cover/${fname}`;
+      await createAuditLog(user?.id, user?.name, "Cover Generated", `"${item.title}": cover made with ${how} → ${doc.refNo}.`);
+    }
+    const updated = await prisma.contentItem.update({ where: { id }, data: {
+      coverPath, coverProvider: how, ...(how !== "upload" ? { aiAssisted: true } : {})
+    } });
+    if (how === "upload") await createAuditLog(user?.id, user?.name, "Cover Set", `"${item.title}": cover set from an uploaded document.`);
+    // a published piece gets its page re-rendered with the new cover
+    if (item.status === "Published" && !item.retractedAt) {
+      const ch = JSON.parse(item.channelsJson || "[]"); if (!ch.length || ch.includes("Website")) void notifySite(id, "cover");
+    }
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

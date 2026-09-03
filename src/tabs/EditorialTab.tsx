@@ -1175,6 +1175,27 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                               </div>
                             </details>
                           )}
+                          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                            {item.coverPath
+                              ? <img src={`/api/cover/${item.id}?v=${encodeURIComponent(item.coverPath)}`} alt="" className="h-16 w-28 object-cover rounded border border-slate-200" title={item.coverProvider} />
+                              : <span className="text-slate-400">{t("No cover yet")}</span>}
+                            {canProduce && !item.retractedAt && (<>
+                              <button onClick={() => post("/api/content/cover", { id: item.id, provider: "higgsfield" }, "Cover generated with Higgsfield")}
+                                className="bg-slate-900 hover:bg-slate-950 text-white rounded px-3 py-1.5">🖼 {t("Cover: Higgsfield")}</button>
+                              <button onClick={() => post("/api/content/cover", { id: item.id, provider: "gemini" }, "Cover generated with Gemini")}
+                                className="bg-slate-200 hover:bg-slate-300 text-slate-800 rounded px-3 py-1.5">{t("Cover: Gemini")}</button>
+                              <label className="cursor-pointer underline text-slate-600">{t("Upload cover")}
+                                <input type="file" accept="image/*" className="hidden" onChange={async ev => {
+                                  const f = ev.target.files?.[0]; if (!f) return;
+                                  const b64 = await new Promise<string>(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(",")[1] || ""); fr.readAsDataURL(f); });
+                                  const up: any = await fetch("/api/document/upload", { method: "POST", headers: { "content-type": "application/json" },
+                                    body: JSON.stringify({ filename: f.name, mimeType: f.type, sizeStr: `${Math.round(f.size / 1024)} KB`, base64: b64, category: "Cover", linkedRecordType: "Content", linkedRecordId: item.id }) }).then(r => r.json());
+                                  const docId = up.doc?.id || up.document?.id || up.id;
+                                  if (docId) await post("/api/content/cover", { id: item.id, docId }, "Cover set"); else triggerToast(up.error || "Upload failed");
+                                }} />
+                              </label>
+                            </>)}
+                          </div>
                           {working && canProduce && studio?.itemId !== item.id && (
                             <span className="flex flex-wrap gap-1.5">
                               <button onClick={() => { setStudio({ itemId: item.id, messages: [], busy: false, draft: null, provider: "" }); setStudioInput(""); }}
