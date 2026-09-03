@@ -105,3 +105,11 @@ tailnet members only at **https://anahon-1.tailbcb2b7.ts.net** via
 - HTTPS certificates must stay enabled under Tailscale admin → DNS.
 - Why not Cloudflare Tunnel / Vercel: no access to anahon.org DNS (Hostinger) or its registrar; Vercel has
   no local disk for SQLite + vault.
+
+## Website publish hook (3 Sep 2026)
+
+`server.ts` calls `SITE_URL/__publish {id}` after a website-bound item passes the last gate (and after a
+correction). Set in `src/.env` on the NAS: `SITE_URL=http://192.168.1.22:4321` (the site container beside
+this one; see anahon-astro/DEPLOY-TRUENAS.md). Fire-and-forget — the FMS never waits on the site, and the
+site re-reads this database and refuses anything not Published. Log line prefix: `[site]`.
+
