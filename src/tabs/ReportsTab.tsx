@@ -313,7 +313,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
 
                   <div className="flex gap-16 pt-8">
                     <div className="flex-1 border-t border-slate-400 pt-1 text-xs">Prepared by — Finance Officer (Policy 11.7)<br />Name & signature: ____________________</div>
-                    <div className="flex-1 border-t border-slate-400 pt-1 text-xs">Approved by — Program Director (Policy 11.7)<br />Name & signature: ____________________</div>
+                    <div className="flex-1 border-t border-slate-400 pt-1 text-xs">Approved by — Executive Director (Policy 11.7)<br />Name & signature: ____________________</div>
                   </div>
                 </div>
               )}

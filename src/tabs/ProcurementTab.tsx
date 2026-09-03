@@ -293,7 +293,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                       {(pr as any).approvedBy && <span className="block mt-1 not-italic text-[10px]">Approved by {(pr as any).approvedBy}</span>}
                     </div>
 
-                    {pr.status === "Under Evaluation" && ["Super Admin", "Program Director"].includes(currentUser.role) && (
+                    {pr.status === "Under Evaluation" && ["Super Admin", "Executive Director"].includes(currentUser.role) && (
                       <button
                         onClick={async () => {
                           const res = await fetch("/api/procurement/approve", {

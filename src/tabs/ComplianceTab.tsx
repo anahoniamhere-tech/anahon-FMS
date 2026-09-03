@@ -72,7 +72,7 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
                             className="finance-input text-xs py-1"
                             disabled={u.id === currentUser.id}
                           >
-                            {["Super Admin", "Finance Officer", "Program Director", "Project Officer", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer", "Employee (Self-Service)", "Production Manager", "Reporter", "Content Creator", "Podcaster"].map(r => <option key={r} value={r}>{r}</option>)}
+                            {["Super Admin", "Finance Officer", "Executive Director", "Project Officer", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer", "Employee (Self-Service)", "Production Manager", "Reporter", "Content Creator", "Podcaster"].map(r => <option key={r} value={r}>{r}</option>)}
                           </select>
                           {u.role === "Project Officer" && (
                             <span className="flex flex-wrap items-center gap-2">

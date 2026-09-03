@@ -7,10 +7,13 @@ import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
-import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef } from "./docgen.js";
+import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
+import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml} from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
+import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs } from "./src/personnelDocs.js";
+import { parseIcs } from "./src/ics.js";
 
 dotenv.config();
 
@@ -84,6 +87,7 @@ const CREW_ALLOWED_POSTS = new Set([
 ]);
 // Money-moving/control endpoints where an anonymous request is not acceptable.
 const IDENTITY_REQUIRED_POSTS = new Set([
+  "/api/quotations/issue-receipt",   // a receipt names who took the money; it needs a real signer
   "/api/expense/action",
   "/api/procurement/approve",
   "/api/users/set-role",
@@ -117,20 +121,35 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/meetings/transcribe"
 ]);
 
+// Sign-in is the only POST that may be made without already being signed in.
+const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
+
 app.use(async (req: any, res, next) => {
   if (req.method !== "POST" || !req.path.startsWith("/api/")) return next();
+  if (UNAUTHENTICATED_POSTS.has(req.path)) return next();
   try {
-    const uid = req.body?.user?.id;
-    if (!uid) {
-      if (IDENTITY_REQUIRED_POSTS.has(req.path)) {
-        return res.status(401).json({ error: "This action requires a signed-in user identity." });
+    // Identity is whatever Google's signature says it is. The body used to carry a user
+    // id that the server looked up and trusted, which meant anyone who could reach the
+    // port could name themselves Super Admin. That id is now ignored entirely.
+    const token = bearerToken(req);
+    let dbUser: any = null;
+    if (token) {
+      try {
+        const verified = await verifyIdToken(token);
+        dbUser = await prisma.user.findUnique({ where: { email: verified.email } });
+        if (!dbUser) {
+          return res.status(403).json({ error: `${verified.email} authenticated, but has no account in this system. An administrator must create one first.` });
+        }
+      } catch (err: any) {
+        return res.status(401).json({ error: `Sign-in could not be verified (${err.message}). Sign in again.` });
       }
-      return next();
     }
-    const dbUser = await prisma.user.findUnique({ where: { id: uid } });
-    if (dbUser) {
+    if (!dbUser) {
+      return res.status(401).json({ error: "This action requires a signed-in user." });
+    }
+    {
       if (!dbUser.active) return res.status(403).json({ error: "This user account is deactivated." });
-      // The database is the authority on who this user is.
+      // The database is the authority on what this verified person may do.
       req.body.user = { id: dbUser.id, name: dbUser.name, role: dbUser.role };
       req.dbUser = dbUser;
       if (dbUser.role === "Project Officer" && !PO_ALLOWED_POSTS.has(req.path)) {
@@ -247,6 +266,8 @@ async function loadState(viewer?: any) {
     quotations,
     contentItems,
     editorialMeetings,
+    networkContacts,
+    tools,
     orgSettingsRaw,
     fxRatesRaw
   ] = await Promise.all([
@@ -276,6 +297,8 @@ async function loadState(viewer?: any) {
     prisma.quotation.findMany(),
     prisma.contentItem.findMany({ orderBy: { created_at: "desc" } }),
     prisma.editorialMeeting.findMany({ orderBy: { date: "desc" } }),
+    prisma.networkContact.findMany({ orderBy: { metOn: "desc" } }),
+    prisma.tool.findMany({ orderBy: { name: "asc" } }),
     prisma.orgSettings.findFirst(),
     prisma.fxRates.findFirst()
   ]);
@@ -329,7 +352,7 @@ async function loadState(viewer?: any) {
       journalEntries: [], employees: [], timesheets: [], fixedAssets: [],
       partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: [],
       opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
-      clients: [], quotations: [],
+      clients: [], quotations: [], networkContacts: [], tools: [],
       contentItems: formattedContent, // the whole board — the daily production meeting is collective
       editorialMeetings: formattedMeetings,
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
@@ -371,7 +394,7 @@ async function loadState(viewer?: any) {
       auditLogs: [], complianceTasks: [],
       opportunities: [], cashCounts: [], subscriptions: [],
       projectActivities: projectActivities.filter(a => myProjectIds.has(a.projectId)),
-      clients: [], quotations: [],
+      clients: [], quotations: [], networkContacts: [], tools: [],
       // Policy 002: POs run their programme's content — plus anything they personally
       // author or fact-check in another programme.
       contentItems: formattedContent.filter(c =>
@@ -398,7 +421,9 @@ async function loadState(viewer?: any) {
     timesheets: formattedTimesheets,
     fixedAssets,
     partnerAccounts,
-    documents: documents.map(d => ({
+    // Passports, IDs and CVs are stripped here, not hidden in the browser: a personnel
+    // document only reaches the people who hold the personnel file, or the person it is about.
+    documents: filterPersonnelDocs(documents, viewer, employees).map(d => ({
       id: d.id,
       refNo: d.refNo,
       filename: d.filename,
@@ -442,6 +467,11 @@ async function loadState(viewer?: any) {
       items: JSON.parse(q.itemsJson || "[]"),
       terms: JSON.parse(q.termsJson || "{}")
     })),
+    // Networking register — people met at trainings and events. No financial data.
+    networkContacts,
+    // Tool register — software evaluated and in use. A tool becomes a Subscription
+    // only when it starts costing; until then it is not a money record.
+    tools,
     orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
     fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
   };
@@ -468,51 +498,61 @@ async function createAuditLog(userId: string, userName: string, action: string, 
 // Sync Firebase Authenticated User Session with local SQLite user profile
 app.post("/api/auth/sync", async (req, res) => {
   try {
-    const { email, name } = req.body;
-    if (!email) {
-      return res.status(400).json({ error: "Authenticated Firebase Email required." });
+    // The browser used to hand us an email and we believed it. Now it hands us the
+    // Firebase ID token and we check Google's signature on it. An account is NEVER
+    // created here: a verified stranger is still a stranger.
+    const { idToken } = req.body;
+    if (!idToken) return res.status(400).json({ error: "Sign-in token required." });
+
+    let verified;
+    try {
+      verified = await verifyIdToken(idToken);
+    } catch (err: any) {
+      return res.status(401).json({ error: `Sign-in could not be verified: ${err.message}` });
     }
 
-    let user = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-
+    const user = await prisma.user.findUnique({ where: { email: verified.email } });
     if (!user) {
-      // Map seed emails if matches, else default to Project Lead
-      let role = "Project Lead";
-      let matchedSeed = DEFAULT_DATABASE.users.find(u => u.email.toLowerCase() === email.toLowerCase());
-      if (matchedSeed) {
-        role = matchedSeed.role;
-      }
-
-      const uid = `u-${Date.now()}`;
-      user = await prisma.user.create({
-        data: {
-          id: uid,
-          email: email.toLowerCase(),
-          name: name || email.split("@")[0],
-          role,
-          active: true
-        }
-      });
-
-      await createAuditLog(
-        uid,
-        user.name,
-        "User Registration",
-        `Created and synchronized new profile under role: ${role}`
-      );
+      await createAuditLog(null, verified.email, "Sign-In Refused — No Account",
+        `${verified.email} authenticated with Firebase but has no account in this system. No account was created. If this person should have access, a Super Admin must create it explicitly.`);
+      return res.status(403).json({ error: `${verified.email} signed in successfully, but has no account in AnaHon FMS. Ask a Super Admin to create one.` });
+    }
+    if (!user.active) {
+      await createAuditLog(user.id, user.name, "Sign-In Refused — Deactivated",
+        `${verified.email} attempted to sign in against a deactivated account.`);
+      return res.status(403).json({ error: `${verified.email} has an account here, but it has been deactivated. If you have another address, sign in with that one; otherwise ask a Super Admin.` });
     }
 
+    await createAuditLog(user.id, user.name, "Signed In", `${user.name} (${user.role}) signed in as ${verified.email}.`);
     res.json({ success: true, user });
   } catch (err: any) {
     res.status(500).json({ error: "Session sync failed: " + err.message });
   }
 });
 
-// Where this server can be reached from a phone on the same WiFi. Read live from the
-// machine's own interfaces, so a router reassigning the IP can never leave a stale link.
-// Editorial calendar as a standard iCalendar file: meetings + content deadlines.
-// Download & import into Google Calendar (their URL-subscribe can't reach a
-// local-only app); Apple Calendar / Outlook on the LAN can subscribe directly.
+// Creating an account is now an explicit, audited administrative act. This is the only
+// way a new person gets in — which is the point of removing auto-provisioning.
+app.post("/api/users/create", async (req, res) => {
+  try {
+    const { email, name, role, user } = req.body;
+    if (user?.role !== "Super Admin") return res.status(403).json({ error: "Only a Super Admin may create accounts." });
+    const addr = String(email || "").trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) return res.status(400).json({ error: "A valid email address is required." });
+    if (!ASSIGNABLE_ROLES.includes(role)) return res.status(400).json({ error: `Role must be one of: ${ASSIGNABLE_ROLES.join(", ")}` });
+    const existing = await prisma.user.findUnique({ where: { email: addr } });
+    if (existing) return res.status(400).json({ error: `${addr} already has an account (${existing.name}, ${existing.role}).` });
+
+    const created = await prisma.user.create({
+      data: { id: `u-${Date.now()}`, email: addr, name: String(name || addr.split("@")[0]).trim(), role, active: true }
+    });
+    await createAuditLog(user.id, user.name, "User Account Created",
+      `${created.name} <${addr}> created with role ${role}. They must also have a Firebase sign-in for this address before they can log in.`);
+    res.json({ success: true, user: created });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/calendar.ics", async (req, res) => {
   try {
     const [meetings, items, users] = await Promise.all([
@@ -572,6 +612,8 @@ app.get("/api/network/access", async (req, res) => {
         urls.push({ iface, url: `http://${a.address}:${PORT}` });
       }
     }
+    // In a container the interface list is the container's own network; the deployment sets the real address.
+    if (process.env.FMS_PUBLIC_URL) urls.splice(0, urls.length, { iface: "public", url: process.env.FMS_PUBLIC_URL });
     let qr: string | null = null;
     if (urls.length) {
       try {
@@ -594,8 +636,20 @@ app.get("/api/network/access", async (req, res) => {
 // Load whole database state
 app.get("/api/state", async (req, res) => {
   try {
-    const uid = String(req.query.uid || "");
-    const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
+    // The whole book lives behind this route, so the viewer is taken from a verified
+    // token — never from ?uid=, which anyone could have typed. Scoping a Project Officer
+    // to their own programme is only a control if the identity behind it is real.
+    const token = bearerToken(req);
+    if (!token) return res.status(401).json({ error: "Sign in to load the workspace." });
+    let viewer;
+    try {
+      const verified = await verifyIdToken(token);
+      viewer = await prisma.user.findUnique({ where: { email: verified.email } });
+    } catch (err: any) {
+      return res.status(401).json({ error: `Sign-in could not be verified: ${err.message}` });
+    }
+    if (!viewer) return res.status(403).json({ error: "No account in this system for that sign-in." });
+    if (!viewer.active) return res.status(403).json({ error: "This account has been deactivated." });
     const state = await loadState(viewer);
     res.json(state);
   } catch (err: any) {
@@ -612,8 +666,6 @@ app.post("/api/state", async (req, res) => {
     }
 
     const currentAccounts = await prisma.account.findMany();
-    // In a container the interface list is the container's own network; the deployment sets the real address.
-    if (process.env.FMS_PUBLIC_URL) urls.splice(0, urls.length, { iface: "public", url: process.env.FMS_PUBLIC_URL });
     const existingCodes = new Set(currentAccounts.map(a => a.code));
     const newAc = accounts.find((a: any) => !existingCodes.has(a.code));
 
@@ -3350,6 +3402,127 @@ app.post("/api/clients/save", async (req, res) => {
   }
 });
 
+// ── Tool register: software the newsroom evaluates and uses ─────────────────
+const TOOL_STATUSES = ["Evaluating", "Trialling", "In use", "Dropped"];
+const TOOL_PRICING = ["Free", "Free tier", "Trial", "Paid", "Pay-as-you-go"];
+
+app.post("/api/tools/save", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const user = b.user;
+    if (!b.name || !String(b.name).trim()) return res.status(400).json({ error: "Tool name is required." });
+    if (b.status && !TOOL_STATUSES.includes(b.status)) return res.status(400).json({ error: `Unknown status: ${b.status}` });
+    if (b.pricing && !TOOL_PRICING.includes(b.pricing)) return res.status(400).json({ error: `Unknown pricing: ${b.pricing}` });
+    // A tool that claims a subscription must point at one that exists, or the register
+    // starts asserting costs the books have never seen.
+    if (b.subscriptionId) {
+      const sub = await prisma.subscription.findUnique({ where: { id: b.subscriptionId } });
+      if (!sub) return res.status(400).json({ error: `No subscription with id ${b.subscriptionId}.` });
+    }
+    const data = {
+      name: String(b.name).trim(),
+      url: b.url || "",
+      category: b.category || "Other",
+      purpose: b.purpose || "",
+      stream: b.stream || "",
+      status: b.status || "Evaluating",
+      pricing: b.pricing || "Free",
+      owner: b.owner || "",
+      source: b.source || "",
+      addedOn: b.addedOn || "",
+      reviewBy: b.reviewBy || "",
+      subscriptionId: b.subscriptionId || "",
+      notes: b.notes || ""
+    };
+    const existing = b.id ? await prisma.tool.findUnique({ where: { id: b.id } }) : null;
+    const tool = existing
+      ? await prisma.tool.update({ where: { id: b.id }, data })
+      : await prisma.tool.create({
+          data: { id: `tool-${Date.now()}`, ...data, created_at: new Date().toISOString() }
+        });
+    await createAuditLog(
+      user?.id, user?.name,
+      existing ? "Tool Updated" : "Tool Registered",
+      `${existing ? "Updated" : "Registered"} tool: ${tool.name} (${tool.pricing}, ${tool.status})${tool.subscriptionId ? ` — linked to subscription ${tool.subscriptionId}` : ""}.`
+    );
+    res.json({ success: true, tool });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/tools/delete", async (req, res) => {
+  try {
+    const { id, user } = req.body || {};
+    const existing = id ? await prisma.tool.findUnique({ where: { id } }) : null;
+    if (!existing) return res.status(404).json({ error: "Tool not found." });
+    await prisma.tool.delete({ where: { id } });
+    await createAuditLog(user?.id, user?.name, "Tool Removed", `Removed tool from register: ${existing.name}.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Networking register: people met at trainings, conferences and events ────
+const CONTACT_KINDS = ["Trainer", "Participant", "Organiser", "Speaker", "Other"];
+const CONTACT_STATUSES = ["New", "Contacted", "Warm", "Dormant"];
+
+app.post("/api/contacts/save", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const user = b.user;
+    if (!b.name || !String(b.name).trim()) return res.status(400).json({ error: "Contact name is required." });
+    if (b.kind && !CONTACT_KINDS.includes(b.kind)) return res.status(400).json({ error: `Unknown contact kind: ${b.kind}` });
+    if (b.status && !CONTACT_STATUSES.includes(b.status)) return res.status(400).json({ error: `Unknown status: ${b.status}` });
+    const data = {
+      name: String(b.name).trim(),
+      nameAr: b.nameAr || "",
+      org: b.org || "",
+      role: b.role || "",
+      country: b.country || "",
+      email: b.email || "",
+      phone: b.phone || "",
+      links: b.links || "",
+      kind: b.kind || "Participant",
+      metAt: b.metAt || "",
+      metOn: b.metOn || "",
+      stream: b.stream || "",
+      followUp: b.followUp || "",
+      followUpBy: b.followUpBy || "",
+      status: b.status || "New",
+      notes: b.notes || ""
+    };
+    const existing = b.id ? await prisma.networkContact.findUnique({ where: { id: b.id } }) : null;
+    const contact = existing
+      ? await prisma.networkContact.update({ where: { id: b.id }, data })
+      : await prisma.networkContact.create({
+          data: { id: `net-${Date.now()}`, ...data, created_at: new Date().toISOString() }
+        });
+    await createAuditLog(
+      user?.id, user?.name,
+      existing ? "Contact Updated" : "Contact Added",
+      `${existing ? "Updated" : "Added"} network contact: ${contact.name}${contact.org ? ` (${contact.org})` : ""}${contact.metAt ? ` — met at ${contact.metAt}` : ""}.`
+    );
+    res.json({ success: true, contact });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/contacts/delete", async (req, res) => {
+  try {
+    const { id, user } = req.body || {};
+    const existing = id ? await prisma.networkContact.findUnique({ where: { id } }) : null;
+    if (!existing) return res.status(404).json({ error: "Contact not found." });
+    await prisma.networkContact.delete({ where: { id } });
+    await createAuditLog(user?.id, user?.name, "Contact Deleted", `Removed network contact: ${existing.name}${existing.org ? ` (${existing.org})` : ""}.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/quotations/save", async (req, res) => {
   try {
     const { id, clientId, title, description, amount, currency, date, validUntil, status, notes, items, terms, quoteNo, user } = req.body;
@@ -3457,7 +3630,9 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
       linkedRecordId: quote.id
     });
     await createAuditLog(user?.id, user?.name, "Quotation Document Generated", `Rendered quotation ${quote.quoteNo} for ${client.name} (${quote.currency} ${quote.amount}) → vault GENERAL/Quotations/${filename}.`);
-    res.json({ success: true, docId });
+    // The viewer chooses its renderer from the filename, so hand it back rather than
+    // leaving the browser to guess from a bare id.
+    res.json({ success: true, docId, filename, mimeType: "text/html" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -3469,6 +3644,114 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
 // maps to 1120 with 4200 service income as contra. Evidence reference is mandatory —
 // off-bank money without a transfer ref or signed receipt number does not get booked.
 const OFFBANK_METHODS = ["OMT", "BOB Finance", "Whish", "Cash"];
+
+// The client-facing PDF. Rendered from the same quotationHtml the vault copy uses, so the
+// paper the client signs and the paper on file can never diverge. Reuses htmlToPdf (the
+// report pipeline) rather than introducing a second PDF path.
+app.get("/api/quotations/:id/pdf", async (req, res) => {
+  try {
+    const quote = await prisma.quotation.findUnique({ where: { id: req.params.id } });
+    if (!quote) return res.status(404).json({ error: "Quotation not found." });
+    const client = await prisma.client.findUnique({ where: { id: quote.clientId } });
+    if (!client) return res.status(400).json({ error: "Quotation's client no longer exists." });
+
+    const uid = String(req.query.uid || "");
+    const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
+
+    const html = quotationHtml({
+      quoteNo: quote.quoteNo,
+      date: quote.date,
+      validUntil: quote.validUntil,
+      preparedBy: `${viewer?.name || "Saad Matar"} — ${viewer?.role === "Super Admin" ? "Program Director" : viewer?.role || "Program Director"}`,
+      clientName: client.name,
+      clientContact: client.contact,
+      clientPhone: client.phone,
+      clientTaxId: client.taxId,
+      currency: quote.currency,
+      total: quote.amount,
+      items: JSON.parse(quote.itemsJson || "[]"),
+      terms: JSON.parse(quote.termsJson || "{}"),
+      notes: quote.notes
+    });
+
+    const pdf = await htmlToPdf(html);
+    const name = `AnaHon_Quotation_${quote.quoteNo.replace("/", "-")}_${client.name.replace(/\s+/g, "")}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+    res.send(pdf);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Issue AnaHon's cash receipt for a settled quotation. Deliberately a separate action
+// from recording the settlement: for cash there is no bank trace, so the receipt IS the
+// evidence, and it has to be issued by whoever actually took the notes. The Finance
+// Officer runs this, which is what keeps raising the quote and receipting the money in
+// two different pairs of hands.
+const RECEIPT_ISSUERS = ["Finance Officer", "Super Admin", "Program Director"];
+
+/** Amount in words. A cash receipt with only digits on it can be altered with a pen. */
+function amountInWords(n: number): string {
+  const ones = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen"];
+  const tens = ["","","twenty","thirty","forty","fifty","sixty","seventy","eighty","ninety"];
+  const under1000 = (v: number): string => v < 20 ? ones[v]
+    : v < 100 ? tens[Math.floor(v / 10)] + (v % 10 ? "-" + ones[v % 10] : "")
+    : ones[Math.floor(v / 100)] + " hundred" + (v % 100 ? " and " + under1000(v % 100) : "");
+  const whole = Math.floor(Math.abs(n)); const cents = Math.round((Math.abs(n) - whole) * 100);
+  const chunk = (v: number): string => {
+    if (v === 0) return "zero";
+    const parts: string[] = [];
+    const mil = Math.floor(v / 1e6), th = Math.floor((v % 1e6) / 1000), rest = v % 1000;
+    if (mil) parts.push(under1000(mil) + " million");
+    if (th) parts.push(under1000(th) + " thousand");
+    if (rest) parts.push(under1000(rest));
+    return parts.join(" ");
+  };
+  return chunk(whole) + (cents ? ` and ${cents}/100` : "") + " only";
+}
+
+app.post("/api/quotations/issue-receipt", async (req, res) => {
+  try {
+    const { id, date, amount, method, receivedBy, user } = req.body;
+    if (!RECEIPT_ISSUERS.includes(user?.role)) {
+      return res.status(403).json({ error: `Only ${RECEIPT_ISSUERS.join(", ")} may issue a receipt.` });
+    }
+    const quote = await prisma.quotation.findUnique({ where: { id } });
+    if (!quote) return res.status(404).json({ error: "Quotation not found." });
+    const client = await prisma.client.findUnique({ where: { id: quote.clientId } });
+    if (!client) return res.status(400).json({ error: "Quotation's client no longer exists." });
+
+    const taker = String(receivedBy || "").trim();
+    if (!taker) return res.status(400).json({ error: "Name the person who received the payment — an unsigned receipt proves nothing." });
+    const amt = Number(amount) || quote.amount;
+    if (amt <= 0) return res.status(400).json({ error: "Receipt amount must be positive." });
+
+    // Number the series from what is already on file. No counter to drift out of step.
+    const issued = await prisma.appDoc.count({ where: { category: "Cash Receipt" } });
+    const when = date || localDate();
+    const receiptNo = `RC-${String(issued + 1).padStart(3, "0")}/${when.slice(0, 4)}`;
+
+    const html = cashReceiptHtml({
+      receiptNo, date: when, method: method || "Cash",
+      clientName: client.name, clientContact: [client.contact, client.phone].filter(Boolean).join(" · "),
+      currency: quote.currency, amount: amt, amountWords: `${amountInWords(amt)} ${quote.currency}`,
+      againstQuoteNo: quote.quoteNo, againstTitle: quote.title, receivedBy: taker
+    });
+
+    const docId = `doc-rc-${quote.id}-${issued + 1}`;
+    const filename = `${when.slice(0, 4)}_RECEIPT_${receiptNo.replace("/", "-")}_${client.name.replace(/\s+/g, "")}_${amt}.html`;
+    await archive(prisma, {
+      docId, projectCode: "GENERAL", category: "Cash Receipt", filename, html,
+      linkedRecordType: "Quotation", linkedRecordId: quote.id
+    });
+    await createAuditLog(user?.id, user?.name, "Cash Receipt Issued",
+      `Receipt ${receiptNo} issued for quotation ${quote.quoteNo} (${client.name}), ${quote.currency} ${amt} by ${method || "Cash"}, received by ${taker}. Filed as ${filename}. Enter ${receiptNo} as the signed receipt number when recording the settlement.`);
+    res.json({ success: true, docId, receiptNo, filename, mimeType: "text/html" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post("/api/quotations/settle-offbank", async (req, res) => {
   try {
@@ -3583,6 +3866,16 @@ app.post("/api/expense/new", async (req, res) => {
         if (touched.find(pid => !assigned.has(pid))) {
           return res.status(403).json({ error: "You can only raise requests for projects in your programme." });
         }
+      }
+    }
+
+    // A completed project's budget is settled. Refuse new charges here, not only in the
+    // picker, so the API cannot be used to reopen a closed grant.
+    {
+      const touched = [projectId, ...((allocations || []).map((a: any) => a.projectId))].filter(Boolean);
+      const closed = await prisma.project.findMany({ where: { id: { in: touched }, status: { in: ["Completed", "Closed"] } } });
+      if (closed.length) {
+        return res.status(400).json({ error: `${closed.map(p => p.code).join(", ")} is closed — its budget is settled and cannot take new vouchers.` });
       }
     }
 
@@ -4903,11 +5196,213 @@ app.post("/api/compliance/complete", async (req, res) => {
   }
 });
 
+/* ── Google Calendar (read-only iCal feeds) ────────────────────────────────────────
+ * Saad's week lives across more than one Google account — AnaHon work on one, the
+ * leadership fellowship and personal commitments on another — so the desk takes a LIST
+ * of feeds and merges them, tagging each event with the calendar it came from. A desk
+ * that shows one of two calendars is worse than useless: it looks complete.
+ *
+ * Each secret iCal address is a read credential for a private calendar, so the list
+ * lives in a gitignored file on this machine and is NEVER put in OrgSettings or any
+ * /api/state payload — the browser learns the calendar LABELS and the events, never the
+ * addresses. Read-only by construction: an iCal feed cannot be written to, so the system
+ * can never alter or delete anything in a real calendar.
+ */
+const CALENDAR_FILE = path.join(__dirname, ".calendar-feed.json");
+
+interface CalFeed { url: string; label: string; connectedAt: string }
+
+/** Read the feed list. Accepts the original single-feed file shape so an existing
+ *  install keeps working without anyone re-pasting an address. */
+function calendarFeeds(): CalFeed[] {
+  try {
+    if (!fs.existsSync(CALENDAR_FILE)) return [];
+    const j = JSON.parse(fs.readFileSync(CALENDAR_FILE, "utf8"));
+    if (Array.isArray(j?.feeds)) return j.feeds.filter((f: any) => f?.url);
+    return j?.url ? [j as CalFeed] : [];          // legacy single-feed file
+  } catch { return []; }
+}
+
+function writeCalendarFeeds(feeds: CalFeed[]) {
+  fs.writeFileSync(CALENDAR_FILE, JSON.stringify({ feeds }, null, 2), { mode: 0o600 });
+}
+
+// Feeds are refetched at most this often, cached per URL. Google serves a static file
+// and the desk re-renders on every tab switch, so hammering it would be pointless.
+const calCache = new Map<string, { at: number; body: string }>();
+const CAL_TTL_MS = 10 * 60 * 1000;
+
+const CAL_ADMIN = ["Super Admin", "Program Director"];
+
+app.post("/api/calendar/connect", async (req, res) => {
+  try {
+    const { icsUrl, label, user } = req.body;
+    if (!user || !CAL_ADMIN.includes(String(user.role))) {
+      return res.status(403).json({ error: "Only the Program Director may connect a calendar." });
+    }
+    const url = String(icsUrl || "").trim();
+    if (!/^https:\/\/calendar\.google\.com\/calendar\/ical\/.+\.ics$/i.test(url)) {
+      return res.status(400).json({ error: "That does not look like a Google secret iCal address. It should start with https://calendar.google.com/calendar/ical/ and end in .ics" });
+    }
+
+    const feeds = calendarFeeds();
+    if (feeds.some(f => f.url === url)) {
+      return res.status(400).json({ error: "That calendar is already connected." });
+    }
+
+    // Prove it works before storing it, so a bad paste fails loudly here and not silently later.
+    const probe = await fetch(url);
+    if (!probe.ok) return res.status(400).json({ error: `Google refused that address (HTTP ${probe.status}). Re-copy the secret iCal address.` });
+    const body = await probe.text();
+    if (!body.includes("BEGIN:VCALENDAR")) return res.status(400).json({ error: "That address did not return a calendar." });
+
+    const clean = String(label || "").trim() || `Calendar ${feeds.length + 1}`;
+    if (feeds.some(f => f.label.toLowerCase() === clean.toLowerCase())) {
+      return res.status(400).json({ error: `A calendar called "${clean}" is already connected — give this one a different name.` });
+    }
+
+    feeds.push({ url, label: clean, connectedAt: new Date().toISOString() });
+    writeCalendarFeeds(feeds);
+    calCache.set(url, { at: Date.now(), body });
+
+    await createAuditLog(user.id, user.name, "Calendar Connected",
+      `Google Calendar feed "${clean}" connected for the desk (read-only). ${feeds.length} calendar(s) now feed My Desk. Addresses are held on the server and are not part of app state.`);
+
+    res.json({ success: true, connected: true, calendars: feeds.map(f => f.label) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/calendar/disconnect", async (req, res) => {
+  try {
+    const { user, label } = req.body;
+    if (!user || !CAL_ADMIN.includes(String(user.role))) {
+      return res.status(403).json({ error: "Only the Program Director may disconnect a calendar." });
+    }
+    const feeds = calendarFeeds();
+    // No label = remove everything (the original behaviour). A label removes just that one.
+    const keep = label ? feeds.filter(f => f.label !== label) : [];
+    if (label && keep.length === feeds.length) return res.status(404).json({ error: `No calendar called "${label}".` });
+
+    for (const f of feeds) if (!keep.includes(f)) calCache.delete(f.url);
+    if (keep.length) writeCalendarFeeds(keep);
+    else if (fs.existsSync(CALENDAR_FILE)) fs.unlinkSync(CALENDAR_FILE);
+
+    await createAuditLog(user.id, user.name, "Calendar Disconnected",
+      label ? `Calendar feed "${label}" was removed from the desk.` : "All Google Calendar feeds were removed from the desk.");
+    res.json({ success: true, connected: keep.length > 0, calendars: keep.map(f => f.label) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Upcoming events across every connected calendar. Returns events and calendar labels —
+// never a feed address. One unreachable feed degrades to a warning rather than emptying
+// the desk: a stale personal calendar must not hide today's AnaHon meetings.
+app.get("/api/calendar/events", async (req, res) => {
+  try {
+    const feeds = calendarFeeds();
+    if (!feeds.length) return res.json({ connected: false, events: [], calendars: [] });
+
+    const days = Math.min(180, Math.max(1, parseInt(String(req.query.days || "45"), 10) || 45));
+    const from = new Date(); from.setHours(0, 0, 0, 0);
+    const to = new Date(from); to.setDate(to.getDate() + days);
+
+    const events: any[] = [];
+    const failed: string[] = [];
+
+    await Promise.all(feeds.map(async feed => {
+      try {
+        let hit = calCache.get(feed.url);
+        if (!hit || Date.now() - hit.at > CAL_TTL_MS) {
+          const r = await fetch(feed.url);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          hit = { at: Date.now(), body: await r.text() };
+          calCache.set(feed.url, hit);
+        }
+        for (const e of parseIcs(hit.body, from, to)) {
+          events.push({ ...e, uid: `${feed.label}:${e.uid}`, calendar: feed.label });
+        }
+      } catch {
+        failed.push(feed.label);
+      }
+    }));
+
+    events.sort((a, b) => a.start.localeCompare(b.start));
+    res.json({
+      connected: true,
+      calendars: feeds.map(f => f.label),
+      days,
+      events,
+      error: failed.length ? `Could not reach: ${failed.join(", ")}.` : undefined
+    });
+  } catch (err: any) {
+    res.status(500).json({ connected: true, events: [], calendars: [], error: err.message });
+  }
+});
+
+// Ticking a task off is one click, so un-ticking has to be one too — otherwise a
+// mis-click silently removes an obligation from the register. The reversal is its own
+// audit line rather than an erasure: the record shows it was settled and then reopened.
+app.post("/api/compliance/reopen", async (req, res) => {
+  try {
+    const { taskId, user } = req.body;
+
+    const task = await prisma.complianceTask.findUnique({ where: { id: taskId } });
+    if (!task) return res.status(404).json({ error: "Task not listed." });
+
+    const updated = await prisma.complianceTask.update({
+      where: { id: taskId },
+      data: { status: "Pending" }
+    });
+
+    await createAuditLog(
+      user?.id || "u-1",
+      user?.name || "Compliance Admin",
+      "Compliance Reopened",
+      `Settled checklist item reopened — still outstanding: "${task.title}"`
+    );
+
+    res.json({ success: true, task: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Serve a single document's content on demand (from the vault, or legacy base64 rows)
+// Any vault document that is stored as HTML — receipts, quotations, contracts — rendered
+// to PDF on demand. Generic on purpose: the alternative was a per-document-type route and
+// a matching button each time, which is how you end up with three of them and one that
+// nobody maintained.
+app.get("/api/document/:id/pdf", async (req, res) => {
+  try {
+    const doc = await prisma.appDoc.findUnique({ where: { id: req.params.id } });
+    if (!doc) return res.status(404).json({ error: "Document not found." });
+    if (await personnelBlocked(doc, String(req.query.uid || ""))) {
+      return res.status(403).json({ error: "This document is part of a personnel file." });
+    }
+    if (!/\.html?$/i.test(doc.filename)) {
+      return res.status(400).json({ error: "Only HTML documents can be rendered to PDF. Download this one as it is." });
+    }
+    const { file, cleanup } = await docOnDisk(doc.id, String(req.query.uid || ""));
+    let pdf: Buffer;
+    try { pdf = await htmlToPdf(fs.readFileSync(file, "utf8")); } finally { cleanup(); }
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${doc.filename.replace(/\.html?$/i, "")}.pdf"`);
+    res.send(pdf);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/document/content/:id", async (req, res) => {
   try {
     const doc = await prisma.appDoc.findUnique({ where: { id: req.params.id } });
     if (!doc) return res.status(404).json({ error: "Document not found." });
+    if (await personnelBlocked(doc, String(req.query.uid || ""))) {
+      return res.status(403).json({ error: "This document is part of a personnel file." });
+    }
 
     res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
     res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(doc.filename)}"`);
@@ -4926,11 +5421,22 @@ app.get("/api/document/content/:id", async (req, res) => {
   }
 });
 
+/** Personnel gate for the byte-serving routes. A passport or ID leaves the server only
+ *  for the people who hold the personnel file, or for the person it is about — filtering
+ *  app state is not enough on its own, because the document URLs are guessable. */
+async function personnelBlocked(doc: any, uid: string): Promise<boolean> {
+  if (!isPersonnelDoc(doc)) return false;
+  const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
+  const employees = await prisma.employee.findMany({ select: { id: true, userEmail: true } });
+  return !maySeePersonnelFile(viewer, employees, doc.partyId);
+}
+
 /** Locate a document on disk. Legacy inline-base64 rows are spilled to a temp file so
  *  PyMuPDF can read them; the caller gets back a cleanup to run when it's done. */
-async function docOnDisk(id: string): Promise<{ file: string; cleanup: () => void; doc: any }> {
+async function docOnDisk(id: string, uid = ""): Promise<{ file: string; cleanup: () => void; doc: any }> {
   const doc = await prisma.appDoc.findUnique({ where: { id } });
   if (!doc) throw new Error("Document not found.");
+  if (await personnelBlocked(doc, uid)) throw new Error("This document is part of a personnel file.");
   const vaultPath = vaultPathFromPointer(doc.base64 || "");
   if (vaultPath) {
     if (!fs.existsSync(vaultPath)) throw new Error(`File missing from vault: ${doc.filename}. Check the AnaHon_Document_Vault folder.`);
@@ -4954,7 +5460,7 @@ const py = async (script: string, args: string[], binary = false): Promise<any> 
 app.get("/api/document/pages/:id", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id);
+    const d = await docOnDisk(req.params.id, String(req.query.uid || ""));
     cleanup = d.cleanup;
     const out = await py("import sys,fitz;print(fitz.open(sys.argv[1]).page_count)", [d.file]);
     res.json({ pages: parseInt(String(out).trim(), 10) || 0 });
@@ -4968,7 +5474,7 @@ app.get("/api/document/pages/:id", async (req, res) => {
 app.get("/api/document/page/:id/:n", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id);
+    const d = await docOnDisk(req.params.id, String(req.query.uid || ""));
     cleanup = d.cleanup;
     const png: Buffer = await py(
       "import sys,fitz;d=fitz.open(sys.argv[1]);sys.stdout.buffer.write(" +
@@ -4988,7 +5494,7 @@ app.get("/api/document/page/:id/:n", async (req, res) => {
 app.get("/api/document/docx-text/:id", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id);
+    const d = await docOnDisk(req.params.id, String(req.query.uid || ""));
     cleanup = d.cleanup;
     const text = await py(
       "import sys,zipfile,re,html\n" +
@@ -5008,7 +5514,19 @@ app.get("/api/document/docx-text/:id", async (req, res) => {
 // Document Upload Record archiving — file is written into the vault, DB keeps a pointer
 app.post("/api/document/upload", async (req, res) => {
   try {
-    const { filename, mimeType, sizeStr, base64, category, linkedRecordType, linkedRecordId, user } = req.body;
+    const { filename, mimeType, sizeStr, base64, category, linkedRecordType, linkedRecordId, user, partyId } = req.body;
+
+    // A personnel document belongs to a person, not to a project. It is filed under
+    // PERSONNEL/<name> so an HR file is one folder on disk, and only the people entitled
+    // to that file may upload into it.
+    const personnel = isPersonnelDoc({ category });
+    if (personnel) {
+      const employees = await prisma.employee.findMany({ select: { id: true, userEmail: true } });
+      if (!maySeePersonnelFile(user, employees, partyId)) {
+        return res.status(403).json({ error: "Only HR / Payroll, the Program Director, or the person themselves may file personnel documents." });
+      }
+      if (!partyId) return res.status(400).json({ error: "A personnel document must name the person it is about." });
+    }
 
     // Resolve the owning project's vault folder. Uses where the project's existing documents
     // already live rather than its code — the two differ (TRF-2026 lives in TRF-2025-IMS), and
@@ -5024,6 +5542,11 @@ app.post("/api/document/upload", async (req, res) => {
       }
       if (proj) projectCode = await vaultFolderForProject(prisma, proj);
     } catch { /* fall back to GENERAL */ }
+
+    if (personnel) {
+      const emp = await prisma.employee.findUnique({ where: { id: partyId } });
+      projectCode = path.join("PERSONNEL", (emp?.name || partyId).replace(/[^\w.\- ]/g, "_"));
+    }
 
     const cat = category || "Voucher";
     const safeName = (filename || `document-${Date.now()}.pdf`).replace(/[^\w.\-()\[\] ]/g, "_");
@@ -5055,8 +5578,9 @@ app.post("/api/document/upload", async (req, res) => {
         sizeStr: sizeStr || `${Math.max(1, Math.round(buffer.length / 1024))} KB`,
         base64: `file://${projectCode}/${cat}/${finalName}`,
         category: cat,
-        linkedRecordType: linkedRecordType || "Expense",
-        linkedRecordId: linkedRecordId || "exp-1",
+        linkedRecordType: personnel ? "Employee" : (linkedRecordType || "Expense"),
+        linkedRecordId: personnel ? partyId : (linkedRecordId || "exp-1"),
+        partyId: partyId || null,
         contentHash,
         created_at: new Date().toISOString()
       }
@@ -5088,10 +5612,12 @@ app.post("/api/document/upload", async (req, res) => {
 // exporter cannot parse Tailwind v4's oklch() colours).
 const REPORT_CSS = `
 @page { size: A4; margin: 14mm 12mm 16mm 12mm; }
-body { font-family: Georgia, 'Times New Roman', serif; color:#1a1a1a; font-size:10.5pt; line-height:1.4; }
-h1 { font-size:13pt; letter-spacing:1px; border-bottom:2px solid #1a1a1a; padding-bottom:5px; margin:0 0 4px; }
+body { font-family: 'Tajawal', Georgia, 'Times New Roman', serif; color:#1a1a1a; font-size:10.5pt; line-height:1.4; }
+.lh { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+.lh img { height:34px; }
+h1 { font-size:13pt; letter-spacing:1px; color:#4A1010; border-bottom:2px solid #6D1A1A; padding-bottom:5px; margin:0 0 4px; }
 h2 { font-size:9pt; font-weight:normal; color:#555; margin:0 0 14px; }
-h3 { font-size:9.5pt; text-transform:uppercase; letter-spacing:1px; margin:16px 0 6px; border-bottom:1px solid #ccc; padding-bottom:3px; }
+h3 { font-size:9.5pt; text-transform:uppercase; letter-spacing:1px; color:#6D1A1A; margin:16px 0 6px; border-bottom:1px solid #d8cdc7; padding-bottom:3px; }
 table { width:100%; border-collapse:collapse; margin-bottom:10px; font-size:9pt; }
 th { text-align:left; font-size:7.5pt; text-transform:uppercase; color:#555; border-bottom:1px solid #999; padding:3px 4px; }
 td { padding:3px 4px; border-bottom:1px solid #eee; }
@@ -5100,7 +5626,7 @@ td { padding:3px 4px; border-bottom:1px solid #eee; }
 .kpi { flex:1; border:1px solid #999; padding:6px; text-align:center; }
 .kpi span { display:block; font-size:7.5pt; text-transform:uppercase; color:#555; }
 .kpi b { font-size:13pt; font-family:'Courier New',monospace; }
-.projhdr { background:#f0f0f0; padding:4px 6px; font-weight:bold; font-size:9pt; margin-top:10px; }
+.projhdr { background:#F7F1EC; color:#4A1010; padding:4px 6px; font-weight:bold; font-size:9pt; margin-top:10px; }
 .two { display:flex; gap:20px; } .two > div { flex:1; }
 .note { border:1px solid #d9b400; background:#fffbe8; padding:6px; font-size:8pt; margin-top:12px; }
 .sig { display:flex; gap:40px; margin-top:34px; page-break-inside:avoid; }
@@ -5120,6 +5646,7 @@ function renderReportHtml(r: any): string {
     </div>`).join("");
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(r.meta.title)}</title><style>${REPORT_CSS}</style></head><body>
+<div class="lh"><img src="data:image/png;base64,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" alt="AnaHon" /></div>
 <h1>ANAHON MEDIA PLATFORM — ${esc(r.meta.title).toUpperCase()}</h1>
 <h2>Period: ${r.meta.periodStart} → ${r.meta.periodEnd} · Basis: ${esc(r.meta.basis)} · Generated: ${r.meta.generatedAt.slice(0, 16).replace("T", " ")} UTC</h2>
 <div class="kpis">
@@ -5160,9 +5687,13 @@ ${(r.internalMovements || []).length ? `<h3>4b. Internal Movements — excluded 
 }
 
 const CHROME_PATHS = [
+  process.env.CHROME_PATH || "",
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   "/Applications/Chromium.app/Contents/MacOS/Chromium",
   "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/usr/bin/google-chrome",
 ];
 
 async function htmlToPdf(html: string): Promise<Buffer> {
@@ -5177,6 +5708,7 @@ async function htmlToPdf(html: string): Promise<Buffer> {
 
   const proc = spawn(chrome, [
     "--headless", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
+    ...(process.env.CHROME_NO_SANDBOX ? ["--no-sandbox", "--disable-dev-shm-usage"] : []), // containers run as uid without user namespaces
     `--user-data-dir=${path.join(dir, "profile")}`,
     "--no-pdf-header-footer", `--print-to-pdf=${pdfPath}`, `file://${htmlPath}`
   ], { stdio: "ignore" });
@@ -5622,8 +6154,3 @@ if (!process.env.VERCEL) {
 }
 
 export default app;
-  process.env.CHROME_PATH || "",
-  "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
-  "/usr/bin/google-chrome",
-    ...(process.env.CHROME_NO_SANDBOX ? ["--no-sandbox", "--disable-dev-shm-usage"] : []), // containers run as uid without user namespaces

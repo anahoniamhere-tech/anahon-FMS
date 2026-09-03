@@ -731,7 +731,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
               <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">🗓 Project Timelines</h3>
-                  {["Super Admin", "Finance Officer", "Program Director", "Project Officer"].includes(currentUser.role) && (
+                  {["Super Admin", "Finance Officer", "Executive Director", "Project Officer"].includes(currentUser.role) && (
                     <button type="button" onClick={() => generateTimeline(null, true)}
                       className="text-xs font-medium bg-slate-800 text-white hover:bg-slate-700 rounded-lg px-3 py-2 transition-all"
                       title="Apply the standard 8-step template to every project, marking steps done where the evidence already exists">
@@ -1099,7 +1099,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                     ) : (
                                       <span className="text-[11px] text-amber-800 font-bold">missing</span>
                                     )}
-                                    {["Super Admin", "Finance Officer", "Program Director", "Project Officer"].includes(currentUser.role) && (
+                                    {["Super Admin", "Finance Officer", "Executive Director", "Project Officer"].includes(currentUser.role) && (
                                       <label className="block mt-1 text-[10px] font-bold text-slate-500 hover:text-red-650 cursor-pointer">
                                         {sl.doc ? "replace / add" : "＋ upload"}
                                         <input type="file" className="hidden" accept=".pdf,.docx,.xlsx,.xlsm,image/*"
@@ -1124,7 +1124,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                         <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
                             <h4 className="text-xs font-bold text-slate-700 uppercase font-mono">🗓 Project Timeline & Assignments</h4>
-                            {["Super Admin", "Finance Officer", "Program Director", "Project Officer"].includes(currentUser.role) && (
+                            {["Super Admin", "Finance Officer", "Executive Director", "Project Officer"].includes(currentUser.role) && (
                               <div className="flex items-center gap-2">
                                 <button type="button" onClick={() => generateTimeline(selectedProjectId!)}
                                   className="text-[11px] font-medium bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5 transition-all"
@@ -1274,7 +1274,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         </span>
                                       )}
                                       <span className="text-[10px] text-slate-500 shrink-0">{who ? `👤 ${who.name}` : "unassigned"}</span>
-                                      {["Super Admin", "Finance Officer", "Program Director", "Project Officer"].includes(currentUser.role) && (
+                                      {["Super Admin", "Finance Officer", "Executive Director", "Project Officer"].includes(currentUser.role) && (
                                         <span className="flex items-center gap-1 shrink-0">
                                           <select value={a.status} onChange={e => saveActivity({ ...a, status: e.target.value })}
                                             aria-label={`Status for ${a.title}`} className="finance-input text-[10px] py-0.5">
@@ -1825,7 +1825,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         </div>
                                         <div>
                                           <span className="block text-xs font-bold text-slate-800 uppercase font-sans">Reviewed & Co-Signed By</span>
-                                          <span className="block text-[10px] text-slate-500 uppercase font-mono">Farah Shami (Program Director)</span>
+                                          <span className="block text-[10px] text-slate-500 uppercase font-mono">Farah Shami (Executive Director)</span>
                                         </div>
                                       </div>
                                     </div>
@@ -1859,13 +1859,13 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           <p className="text-xs text-slate-800">{bl.description}</p>
                         </div>
 
-                        {/* Interactive adjustment slider setup for Program Directors */}
+                        {/* Interactive adjustment slider setup for Executive Directors */}
                         <div className="flex items-center gap-3">
                           <div className="text-right">
                             <span className="text-[10px] block text-slate-500 uppercase">Allocated Target</span>
                             <span className="text-sm font-bold font-mono text-slate-900">{formatUSD(bl.allocatedUSD)}</span>
                           </div>
-                          {["Super Admin", "Program Director"].includes(currentUser.role) ? (
+                          {["Super Admin", "Executive Director"].includes(currentUser.role) ? (
                             <input
                               type="number"
                               defaultValue={bl.allocatedUSD}

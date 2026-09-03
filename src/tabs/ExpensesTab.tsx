@@ -269,7 +269,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
         setExpenseProcurement(d.procurement.id);
         triggerToast("Single-source waiver approved and attached to this voucher.");
       } else {
-        triggerToast("Waiver raised — a Finance Officer or the Program Director must approve it before this voucher can be lodged.", "error");
+        triggerToast("Waiver raised — a Finance Officer or the Executive Director must approve it before this voucher can be lodged.", "error");
       }
       setInlineWaiver(null);
       refreshState();
@@ -506,6 +506,16 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                         onChange={handleFileDrop}
                         className="finance-input w-full text-xs"
                       />
+                      <label className="mt-1 inline-flex items-center gap-1 text-[11px] font-bold text-red-650 hover:underline cursor-pointer min-h-[44px]">
+                        📷 {t("Photograph the receipt")}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={handleFileDrop}
+                        />
+                      </label>
                       <div className="mt-2 p-2 rounded-lg border border-indigo-200 bg-indigo-50/40">
                         <label className={`block text-xs font-bold mb-1 ${aiScanning ? "text-slate-400" : "text-indigo-700"}`}>
                           {aiScanning ? "🤖 Reading invoice…" : "🤖 Scan invoice with AI (auto-fill this form)"}
@@ -834,7 +844,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             </button>
                           )}
 
-                          {["Submitted", "Under Finance Review"].includes(exp.status) && ["Super Admin", "Program Director"].includes(currentUser.role) && (
+                          {["Submitted", "Under Finance Review"].includes(exp.status) && ["Super Admin", "Executive Director"].includes(currentUser.role) && (
                             <>
                               <button
                                 onClick={() => handleExpenseAction(exp.id, "approve")}

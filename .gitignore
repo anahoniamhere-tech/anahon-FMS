@@ -16,3 +16,13 @@ prisma/dev.db
 # Local database snapshots taken before schema changes — not source
 dev.db.bak-*
 prisma/dev.db.bak-*
+
+# Google Calendar secret iCal feed — a read credential for the private calendar.
+# Server-side only; never committed, never sent to the browser.
+.calendar-feed.json
+
+# Generated data exports — the whole ledger as a spreadsheet; data, not source
+exports/
+
+# Editor-made backups of scripts during changes
+*.bak-*

@@ -608,3 +608,11 @@ in brief+materials+fact-check log, drafts saved on the item (draftsJson) and fro
 Editorial Review starts. Funnel programme cards click through to projects; sign-in
 rebranded; toast moved below the mobile header. Gemini decision: keep free tier (audio
 transcription + fallback; Claude Opus 5 primary and the only paid provider).
+
+## Branding (14 Aug 2026)
+Brand Guidelines v2.0 (GENERAL/Branding/AnaHon_Brand_Guidelines.pdf) are wired in:
+- `src/index.css` `@theme` remaps `red-400/500/600/650/700` to the official palette (Coral/Signal Red/Maroon/Maroon Dark ×2) — every existing `bg-red-*` call site renders brand color; body bg is #F7F1EC; `--font-sans` leads with Tajawal.
+- Official logo: `public/assets/images/anahon_logo.png` (map-pin from anahon.org; `hon_logo.jpg` is a Roots & Reach poster, not the logo).
+- `docgen.ts` `page()` adds a letterhead (embedded 12KB logo + bilingual org line) to every generated document; `STYLE` is branded. Same for `REPORT_CSS`/`renderReportHtml` in server.ts and the template in `scripts/reconstruct-vouchers.ts`.
+- All 131 digitized records + 34 reconstructions were re-issued branded (digitized keep refNos; archive() upserts by docId).
+- Layout (Brand §5, 14 Aug evening): radius tokens remapped in `@theme` (lg 14px / xl 20px / 2xl 28px — the 1080px-canvas rounded system scaled to UI density); the whole `slate-*` scale remapped to warm maroon-tinted neutrals (950 = Ink Black #0B0B0B) so the dark chrome reads maroon and light surfaces read warm — zero component edits; soft red/coral ambient glow via `body::before`; brand date pill in the desktop header. The Brand Guidelines source of truth is the Google Doc (id 11IZuKWAQ2akWi-VsoUlyVp0_63kAabPB-6QquK5H4i0); §8 holds Instagram analytics guidance (content ops, not app).

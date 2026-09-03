@@ -445,6 +445,45 @@ export interface EditorialMeeting {
   created_at: string;
 }
 
+export interface NetworkContact {
+  id: string;
+  name: string;
+  nameAr: string;
+  org: string;
+  role: string;
+  country: string;
+  email: string;
+  phone: string;
+  links: string;
+  kind: string;
+  metAt: string;
+  metOn: string;
+  stream: string;
+  followUp: string;
+  followUpBy: string;
+  status: string;
+  notes: string;
+  created_at: string;
+}
+
+export interface Tool {
+  id: string;
+  name: string;
+  url: string;
+  category: string;
+  purpose: string;
+  stream: string;
+  status: string;
+  pricing: string;
+  owner: string;
+  source: string;
+  addedOn: string;
+  reviewBy: string;
+  subscriptionId: string;
+  notes: string;
+  created_at: string;
+}
+
 export interface DatabaseState {
   users: { id: string; name: string; email: string; role: string; active: boolean; projectIdsJson?: string; streamScope?: string }[];
   accounts: Account[];
@@ -472,6 +511,8 @@ export interface DatabaseState {
   editorialMeetings: EditorialMeeting[];
   clients: Client[];
   quotations: Quotation[];
+  networkContacts: NetworkContact[];
+  tools: Tool[];
   orgSettings: OrgSettings;
   fxRates: { EUR: number; LBP: number };
 }

@@ -17,7 +17,7 @@ const STATUS_STYLE: Record<string, string> = {
   "Published": "bg-emerald-600 text-white"
 };
 
-const EDITOR_ROLES = ["Production Manager", "Program Director", "Super Admin"];
+const EDITOR_ROLES = ["Production Manager", "Executive Director", "Super Admin"];
 
 export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc }: SharedProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -433,7 +433,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const policyAttendeesFor = (kind: string) => activeUsers
     .filter(u => (kind === "Daily Production"
       ? ["Production Manager", "Project Officer", "Reporter", "Content Creator", "Podcaster", "Super Admin"]
-      : ["Program Director", "Production Manager", "Project Officer", "Super Admin"]).includes(u.role))
+      : ["Executive Director", "Production Manager", "Project Officer", "Super Admin"]).includes(u.role))
     .map(u => u.id);
   const canRecordMeeting = isEditor || currentUser.role === "Project Officer";
 

@@ -74,8 +74,22 @@ scp .calendar-feed.json                    admin@192.168.1.22:/mnt/mainpool/anah
 
 - Snapshots: Data Protection → Periodic Snapshot Tasks → `mainpool/anahon/fms`, hourly, keep 2 weeks.
 - Stop running `npm run dev` on the Mac; the NAS copy is now the system of record.
-- Update: re-run the `scp` of source files, then `docker compose up -d --build` again.
+- **The Mac is a one-way mirror** (since 3 Sep 2026): `scripts/mirror_from_nas.sh`, run by launchd
+  `org.anahon.fms-mirror` daily at 03:30, pulls `db/dev.db` and `vault/` from the newest ZFS snapshot.
+  Never edit the Mac database or vault for real data — it is overwritten by design. File documents
+  through the app or directly on the NAS.
+- **Schema changes are tracked migrations only** — add a folder under `prisma/migrations/` (hand
+  timestamp, see existing names), ship `prisma/` to the NAS `src/`, rebuild. The entrypoint runs
+  `prisma migrate deploy`. Never `prisma db push` against the NAS, never hand-run SQL on it.
+- Update: re-run the `scp` of source files (never `.env`), then `docker compose up -d --build` again.
   Migrations apply automatically on start.
+- `db/` and `vault/` belong to uid 1000; writes there and `docker` need `sudo` on the NAS — run those
+  from Saad's terminal. Read-only ssh/rsync and writes to `src/` work as `admin` without sudo.
+- Off-site: `scripts/backup_to_drive.sh` via `org.anahon.fms-backup`, **daily 03:00**, from the newest
+  ZFS snapshot, AES-256 to Drive `AnaHon_FMS_Cloud_Backup`, two sets kept. Restore-tested 3 Sep 2026.
+  The key `~/anahon-archive-keys/anahon-archive-2026-08-17.key` is also in Apple Passwords
+  ("AnaHon archive key 2026-08-17") and on paper in the office file.
+- LAN fallback: the NAS is `100.91.229.30` on Tailscale (same host key as 192.168.1.22).
 - Remote access: Apps → Tailscale, then use the NAS tailnet IP instead of 192.168.1.22.
 
 ## Remote access (Tailscale, added 3 Sep 2026)

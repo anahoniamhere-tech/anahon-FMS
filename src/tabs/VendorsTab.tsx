@@ -542,7 +542,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                           {/* Only engagement-type vendors can hold an agreement. A software
                               subscription or a taxi is a purchase — it needs a voucher, not a contract. */}
                           {(() => {
-                            const canManage = ["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role);
+                            const canManage = ["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role);
                             if (!v.engageable) {
                               return (
                                 <div className="space-y-0.5">

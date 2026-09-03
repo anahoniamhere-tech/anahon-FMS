@@ -1,5 +1,5 @@
 import { useState, FormEvent } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Download } from "lucide-react";
 import { Client, Quotation, QuotationItem } from "../types";
 import { EXTRAS_DEFAULT, FINANCIAL_TERMS, PRODUCTION_NOTE, QUOTE_STATUSES, SERVICE_CATALOG, TECHNICAL_NOTE } from "../constants";
 import { tr } from "../i18n";
@@ -13,6 +13,9 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
 
   // Off-bank settlement (OMT / BOB / Whish / cash) being recorded for a quotation
   const [settleForm, setSettleForm] = useState<{ q: Quotation; method: string; reference: string; date: string; amount: number } | null>(null);
+  // Receipt being issued for a quotation (null = form closed). Separate from settlement:
+  // the receipt is written first, then its number is what gets entered as the evidence.
+  const [receiptForm, setReceiptForm] = useState<{ q: Quotation; date: string; amount: number; method: string; receivedBy: string } | null>(null);
 
   // ── Production stream handlers (clients & quotations) ────────────────────
   const saveClient = async (e: FormEvent) => {
@@ -57,6 +60,53 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
     }
   };
 
+  const issueReceipt = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!receiptForm) return;
+    try {
+      const res = await fetch("/api/quotations/issue-receipt", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: receiptForm.q.id, date: receiptForm.date, amount: receiptForm.amount,
+          method: receiptForm.method, receivedBy: receiptForm.receivedBy, user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to issue receipt");
+      triggerToast(`Receipt ${data.receiptNo} issued — enter it as the receipt number when recording the settlement.`);
+      setReceiptForm(null);
+      refreshState();
+      openDoc({ id: data.docId, filename: data.filename, mimeType: data.mimeType });
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
+  /** Attach the client's SIGNED copy to a quotation. The generated document is what we
+   *  sent; this is what came back with signatures and stamp on it — the thing that turns
+   *  a quotation into a booked job, and the only acceptance evidence an auditor accepts. */
+  const attachSignedCopy = async (q: Quotation, file: File) => {
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] || "");
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      const res = await fetch("/api/document/upload", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name, mimeType: file.type || "application/octet-stream",
+          sizeStr: `${Math.max(1, Math.round(file.size / 1024))} KB`, base64,
+          category: "Quotation (Signed)",
+          linkedRecordType: "Quotation", linkedRecordId: q.id, user: currentUser
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      triggerToast(data.duplicate
+        ? `Already on file as ${data.doc?.refNo || "an existing document"} — not stored twice.`
+        : `Signed copy filed against ${q.quoteNo}.`);
+      refreshState();
+    } catch (err: any) { triggerToast(err.message, "error"); }
+  };
+
   // Line-item helpers for the quotation form. Total is always derived, never typed.
   const quoteItems = quoteForm?.items || [];
 
@@ -86,7 +136,9 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to generate document");
       triggerToast(`Quotation document ${q.quoteNo} filed to vault (GENERAL/Quotations).`);
-      openDoc({ id: data.docId, filename: "document" });
+      // Pass the real filename: the viewer picks its renderer from the extension, and a
+      // bare "document" falls through to the download fallback instead of showing the quote.
+      openDoc({ id: data.docId, filename: data.filename || "quotation.html", mimeType: data.mimeType || "text/html" });
       refreshState();
     } catch (err: any) {
       triggerToast(err.message, "error");
@@ -177,7 +229,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-md font-bold text-slate-800 uppercase font-mono">👥 Client Log</h3>
-                  {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && !clientForm && (
+                  {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && !clientForm && (
                     <button onClick={() => setClientForm({})} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all">
                       ➕ Register Client
                     </button>
@@ -252,7 +304,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-md font-bold text-slate-800 uppercase font-mono">📄 Quotations</h3>
-                  {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && !quoteForm && (
+                  {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && !quoteForm && (
                     <button onClick={() => setQuoteForm({
                       status: "Draft",
                       currency: "USD",
@@ -423,7 +475,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                         return (
                           <div key={`${q.id}-${tx.id}`} className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
                             <span><strong>{q.quoteNo}</strong> ({q.currency} {q.amount.toLocaleString()}) ↔ deposit {tx.date} · {formatIn(tx.amount, acct?.currency || "USD")} · "{tx.description.slice(0, 50)}"</span>
-                            {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && (
+                            {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && (
                               <button onClick={() => linkQuotePayment(q, tx.id)} className="bg-emerald-600 text-white text-[10px] font-bold rounded px-2 py-1 hover:bg-emerald-700 transition-all">
                                 ✓ Confirm settlement
                               </button>
@@ -434,6 +486,44 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                     </div>
                   );
                 })()}
+
+                {/* Receipt first, settlement second: the number this produces is the evidence
+                    the settlement asks for. Issued by the Finance Officer, naming the person
+                    who actually took the money. */}
+                {receiptForm && (
+                  <form onSubmit={issueReceipt} className="p-4 bg-white border border-amber-200 rounded-xl shadow-sm space-y-3">
+                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">🧾 Issue receipt — {receiptForm.q.quoteNo}</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div>
+                        <label htmlFor="rc-method" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Method")}</label>
+                        <select id="rc-method" value={receiptForm.method} onChange={e => setReceiptForm({ ...receiptForm, method: e.target.value })} className="finance-input w-full text-xs">
+                          {["Cash", "OMT", "BOB Finance", "Whish"].map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        {/* Deliberately blank. It used to prefill the signed-in user, and on the first real
+                            receipt that produced a document stating the Finance Officer had taken cash
+                            he never handled. Whoever issues the receipt must name the recipient on purpose. */}
+                        <label htmlFor="rc-by" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Received by</label>
+                        <input id="rc-by" type="text" required placeholder="who physically took the money" value={receiptForm.receivedBy} onChange={e => setReceiptForm({ ...receiptForm, receivedBy: e.target.value })} className="finance-input w-full text-xs" />
+                        <p className="mt-1 text-[9px] leading-snug text-slate-500">Whoever handled the cash — not necessarily you.</p>
+                      </div>
+                      <div>
+                        <label htmlFor="rc-date" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Received on")}</label>
+                        <input id="rc-date" type="date" value={receiptForm.date} onChange={e => setReceiptForm({ ...receiptForm, date: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                      <div>
+                        <label htmlFor="rc-amount" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Amount ({receiptForm.q.currency})</label>
+                        <input id="rc-amount" type="number" min="0" step="any" value={receiptForm.amount} onChange={e => setReceiptForm({ ...receiptForm, amount: Number(e.target.value) })} className="finance-input w-full font-mono text-xs" />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-slate-400">Numbered RC-nnn/year from the receipts already on file, filed against this quotation, and printed with the amount in words. Print it and have both sides sign.</p>
+                    <div className="flex gap-2">
+                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">🧾 Issue receipt</button>
+                      <button type="button" onClick={() => setReceiptForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
+                    </div>
+                  </form>
+                )}
 
                 {/* Off-bank settlement: OMT / BOB / Whish / cash. Evidence ref mandatory. */}
                 {settleForm && (
@@ -494,7 +584,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                             <td className="p-3 text-right font-mono font-bold text-slate-800">{q.currency} {q.amount.toLocaleString()}</td>
                             <td className="p-3 font-mono text-slate-500">{q.validUntil || "—"}</td>
                             <td className="p-3">
-                              {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) ? (
+                              {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) ? (
                                 <select value={q.status} onChange={e => moveQuotation(q, e.target.value)} className="finance-input text-[10px] py-1" aria-label={`Status for ${q.quoteNo}`}>
                                   {QUOTE_STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
                                 </select>
@@ -516,14 +606,37 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                               })() : (
                                 <span className="inline-flex items-center gap-1">
                                   <span className="text-[10px] text-slate-400">—</span>
-                                  {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && !["Rejected", "Expired"].includes(q.status) && (
+                                  {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && !["Rejected", "Expired"].includes(q.status) && (
+                                    <>
                                     <button onClick={() => setSettleForm({ q, method: "OMT", reference: "", date: new Date().toLocaleDateString("en-CA"), amount: q.amount })} className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100" title="Record off-bank payment (OMT / BOB / Whish / cash)" aria-label={`Record off-bank payment for ${q.quoteNo}`}>💵</button>
+                                    <button onClick={() => setReceiptForm({ q, date: new Date().toLocaleDateString("en-CA"), amount: q.amount, method: "Cash", receivedBy: "" })} className="text-slate-400 hover:text-amber-700 p-1 transition-colors rounded hover:bg-slate-100" title="Issue AnaHon's receipt for this payment" aria-label={`Issue receipt for ${q.quoteNo}`}>🧾</button>
+                                    </>
                                   )}
                                 </span>
                               )}
                             </td>
                             <td className="p-3 whitespace-nowrap">
-                              <button onClick={() => generateQuoteDoc(q)} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="Generate client document" aria-label={`Generate document for ${q.quoteNo}`}>📄</button>
+                              <button onClick={() => generateQuoteDoc(q)} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="View client document" aria-label={`View document for ${q.quoteNo}`}>📄</button>
+                              <a href={`/api/quotations/${q.id}/pdf?uid=${encodeURIComponent(currentUser?.id || "")}`} download
+                                className="text-slate-400 hover:text-red-700 p-1 transition-colors rounded hover:bg-slate-100 inline-block" title="Download PDF" aria-label={`Download PDF for ${q.quoteNo}`}>
+                                <Download className="h-3.5 w-3.5 inline" />
+                              </a>
+                              {(() => {
+                                const signed = (state.documents || []).filter((d: any) => d.linkedRecordType === "Quotation" && d.linkedRecordId === q.id);
+                                return (
+                                  <>
+                                    <label className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100 cursor-pointer inline-block" title="Attach the signed copy returned by the client">
+                                      📎
+                                      <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) attachSignedCopy(q, f); e.currentTarget.value = ""; }} />
+                                    </label>
+                                    {signed.map((d: any) => (
+                                      <button key={d.id} onClick={() => openDoc({ id: d.id, filename: d.filename, mimeType: d.mimeType })}
+                                        className="text-emerald-700 hover:text-emerald-900 p-1 text-[10px] font-bold transition-colors rounded hover:bg-emerald-50"
+                                        title={`Signed copy on file — ${d.refNo || d.filename}`}>✓signed</button>
+                                    ))}
+                                  </>
+                                );
+                              })()}
                               <button onClick={() => setQuoteForm({ ...q })} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="Edit" aria-label={`Edit ${q.quoteNo}`}>✏️</button>
                               <button onClick={() => deleteQuotation(q)} className="text-slate-400 hover:text-red-600 p-1 transition-colors rounded hover:bg-slate-100" title="Delete" aria-label={`Delete ${q.quoteNo}`}>
                                 <Trash2 className="h-3.5 w-3.5 inline" />
