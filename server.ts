@@ -42,6 +42,7 @@ app.use(express.json({ limit: "50mb" }));
 // requests (for assigned projects only), upload evidence, and read. Every other
 // mutation is refused server-side.
 const PO_ALLOWED_POSTS = new Set([
+  "/api/archive/item",
   "/api/content/cover",
   "/api/auth/sync",
   "/api/expense/new",
@@ -2893,6 +2894,65 @@ app.post("/api/content/cover", async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ---- Archive curation (moved here from the website, 3 Sep 2026) ----------------
+// The archive's tags, captions and published flag are edited in the desk. Writes go
+// to the archive's override files (human decisions that survive every rebuild) and
+// are mirrored into the site's library JSON at once; "Publish to website" re-runs
+// build_library.py against the mounted site folders and tells the site to re-read.
+const ARCHIVE_DIR = process.env.ARCHIVE_DIR || "/Users/saadmatar/Claude/anahon-social-archive";
+const SITE_DIR = process.env.SITE_DIR || "/Users/saadmatar/Claude/anahon-astro";
+const ARCHIVE_EDIT_ROLES = [...CONTENT_EDITOR_ROLES, "Project Officer"];
+const readJsonFile = (p: string, fallback: any) => { try { return JSON.parse(fs.readFileSync(p, "utf-8")); } catch { return fallback; } };
+const libraryFile = (collection: string) => path.join(SITE_DIR, "src/data", collection === "icontent" ? "icontent-library.json" : "library.json");
+const cleanTag = (t: any) => String(t).trim().toLowerCase().replace(/\s+/g, "-");
+
+app.get("/api/archive/items", (req, res) => {
+  const items = readJsonFile(libraryFile(String(req.query.collection || "")), []);
+  res.json({ items: items.map((i: any) => ({
+    id: i.id, platform: i.platform, kind: i.kind, title: i.title, thumb: i.thumb, date: i.date,
+    tags: i.tags || [], series: i.series || "", url: i.url, duration: i.duration ?? null
+  })) });
+});
+app.get("/api/archive/schema", (_req, res) => res.json(readJsonFile(path.join(SITE_DIR, "src/data/formats.json"), {})));
+
+app.post("/api/archive/item", async (req, res) => {
+  try {
+    const { id, tags, title, collection, user } = req.body;
+    if (!ARCHIVE_EDIT_ROLES.includes(user?.role)) return res.status(403).json({ error: "Curating the archive needs an editor or Project Officer role." });
+    if (typeof id !== "string" || !Array.isArray(tags)) return res.status(400).json({ error: "id and tags[] required." });
+    const clean = [...new Set(tags.map(cleanTag).filter(Boolean))];
+    const ovPath = path.join(ARCHIVE_DIR, "tag-overrides.json");
+    const ov = readJsonFile(ovPath, {}); ov[id] = clean; fs.writeFileSync(ovPath, JSON.stringify(ov, null, 1));
+    const cap = typeof title === "string" && title.trim() ? title.trim() : null;
+    if (cap) { const capPath = path.join(ARCHIVE_DIR, "caption-overrides.json"); const c = readJsonFile(capPath, {}); c[id] = cap; fs.writeFileSync(capPath, JSON.stringify(c, null, 1)); }
+    // mirror into the library JSON the site (and this desk) read, so the change shows at once
+    for (const f of [libraryFile(collection || ""), libraryFile(collection === "icontent" ? "" : "icontent")]) {
+      const lib = readJsonFile(f, null); if (!lib) continue;
+      const it = lib.find((i: any) => i.id === id);
+      if (it) { it.tags = clean; if (cap) it.title = cap; fs.writeFileSync(f, JSON.stringify(lib, null, 1)); break; }
+    }
+    await createAuditLog(user?.id, user?.name, "Archive Item Curated", `${id}: tags [${clean.join(", ")}]${cap ? `, caption "${cap.slice(0, 60)}"` : ""}${clean.includes("hidden") ? " — unpublished" : ""}.`);
+    res.json({ success: true, tags: clean, title: cap });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+app.post("/api/archive/publish", async (req, res) => {
+  try {
+    const { user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing the archive to the website needs an editor role." });
+    const { spawnSync } = await import("node:child_process");
+    const out = spawnSync("python3", [path.join(ARCHIVE_DIR, "scripts/build_library.py")], {
+      encoding: "utf-8", timeout: 180000, env: { ...process.env, SITE_DIR, ARCHIVE_DIR }
+    });
+    const log = ((out.stdout || "") + (out.stderr || "")).trim().split("\n").slice(-8).join("\n");
+    if (out.status !== 0) return res.status(500).json({ error: `build_library failed:\n${log}` });
+    let refreshed: any = null;
+    try { refreshed = await (await fetch(`${SITE_URL}/__refresh`, { method: "POST" })).json(); } catch (e: any) { refreshed = { error: e.message }; }
+    await createAuditLog(user?.id, user?.name, "Archive Published to Website", log.split("\n").filter(l => /->|articles/.test(l)).join(" · ") || "library rebuilt");
+    res.json({ success: true, log, refreshed });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // Retract: the piece comes off the website. The record stays Published — with the
