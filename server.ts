@@ -3158,6 +3158,35 @@ app.post("/api/website/content", async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
+// Website images (program photos, team portraits, hero…): filed in the vault like any
+// document, and copied under the site's /uploads/website/ so the page can serve it.
+app.post("/api/website/image", async (req, res) => {
+  try {
+    const { filename, mimeType, base64, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Uploading website images needs an editor role." });
+    const buffer = Buffer.from(String(base64 || ""), "base64");
+    if (!buffer.length) return res.status(400).json({ error: "No image data." });
+    if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ error: "Image larger than 15 MB." });
+    const mime = String(mimeType || "image/jpeg");
+    if (!/^image\//.test(mime)) return res.status(400).json({ error: "Only images." });
+    const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : mime.includes("gif") ? "gif" : mime.includes("svg") ? "svg" : "jpg";
+    const stem = String(filename || "image").replace(/\.[^.]+$/, "").toLowerCase().replace(/[^\w؀-ۿ]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "image";
+    const fname = `${stem}-${Date.now()}.${ext}`;
+    const vaultDir = path.join(VAULT_ROOT, "GENERAL", "Website"); fs.mkdirSync(vaultDir, { recursive: true });
+    fs.writeFileSync(path.join(vaultDir, fname), buffer);
+    const siteDir = path.join(SITE_DIR, "public/uploads/website"); fs.mkdirSync(siteDir, { recursive: true });
+    fs.writeFileSync(path.join(siteDir, fname), buffer);
+    const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
+    const doc = await prisma.appDoc.create({ data: {
+      id: `doc-${Date.now()}`, refNo: await nextDocRef(prisma), filename: fname, mimeType: mime,
+      sizeStr: `${Math.max(1, Math.round(buffer.length / 1024))} KB`, base64: `file://GENERAL/Website/${fname}`,
+      category: "Website Image", linkedRecordType: "Website", linkedRecordId: "site", contentHash, created_at: new Date().toISOString()
+    } });
+    await createAuditLog(user?.id, user?.name, "Website Image Uploaded", `${fname} (${doc.refNo}) → /uploads/website/${fname}`);
+    res.json({ success: true, path: `/uploads/website/${fname}`, refNo: doc.refNo });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
 // Retract: the piece comes off the website. The record stays Published — with the
 // reason and date — because Policy 005 forbids silent edits to the published record.
 app.post("/api/content/retract", async (req, res) => {

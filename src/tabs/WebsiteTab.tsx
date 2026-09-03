@@ -15,6 +15,7 @@ const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "conte
 
 const FILE_LABEL: Record<string, string> = { site: "Pages & sections", i18n: "Navigation, footer & labels", programs: "Programs & mission", home: "Home widgets (see Archive › Website home)" };
 const SECTION_LABEL: Record<string, string> = {
+  labels: "Inline labels (buttons, small headings)",
   hero: "Home — hero", programs: "Home — programs strip", hosts: "Podcasts — hosts", shows: "Podcasts — shows", stats: "Home — numbers",
   incubator: "Home — incubator", academy: "Home — academy", newsletter: "Newsletter band", team: "Our Team page", faq: "FAQ (contact page)",
   ui: "Navigation · footer · labels", mission: "Mission", orgRegistration: "Registration details", register: "Funding register",
@@ -26,6 +27,23 @@ const looksLong = (s: string) => s.length > 70 || s.includes("\n");
 /** Recursive editor for one JSON value. Keeps the shape; only leaves change. */
 function Field({ value, onChange, path, canEdit }: { value: any; onChange: (v: any) => void; path: string; canEdit: boolean }) {
   if (typeof value === "string") {
+    const key = path.split(/[.\[]/).pop() || "";
+    if (/^(img|image|cover|photo|thumb|logo|avatar|picture|background)$/i.test(key) || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(value)) {
+      const siteUrl = (window as any).__siteUrl || "";
+      const src = /^https?:/.test(value) ? value : value ? siteUrl + value : "";
+      return (
+        <div className="flex items-center gap-2">
+          {src ? <img src={src} alt="" className="h-14 w-20 rounded border border-slate-200 object-cover" /> : <div className="h-14 w-20 rounded bg-slate-100" />}
+          <input value={value} disabled={!canEdit} dir="ltr" onChange={e => onChange(e.target.value)} className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs" placeholder="/uploads/website/… or https://…" />
+          {canEdit && <label className="cursor-pointer rounded border px-2 py-1 text-xs">Upload<input type="file" accept="image/*" className="hidden" onChange={async ev => {
+            const f = ev.target.files?.[0]; if (!f) return;
+            const b64 = await new Promise<string>(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(",")[1] || ""); fr.readAsDataURL(f); });
+            const up = await post("/api/website/image", { filename: f.name, mimeType: f.type, base64: b64 });
+            if (up.success) onChange(up.path); else window.alert(up.error || "Upload failed");
+          }} /></label>}
+        </div>
+      );
+    }
     const dir = /[؀-ۿ]/.test(value) || path.includes("ar.") ? "rtl" : "ltr";
     return looksLong(value)
       ? <textarea value={value} disabled={!canEdit} dir={dir} rows={Math.min(8, Math.max(2, Math.ceil(value.length / 90)))} onChange={e => onChange(e.target.value)} className="w-full rounded border border-slate-300 px-2 py-1 text-xs" />
@@ -86,8 +104,9 @@ function Field({ value, onChange, path, canEdit }: { value: any; onChange: (v: a
   return <span className="text-xs text-slate-400">{String(value)}</span>;
 }
 
-export default function WebsiteTab({ currentUser, triggerToast }: SharedProps) {
+export default function WebsiteTab({ state, currentUser, triggerToast }: SharedProps) {
   const canEdit = EDIT_ROLES.includes(currentUser?.role);
+  useEffect(() => { (window as any).__siteUrl = (state as any)?.siteUrl || ""; }, [state]);
   const [content, setContent] = useState<Record<string, any>>({});
   const [file, setFile] = useState<string>("site");
   const [section, setSection] = useState<string>("");

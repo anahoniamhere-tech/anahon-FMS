@@ -21,4 +21,5 @@ services:
       - ${SITE_DATA:-/mnt/mainpool/anahon/site}/data:/data/site/src/data
       - ${SITE_DATA:-/mnt/mainpool/anahon/site}/images:/data/site/public/images
       - ${SITE_DATA:-/mnt/mainpool/anahon/site}/content:/data/site/src/content:ro
+      - ${SITE_DATA:-/mnt/mainpool/anahon/site}/uploads:/data/site/public/uploads
     shm_size: 512m            # chromium PDF rendering
