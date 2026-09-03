@@ -536,8 +536,15 @@ app.post("/api/users/create", async (req, res) => {
   try {
     const { email, name, role, user } = req.body;
     if (user?.role !== "Super Admin") return res.status(403).json({ error: "Only a Super Admin may create accounts." });
-    const addr = String(email || "").trim().toLowerCase();
+    let addr = String(email || "").trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(addr)) return res.status(400).json({ error: "A valid email address is required." });
+    // Gmail ignores dots in the local part and Google's ID token reports the address
+    // WITHOUT them. Sign-in matches the token exactly, so store it the way Google will
+    // say it — "anahon.leb@gmail.com" typed here would otherwise never be able to log in.
+    {
+      const [local, domain] = addr.split("@");
+      if (["gmail.com", "googlemail.com"].includes(domain)) addr = `${local.replace(/\./g, "")}@gmail.com`;
+    }
     if (!ASSIGNABLE_ROLES.includes(role)) return res.status(400).json({ error: `Role must be one of: ${ASSIGNABLE_ROLES.join(", ")}` });
     const existing = await prisma.user.findUnique({ where: { email: addr } });
     if (existing) return res.status(400).json({ error: `${addr} already has an account (${existing.name}, ${existing.role}).` });
