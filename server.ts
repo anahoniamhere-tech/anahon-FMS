@@ -2938,6 +2938,84 @@ app.post("/api/archive/item", async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
+// ---- Tag schema + website home (moved from the site's ⚙ editors, step 2) ----
+const cleanTagList = (a: any) => Array.isArray(a) ? [...new Set(a.map(cleanTag).filter(Boolean))] : [];
+async function siteRefresh() {
+  try { return await (await fetch(`${SITE_URL}/__refresh`, { method: "POST" })).json(); } catch (e: any) { return { error: e.message }; }
+}
+
+// Same merge rules the site's /__formats had: each collection edits its own topic
+// vocabulary; formats, suppressed and the facet map are shared; a save never deletes
+// the other collection's tags.
+app.post("/api/archive/schema", async (req, res) => {
+  try {
+    const { facets, order, suppressed, collection, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the tag schema needs an editor role." });
+    const fmtPath = path.join(SITE_DIR, "src/data/formats.json");
+    const prev = readJsonFile(fmtPath, {});
+    const isIC = collection === "icontent";
+    const sentFacets: Record<string, string> = {};
+    for (const [k, v] of Object.entries(facets || {})) sentFacets[cleanTag(k)] = String(v);
+    const ord = cleanTagList(order), sup = cleanTagList(suppressed);
+    const fac: Record<string, string> = { ...(prev.facets || {}), ...sentFacets };
+    for (const t of sup) delete fac[t];
+    const isVocab = (t: string) => ["format", "genre"].includes(fac[t]);
+    const keep = (l: any) => (l || []).filter((t: string) => !ord.includes(t) && !sup.includes(t));
+    const out = {
+      formats: [...new Set([...keep(prev.formats), ...ord.filter(isVocab)])],
+      topics_extra: isIC ? (prev.topics_extra || []) : [...new Set([...keep(prev.topics_extra), ...ord.filter(t => !isVocab(t))])],
+      suppressed: sup,
+      topics_icontent: isIC ? [...new Set([...keep(prev.topics_icontent), ...ord.filter(t => !isVocab(t))])] : (prev.topics_icontent || []),
+      order: [...new Set([...ord, ...(prev.order || []).filter((t: string) => !sup.includes(t))])],
+      facets: fac
+    };
+    fs.writeFileSync(fmtPath, JSON.stringify(out, null, 1) + "\n");
+    await createAuditLog(user?.id, user?.name, "Archive Schema Saved", `${Object.keys(fac).length} tags in the facet map, ${sup.length} removed (${isIC ? "iContent" : "AnaHon"} view).`);
+    res.json({ success: true, schema: out, refreshed: await siteRefresh() });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+app.get("/api/archive/home", (_req, res) => {
+  const home = readJsonFile(path.join(SITE_DIR, "src/data/home.json"), {});
+  const articles: any[] = [];
+  for (const lang of ["en", "ar"]) {
+    const dir = path.join(SITE_DIR, "src/content/articles", lang);
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith(".md")) continue;
+      const head = fs.readFileSync(path.join(dir, f), "utf-8").slice(0, 1500);
+      const title = (head.match(/^title:\s*(.*)$/m) || [])[1] || f;
+      const slug = (head.match(/^slug:\s*(.*)$/m) || [])[1] || f.replace(/\.md$/, "");
+      const date = (head.match(/^date:\s*(.*)$/m) || [])[1] || "";
+      const unq = (v: string) => { try { return JSON.parse(v); } catch { return v.replace(/^['"]|['"]$/g, ""); } };
+      articles.push({ slug: unq(slug), lang, title: unq(title), date });
+    }
+  }
+  articles.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  res.json({ home, articles });
+});
+
+app.post("/api/archive/home", async (req, res) => {
+  try {
+    const { widgets, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website home needs an editor role." });
+    const p = path.join(SITE_DIR, "src/data/home.json");
+    const prev = readJsonFile(p, {});
+    for (const [k, v] of Object.entries(widgets || {})) {
+      if (!["hero", "articles", "episodes"].includes(k) || typeof v !== "object" || !v) continue;
+      const w: any = v;
+      prev[k] = { ...(prev[k] || {}),
+        ...(typeof w.title_en === "string" ? { title_en: w.title_en } : {}),
+        ...(typeof w.title_ar === "string" ? { title_ar: w.title_ar } : {}),
+        ...(Array.isArray(w.pinned) ? { pinned: w.pinned.map(String) } : {}),
+        ...(Array.isArray(w.removed) ? { removed: w.removed.map(String) } : {}) };
+    }
+    fs.writeFileSync(p, JSON.stringify(prev, null, 1) + "\n");
+    await createAuditLog(user?.id, user?.name, "Website Home Curated", Object.keys(widgets || {}).join(", ") + " widget(s) updated.");
+    res.json({ success: true, home: prev, refreshed: await siteRefresh() });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
 app.post("/api/archive/publish", async (req, res) => {
   try {
     const { user } = req.body;
