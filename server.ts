@@ -3131,6 +3131,33 @@ app.post("/api/social/delete", async (req, res) => {
   } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
+// ---- Website content (edited in the desk, rendered by the site) ------------------
+// The site's copy lives in JSON files it imports (site.json: hero, programs, team, …;
+// i18n.json: navigation, footer, labels). The desk edits sections and the site
+// re-reads on /__refresh. Programs/mission/register (programs.json) join later.
+const WEBSITE_FILES: Record<string, string> = { site: "site.json", i18n: "i18n.json", programs: "programs.json", home: "home.json" };
+app.get("/api/website/content", (_req, res) => {
+  const out: Record<string, any> = {};
+  for (const [k, f] of Object.entries(WEBSITE_FILES)) { const v = readJsonFile(path.join(SITE_DIR, "src/data", f), null); if (v) out[k] = v; }
+  res.json(out);
+});
+app.post("/api/website/content", async (req, res) => {
+  try {
+    const { file, section, value, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
+    const f = WEBSITE_FILES[String(file)]; if (!f) return res.status(400).json({ error: "unknown file" });
+    if (typeof section !== "string" || !/^[\w-]+$/.test(section)) return res.status(400).json({ error: "section required" });
+    if (value === undefined || value === null) return res.status(400).json({ error: "value required" });
+    const p = path.join(SITE_DIR, "src/data", f);
+    const doc = readJsonFile(p, {});
+    if (!(section in doc)) return res.status(400).json({ error: `no section "${section}" in ${f} — sections are created in the code, edited here` });
+    doc[section] = value;
+    fs.writeFileSync(p, JSON.stringify(doc, null, 1) + "\n");
+    await createAuditLog(user?.id, user?.name, "Website Content Saved", `${f} › ${section} (${JSON.stringify(value).length} chars).`);
+    res.json({ success: true, refreshed: await siteRefresh() });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
 // Retract: the piece comes off the website. The record stays Published — with the
 // reason and date — because Policy 005 forbids silent edits to the published record.
 app.post("/api/content/retract", async (req, res) => {
