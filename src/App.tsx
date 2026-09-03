@@ -1059,6 +1059,11 @@ export default function App() {
             {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/ /g, " ")}
           </span>
           {/* One-click Arabic: menus and main actions switch, and the page flips to RTL. */}
+          {state?.siteUrl && (
+            <a href={state.siteUrl} target="_blank" rel="noopener"
+              className="rounded-full border border-slate-600 px-3 py-1 text-xs font-bold text-slate-200 hover:bg-slate-800"
+              title={state.siteUrl}>🌐 {t("Website")}</a>
+          )}
           <button
             onClick={() => setLang(lang === "ar" ? "en" : "ar")}
             aria-label={lang === "ar" ? "Switch interface to English" : "تحويل الواجهة إلى العربية"}

@@ -1064,10 +1064,11 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                     </span>
                   )}
                   {item.corrections.length > 0 && <span className="text-amber-700 text-[10px] font-bold">{item.corrections.length} {t("Corrections")}</span>}
-                  {item.websiteUrl && (
+                  {item.websiteUrl && !item.retractedAt && (
                     <a href={item.websiteUrl} target="_blank" rel="noopener" onClick={ev => ev.stopPropagation()}
                       className="text-sky-700 text-[10px] font-bold underline" title={item.websiteUrl}>🔗 {t("View on website")}</a>
                   )}
+                  {item.retractedAt && <span className="text-red-700 text-[10px] font-bold" title={item.retractReason}>⛔ {t("Retracted from website")} {item.retractedAt.slice(0, 10)}</span>}
                   <span className="ml-auto text-slate-500 font-mono">{nameOf(item.assigneeUserId)}{item.dueDate ? ` · ${item.dueDate}` : ""}</span>
                 </div>
 
@@ -1390,6 +1391,12 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                             <input placeholder="The correction" value={corrForm.correction} onChange={e => setCorrForm({ ...corrForm, correction: e.target.value })} className="finance-input flex-1 min-w-[160px]" />
                             <button onClick={async () => { if (await post("/api/content/correction", { id: item.id, ...corrForm }, "Correction issued")) setCorrForm({ nature: "", correction: "" }); }}
                               className="bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-1.5">{t("Add Correction")}</button>
+                            {!item.retractedAt && (
+                              <button onClick={async () => {
+                                const reason = window.prompt(t("Why is this piece being retracted from the website? (public record)"));
+                                if (reason) await post("/api/content/retract", { id: item.id, reason }, "Retracted from the website");
+                              }} className="ml-2 border border-red-300 text-red-700 rounded px-3 py-1.5 hover:bg-red-50">⛔ {t("Retract from website")}</button>
+                            )}
                           </div>
                         )}
                       </div>

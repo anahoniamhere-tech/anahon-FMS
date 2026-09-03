@@ -353,7 +353,7 @@ async function loadState(viewer?: any) {
       partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: [],
       opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], tools: [],
-      contentItems: formattedContent, // the whole board — the daily production meeting is collective
+      siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
       editorialMeetings: formattedMeetings,
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
@@ -397,7 +397,7 @@ async function loadState(viewer?: any) {
       clients: [], quotations: [], networkContacts: [], tools: [],
       // Policy 002: POs run their programme's content — plus anything they personally
       // author or fact-check in another programme.
-      contentItems: formattedContent.filter(c =>
+      siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent.filter(c =>
         poStreams.has(c.stream) || c.assigneeUserId === viewer.id || c.factCheckerUserId === viewer.id),
       editorialMeetings: formattedMeetings, // POs attend both meetings (Policy 002)
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
@@ -457,7 +457,7 @@ async function loadState(viewer?: any) {
     // Project timelines: dated, assignable steps per project.
     projectActivities,
     // Editorial pipeline (Policies 002 & 005) — content register with enforcement fields.
-    contentItems: formattedContent,
+    siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent,
     editorialMeetings: formattedMeetings,
     // Production stream — clients pay us; a quotation is never income until
     // the payment shows on a bank statement.
@@ -2434,6 +2434,17 @@ const CONTENT_EDITOR_ROLES = ["Production Manager", "Program Director", "Super A
 // re-reads this database and refuses anything not Published, so the call carries
 // no authority of its own — and publishing here never depends on it succeeding.
 const SITE_URL = process.env.SITE_URL || "http://localhost:4321";
+async function notifySiteUnpublish(id: string) {
+  try {
+    const r = await fetch(`${SITE_URL}/__unpublish`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id })
+    });
+    const j: any = await r.json().catch(() => ({}));
+    console.log(`[site] retract ${id}: ${r.status} ${(j.removed || []).join(", ") || j.error || ""}`);
+  } catch (e: any) {
+    console.log(`[site] retract ${id}: site unreachable at ${SITE_URL} — ${e.message}`);
+  }
+}
 async function notifySite(id: string, why: string) {
   try {
     const r = await fetch(`${SITE_URL}/__publish`, {
@@ -2772,6 +2783,26 @@ app.post("/api/content/publish", async (req, res) => {
       `"${item.title}" (${item.contentType}) published to ${channels.join(", ") || "no channel"} — fact-checked tag applied; PM+PD dual approval on record.`);
     // after the audit row is committed — the site reads this database and must not race the write
     if (!channels.length || channels.includes("Website")) void notifySite(id, "publish");
+    res.json({ success: true, item: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Retract: the piece comes off the website. The record stays Published — with the
+// reason and date — because Policy 005 forbids silent edits to the published record.
+app.post("/api/content/retract", async (req, res) => {
+  try {
+    const { id, reason, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Retracting needs an editor role." });
+    if (item.status !== "Published") return res.status(400).json({ error: "Only published content can be retracted — unpublished work is just edited or removed." });
+    if (item.retractedAt) return res.status(400).json({ error: "Already retracted." });
+    if (!reason) return res.status(400).json({ error: "State why it is being retracted (public record, Policy 005)." });
+    const updated = await prisma.contentItem.update({ where: { id }, data: { retractedAt: new Date().toISOString(), retractReason: String(reason) } });
+    await createAuditLog(user?.id, user?.name, "Content Retracted", `"${item.title}" taken off the website: ${reason}`);
+    void notifySiteUnpublish(id);
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

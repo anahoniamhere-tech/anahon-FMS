@@ -424,6 +424,8 @@ export interface ContentItem {
   factCheckTag: boolean;
   publishedAt: string;
   websiteUrl?: string;         // live page on the website, set by the publish hook
+  retractedAt?: string;        // taken off the website (record stays)
+  retractReason?: string;
   corrections: { date: string; nature: string; correction: string; by: string }[];
   materials: { label: string; url: string; kind: "link" | "photo" | "video" | "doc" }[];
   drafts: { label: string; kind: string; text: string; date: string; by: string }[];
@@ -486,6 +488,7 @@ export interface Tool {
 }
 
 export interface DatabaseState {
+  siteUrl?: string;            // the website's public address (from SITE_PUBLIC_URL) — header link
   users: { id: string; name: string; email: string; role: string; active: boolean; projectIdsJson?: string; streamScope?: string }[];
   accounts: Account[];
   donors: Donor[];
