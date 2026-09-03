@@ -2763,9 +2763,10 @@ app.post("/api/content/publish", async (req, res) => {
       status: "Published", publishedAt: new Date().toISOString(), factCheckTag: true
     } });
     const channels = JSON.parse(item.channelsJson || "[]");
-    if (!channels.length || channels.includes("Website")) void notifySite(id, "publish");
     await createAuditLog(user?.id, user?.name, "Content Published",
       `"${item.title}" (${item.contentType}) published to ${channels.join(", ") || "no channel"} — fact-checked tag applied; PM+PD dual approval on record.`);
+    // after the audit row is committed — the site reads this database and must not race the write
+    if (!channels.length || channels.includes("Website")) void notifySite(id, "publish");
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -2789,9 +2790,9 @@ app.post("/api/content/correction", async (req, res) => {
     const corrections = JSON.parse(item.correctionsJson || "[]");
     corrections.push({ date: localDate(), nature, correction, by: user?.name || "" });
     const updated = await prisma.contentItem.update({ where: { id }, data: { correctionsJson: JSON.stringify(corrections) } });
-    { const ch = JSON.parse(item.channelsJson || "[]"); if (!ch.length || ch.includes("Website")) void notifySite(id, "correction"); }
     await createAuditLog(user?.id, user?.name, "Content Correction Issued",
       `"${item.title}": ${nature} — correction appended ${localDate()}; original noted, status remains Published.`);
+    { const ch = JSON.parse(item.channelsJson || "[]"); if (!ch.length || ch.includes("Website")) void notifySite(id, "correction"); }
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
