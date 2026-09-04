@@ -4,8 +4,8 @@
 # The Mac copy is NEVER the source of truth — anything changed here is overwritten by design.
 set -euo pipefail
 NAS="admin@192.168.1.22"; FMS="/mnt/mainpool/anahon/fms"
-APP="$HOME/antigravity/AnaHon-Financial-Management-System"
-VAULT="$HOME/Documents/AnaHon_Document_Vault"
+APP="$HOME/AnaHon/system"
+VAULT="$HOME/AnaHon/vault"
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
 SSH="ssh -o BatchMode=yes -o ConnectTimeout=15"
 echo "== $(date '+%F %T') mirror start"

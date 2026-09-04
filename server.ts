@@ -2948,8 +2948,8 @@ app.post("/api/content/cover", async (req, res) => {
 // to the archive's override files (human decisions that survive every rebuild) and
 // are mirrored into the site's library JSON at once; "Publish to website" re-runs
 // build_library.py against the mounted site folders and tells the site to re-read.
-const ARCHIVE_DIR = process.env.ARCHIVE_DIR || "/Users/saadmatar/Claude/anahon-social-archive";
-const SITE_DIR = process.env.SITE_DIR || "/Users/saadmatar/Claude/anahon-astro";
+const ARCHIVE_DIR = process.env.ARCHIVE_DIR || "/Users/saadmatar/AnaHon/archive";
+const SITE_DIR = process.env.SITE_DIR || "/Users/saadmatar/AnaHon/website";
 const ARCHIVE_EDIT_ROLES = [...CONTENT_EDITOR_ROLES, "Project Officer"];
 const readJsonFile = (p: string, fallback: any) => { try { return JSON.parse(fs.readFileSync(p, "utf-8")); } catch { return fallback; } };
 const libraryFile = (collection: string) => path.join(SITE_DIR, "src/data", collection === "icontent" ? "icontent-library.json" : "library.json");
