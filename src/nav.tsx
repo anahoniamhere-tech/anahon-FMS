@@ -28,7 +28,7 @@ const ic = (I: React.ComponentType<{ className?: string }>) => <I className="h-4
 const glyph = (g: string) => <span className="h-4 w-4 shrink-0 text-center leading-4">{g}</span>;
 
 // Role groups, matching the checks the server makes.
-import { CREW, EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, SELF as SELF_SEAT } from "./roles";
+import { ALL_ROLES, CREW, EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, SELF as SELF_SEAT } from "./roles";
 export { CREW, EDITORS };
 export const OFFICER = ["Project Officer"];
 export const SELF = [SELF_SEAT];
@@ -43,7 +43,7 @@ export const NAV: NavSection[] = [
   {
     section: "Home",
     items: [
-      { navKey: "mydesk", label: "My Desk", icon: ic(UserCheck), roles: ["*full", ...EDITORS, ...PLO, ...DIGITAL] },
+      { navKey: "mydesk", label: "My Desk", icon: ic(UserCheck) },
       { navKey: "dashboard", label: "Organisation overview", icon: ic(Activity), roles: ["*full", ...OFFICER] },
       { navKey: "help", label: "Help & Q&A", icon: glyph("?") },
       { navKey: "handbooks", label: "Policies & handbooks", icon: ic(BookOpen) },
@@ -127,12 +127,5 @@ export function visibleNav(role: string): NavSection[] {
 
 export const NAV_KEYS = NAV.flatMap(s => s.items.map(i => i.navKey));
 
-/** Where a restricted role lands when it opens the system or strays onto a door it cannot see. */
-export const LANDING: Record<string, string> = {
-  "Employee (Self-Service)": "payroll",
-  "Project Officer": "expenses",
-  "Reporter": "editorial", "Content Creator": "editorial", "Podcaster": "editorial", "Graphic Designer": "editorial",
-  "Chief Editor": "editorial", "Production Manager": "editorial",
-  "Procurement and Logistics Officer": "expenses",
-  "Digital Officer": "live",
-};
+/** Everyone opens on their desk (phase 3); it is also where a role lands after straying onto a door it cannot see. */
+export const LANDING: Record<string, string> = Object.fromEntries(ALL_ROLES.map(r => [r, "mydesk"]));

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Newspaper, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { ContentItem } from "../types";
 import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "../constants";
@@ -21,9 +21,11 @@ const STATUS_STYLE: Record<string, string> = {
 
 const EDITOR_ROLES = CONTENT_EDITORS;
 
-export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc, lang }: SharedProps) {
+export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc, lang, focusId, setFocusId }: SharedProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [openId, setOpenId] = useState<string | null>(null);
+  // My Desk hands over the piece to open; consumed once so a later visit starts closed.
+  useEffect(() => { if (focusId) { setOpenId(focusId); setFocusId(null); } }, [focusId]);
   const [form, setForm] = useState<any | null>(null);
   const [mtgForm, setMtgForm] = useState<any | null>(null);
   const [srcForm, setSrcForm] = useState({ source: "", step: "" });

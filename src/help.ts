@@ -182,6 +182,14 @@ export const HELP: HelpEntry[] = [
       ar: "كل إجراء يغيّر المال أو المحتوى أو الصلاحيات: من فعله، ومتى، وما الذي مسّه، وإذا كان الشخص يشغل مقعداً شاغراً، أي مقعد. لا يمكن تعديله من الواجهة.",
     },
   },
+  {
+    id: "my-desk", area: "Seats & approvals",
+    q: { en: "What decides what is on My Desk?", ar: "ما الذي يحدد ما يظهر في «مكتبي»؟" },
+    a: {
+      en: "One rule per record status, kept in src/workflow.ts. A payment request that is Submitted waits on the director; once Approved it waits on Finance; a piece in Fact-Check waits on the named checker; a piece nobody is assigned to waits on the editors; a timeline step with no name waits on the programme's Project Officer, then the director. “Waiting on you” lists what is your turn, “Due this week” what is dated in the next seven days (or up to a week late) on any desk you can see, and “Seats I cover” (master account only) what is owed to a seat nobody holds yet — it hides an item as soon as someone else holds any seat that owns it; the statutory checklist is the master account's own until tasks get an assignee. A request you raised never asks you to approve it. Subscriptions appear a week before renewal; tools and contacts on the day. Nothing here is a separate task list — act on the record itself and it leaves the desk.",
+      ar: "قاعدة واحدة لكل حالة سجل، محفوظة في src/workflow.ts. طلب الدفع «المُقدَّم» بانتظار المدير؛ وبعد الموافقة بانتظار المالية؛ والمادة «قيد التحقق» بانتظار المدقّق المسمّى؛ والمادة غير المكلَّف بها أحد بانتظار المحرّرين؛ وخطوة الجدول الزمني بلا اسم بانتظار مسؤول مشروع البرنامج ثم المدير. «بانتظارك» يعرض ما هو دورك، و«مستحق هذا الأسبوع» ما له تاريخ خلال سبعة أيام (أو متأخر بأسبوع على الأكثر) على أي مكتب تراه، و«المقاعد التي أشغلها» (الحساب الرئيسي فقط) ما هو مستحق على مقعد لا يشغله أحد بعد — ويختفي البند حالما يشغل شخص آخر أي مقعد يملكه؛ وقائمة الالتزامات النظامية عمل الحساب الرئيسي نفسه إلى أن تُسنَد المهام. الطلب الذي رفعته أنت لا يطلب منك الموافقة عليه أبداً. تظهر الاشتراكات قبل أسبوع من التجديد، والأدوات وجهات الاتصال في يومها. لا شيء هنا قائمة مهام منفصلة — نفّذ على السجل نفسه فيغادر المكتب.",
+    },
+  },
 ];
 
 export const helpById = (id: string) => HELP.find(h => h.id === id);

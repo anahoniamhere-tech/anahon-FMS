@@ -34,6 +34,9 @@ export const ACTIVITY_EDITORS = [...MANAGERS, "Project Officer", PLO];
 
 /** Editorial approval and publishing (Policy 002 seats plus the Chief Editor). */
 export const CONTENT_EDITORS = ["Production Manager", "Program Director", "Super Admin", "Chief Editor"];
+/** Editorial Review slots: a role fills its own slot; the Chief Editor and the master account may take either empty one. */
+export const PM_SLOT = CONTENT_EDITORS.filter(r => r !== "Program Director");   // Production Manager, Super Admin, Chief Editor
+export const PD_SLOT = CONTENT_EDITORS.filter(r => r !== "Production Manager"); // Program Director, Super Admin, Chief Editor
 /** Site work: website copy, the live editor, the archive, social posting. */
 export const SITE_EDITORS = [...CONTENT_EDITORS, DIGITAL];
 export const ARCHIVE_EDITORS = [...SITE_EDITORS, "Project Officer"];
@@ -41,6 +44,8 @@ export const ARCHIVE_EDITORS = [...SITE_EDITORS, "Project Officer"];
 export const CONTACT_EDITORS = [...MANAGERS, "Production Manager", PLO, DIGITAL];
 export const TOOL_EDITORS = CONTACT_EDITORS;
 
+/** The master account alone — what is nobody's seat yet (the statutory checklist) is its own work, not a vacancy it covers. */
+export const MASTER = ["Super Admin"];
 export const AUDITOR = "Auditor / Read-Only Reviewer";
 export const SELF = "Employee (Self-Service)";
 /** Every role an account may hold — the server's whitelist and the Admin tab's selector. */

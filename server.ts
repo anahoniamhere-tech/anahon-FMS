@@ -6044,6 +6044,10 @@ app.post("/api/calendar/disconnect", async (req, res) => {
 // never a feed address. One unreachable feed degrades to a warning rather than emptying
 // the desk: a stale personal calendar must not hide today's AnaHon meetings.
 app.get("/api/calendar/events", async (req, res) => {
+  // The merged diary carries the director's own commitments. Only a director reads it.
+  const viewerId = await viewerIdFromReq(req);
+  const viewer = viewerId ? await prisma.user.findUnique({ where: { id: viewerId } }) : null;
+  if (!viewer || !DIRECTORS.includes(viewer.role)) return res.status(403).json({ error: "The diary is the director's." });
   try {
     const feeds = calendarFeeds();
     if (!feeds.length) return res.json({ connected: false, events: [], calendars: [] });

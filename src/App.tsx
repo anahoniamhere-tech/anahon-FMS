@@ -119,7 +119,7 @@ export default function App() {
   // Banking ledger view controls (shared: global search pre-fills them)
   const [bankFilterAcc, setBankFilterAcc] = useState<string>("");
   const [bankSearch, setBankSearch] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<string>("dashboard");
+  const [activeTab, setActiveTab] = useState<string>("mydesk");
   // One-click Arabic. Remembered across sessions; flips the page to RTL.
   const [lang, setLang] = useState<string>(() => localStorage.getItem("anahon-lang") || "en");
   const t = (s: string) => tr(lang, s);
@@ -405,6 +405,7 @@ export default function App() {
 
   // Project Workspace states
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
 
   const workspaceRef = useRef<HTMLDivElement | null>(null);
@@ -454,7 +455,7 @@ export default function App() {
     // What a role may open is decided by the sidebar data, never by a second list here.
     const role = u?.role || "";
     const allowed = visibleNav(role).flatMap(sec => sec.items.map(i => i.navKey));
-    if (!allowed.includes(activeTab)) setActiveTab(LANDING[role] || allowed[0] || "dashboard");
+    if (!allowed.includes(activeTab)) setActiveTab(LANDING[role] || allowed[0] || "mydesk");
   }, [state, activeUserId, activeTab]);
 
 
@@ -992,6 +993,7 @@ export default function App() {
     eurRateInput, setEurRateInput, lbpRateInput, setLbpRateInput,
     searchTerm, setSearchTerm, setDrawerExpenseId, handleVoucherDocUpload,
     selectedProjectId, setSelectedProjectId, workspaceRef,
+    focusId, setFocusId,
   };
 
   return (

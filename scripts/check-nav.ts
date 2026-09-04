@@ -5,6 +5,7 @@
 // door, and a role that lost a door it used to have. Run: npx tsx scripts/check-nav.ts
 import { readFileSync } from "node:fs";
 import { NAV, NAV_KEYS, LANDING, visibleNav } from "../src/nav.js";
+import { ALL_ROLES } from "../src/roles.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -25,7 +26,8 @@ ok("eight doors", NAV.length === 8, String(NAV.length));
 
 console.log("\nwhat each role sees, against what it saw before the regroup");
 // Before: the three hand-written branches in App.tsx. After: the same, plus Help and
-// Policies for the people the policies bind — the one deliberate change of phase 1.
+// Policies for the people the policies bind — the one deliberate change of phase 1 —
+// and My Desk for everyone, the one deliberate change of phase 3.
 const before = {
   "Project Officer": ["dashboard", "editorial", "expenses", "help", "procurement", "projects"],
   "Reporter": ["editorial", "help"],
@@ -33,15 +35,15 @@ const before = {
   "Podcaster": ["editorial", "help"],
   "Employee (Self-Service)": ["payroll"],
 };
-const added = ["handbooks"];             // visible to the restricted roles now
-const addedSelf = ["handbooks", "help"]; // self-service had neither
+const added = ["handbooks", "mydesk"];   // visible to the restricted roles now
+const addedSelf = ["handbooks", "help", "mydesk"]; // self-service had none of them
 // Seats placed in phase 2 (they had no login before, so there is no "before" to compare):
 const placed: Record<string, string[]> = {
   "Procurement and Logistics Officer": ["mydesk", "help", "handbooks", "projects", "network", "procurement", "vendors", "expenses", "assets", "payroll"],
   "Digital Officer": ["mydesk", "help", "handbooks", "social", "live", "website", "archive", "tools", "network", "payroll"],
   "Chief Editor": ["mydesk", "help", "handbooks", "editorial", "social", "live", "website", "archive", "payroll"],
   "Production Manager": ["mydesk", "help", "handbooks", "editorial", "social", "live", "website", "archive", "payroll"],
-  "Graphic Designer": ["editorial", "help", "handbooks"],
+  "Graphic Designer": ["editorial", "help", "handbooks", "mydesk"],
 };
 for (const [role, want] of Object.entries(placed)) ok(`${role}: ${want.length} doors`, same(keys(role), [...want].sort()), `got ${keys(role).join(",")}`);
 for (const [role, had] of Object.entries(before)) {
@@ -57,6 +59,7 @@ console.log("\nthe redirect follows the data, and every landing door is visible"
 ok("App.tsx has no hand-written allowlist left", !/\["dashboard", "projects", "expenses", "procurement", "editorial"\]\.includes\(activeTab\)/.test(app));
 ok("App.tsx redirect reads visibleNav", /allowed = visibleNav\(role\)/.test(app));
 for (const [role, land] of Object.entries(LANDING)) ok(`${role} lands on ${land}, which it can see`, keys(role).includes(land));
+ok("everyone lands on My Desk", ALL_ROLES.every(r => LANDING[r] === "mydesk" && keys(r).includes("mydesk")), ALL_ROLES.filter(r => LANDING[r] !== "mydesk").join(","));
 const arSrc = readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8");
 const labels = NAV.flatMap(s => [s.section, ...s.items.map(i => i.label)]);
 ok("every door and section has an Arabic label", labels.every(l => arSrc.includes(`"${l.replace(/"/g, '\\"')}":`)), labels.filter(l => !arSrc.includes(`"${l}":`)).join(", "));

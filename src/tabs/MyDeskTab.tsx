@@ -1,25 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Plane, CheckCircle2, AlertTriangle, Clock, FileText, Lock, Upload, ChevronRight, Undo2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock } from "lucide-react";
 import { SharedProps } from "./shared";
 import { PERSONNEL_CATEGORIES, isPersonnelDoc } from "../personnelDocs";
+import { deskItems, localToday, DeskItem } from "../workflow";
+import { DIRECTORS } from "../roles";
+import { NAV, visibleNav } from "../nav";
+import Info from "../Info";
 
 /**
- * My Desk — the Executive Director's own view of the system.
+ * My Desk — the first screen for everyone: what is waiting on me, by when.
  *
- * Everything here already exists elsewhere in the app; this tab answers one question the
- * other tabs cannot: "what does Saad personally have to do, and by when". It is read-mostly,
- * with the single write the register already supports (mark a task done), so nothing new can
- * go wrong in the books from this screen.
+ * Nothing here is a task list of its own. src/workflow.ts answers "whose turn is it?"
+ * for every record that already carries a status, and this screen lists the answers for
+ * the person signed in. Act on the record (approve the voucher, pass the fact-check,
+ * tick the statutory task) and it leaves the desk. The one write this screen makes is
+ * the compliance tick the register already supports.
  */
-export default function MyDeskTab({ state, currentUser, formatUSD, refreshState, triggerToast, handleNavClick, openDoc }: SharedProps) {
+const DOORS = NAV.flatMap(s => s.items);
+const CAP = 12;            // rows shown before "n more"
+const NOTE_PREVIEW = 150;  // notes longer than this are worth a click
+
+export default function MyDeskTab({
+  state, currentUser, t, lang, refreshState, triggerToast, handleNavClick, openDoc,
+  setDrawerExpenseId, setSelectedProjectId, setFocusId,
+}: SharedProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [upCat, setUpCat] = useState<string>("CV");
   const fileRef = useRef<HTMLInputElement>(null);
-  // Task ids whose full note is showing. Several tasks carry a page of context each, so
-  // the desk reads as a list by default and opens one on demand rather than all at once.
+  // Task ids whose full note is showing; groups whose full list is showing.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  // The task ticked most recently this session, so a mis-click has an undo in reach
-  // instead of vanishing from the list.
+  const [showAll, setShowAll] = useState<Set<string>>(new Set());
+  // The task ticked most recently this session, so a mis-click has an undo in reach.
   const [justDone, setJustDone] = useState<{ id: string; title: string } | null>(null);
   const [showDone, setShowDone] = useState(false);
   // Calendar events come from their own endpoint rather than app state: the feed address
@@ -31,70 +42,61 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
   const [calView, setCalView] = useState<"month" | "list">("month");
   const [monthOffset, setMonthOffset] = useState(0);   // months forward from the current one
   const [pickedDay, setPickedDay] = useState<string | null>(null);
-  const toggleNote = (id: string) =>
-    setExpanded(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+  const toggle = (set: (f: (p: Set<string>) => Set<string>) => void, id: string) =>
+    set(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
-  const today = new Date();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const todayIso = iso(today);
-  const daysTo = (d: string) => Math.round((new Date(d + "T00:00:00").getTime() - new Date(todayIso + "T00:00:00").getTime()) / 86400000);
+  // One reading of "today" for the whole screen, in the office's local date — the same as
+  // the server's localDate(), so an item never sits in two buckets around midnight.
+  const today = localToday();
+  const now = new Date();
+  const daysTo = (d: string) => Math.round((new Date(d + "T00:00:00").getTime() - new Date(today + "T00:00:00").getTime()) / 86400000);
+  const isDirector = DIRECTORS.includes(currentUser?.role || "");
 
-  const open = useMemo(
-    () => (state.complianceTasks || []).filter(t => t.status !== "Done").sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
-    [state.complianceTasks]
-  );
+  // Only rows on doors this person can open: the server may ship a record to a role that has
+  // no screen for it (the Digital Officer receives the content board, the crew their own
+  // timesheets), and a row nobody can open is a lie on the landing page.
+  const doors = useMemo(() => new Set(visibleNav(currentUser?.role || "").flatMap(s => s.items.map(i => i.navKey))), [currentUser]);
+  const items = useMemo(() => (currentUser ? deskItems(currentUser, state, today).filter(i => doors.has(i.door)) : []), [state, currentUser, today, doors]);
+  const mine = items.filter(i => i.group === "mine");
+  const cover = items.filter(i => i.group === "cover");
+  const week = items.filter(i => i.group === "week");
+  const overdueCount = items.filter(i => i.urgency === "overdue" && i.group !== "week").length;
+
   const done = useMemo(
-    () => (state.complianceTasks || []).filter(t => t.status === "Done").sort((a, b) => b.dueDate.localeCompare(a.dueDate)),
+    () => (state.complianceTasks || []).filter(x => x.status === "Done").sort((a, b) => b.dueDate.localeCompare(a.dueDate)),
     [state.complianceTasks]
   );
-  // Two trips are in the air at once and both file their steps under category "Travel", so
-  // the category alone counted Istanbul's steps as Brussels progress. The id prefix is what
-  // actually separates them.
-  const brussels = useMemo(
-    () => (state.complianceTasks || [])
-      .filter(t => (t.category as string) === "Travel" && /^tr-bru/.test(String(t.id)))
-      .sort((a, b) => a.dueDate.localeCompare(b.dueDate)),
-    [state.complianceTasks]
-  );
-  const brusselsDone = brussels.filter(t => t.status === "Done").length;
-  const brusselsOpen = brussels.filter(t => t.status !== "Done");
-
-  const overdue = open.filter(t => daysTo(t.dueDate) < 0);
-  const soon = open.filter(t => daysTo(t.dueDate) >= 0 && daysTo(t.dueDate) <= 7);
-  const later = open.filter(t => daysTo(t.dueDate) > 7);
-
-  // Editorial work that names this user personally — author or independent fact-checker.
-  const mine = (state.contentItems || []).filter(
-    c => c.status !== "Published" && (c.assigneeUserId === currentUser?.id || c.factCheckerUserId === currentUser?.id)
-  );
-
-  const apptIn = daysTo("2026-09-02");    // TLScontact Beirut, booked 2 Sep 11:00
-  const flyIn = daysTo("2026-09-30");     // departure for Brussels
 
   /** Tick a task, or put it back. Both directions go through here so the two can never
    *  drift apart, and both leave their own line in the audit trail. */
-  const setDone = async (taskId: string, title: string, done: boolean) => {
+  const setDone = async (taskId: string, title: string, isDone: boolean) => {
     setBusy(taskId);
     try {
-      const r = await fetch(`/api/compliance/${done ? "complete" : "reopen"}`, {
+      const r = await fetch(`/api/compliance/${isDone ? "complete" : "reopen"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ taskId, user: currentUser }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Could not update the task.");
-      setJustDone(done ? { id: taskId, title } : null);
-      triggerToast(done ? `Done: ${title.slice(0, 44)} — undo below` : `Reopened: ${title.slice(0, 44)}`);
+      if (!r.ok) throw new Error(d.error || t("Could not update the task."));
+      setJustDone(isDone ? { id: taskId, title } : null);
+      triggerToast(isDone ? `${t("Done")}: ${title.slice(0, 44)} — ${t("undo below")}` : `${t("Reopened")}: ${title.slice(0, 44)}`);
       await refreshState();
     } catch (e: any) {
       triggerToast(e.message);
     } finally {
       setBusy(null);
     }
+  };
+
+  /** Open the record behind a row on its own door. Compliance rows are acted on in place. */
+  const open = (i: DeskItem) => {
+    if (i.kind === "complianceTasks") return;
+    if (i.kind === "expenses") setDrawerExpenseId(i.recordId);                      // App-owned voucher drawer
+    if (i.kind === "projectActivities") setSelectedProjectId(i.record.projectId);  // project workspace
+    if (i.kind === "contentItems") setFocusId(i.recordId);                          // Editorial desk opens the piece
+    // ponytail: door-level focus for the other doors; wire focusId into a tab when someone asks for it
+    handleNavClick(i.door);
   };
 
   const loadCalendar = async () => {
@@ -106,7 +108,8 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
       setCal({ connected: false, events: [] });
     }
   };
-  useEffect(() => { loadCalendar(); }, []);
+  // The diary is the director's; the server refuses everyone else, so nobody else asks.
+  useEffect(() => { if (isDirector) loadCalendar(); }, [isDirector]);
 
   const connectCalendar = async () => {
     setBusy("cal");
@@ -117,9 +120,9 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
         body: JSON.stringify({ icsUrl: icsInput.trim(), label: icsLabel.trim(), user: currentUser }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Could not connect the calendar.");
+      if (!r.ok) throw new Error(d.error || t("Could not connect the calendar."));
       setIcsInput(""); setIcsLabel(""); setAddingCal(false);
-      triggerToast(`Calendar connected — read-only. ${(d.calendars || []).length} now feeding the desk.`);
+      triggerToast(`${t("Calendar connected — read-only.")} ${(d.calendars || []).length}`);
       await loadCalendar();
     } catch (e: any) {
       triggerToast(e.message);
@@ -127,10 +130,6 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
       setBusy(null);
     }
   };
-
-  /** Notes longer than this are worth a click; anything shorter reads fine inline and
-   *  collapsing it would only add a control for no gain. */
-  const NOTE_PREVIEW = 150;
 
   /** Each connected calendar gets a stable colour from its position in the list, so a
    *  fellowship session never reads as an AnaHon commitment. */
@@ -144,16 +143,16 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
   const whenLabel = (e: any) => {
     const d = new Date(`${e.start}${e.allDay ? "T00:00" : ""}`);
     const day = d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-    return e.allDay ? `${day} · all day` : `${day} · ${e.start.slice(11)}`;
+    return e.allDay ? `${day} · ${t("all day")}` : `${day} · ${e.start.slice(11)}`;
   };
 
-  /* ── Month grid ──────────────────────────────────────────────────────────────────
+  /* ── Month grid ────────────────────────────────────────────────────────────
    * One surface for both halves of the question "what is coming up": diary entries from
-   * Google, and the deadlines the register already tracks. They are different kinds of
-   * thing — an appointment happens to you, a task is owed by you — so they keep distinct
-   * colours rather than being merged into one undifferentiated list of "items".
+   * Google, and the dated items the desk already lists. They are different kinds of thing —
+   * an appointment happens to you, an item is owed by someone — so they keep distinct colours.
    */
-  type DayItem = { kind: "event" | "task"; id: string; label: string; time?: string; tone: string; task?: any; calendar?: string };
+  type DayItem = { kind: "event" | "item"; id: string; label: string; time?: string; tone: string; item?: DeskItem; calendar?: string };
+  const URGENCY_TONE = { overdue: "bg-[#E23B3B]", week: "bg-[#F88888]", waiting: "bg-slate-400" };
 
   const byDay = useMemo(() => {
     const m = new Map<string, DayItem[]>();
@@ -168,20 +167,13 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
         tone: calColour(e.calendar),
       });
     }
-    for (const t of open) {
-      const d = daysTo(t.dueDate);
-      push(t.dueDate, {
-        kind: "task", id: t.id, label: t.title, task: t,
-        tone: d < 0 ? "bg-[#E23B3B]" : d <= 7 ? "bg-[#F88888]" : "bg-slate-400",
-      });
+    for (const i of items) {
+      if (i.when) push(i.when, { kind: "item", id: i.id, label: `${t(i.verb)} · ${i.title}`, item: i, tone: URGENCY_TONE[i.urgency] });
     }
     return m;
-  }, [cal, open]);
+  }, [cal, items, lang]);
 
-  const monthCursor = useMemo(() => {
-    const d = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
-    return d;
-  }, [monthOffset, todayIso]);
+  const monthCursor = useMemo(() => new Date(now.getFullYear(), now.getMonth() + monthOffset, 1), [monthOffset, today]);
 
   /** Calendar weeks for the visible month, Monday-first, padded to whole weeks. */
   const monthGrid = useMemo(() => {
@@ -198,37 +190,52 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
 
   const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-  const row = (t: any) => {
-    const d = daysTo(t.dueDate);
-    const tone = d < 0 ? "text-red-700 bg-red-50 border-red-200" : d <= 2 ? "text-amber-800 bg-amber-50 border-amber-200" : "text-slate-600 bg-slate-50 border-slate-200";
-    const notes = String(t.notes || "");
+  /** One desk row. Compliance rows tick in place and unfold their note; every other row opens its door. */
+  const deskRow = (i: DeskItem) => {
+    const d = i.when ? daysTo(i.when) : null;
+    const chip = d === null ? { text: t("no date"), cls: "text-slate-500 bg-slate-50 border-slate-200" }
+      : d < 0 ? { text: `${Math.abs(d)}d ${t("late")}`, cls: "text-red-700 bg-red-50 border-red-200" }
+      : d === 0 ? { text: t("today"), cls: "text-amber-800 bg-amber-50 border-amber-200" }
+      : { text: `${d}d`, cls: d <= 7 ? "text-[#8f2020] bg-[#F88888]/20 border-[#F88888]" : "text-slate-600 bg-slate-50 border-slate-200" };
+    const isTask = i.kind === "complianceTasks";
+    const notes = isTask ? String(i.record.notes || "") : "";
     const long = notes.length > NOTE_PREVIEW;
-    const isOpen = expanded.has(t.id);
-    // The row itself is the control — click anywhere on it to open the full note, click
-    // again to close. The tick button sits inside it, so it stops the click from
-    // bubbling; otherwise marking a task done would also toggle the note underneath it.
+    const isOpen = expanded.has(i.id);
+    const door = DOORS.find(x => x.navKey === i.door);
+    const clickable = isTask ? long : true;
+    const act = () => (isTask ? long && toggle(setExpanded, i.id) : open(i));
     return (
       <div
-        key={t.id}
-        onClick={() => long && toggleNote(t.id)}
-        role={long ? "button" : undefined}
-        tabIndex={long ? 0 : undefined}
-        onKeyDown={e => { if (long && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); toggleNote(t.id); } }}
-        className={`flex items-start gap-3 rounded-lg border-b border-slate-100 px-1 py-2.5 last:border-0 ${long ? "cursor-pointer hover:bg-slate-50" : ""} ${isOpen ? "bg-slate-50" : ""}`}
+        key={i.id}
+        onClick={act}
+        role={clickable ? "button" : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        onKeyDown={e => { if (clickable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); act(); } }}
+        className={`flex items-start gap-3 rounded-lg border-b border-slate-100 px-1 py-2.5 last:border-0 ${clickable ? "cursor-pointer hover:bg-slate-50" : ""} ${isOpen ? "bg-slate-50" : ""}`}
       >
-        <button
-          onClick={e => { e.stopPropagation(); setDone(t.id, t.title, true); }}
-          disabled={busy === t.id}
-          title="Mark done"
-          className="mt-0.5 shrink-0 rounded-full border border-slate-300 p-1 hover:border-red-600 hover:bg-red-50 disabled:opacity-40"
-        >
-          <CheckCircle2 className="h-3.5 w-3.5 text-slate-400" />
-        </button>
+        {isTask && isDirector ? (
+          <button
+            onClick={e => { e.stopPropagation(); setDone(i.recordId, i.title, true); }}
+            disabled={busy === i.recordId}
+            title={t("Mark done")}
+            className="mt-0.5 shrink-0 rounded-full border border-slate-300 p-1 hover:border-red-600 hover:bg-red-50 disabled:opacity-40"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5 text-slate-400" />
+          </button>
+        ) : (
+          <span className="mt-1 shrink-0 text-slate-400">{door?.icon}</span>
+        )}
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium leading-snug text-slate-900">
-            {t.title}
-            {long && (
-              <ChevronRight className={`ml-1 inline h-3 w-3 shrink-0 text-slate-400 transition-transform ${isOpen ? "rotate-90" : ""}`} />
+          <p className="text-[13px] leading-snug text-slate-900">
+            {i.verb && <span className="font-semibold">{t(i.verb)} · </span>}
+            {i.title}
+            {long && <ChevronRight className={`ml-1 inline h-3 w-3 shrink-0 text-slate-400 transition-transform ${isOpen ? "rotate-90" : ""}`} />}
+          </p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
+            {door && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{t(door.label)}</span>}
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{t(i.status)}</span>
+            {i.seats.length > 0 && (
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">{t("seat")}: {i.seats.map(x => t(x)).join(", ")}</span>
             )}
           </p>
           {notes && (
@@ -237,39 +244,37 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
             </p>
           )}
         </div>
-        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${tone}`}>
-          {d < 0 ? `${Math.abs(d)}d late` : d === 0 ? "today" : `${d}d`}
-        </span>
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold ${chip.cls}`}>{chip.text}</span>
       </div>
     );
   };
 
-  // Brand palette: Maroon #6D1A1A, Maroon Dark #4A1010, Signal Red #E23B3B, Coral #F88888.
-  // Colour carries meaning here — red only when something is actually late.
-  const TONES: Record<string, { bar: string; value: string; chip: string }> = {
-    red:    { bar: "bg-[#E23B3B]", value: "text-[#E23B3B]", chip: "bg-[#E23B3B]/10 text-[#8f2020]" },
-    coral:  { bar: "bg-[#F88888]", value: "text-[#b8474a]", chip: "bg-[#F88888]/20 text-[#8f2020]" },
-    maroon: { bar: "bg-[#6D1A1A]", value: "text-[#6D1A1A]", chip: "bg-[#6D1A1A]/10 text-[#4A1010]" },
-    ink:    { bar: "bg-[#0B0B0B]", value: "text-[#1a1212]", chip: "bg-slate-200 text-slate-700" },
-  };
-
-  const Card = ({ label, value, sub, tone = "maroon", icon }: { label: string; value: string; sub?: string; tone?: string; icon?: any }) => {
-    const c = TONES[tone] || TONES.maroon;
+  /** A group card: heading, count, optional ⓘ, the rows, and "n more" past the cap. */
+  const group = (key: string, title: string, icon: any, list: DeskItem[], opts: { sub?: string; info?: string; empty?: string } = {}) => {
     const Icon = icon;
+    const all = showAll.has(key);
+    // Everything late or due this week is always shown; only the undated tail is capped.
+    const shown = all ? list : list.slice(0, Math.max(CAP, list.filter(i => i.urgency !== "waiting").length));
     return (
-      <div className="relative overflow-hidden rounded-2xl border border-[#E6D3CA] bg-white p-3.5 shadow-sm">
-        <div className={`absolute inset-x-0 top-0 h-1 ${c.bar}`} />
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
-          {Icon && <span className={`rounded-full p-1 ${c.chip}`}><Icon className="h-3 w-3" /></span>}
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+            <Icon className="h-4 w-4 text-[#6D1A1A]" /> {title}
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{list.length}</span>
+            {opts.info && <Info id={opts.info} lang={lang} />}
+          </h3>
         </div>
-        <p className={`mt-1.5 text-2xl font-bold leading-none ${c.value}`}>{value}</p>
-        {sub && <p className="mt-1 text-[10px] text-slate-500">{sub}</p>}
+        {opts.sub && <p className="mb-2 text-[11px] text-slate-500">{opts.sub}</p>}
+        {list.length === 0 && opts.empty && <p className="text-xs text-slate-500">{opts.empty}</p>}
+        {shown.map(deskRow)}
+        {list.length > CAP && (
+          <button onClick={() => toggle(setShowAll, key)} className="mt-2 flex items-center gap-1 text-[11px] font-bold text-red-700 hover:underline">
+            <Clock className="h-3 w-3" /> {all ? t("Show less") : `${list.length - CAP} ${t("more")}`}
+          </button>
+        )}
       </div>
     );
   };
-
-  const cash = (state.bankAccounts || []).filter(a => a.type === "Bank").reduce((s, a) => s + (a.balance || 0), 0);
 
   // The employee record behind this login — matched on userEmail, the same field
   // self-service timesheets key on. Without it there is no personnel file to show.
@@ -301,8 +306,8 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
         }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d.error || "Upload failed.");
-      triggerToast(d.duplicate ? "Already on file — no second copy made." : `${upCat} filed to your personnel file.`);
+      if (!r.ok) throw new Error(d.error || t("Upload failed."));
+      triggerToast(d.duplicate ? t("Already on file — no second copy made.") : `${upCat} ${t("filed to your personnel file.")}`);
       await refreshState();
     } catch (e: any) {
       triggerToast(e.message);
@@ -321,22 +326,17 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
           <div className="flex items-center gap-3">
             <img src="/assets/images/anahon_logo.png" alt="" className="h-10 w-auto drop-shadow" />
             <div>
-              <h2 className="text-lg font-bold leading-tight">{currentUser?.name || "My Desk"}</h2>
+              <h2 className="text-lg font-bold leading-tight">{currentUser?.name || t("My Desk")}</h2>
               <p className="text-[11px] text-white/70">
-                {currentUser?.role} · {today.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                {t(currentUser?.role || "")} · {now.toLocaleDateString(lang === "ar" ? "ar-LB" : "en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {overdue.length > 0 && (
-              <span className="rounded-full bg-[#E23B3B] px-3 py-1 text-[11px] font-bold shadow">
-                {overdue.length} overdue
-              </span>
-            )}
-            <span className="rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[11px] font-bold tracking-wide">
-              {brussels.length > 0 ? `BRUSSELS IN ${flyIn}D` : "ON TRACK"}
+          {overdueCount > 0 && (
+            <span className="rounded-full bg-[#E23B3B] px-3 py-1 text-[11px] font-bold shadow">
+              {overdueCount} {t("overdue")}
             </span>
-          </div>
+          )}
         </div>
       </div>
 
@@ -344,54 +344,33 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5">
           <p className="min-w-0 text-[12px] text-emerald-900">
             <CheckCircle2 className="mr-1.5 inline h-3.5 w-3.5" />
-            Marked done: <span className="font-semibold">{justDone.title}</span>
+            {t("Marked done")}: <span className="font-semibold">{justDone.title}</span>
           </p>
           <button
             onClick={() => setDone(justDone.id, justDone.title, false)}
             disabled={busy === justDone.id}
             className="shrink-0 rounded-lg border border-emerald-300 bg-white px-3 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
           >
-            <Undo2 className="mr-1 inline h-3 w-3" /> Undo
+            <Undo2 className="mr-1 inline h-3 w-3" /> {t("Undo")}
           </button>
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card label="Overdue" value={String(overdue.length)} sub="needs action now" tone={overdue.length ? "red" : "ink"} icon={AlertTriangle} />
-        <Card label="Due this week" value={String(soon.length)} sub="next 7 days" tone={soon.length ? "coral" : "ink"} icon={Clock} />
-        <Card label="Open in total" value={String(open.length)} sub={`${(state.complianceTasks || []).length} registered`} tone="maroon" icon={CalendarDays} />
-        <Card label="Bank" value={formatUSD(cash)} sub="across bank accounts" tone="ink" icon={FileText} />
-      </div>
+      {group("mine", t("Waiting on you"), Inbox, mine, { info: "my-desk", empty: t("Nothing is waiting on you.") })}
 
-      {brussels.length > 0 && (
-        <div className="rounded-xl border border-red-200 bg-gradient-to-br from-red-50 to-white p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="flex items-center gap-2 text-sm font-bold text-red-900">
-              <Plane className="h-4 w-4" /> Brussels visa — everything due at the TLScontact counter
-            </h3>
-            <div className="flex items-center gap-3 text-[11px] font-bold">
-              <span className={apptIn < 7 ? "text-red-700" : "text-slate-600"}>TLScontact 2 Sep 11:00 · {apptIn}d</span>
-              <span className="text-slate-500">departure · {flyIn}d</span>
-            </div>
-          </div>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-red-100">
-            <div className="h-full rounded-full bg-red-600 transition-all" style={{ width: `${(brusselsDone / brussels.length) * 100}%` }} />
-          </div>
-          <p className="mt-1 text-[11px] text-slate-600">{brusselsDone} of {brussels.length} steps complete · {brusselsOpen.length} still open</p>
-          {/* Every open step, not a preview: this is the list he works down before 2 September,
-              and a truncated checklist is worse than none. */}
-          <div className="mt-2">
-            {brusselsOpen.map(row)}
-          </div>
-        </div>
-      )}
+      {currentUser?.role === "Super Admin" && group("cover", t("Seats I cover"), Users, cover, {
+        sub: t("Items owed to a seat nobody holds yet. Use Act as… to take them."),
+        empty: t("Every seat with something owed is held."),
+      })}
 
-      {/* Calendar — what is actually in the diary, next to what is on the checklist.
-          Read-only: the feed cannot be written to, so nothing here can change the real calendar. */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
+      {week.length > 0 && group("week", t("Due this week"), Clock, week)}
+
+      {/* Calendar — what is actually in the diary, next to what the desk owes. Directors only:
+          the merged feed carries personal commitments. Read-only: nothing here can change the real calendar. */}
+      {isDirector && <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-            <CalendarDays className="h-4 w-4 text-[#6D1A1A]" /> Calendar
+            <CalendarDays className="h-4 w-4 text-[#6D1A1A]" /> {t("Calendar")}
           </h3>
           {cal?.connected && (
             <div className="flex flex-wrap items-center gap-2">
@@ -400,13 +379,15 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
                   <span className={`h-1.5 w-1.5 rounded-full ${calColour(name)}`} /> {name}
                 </span>
               ))}
-              <button
-                onClick={() => setAddingCal(v => !v)}
-                className="rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-[10px] font-bold text-slate-500 hover:border-[#6D1A1A] hover:text-[#6D1A1A]"
-              >
-                + calendar
-              </button>
-              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">read-only</span>
+              {isDirector && (
+                <button
+                  onClick={() => setAddingCal(v => !v)}
+                  className="rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-[10px] font-bold text-slate-500 hover:border-[#6D1A1A] hover:text-[#6D1A1A]"
+                >
+                  + {t("calendar")}
+                </button>
+              )}
+              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">{t("read-only")}</span>
               <div className="flex overflow-hidden rounded-lg border border-slate-300">
                 {(["month", "list"] as const).map(v => (
                   <button
@@ -414,7 +395,7 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
                     onClick={() => setCalView(v)}
                     className={`px-2.5 py-1 text-[11px] font-bold capitalize ${calView === v ? "bg-[#6D1A1A] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
                   >
-                    {v}
+                    {t(v)}
                   </button>
                 ))}
               </div>
@@ -446,13 +427,13 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
 
             <div className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200">
               {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (
-                <div key={d} className="bg-slate-50 py-1 text-center text-[9px] font-bold uppercase tracking-wide text-slate-500">{d}</div>
+                <div key={d} className="bg-slate-50 py-1 text-center text-[9px] font-bold uppercase tracking-wide text-slate-500">{t(d)}</div>
               ))}
               {monthGrid.flat().map((d, i) => {
                 if (!d) return <div key={`b${i}`} className="min-h-[62px] bg-slate-50/60" />;
                 const key = isoOf(d);
-                const items = byDay.get(key) || [];
-                const isToday = key === todayIso;
+                const dayItems = byDay.get(key) || [];
+                const isToday = key === today;
                 const isPicked = key === pickedDay;
                 return (
                   <button
@@ -464,10 +445,10 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
                       {d.getDate()}
                     </span>
                     <span className="mt-0.5 flex flex-wrap gap-0.5">
-                      {items.slice(0, 4).map(it => (
+                      {dayItems.slice(0, 4).map(it => (
                         <span key={it.id} title={it.label} className={`h-1.5 w-1.5 rounded-full ${it.tone}`} />
                       ))}
-                      {items.length > 4 && <span className="text-[8px] font-bold text-slate-400">+{items.length - 4}</span>}
+                      {dayItems.length > 4 && <span className="text-[8px] font-bold text-slate-400">+{dayItems.length - 4}</span>}
                     </span>
                   </button>
                 );
@@ -478,9 +459,9 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
               {(cal?.calendars || []).map(name => (
                 <span key={name} className="flex items-center gap-1"><span className={`h-1.5 w-1.5 rounded-full ${calColour(name)}`} /> {name}</span>
               ))}
-              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#E23B3B]" /> overdue</span>
-              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#F88888]" /> due this week</span>
-              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-slate-400" /> later</span>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#E23B3B]" /> {t("overdue")}</span>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-[#F88888]" /> {t("Due this week")}</span>
+              <span className="flex items-center gap-1"><span className="h-1.5 w-1.5 rounded-full bg-slate-400" /> {t("later")}</span>
             </div>
 
             {pickedDay && (
@@ -488,7 +469,7 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
                 <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-600">
                   {new Date(`${pickedDay}T00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}
                 </p>
-                {(byDay.get(pickedDay) || []).length === 0 && <p className="text-xs text-slate-400">Nothing on this day.</p>}
+                {(byDay.get(pickedDay) || []).length === 0 && <p className="text-xs text-slate-400">{t("Nothing on this day.")}</p>}
                 {(byDay.get(pickedDay) || []).map(it => (
                   <div key={it.id} className="flex items-start gap-2 border-b border-slate-200 py-1.5 last:border-0">
                     <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${it.tone}`} />
@@ -496,19 +477,22 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
                       <p className="text-[12px] leading-snug text-slate-800">{it.label}</p>
                       <p className="text-[10px] text-slate-500">
                         {it.kind === "event"
-                          ? `${it.calendar || "Diary"}${it.time ? ` · ${it.time}` : " · all day"}`
-                          : "Task due"}
+                          ? `${it.calendar || t("Diary")}${it.time ? ` · ${it.time}` : ` · ${t("all day")}`}`
+                          : it.item?.seats.length ? `${t("seat")}: ${it.item.seats.map(x => t(x)).join(", ")}` : t(it.item?.status || "")}
                       </p>
                     </div>
-                    {it.kind === "task" && (
+                    {it.kind === "item" && it.item?.kind === "complianceTasks" && isDirector && (
                       <button
-                        onClick={() => setDone(it.task.id, it.task.title, true)}
-                        disabled={busy === it.task.id}
-                        title="Mark done"
+                        onClick={() => setDone(it.item!.recordId, it.item!.title, true)}
+                        disabled={busy === it.item.recordId}
+                        title={t("Mark done")}
                         className="shrink-0 rounded-full border border-slate-300 p-1 hover:border-red-600 hover:bg-red-50 disabled:opacity-40"
                       >
                         <CheckCircle2 className="h-3 w-3 text-slate-400" />
                       </button>
+                    )}
+                    {it.kind === "item" && it.item && it.item.kind !== "complianceTasks" && (
+                      <button onClick={() => open(it.item!)} className="shrink-0 text-[10px] font-bold text-red-700 hover:underline">{t("Open")}</button>
                     )}
                   </div>
                 ))}
@@ -517,20 +501,19 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
           </div>
         )}
 
-        {!cal && <p className="text-xs text-slate-400">Loading…</p>}
+        {!cal && <p className="text-xs text-slate-400">{t("Loading…")}</p>}
 
+        {/* Connecting a feed is a director's act: the server refuses everyone else. */}
         {cal && (!cal.connected || addingCal) && (
           <div className="mb-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-[11px] leading-relaxed text-slate-600">
-              Paste the <span className="font-semibold">secret address in iCal format</span> from Google Calendar
-              (Settings → your calendar → Integrate calendar). It is held on this machine only, never shown again,
-              and never sent to the browser. The feed is read-only — nothing here can alter your calendar.
+              {t("Paste the secret iCal address from Google Calendar (Settings → your calendar → Integrate calendar). It is held on this machine only, never shown again, and never sent to the browser. The feed is read-only — nothing here can alter your calendar.")}
             </p>
             <div className="flex flex-wrap gap-2">
               <input
                 value={icsLabel}
                 onChange={e => setIcsLabel(e.target.value)}
-                placeholder="Name (e.g. Fellowship)"
+                placeholder={t("Name (e.g. Fellowship)")}
                 className="w-40 shrink-0 rounded-lg border border-slate-300 px-2 py-1.5 text-[11px]"
               />
               <input
@@ -545,7 +528,7 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
                 disabled={busy === "cal" || !icsInput.trim()}
                 className="rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#4A1010] disabled:opacity-40"
               >
-                {busy === "cal" ? "Checking…" : "Connect"}
+                {busy === "cal" ? t("Checking…") : t("Connect")}
               </button>
             </div>
           </div>
@@ -554,12 +537,12 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
         {cal?.connected && cal.error && <p className="text-[11px] text-red-700">{cal.error}</p>}
 
         {cal?.connected && !cal.error && calView === "list" && cal.events.length === 0 && (
-          <p className="text-xs text-slate-500">Nothing in the diary for the next six months.</p>
+          <p className="text-xs text-slate-500">{t("Nothing in the diary for the next six months.")}</p>
         )}
 
         {cal?.connected && calView === "list" && cal.events.map((e: any) => {
           const d = new Date(`${e.start}${e.allDay ? "T00:00" : ""}`);
-          const days = Math.round((new Date(d.toDateString()).getTime() - new Date(new Date().toDateString()).getTime()) / 86400000);
+          const days = Math.round((new Date(d.toDateString()).getTime() - new Date(now.toDateString()).getTime()) / 86400000);
           return (
             <div key={e.uid} className="flex items-start gap-3 border-b border-slate-100 py-2 last:border-0">
               <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${calColour(e.calendar)}`} />
@@ -573,53 +556,26 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
               {/* A multi-week project block started before today but is still running —
                   "-111d" would be nonsense, so say what it actually is. */}
               <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                {days < 0 ? "ongoing" : days === 0 ? "today" : days === 1 ? "tomorrow" : `${days}d`}
+                {days < 0 ? t("ongoing") : days === 0 ? t("today") : days === 1 ? t("tomorrow") : `${days}d`}
               </span>
             </div>
           );
         })}
-      </div>
-
-      {(overdue.length > 0 || soon.length > 0) && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900">
-            <AlertTriangle className="h-4 w-4 text-amber-600" /> Needs you now
-          </h3>
-          {[...overdue, ...soon].map(row)}
-        </div>
-      )}
-
-      {mine.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900">
-            <FileText className="h-4 w-4 text-slate-500" /> Editorial work in your name
-          </h3>
-          {mine.map(c => (
-            <button
-              key={c.id}
-              onClick={() => handleNavClick("editorial")}
-              className="flex w-full items-center justify-between border-b border-slate-100 py-2 text-left last:border-0 hover:bg-slate-50"
-            >
-              <span className="text-[13px] text-slate-800">{c.title}</span>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{c.status}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      </div>}
 
       {me && (
         <div className="rounded-xl border border-[#E23B3B]/25 bg-gradient-to-br from-[#E23B3B]/[0.04] to-white p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-              <Lock className="h-4 w-4 text-[#8f2020]" /> My papers — personnel file
+              <Lock className="h-4 w-4 text-[#8f2020]" /> {t("My papers — personnel file")}
             </h3>
             <span className="rounded-full bg-[#E23B3B]/10 px-2.5 py-0.5 text-[10px] font-bold text-[#8f2020]">
-              RESTRICTED · you, HR / Payroll, Executive Director
+              {t("Restricted: you, HR / Payroll, Executive Director")}
             </span>
           </div>
 
           {myPapers.length === 0 ? (
-            <p className="mt-2 text-xs text-slate-500">Nothing on file yet. Add your passport, ID or CV below.</p>
+            <p className="mt-2 text-xs text-slate-500">{t("Nothing on file yet. Add your passport, ID or CV below.")}</p>
           ) : (
             <div className="mt-2">
               {myPapers.map(d => (
@@ -655,61 +611,50 @@ export default function MyDeskTab({ state, currentUser, formatUSD, refreshState,
               disabled={busy === "upload"}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#4A1010] disabled:opacity-50"
             >
-              <Upload className="h-3.5 w-3.5" /> {busy === "upload" ? "Filing…" : "Add document"}
+              <Upload className="h-3.5 w-3.5" /> {busy === "upload" ? t("Filing…") : t("Add document")}
             </button>
             <p className="text-[10px] text-slate-500">
-              Filed to the vault under PERSONNEL / {me.name}. Never leaves this machine.
+              {t("Filed to the vault under")} {`PERSONNEL / ${me.name}.`} {t("Never leaves this machine.")}
             </p>
           </div>
         </div>
       )}
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-slate-900">
-          <CalendarDays className="h-4 w-4 text-slate-500" /> Later
-        </h3>
-        {later.length === 0 && <p className="text-xs text-slate-500">Nothing scheduled beyond this week.</p>}
-        {later.slice(0, 12).map(row)}
-        {later.length > 12 && (
-          <button onClick={() => handleNavClick("compliance")} className="mt-2 flex items-center gap-1 text-[11px] font-bold text-red-700 hover:underline">
-            <Clock className="h-3 w-3" /> {later.length - 12} more in the Compliance Control Desk
-          </button>
-        )}
-      </div>
-
       {/* Done tasks leave the list above but not the register. Kept collapsed so the desk
           stays about what is outstanding, and one click puts anything back. */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <button
-          onClick={() => setShowDone(v => !v)}
-          className="flex w-full items-center justify-between gap-2 text-left"
-        >
-          <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Done
-            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{done.length}</span>
-          </h3>
-          <ChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${showDone ? "rotate-90" : ""}`} />
-        </button>
+      {isDirector && (state.complianceTasks || []).length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <button
+            onClick={() => setShowDone(v => !v)}
+            className="flex w-full items-center justify-between gap-2 text-left"
+          >
+            <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" /> {t("Done")}
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{done.length}</span>
+            </h3>
+            <ChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${showDone ? "rotate-90" : ""}`} />
+          </button>
 
-        {showDone && (
-          <div className="mt-2">
-            {done.length === 0 && <p className="text-xs text-slate-500">Nothing ticked off yet.</p>}
-            {done.map(t => (
-              <div key={t.id} className="flex items-start gap-3 border-b border-slate-100 py-2 last:border-0">
-                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
-                <p className="min-w-0 flex-1 text-[13px] leading-snug text-slate-500 line-through decoration-slate-300">{t.title}</p>
-                <button
-                  onClick={() => setDone(t.id, t.title, false)}
-                  disabled={busy === t.id}
-                  className="shrink-0 rounded-lg border border-slate-300 px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:border-[#6D1A1A] hover:text-[#6D1A1A] disabled:opacity-50"
-                >
-                  <Undo2 className="mr-1 inline h-3 w-3" /> Reopen
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+          {showDone && (
+            <div className="mt-2">
+              {done.length === 0 && <p className="text-xs text-slate-500">{t("Nothing ticked off yet.")}</p>}
+              {done.map(x => (
+                <div key={x.id} className="flex items-start gap-3 border-b border-slate-100 py-2 last:border-0">
+                  <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                  <p className="min-w-0 flex-1 text-[13px] leading-snug text-slate-500 line-through decoration-slate-300">{x.title}</p>
+                  <button
+                    onClick={() => setDone(x.id, x.title, false)}
+                    disabled={busy === x.id}
+                    className="shrink-0 rounded-lg border border-slate-300 px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:border-[#6D1A1A] hover:text-[#6D1A1A] disabled:opacity-50"
+                  >
+                    <Undo2 className="mr-1 inline h-3 w-3" /> {t("Reopen")}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
