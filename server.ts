@@ -5974,7 +5974,6 @@ app.post("/api/compliance/complete", async (req, res) => {
 
     const task = await prisma.complianceTask.findUnique({ where: { id: taskId } });
     if (!task) return res.status(404).json({ error: "Task not listed." });
-    if (!mayTickTask(task, req.body.user)) return res.status(403).json({ error: "This task is not yours to reopen." });
     if (!mayTickTask(task, user)) return res.status(403).json({ error: "This task is not yours to tick." });
 
     const updated = await prisma.complianceTask.update({
@@ -6154,6 +6153,7 @@ app.post("/api/compliance/reopen", async (req, res) => {
 
     const task = await prisma.complianceTask.findUnique({ where: { id: taskId } });
     if (!task) return res.status(404).json({ error: "Task not listed." });
+    if (!mayTickTask(task, req.body.user)) return res.status(403).json({ error: "This task is not yours to reopen." });
 
     const updated = await prisma.complianceTask.update({
       where: { id: taskId },
