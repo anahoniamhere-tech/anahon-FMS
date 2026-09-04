@@ -69,6 +69,7 @@ import ReportsTab from "./tabs/ReportsTab";
 import AssetsTab from "./tabs/AssetsTab";
 import AccountsTab from "./tabs/AccountsTab";
 import HandbooksTab from "./tabs/HandbooksTab";
+import HelpTab from "./tabs/HelpTab";
 import EditorialTab from "./tabs/EditorialTab";
 import NetworkTab from "./tabs/NetworkTab";
 import ToolsTab from "./tabs/ToolsTab";
@@ -1144,6 +1145,10 @@ export default function App() {
               <Activity className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">{t("Overview")}</span>
             </button>
+            <button onClick={() => handleNavClick("help")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "help" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <span className="h-4 w-4 shrink-0 text-center leading-4">?</span>
+              <span className="text-left flex-1">{t("Help & Q&A")}</span>
+            </button>
             <button onClick={() => handleNavClick("projects")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <FolderGit2 className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">{t("My Projects & Budgets")}</span>
@@ -1168,6 +1173,10 @@ export default function App() {
               <Newspaper className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">{t("Editorial Desk")}</span>
             </button>
+            <button onClick={() => handleNavClick("help")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "help" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <span className="h-4 w-4 shrink-0 text-center leading-4">?</span>
+              <span className="text-left flex-1">{t("Help & Q&A")}</span>
+            </button>
             </>)}
 
             {!isSelfService && !isProjectOfficer && !isContentCrew && (<>
@@ -1175,6 +1184,10 @@ export default function App() {
             <button onClick={() => handleNavClick("mydesk")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "mydesk" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <UserCheck className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">{t("My Desk")}</span>
+            </button>
+            <button onClick={() => handleNavClick("help")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "help" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <span className="h-4 w-4 shrink-0 text-center leading-4">?</span>
+              <span className="text-left flex-1">{t("Help & Q&A")}</span>
             </button>
             <button onClick={() => handleNavClick("dashboard")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Activity className="h-4 w-4 shrink-0" />
@@ -1386,6 +1399,7 @@ export default function App() {
           {activeTab === "website" && <WebsiteTab {...shared} />}
           {activeTab === "live" && <LiveTab {...shared} />}
           {activeTab === "handbooks" && <HandbooksTab {...shared} />}
+          {activeTab === "help" && <HelpTab {...shared} />}
 
           {activeTab === "mydesk" && <MyDeskTab {...shared} />}
           {activeTab === "compliance" && <ComplianceTab {...shared} />}

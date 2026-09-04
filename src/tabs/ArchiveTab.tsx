@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { SharedProps } from "./shared";
+import Info from "../Info";
 
 /**
  * Archive — the whole media archive, curated here and published to the website.
@@ -23,7 +24,7 @@ const UNPUBLISHED = "hidden"; // storage name of the unpublished flag
 
 const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then(r => r.json());
 
-export default function ArchiveTab({ currentUser, triggerToast }: SharedProps) {
+export default function ArchiveTab({ currentUser, triggerToast, lang }: SharedProps) {
   const [view, setView] = useState<"items" | "schema" | "home">("items");
   const [collection, setCollection] = useState<"anahon" | "icontent">("anahon");
   const [items, setItems] = useState<Item[]>([]);
@@ -77,9 +78,9 @@ export default function ArchiveTab({ currentUser, triggerToast }: SharedProps) {
           </div>
         )}
         {canPublish && (
-          <button onClick={publish} disabled={publishing} className="ml-auto rounded bg-red-700 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-800 disabled:opacity-50">
+          <><button onClick={publish} disabled={publishing} className="ml-auto rounded bg-red-700 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-800 disabled:opacity-50">
             {publishing ? "Publishing…" : "⬆ Publish to website"}
-          </button>
+          </button><Info id="archive-rebuild" lang={lang} /></>
         )}
       </div>
       {lastPublish && <p className="text-xs text-emerald-700">Last publish {lastPublish}</p>}

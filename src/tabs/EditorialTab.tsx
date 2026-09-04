@@ -3,6 +3,7 @@ import { Newspaper, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { ContentItem } from "../types";
 import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "../constants";
 import { SharedProps } from "./shared";
+import Info from "../Info";
 
 // Editorial pipeline (Policies 002 & 005). The tab renders the register and the
 // buttons; every rule lives server-side — the same publishBlockers() the server
@@ -19,7 +20,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 const EDITOR_ROLES = ["Production Manager", "Executive Director", "Super Admin"];
 
-export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc }: SharedProps) {
+export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc, lang }: SharedProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [form, setForm] = useState<any | null>(null);
@@ -1448,17 +1449,17 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                           className="bg-slate-100 hover:bg-slate-200 rounded px-3 py-1.5">{t("Return for Revision")}</button>
                       ) : null}
                       {item.status === "Editorial Review" && isEditor && !isAssignee && (
-                        <button onClick={() => post("/api/content/approve", { id: item.id }, "Approved")}
-                          className="bg-purple-600 hover:bg-purple-700 text-white rounded px-3 py-1.5">✓ {t("Approve")}</button>
+                        <><button onClick={() => post("/api/content/approve", { id: item.id }, "Approved")}
+                          className="bg-purple-600 hover:bg-purple-700 text-white rounded px-3 py-1.5">✓ {t("Approve")}</button><Info id="content-approve" lang={lang} /></>
                       )}
                       {item.status === "Approved" && isEditor && (
-                        <button
+                        <><button
                           onClick={() => post("/api/content/publish", { id: item.id }, "Published — fact-checked tag applied")}
                           disabled={blockers.length > 0}
                           title={blockers.join("\n")}
                           className="bg-red-600 hover:bg-red-700 text-white rounded px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
                           🚀 {t("Publish")}
-                        </button>
+                        </button><Info id="two-approvers" lang={lang} /></>
                       )}
                       {item.status !== "Published" && isEditor && (
                         <button onClick={() => { if (window.confirm(`Remove "${item.title}"?`)) post("/api/content/delete", { id: item.id }, "Removed"); }}

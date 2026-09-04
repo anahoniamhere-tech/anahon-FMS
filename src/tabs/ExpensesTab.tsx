@@ -3,8 +3,9 @@ import { selfDealingRequester } from "../selfDealing";
 import { Search } from "lucide-react";
 import { Procurement, Project, Vendor } from "../types";
 import { SharedProps } from "./shared";
+import Info from "../Info";
 
-export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUpload, openDoc, refreshState, requestableProjects, searchTerm, setDrawerExpenseId, setSearchTerm, state, t, triggerToast }: SharedProps) {
+export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUpload, openDoc, refreshState, requestableProjects, searchTerm, setDrawerExpenseId, setSearchTerm, state, t, triggerToast, lang }: SharedProps) {
   const [vFilter, setVFilter] = useState({ from: "", to: "", type: "", status: "" });
 
   // New Expense submission form
@@ -836,22 +837,22 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             🔎 Details
                           </button>
                           {exp.status === "Submitted" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (
-                            <button
-                              onClick={() => handleExpenseAction(exp.id, "finance-review", { comment: "Integrity review flagged by Layale." })}
+                            <><button
+                              onClick={() => handleExpenseAction(exp.id, "finance-review", { comment: "Flagged for finance review." })}
                               className="text-[11px] bg-slate-800 hover:bg-slate-950 text-white px-3 py-1.5 rounded font-medium"
                             >
                               ⚙️ Raise Finance Review Flag
-                            </button>
+                            </button><Info id="expense-finance-review" lang={lang} /></>
                           )}
 
-                          {["Submitted", "Under Finance Review"].includes(exp.status) && ["Super Admin", "Executive Director"].includes(currentUser.role) && (
+                          {["Submitted", "Under Finance Review"].includes(exp.status) && ["Super Admin", "Program Director"].includes(currentUser.role) && (
                             <>
-                              <button
+                              <><button
                                 onClick={() => handleExpenseAction(exp.id, "approve")}
                                 className="text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded font-medium"
                               >
                                 ✓ Grant Director Signature
-                              </button>
+                              </button><Info id="expense-approve" lang={lang} /></>
                               <button
                                 onClick={() => {
                                   const c = prompt("Provide correction feedback comment:");
@@ -929,12 +930,12 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                           })()}
 
                           {exp.status === "Paid" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (
-                            <button
+                            <><button
                               onClick={() => handleExpenseAction(exp.id, "general-ledger-post")}
                               className="text-[11px] bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded font-medium"
                             >
                               🖨️ Post to double-entry general ledger
-                            </button>
+                            </button><Info id="expense-post" lang={lang} /></>
                           )}
 
                           {/* Render voucher PDF details */}

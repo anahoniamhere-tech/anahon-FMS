@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import Info from "./Info";
 
 /**
  * Standing in for a vacant seat.
@@ -9,6 +10,13 @@ import React, { useEffect, useState } from "react";
  * every audit line the action produces. One person wearing two hats, on the record.
  */
 type Seat = { role: string; holders: string[]; vacant: boolean };
+/** What a seat is called in the organisation, where the system's key is a policy name. */
+const SEAT_LABEL: Record<string, string> = {
+  "Production Manager": "Production Team Leader (Production Manager)",
+  "Program Director": "Programme Director seat (held by the Executive Director)",
+  "HR / Payroll Officer": "HR and Payroll",
+};
+const seatName = (role: string) => SEAT_LABEL[role] || role;
 type ActingLog = { id: string; userName: string; action: string; details: string; timestamp: string; actingAs: string | null };
 
 export default function RoleSwitch({ currentUser, onChange }: { currentUser: any; onChange: (role: string | null) => void }) {
@@ -45,8 +53,9 @@ export default function RoleSwitch({ currentUser, onChange }: { currentUser: any
           ? "border-amber-400 bg-amber-400 text-slate-900"
           : "border-slate-600 text-slate-200 hover:bg-slate-800"}`}
       >
-        {acting ? `🎭 acting as ${acting}` : "🎭 Act as…"}
+        {acting ? `🎭 acting as ${seatName(acting)}` : "🎭 Act as…"}
       </button>
+      <Info id="acting-as" />
 
       {open && (
         <div className="absolute right-0 z-50 mt-2 w-96 rounded-lg border border-slate-200 bg-white p-3 text-slate-800 shadow-xl">
@@ -66,7 +75,7 @@ export default function RoleSwitch({ currentUser, onChange }: { currentUser: any
           {vacant.map(s => (
             <button key={s.role} onClick={() => pick(s.role)}
               className={`mb-1 flex w-full items-center justify-between rounded border px-2 py-1.5 text-left text-xs hover:border-red-400 ${acting === s.role ? "border-red-500 bg-red-50" : "border-slate-200"}`}>
-              <span className="font-semibold">{s.role}</span>
+              <span className="font-semibold">{seatName(s.role)}</span>
               <span className="text-[10px] text-emerald-700">nobody in this seat</span>
             </button>
           ))}
@@ -77,7 +86,7 @@ export default function RoleSwitch({ currentUser, onChange }: { currentUser: any
               {filled.map(s => (
                 <button key={s.role} onClick={() => pick(s.role)}
                   className={`mb-1 flex w-full items-center justify-between rounded border px-2 py-1.5 text-left text-xs hover:border-amber-400 ${acting === s.role ? "border-amber-500 bg-amber-50" : "border-slate-200"}`}>
-                  <span className="font-semibold">{s.role}</span>
+                  <span className="font-semibold">{seatName(s.role)}</span>
                   <span className="text-[10px] text-amber-700">bypasses {s.holders.join(", ")}</span>
                 </button>
               ))}
@@ -111,7 +120,7 @@ export function ActingBanner({ acting, onStop }: { acting: string | null; onStop
   if (!acting) return null;
   return (
     <div className="flex items-center justify-center gap-3 bg-amber-400 px-4 py-1.5 text-xs font-bold text-slate-900">
-      🎭 You are acting as {acting}. Everything you do is being recorded under your own name and this seat.
+      🎭 You are acting as {SEAT_LABEL[acting] || acting}. Everything you do is being recorded under your own name and this seat.
       <button onClick={onStop} className="rounded bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-amber-300">Stop</button>
     </div>
   );

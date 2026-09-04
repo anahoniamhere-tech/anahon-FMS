@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { Expense, Project, Quotation } from "../types";
 import { SharedProps } from "./shared";
+import Info from "../Info";
 
-export default function ProcurementTab({ currentUser, refreshState, requestableProjects, state, t, triggerToast }: SharedProps) {
+export default function ProcurementTab({ currentUser, refreshState, requestableProjects, state, t, triggerToast, lang }: SharedProps) {
   // Procurement sourcing form
   const [procTitle, setProcTitle] = useState("");
 
@@ -294,7 +295,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                     </div>
 
                     {pr.status === "Under Evaluation" && ["Super Admin", "Executive Director"].includes(currentUser.role) && (
-                      <button
+                      <><button
                         onClick={async () => {
                           const res = await fetch("/api/procurement/approve", {
                             method: "POST",
@@ -309,7 +310,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                         className="mt-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded px-4 py-2"
                       >
                         Authorize Sourcing & Emit Contract PO
-                      </button>
+                      </button><Info id="procurement-approve" lang={lang} /></>
                     )}
                   </div>
                 ))}

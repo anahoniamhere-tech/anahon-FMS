@@ -1799,7 +1799,9 @@ app.post("/api/opportunities/delete", async (req, res) => {
 // MASTER ACCOUNT ONLY. Role authority is the database — see the middleware above.
 const ASSIGNABLE_ROLES = ["Super Admin", "Finance Officer", "Program Director", "Project Officer", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer", "Employee (Self-Service)",
   // Editorial roles named by Policy 002 ("Programs Director" is the existing Program Director).
-  "Production Manager", "Reporter", "Content Creator", "Podcaster"];
+  "Production Manager", "Reporter", "Content Creator", "Podcaster",
+  // Seats named in the 4 Sep 2026 roles paper. Vacant today; the Executive Director stands in them, logged.
+  "Chief Editor", "Procurement and Logistics Officer", "Digital Officer", "Graphic Designer"];
 
 // The seats and who sits in them. A Super Admin uses this to see what is standing
 // empty before deciding to fill it themselves.
@@ -2478,7 +2480,7 @@ app.get("/api/subscriptions/detect", async (req, res) => {
 // legal attestation when flagged, a publish gate, and dated public corrections.
 // One narrow route per transition; every route writes its own audit line.
 
-const CONTENT_EDITOR_ROLES = ["Production Manager", "Program Director", "Super Admin"];
+const CONTENT_EDITOR_ROLES = ["Production Manager", "Program Director", "Super Admin", "Chief Editor"];
 
 // After the desk's last gate, tell the website to render the piece. The site
 // re-reads this database and refuses anything not Published, so the call carries
@@ -2950,7 +2952,10 @@ app.post("/api/content/cover", async (req, res) => {
 // build_library.py against the mounted site folders and tells the site to re-read.
 const ARCHIVE_DIR = process.env.ARCHIVE_DIR || "/Users/saadmatar/AnaHon/archive";
 const SITE_DIR = process.env.SITE_DIR || "/Users/saadmatar/AnaHon/website";
-const ARCHIVE_EDIT_ROLES = [...CONTENT_EDITOR_ROLES, "Project Officer"];
+// Site work — website copy, the live editor, the archive, social posting — belongs to the Digital
+// Officer as well as the editors. Editorial approval (content/approve, publish, retract) does not.
+const SITE_EDITOR_ROLES = [...CONTENT_EDITOR_ROLES, "Digital Officer"];
+const ARCHIVE_EDIT_ROLES = [...SITE_EDITOR_ROLES, "Project Officer"];
 const readJsonFile = (p: string, fallback: any) => { try { return JSON.parse(fs.readFileSync(p, "utf-8")); } catch { return fallback; } };
 const libraryFile = (collection: string) => path.join(SITE_DIR, "src/data", collection === "icontent" ? "icontent-library.json" : "library.json");
 const cleanTag = (t: any) => String(t).trim().toLowerCase().replace(/\s+/g, "-");
@@ -2997,7 +3002,7 @@ async function siteRefresh() {
 app.post("/api/archive/schema", async (req, res) => {
   try {
     const { facets, order, suppressed, collection, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the tag schema needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the tag schema needs an editor role." });
     const fmtPath = path.join(SITE_DIR, "src/data/formats.json");
     const prev = readJsonFile(fmtPath, {});
     const isIC = collection === "icontent";
@@ -3045,7 +3050,7 @@ app.get("/api/archive/home", (_req, res) => {
 app.post("/api/archive/home", async (req, res) => {
   try {
     const { widgets, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website home needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website home needs an editor role." });
     const p = path.join(SITE_DIR, "src/data/home.json");
     const prev = readJsonFile(p, {});
     for (const [k, v] of Object.entries(widgets || {})) {
@@ -3066,7 +3071,7 @@ app.post("/api/archive/home", async (req, res) => {
 app.post("/api/archive/publish", async (req, res) => {
   try {
     const { user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing the archive to the website needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing the archive to the website needs an editor role." });
     const { spawnSync } = await import("node:child_process");
     const out = spawnSync("python3", [path.join(ARCHIVE_DIR, "scripts/build_library.py")], {
       encoding: "utf-8", timeout: 180000, env: { ...process.env, SITE_DIR, ARCHIVE_DIR }
@@ -3131,7 +3136,7 @@ app.get("/api/social/list", async (_req, res) => {
 app.post("/api/social/publish", async (req, res) => {
   try {
     const { target, message, link, imageUrl, unpublished, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Posting to social media needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Posting to social media needs an editor role." });
     needToken();
     if (target === "fb") {
       if (!String(message || "").trim() && !link) throw new Error("a post needs a message or a link");
@@ -3156,7 +3161,7 @@ app.post("/api/social/publish", async (req, res) => {
 app.post("/api/social/edit", async (req, res) => {
   try {
     const { target, postId, message, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing posts needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing posts needs an editor role." });
     needToken();
     if (target === "ig") throw new Error("Instagram captions cannot be edited through the API — Meta has never exposed it. Delete and repost, or edit in the app.");
     if (!postId) throw new Error("postId required");
@@ -3168,7 +3173,7 @@ app.post("/api/social/edit", async (req, res) => {
 app.post("/api/social/delete", async (req, res) => {
   try {
     const { target, postId, confirm, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Deleting posts needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Deleting posts needs an editor role." });
     needToken();
     if (confirm !== "yes") throw new Error('delete needs confirm:"yes"');
     if (!postId) throw new Error("postId required");
@@ -3191,7 +3196,7 @@ app.get("/api/website/content", (_req, res) => {
 app.post("/api/website/content", async (req, res) => {
   try {
     const { file, section, value, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
     const f = WEBSITE_FILES[String(file)]; if (!f) return res.status(400).json({ error: "unknown file" });
     if (typeof section !== "string" || !/^[\w-]+$/.test(section)) return res.status(400).json({ error: "section required" });
     if (value === undefined || value === null) return res.status(400).json({ error: "value required" });
@@ -3210,7 +3215,7 @@ app.post("/api/website/content", async (req, res) => {
 app.post("/api/website/image", async (req, res) => {
   try {
     const { filename, mimeType, base64, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Uploading website images needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Uploading website images needs an editor role." });
     const buffer = Buffer.from(String(base64 || ""), "base64");
     if (!buffer.length) return res.status(400).json({ error: "No image data." });
     if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ error: "Image larger than 15 MB." });
@@ -3242,7 +3247,7 @@ const langOfPath = (p: string) => /[._\[]en(?=[.\[]|$)/.test(p) ? "en" : /[._\[]
 app.post("/api/website/edit", async (req, res) => {
   try {
     const { kind, from, to, lang, url, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
     if (!["text", "image"].includes(kind) || typeof from !== "string" || typeof to !== "string") return res.status(400).json({ error: "kind, from, to required" });
     const norm = (x: string) => x.replace(/\s+/g, " ").trim();
     const want = kind === "text" ? norm(from) : from;
@@ -3290,7 +3295,7 @@ app.get("/api/website/library", (_req, res) => {
 app.post("/api/website/build", async (req, res) => {
   try {
     const { user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing the website needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing the website needs an editor role." });
     const r = await fetch(`${SITE_URL}/__build`, { method: "POST" });
     const j: any = await r.json().catch(() => ({ ok: false, error: `site answered ${r.status}` }));
     await createAuditLog(user?.id, user?.name, j.ok ? "Website Published" : "Website Publish Failed", `build ${j.built ? "ok" : "failed"}, deploy ${j.deployed === null ? "not configured" : j.deployed ? "ok" : "failed"}, ${j.seconds ?? "?"}s`);
