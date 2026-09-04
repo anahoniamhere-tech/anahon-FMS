@@ -78,6 +78,7 @@ import SocialTab from "./tabs/SocialTab";
 import WebsiteTab from "./tabs/WebsiteTab";
 import LiveTab from "./tabs/LiveTab";
 import RoleSwitch, { ActingBanner } from "./RoleSwitch";
+import { visibleNav, LANDING } from "./nav";
 import { SharedProps } from "./tabs/shared";
 import { auth } from "./firebaseConfig";
 import {
@@ -444,9 +445,10 @@ export default function App() {
   useEffect(() => {
     if (!state?.users?.length) return;   // state is null until the backend loads
     const u = state.users.find(x => x.id === activeUserId) || state.users[0];
-    if (u?.role === "Employee (Self-Service)" && activeTab !== "payroll") setActiveTab("payroll");
-    if (u?.role === "Project Officer" && !["dashboard", "projects", "expenses", "procurement", "editorial"].includes(activeTab)) setActiveTab("expenses");
-    if (["Reporter", "Content Creator", "Podcaster"].includes(u?.role || "") && activeTab !== "editorial") setActiveTab("editorial");
+    // What a role may open is decided by the sidebar data, never by a second list here.
+    const role = u?.role || "";
+    const allowed = visibleNav(role).flatMap(sec => sec.items.map(i => i.navKey));
+    if (!allowed.includes(activeTab)) setActiveTab(LANDING[role] || allowed[0] || "dashboard");
   }, [state, activeUserId, activeTab]);
 
 
@@ -1139,177 +1141,25 @@ export default function App() {
             : `${rtl ? "translate-x-full" : "-translate-x-full"} md:translate-x-0 md:w-0 md:p-0 md:border-r-0 overflow-hidden`
         }`}>
           <nav className="space-y-1 font-sans">
-            {isProjectOfficer && (<>
-            <p className="px-3 pt-1 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Project Officer")}</p>
-            <button onClick={() => handleNavClick("dashboard")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Activity className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Overview")}</span>
-            </button>
-            <button onClick={() => handleNavClick("help")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "help" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <span className="h-4 w-4 shrink-0 text-center leading-4">?</span>
-              <span className="text-left flex-1">{t("Help & Q&A")}</span>
-            </button>
-            <button onClick={() => handleNavClick("projects")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <FolderGit2 className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("My Projects & Budgets")}</span>
-            </button>
-            <button onClick={() => handleNavClick("expenses")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <FileText className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Purchase Requests")}</span>
-            </button>
-            <button onClick={() => handleNavClick("procurement")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "procurement" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Layers className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Procurement & Bids")}</span>
-            </button>
-            <button onClick={() => handleNavClick("editorial")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "editorial" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Newspaper className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Editorial Desk")}</span>
-            </button>
-            </>)}
-
-            {isContentCrew && (<>
-            <p className="px-3 pt-1 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Content Team")}</p>
-            <button onClick={() => handleNavClick("editorial")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "editorial" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Newspaper className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Editorial Desk")}</span>
-            </button>
-            <button onClick={() => handleNavClick("help")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "help" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <span className="h-4 w-4 shrink-0 text-center leading-4">?</span>
-              <span className="text-left flex-1">{t("Help & Q&A")}</span>
-            </button>
-            </>)}
-
-            {!isSelfService && !isProjectOfficer && !isContentCrew && (<>
-            <p className="px-3 pt-1 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Overview")}</p>
-            <button onClick={() => handleNavClick("mydesk")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "mydesk" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <UserCheck className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("My Desk")}</span>
-            </button>
-            <button onClick={() => handleNavClick("help")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "help" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <span className="h-4 w-4 shrink-0 text-center leading-4">?</span>
-              <span className="text-left flex-1">{t("Help & Q&A")}</span>
-            </button>
-            <button onClick={() => handleNavClick("dashboard")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Activity className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Overview Dashboard")}</span>
-            </button>
-
-            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Registers")}</p>
-            <button onClick={() => handleNavClick("accounts")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "accounts" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Sliders className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Chart of Accounts")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("projects")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "projects" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <FolderGit2 className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Donors & Projects")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("funnel")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "funnel" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Layers className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Programs & Funnel")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("production")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "production" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Briefcase className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Production & Clients")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("editorial")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "editorial" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Newspaper className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Editorial Desk")}</span>
-            </button>
-
-            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Money Flow")}</p>
-            <button onClick={() => handleNavClick("expenses")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "expenses" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <FileText className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Disbursement Vouchers")}</span>
-              <span className="ml-auto bg-slate-800 text-[10px] text-slate-300 px-1.5 py-0.5 rounded-full font-mono shrink-0">
-                {state.expenses.filter(e => ["Submitted", "Under Finance Review", "Approved"].includes(e.status)).length}
-              </span>
-            </button>
-
-            <button onClick={() => handleNavClick("procurement")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "procurement" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Layers className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Procurement & Bids")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("vendors")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "vendors" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Users className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Vendor Registry")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("banking")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "banking" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Coins className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Banking & Cash Reconcile")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("ledger")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "ledger" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Building className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("General double-entry Ledger")}</span>
-            </button>
-
-            </>)}
-            {!isProjectOfficer && !isContentCrew && (<>
-            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("People")}</p>
-            <button onClick={() => handleNavClick("payroll")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "payroll" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <User className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Timesheets & Payroll Allocation")}</span>
-            </button>
-            </>)}
-
-            {!isSelfService && !isProjectOfficer && !isContentCrew && (<>
-            <p className="px-3 pt-3 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Records & Governance")}</p>
-            <button onClick={() => handleNavClick("assets")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "assets" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <HardDrive className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Fixed Assets Roll-Forward")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("partners")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "partners" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Briefcase className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Partner Capital Tracking")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("network")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "network" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Share2 className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Networking Register")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("tools")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "tools" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <Sliders className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Tool Register")}</span>
-            </button>
-            <button onClick={() => handleNavClick("archive")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "archive" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <span className="h-4 w-4 shrink-0 text-center leading-4">🗂</span>
-              <span className="text-left flex-1">{t("Archive")}</span>
-            </button>
-            <button onClick={() => handleNavClick("social")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "social" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <span className="h-4 w-4 shrink-0 text-center leading-4">📣</span>
-              <span className="text-left flex-1">{t("Social desk")}</span>
-            </button>
-            <button onClick={() => handleNavClick("website")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "website" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <span className="h-4 w-4 shrink-0 text-center leading-4">🌐</span>
-              <span className="text-left flex-1">{t("Website")}</span>
-            </button>
-            <button onClick={() => handleNavClick("live")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "live" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <span className="h-4 w-4 shrink-0 text-center leading-4">✎</span>
-              <span className="text-left flex-1">{t("Live editor")}</span>
-            </button>
-
-            <button onClick={() => handleNavClick("compliance")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "compliance" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <ShieldAlert className="h-4 w-4 text-rose-400 shrink-0" />
-              <span className="text-left flex-1">{t("Compliance Control Desk")}</span>
-              <span className="ml-auto flex h-2 w-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
-            </button>
-            <button onClick={() => handleNavClick("handbooks")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "handbooks" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <BookOpen className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Policies & Handbooks")}</span>
-            </button>
-            <button onClick={() => handleNavClick("reports")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "reports" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
-              <FileText className="h-4 w-4 shrink-0" />
-              <span className="text-left flex-1">{t("Periodic Reports")}</span>
-            </button>
-            </>)}
+            {/* The sidebar is data: src/nav.tsx. Eight doors by job; scripts/check-nav.ts proves every screen is listed once. */}
+            {visibleNav(currentUser?.role || "").map((sec, si) => (
+              <React.Fragment key={sec.section}>
+                <p className={`px-3 ${si === 0 ? "pt-1" : "pt-3"} pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none`}>{t(sec.section)}</p>
+                {sec.items.map(item => (
+                  <button key={item.navKey} onClick={() => handleNavClick(item.navKey)}
+                    className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === item.navKey ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+                    {item.icon}
+                    <span className="text-left flex-1">{t(item.label)}</span>
+                    {item.badge === "expenses" && (
+                      <span className="ml-auto bg-slate-800 text-[10px] text-slate-300 px-1.5 py-0.5 rounded-full font-mono shrink-0">
+                        {state.expenses.filter(e => ["Submitted", "Under Finance Review", "Approved"].includes(e.status)).length}
+                      </span>
+                    )}
+                    {item.badge === "compliance" && <span className="ml-auto flex h-2 w-2 rounded-full bg-rose-500 animate-pulse shrink-0" />}
+                  </button>
+                ))}
+              </React.Fragment>
+            ))}
           </nav>
 
           <div className="border-t border-slate-800 pt-4 mt-6">
