@@ -35,12 +35,21 @@ const before = {
 };
 const added = ["handbooks"];             // visible to the restricted roles now
 const addedSelf = ["handbooks", "help"]; // self-service had neither
+// Seats placed in phase 2 (they had no login before, so there is no "before" to compare):
+const placed: Record<string, string[]> = {
+  "Procurement and Logistics Officer": ["mydesk", "help", "handbooks", "projects", "network", "procurement", "vendors", "expenses", "assets", "payroll"],
+  "Digital Officer": ["mydesk", "help", "handbooks", "social", "live", "website", "archive", "tools", "network", "payroll"],
+  "Chief Editor": ["mydesk", "help", "handbooks", "editorial", "social", "live", "website", "archive", "payroll"],
+  "Production Manager": ["mydesk", "help", "handbooks", "editorial", "social", "live", "website", "archive", "production", "payroll"],
+  "Graphic Designer": ["editorial", "help", "handbooks"],
+};
+for (const [role, want] of Object.entries(placed)) ok(`${role}: ${want.length} doors`, same(keys(role), [...want].sort()), `got ${keys(role).join(",")}`);
 for (const [role, had] of Object.entries(before)) {
   const expect = [...had, ...(role === "Employee (Self-Service)" ? addedSelf : added)].sort();
   ok(`${role}: ${expect.length} doors`, same(keys(role), expect), `got ${keys(role).join(",")}`);
 }
 const full = listed;
-for (const role of ["Super Admin", "Finance Officer", "Program Director", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer", "Production Manager", "Chief Editor", "Digital Officer", "Procurement and Logistics Officer", "Graphic Designer"]) {
+for (const role of ["Super Admin", "Finance Officer", "Program Director", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer"]) {
   ok(`${role}: sees every door`, same(keys(role), full), `missing ${full.filter(k => !keys(role).includes(k)).join(",")}`);
 }
 
@@ -53,7 +62,7 @@ const labels = NAV.flatMap(s => [s.section, ...s.items.map(i => i.label)]);
 ok("every door and section has an Arabic label", labels.every(l => arSrc.includes(`"${l.replace(/"/g, '\\"')}":`)), labels.filter(l => !arSrc.includes(`"${l}":`)).join(", "));
 
 console.log("\nrestricted roles never see the books");
-for (const role of ["Project Officer", "Reporter", "Employee (Self-Service)"]) {
+for (const role of ["Project Officer", "Reporter", "Employee (Self-Service)", "Procurement and Logistics Officer", "Digital Officer", "Chief Editor", "Production Manager", "Graphic Designer"]) {
   ok(`${role}: no ledger, bank, accounts, reports`, !keys(role).some(k => ["ledger", "banking", "accounts", "reports", "partners"].includes(k)));
 }
 

@@ -74,6 +74,10 @@ const PO_ALLOWED_POSTS = new Set([
 // same containment idea as the Project Officer gate. loadState also gives these roles
 // no financial domain; this closes the write side.
 const CONTENT_CREW_ROLES = ["Reporter", "Content Creator", "Podcaster"];
+// The seats that may sign as director: the Programme Director seat and the master
+// account that stands in for every vacant seat. Spelled out once, here.
+const DIRECTOR_ROLES = ["Super Admin", "Program Director"];
+const isDirector = (role?: string) => DIRECTOR_ROLES.includes(role || "");
 const CREW_ALLOWED_POSTS = new Set([
   "/api/content/cover",
   "/api/auth/sync",
@@ -89,6 +93,36 @@ const CREW_ALLOWED_POSTS = new Set([
   "/api/document/upload",          // reference material gathered while producing
   "/api/materials/link"
 ]);
+// Procurement and Logistics Officer: buys, onboards suppliers, raises the payment
+// request for what was bought, keeps the equipment register and the contacts. Never
+// approves, never pays, never touches the books.
+const PLO_ALLOWED_POSTS = new Set([
+  "/api/auth/sync",
+  "/api/procurement/new", "/api/procurement/waiver-inline",
+  "/api/vendors/new", "/api/vendors/payment-doc",
+  "/api/expense/new", "/api/expense/scan-invoice",
+  "/api/document/upload", "/api/materials/link",
+  "/api/assets/register", "/api/assets/verify",
+  "/api/contacts/save", "/api/contacts/delete",
+  "/api/activities/save", "/api/activities/generate",
+  "/api/meetings/save"
+]);
+// Digital Officer: the website, the archive, the social accounts, the tools and
+// subscriptions. No money, no editorial approval.
+const DIGITAL_ALLOWED_POSTS = new Set([
+  "/api/auth/sync",
+  "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build",
+  "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
+  "/api/social/publish", "/api/social/edit", "/api/social/delete",
+  "/api/tools/save", "/api/tools/delete",
+  "/api/subscriptions/save", "/api/subscriptions/verify", "/api/subscriptions/roll", "/api/subscriptions/delete",
+  "/api/contacts/save", "/api/contacts/delete",
+  "/api/document/upload", "/api/materials/link",
+  "/api/meetings/save"
+]);
+const PLO_ROLE = "Procurement and Logistics Officer";
+const DIGITAL_ROLE = "Digital Officer";
+
 // Money-moving/control endpoints where an anonymous request is not acceptable.
 const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/quotations/issue-receipt",   // a receipt names who took the money; it needs a real signer
@@ -184,6 +218,12 @@ app.use(async (req: any, res, next) => {
       }
       if (dbUser.role === "Project Officer" && !PO_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "Project Officers can raise purchase requests and upload evidence only — this action needs the Finance Officer or master account." });
+      }
+      if (dbUser.role === PLO_ROLE && !PLO_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "The Procurement and Logistics seat buys and raises requests — it does not approve, pay, or post." });
+      }
+      if (dbUser.role === DIGITAL_ROLE && !DIGITAL_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "The Digital Officer seat runs the website, archive, social and tools — nothing financial or editorial." });
       }
       if (CONTENT_CREW_ROLES.includes(dbUser.role) && !CREW_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "Content-team accounts act on the editorial pipeline only — this action needs an editor or finance role." });
@@ -372,7 +412,7 @@ async function loadState(viewer?: any) {
 
   // Content crew (Policy 002 production team) get the editorial register and the people
   // directory — no financial domain ever leaves the server for these roles.
-  if (viewer && CONTENT_CREW_ROLES.includes(viewer.role)) {
+  if (viewer && [...CONTENT_CREW_ROLES, "Chief Editor", "Production Manager", "Graphic Designer"].includes(viewer.role)) {
     return {
       users, accounts: [], donors: [], projects: [], budgetLines: [], vendors: [],
       expenses: [], procurements: [], bankAccounts: [], bankTransactions: [],
@@ -381,6 +421,43 @@ async function loadState(viewer?: any) {
       opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], tools: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
+      editorialMeetings: formattedMeetings,
+      orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
+      fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
+    };
+  }
+
+  // The two operational seats see the work, never the books. Procurement and Logistics
+  // gets projects, budgets, suppliers, requests, bids, equipment and contacts; the Digital
+  // Officer gets the site, archive, social, tools, subscriptions and contacts. Neither gets
+  // a bank line, a journal entry, another person's payslip, or the audit log.
+  if (viewer && [PLO_ROLE, DIGITAL_ROLE].includes(viewer.role)) {
+    const buys = viewer.role === PLO_ROLE;
+    const me = employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase());
+    const myIds = new Set(me.map(e => e.id));
+    return {
+      users, accounts: [], donors, projects, budgetLines,
+      vendors: buys ? vendors : [],
+      expenses: buys ? formattedExpenses : [],
+      procurements: buys ? formattedProcurements : [],
+      bankAccounts: [], bankTransactions: [], journalEntries: [],
+      employees: me,
+      timesheets: formattedTimesheets.filter(t => myIds.has(t.employeeId)),
+      fixedAssets: buys ? fixedAssets : [],
+      partnerAccounts: [],
+      documents: filterPersonnelDocs(documents, viewer, employees).map(d => ({
+        id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
+        base64: d.base64.startsWith("link://") ? d.base64 : "", category: d.category,
+        linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
+        created_at: d.created_at, contentHash: d.contentHash, note: d.note
+      })),
+      auditLogs: [], complianceTasks: [], opportunities: [], cashCounts: [],
+      subscriptions: buys ? [] : subscriptions,
+      projectActivities,
+      clients: [], quotations: [],
+      networkContacts, tools,
+      siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "",
+      contentItems: buys ? [] : formattedContent,
       editorialMeetings: formattedMeetings,
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
@@ -2005,7 +2082,7 @@ app.post("/api/procurement/waiver-inline", async (req, res) => {
         return res.status(403).json({ error: "You can only raise waivers for projects in your programme." });
       }
     }
-    const canApprove = ["Super Admin", "Program Director", "Finance Officer"].includes(user?.role);
+    const canApprove = isDirector(user?.role) || user?.role === "Finance Officer";
     const justification = `${retrospective ? "RETROSPECTIVE (purchase already made, waiver recorded afterwards). " : ""}${written}`;
 
     const pr = await prisma.procurement.create({
@@ -4298,7 +4375,7 @@ app.get("/api/quotations/:id/pdf", async (req, res) => {
 // evidence, and it has to be issued by whoever actually took the notes. The Finance
 // Officer runs this, which is what keeps raising the quote and receipting the money in
 // two different pairs of hands.
-const RECEIPT_ISSUERS = ["Finance Officer", "Super Admin", "Program Director"];
+const RECEIPT_ISSUERS = ["Finance Officer", ...DIRECTOR_ROLES];
 
 /** Amount in words. A cash receipt with only digits on it can be altered with a pen. */
 function amountInWords(n: number): string {
@@ -4995,7 +5072,7 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
     // POLICY 4.4.2 — Cash payments above USD 150 require Program Director approval; the direct
     // cash book skips the approval workflow, so it is capped for non-Director roles.
     const disbursalUSD = disbursalAmount * rate;
-    if (disbursalUSD > 150 && !["Program Director", "Super Admin"].includes(user?.role || "")) {
+    if (disbursalUSD > 150 && !isDirector(user?.role)) {
       return res.status(400).json({ error: "Policy 4.4.2 violation: direct cash payments above USD 150 equivalent require the Program Director. Lodge a standard disbursement voucher for approval instead." });
     }
 
@@ -5221,7 +5298,7 @@ app.post("/api/procurement/approve", async (req, res) => {
     if (!pr) return res.status(404).json({ error: "Procurement record not found." });
 
     // Approving a purchase authority is a control act — it had no role check at all.
-    if (!["Super Admin", "Program Director", "Finance Officer"].includes(user?.role)) {
+    if (!isDirector(user?.role) && user?.role !== "Finance Officer") {
       return res.status(403).json({ error: "Only the Program Director, Finance Officer or master account can approve a procurement." });
     }
 
@@ -5841,7 +5918,7 @@ function writeCalendarFeeds(feeds: CalFeed[]) {
 const calCache = new Map<string, { at: number; body: string }>();
 const CAL_TTL_MS = 10 * 60 * 1000;
 
-const CAL_ADMIN = ["Super Admin", "Program Director"];
+const CAL_ADMIN = DIRECTOR_ROLES;
 
 app.post("/api/calendar/connect", async (req, res) => {
   try {

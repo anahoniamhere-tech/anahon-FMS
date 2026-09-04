@@ -27,20 +27,23 @@ export type NavSection = { section: string; roles?: string[]; items: NavItem[] }
 const ic = (I: React.ComponentType<{ className?: string }>) => <I className="h-4 w-4 shrink-0" />;
 const glyph = (g: string) => <span className="h-4 w-4 shrink-0 text-center leading-4">{g}</span>;
 
-// Role groups, matching the checks App.tsx already made.
-export const CREW = ["Reporter", "Content Creator", "Podcaster"];
+// Role groups, matching the checks the server makes.
+export const CREW = ["Reporter", "Content Creator", "Podcaster", "Graphic Designer"];
 export const OFFICER = ["Project Officer"];
 export const SELF = ["Employee (Self-Service)"];
-// The people who run the organisation's books and records: everyone who is not a
-// project officer, crew, or self-service employee. Named by exclusion on purpose —
-// a new role added to ASSIGNABLE_ROLES lands here, never in the dark.
-export const isRestricted = (role: string) => [...CREW, ...OFFICER, ...SELF].includes(role);
+export const EDITORS = ["Chief Editor", "Production Manager"];   // the editorial seats
+export const PLO = ["Procurement and Logistics Officer"];
+export const DIGITAL = ["Digital Officer"];
+// The people who run the organisation's books and records: everyone who is not in one
+// of the restricted groups above. Named by exclusion on purpose — a role that is not
+// yet placed lands here, never in the dark. The server trims what it sends anyway.
+export const isRestricted = (role: string) => [...CREW, ...OFFICER, ...SELF, ...EDITORS, ...PLO, ...DIGITAL].includes(role);
 
 export const NAV: NavSection[] = [
   {
     section: "Home",
     items: [
-      { navKey: "mydesk", label: "My Desk", icon: ic(UserCheck), roles: ["*full"] },
+      { navKey: "mydesk", label: "My Desk", icon: ic(UserCheck), roles: ["*full", ...EDITORS, ...PLO, ...DIGITAL] },
       { navKey: "dashboard", label: "Organisation overview", icon: ic(Activity), roles: ["*full", ...OFFICER] },
       { navKey: "help", label: "Help & Q&A", icon: glyph("?") },
       { navKey: "handbooks", label: "Policies & handbooks", icon: ic(BookOpen) },
@@ -48,40 +51,40 @@ export const NAV: NavSection[] = [
   },
   {
     section: "Editorial",
-    roles: ["*full", ...OFFICER, ...CREW],
+    roles: ["*full", ...OFFICER, ...CREW, ...EDITORS, ...DIGITAL],
     items: [
-      { navKey: "editorial", label: "Editorial desk", icon: ic(Newspaper) },
-      { navKey: "social", label: "Social desk", icon: glyph("📣"), roles: ["*full"] },
+      { navKey: "editorial", label: "Editorial desk", icon: ic(Newspaper), roles: ["*full", ...OFFICER, ...CREW, ...EDITORS] },
+      { navKey: "social", label: "Social desk", icon: glyph("📣"), roles: ["*full", ...EDITORS, ...DIGITAL] },
     ],
   },
   {
     section: "Website & systems",
-    roles: ["*full"],
+    roles: ["*full", ...EDITORS, ...DIGITAL],
     items: [
       { navKey: "live", label: "Live editor", icon: glyph("✎") },
       { navKey: "website", label: "Site content", icon: glyph("🌐") },
       { navKey: "archive", label: "Media archive", icon: glyph("🗂") },
-      { navKey: "tools", label: "Tools", icon: ic(Sliders) },
+      { navKey: "tools", label: "Tools", icon: ic(Sliders), roles: ["*full", ...DIGITAL] },
     ],
   },
   {
     section: "Projects & funding",
-    roles: ["*full", ...OFFICER],
+    roles: ["*full", ...OFFICER, ...PLO, ...DIGITAL, ...EDITORS],
     items: [
-      { navKey: "projects", label: "Projects & donors", icon: ic(FolderGit2) },
+      { navKey: "projects", label: "Projects & donors", icon: ic(FolderGit2), roles: ["*full", ...OFFICER, ...PLO] },
       { navKey: "funnel", label: "Funding pipeline", icon: ic(Layers), roles: ["*full"] },
-      { navKey: "production", label: "Clients & quotations", icon: ic(Briefcase), roles: ["*full"] },
-      { navKey: "network", label: "Contacts", icon: ic(Share2), roles: ["*full"] },
+      { navKey: "production", label: "Clients & quotations", icon: ic(Briefcase), roles: ["*full", "Production Manager"] },
+      { navKey: "network", label: "Contacts", icon: ic(Share2), roles: ["*full", ...PLO, ...DIGITAL] },
     ],
   },
   {
     section: "Buying & paying",
-    roles: ["*full", ...OFFICER],
+    roles: ["*full", ...OFFICER, ...PLO],
     items: [
       { navKey: "procurement", label: "Quotes & bids", icon: ic(Layers) },
-      { navKey: "vendors", label: "Suppliers", icon: ic(Users), roles: ["*full"] },
+      { navKey: "vendors", label: "Suppliers", icon: ic(Users), roles: ["*full", ...PLO] },
       { navKey: "expenses", label: "Payment requests", icon: ic(FileText), badge: "expenses" },
-      { navKey: "assets", label: "Equipment", icon: ic(HardDrive), roles: ["*full"] },
+      { navKey: "assets", label: "Equipment", icon: ic(HardDrive), roles: ["*full", ...PLO] },
     ],
   },
   {
@@ -97,7 +100,7 @@ export const NAV: NavSection[] = [
   },
   {
     section: "People",
-    roles: ["*full", ...SELF],
+    roles: ["*full", ...SELF, ...EDITORS, ...PLO, ...DIGITAL],
     items: [
       { navKey: "payroll", label: "Timesheets & payroll", icon: ic(User) },
     ],
@@ -128,5 +131,8 @@ export const NAV_KEYS = NAV.flatMap(s => s.items.map(i => i.navKey));
 export const LANDING: Record<string, string> = {
   "Employee (Self-Service)": "payroll",
   "Project Officer": "expenses",
-  "Reporter": "editorial", "Content Creator": "editorial", "Podcaster": "editorial",
+  "Reporter": "editorial", "Content Creator": "editorial", "Podcaster": "editorial", "Graphic Designer": "editorial",
+  "Chief Editor": "editorial", "Production Manager": "editorial",
+  "Procurement and Logistics Officer": "expenses",
+  "Digital Officer": "live",
 };
