@@ -1271,7 +1271,7 @@ app.post("/api/opportunities/proposal-doc", async (req, res) => {
       amount: opp.amount,
       deadline: opp.deadline,
       decisionDate: opp.decisionDate,
-      preparedBy: `${user?.name || "Saad Matar"} — Program Director`,
+      preparedBy: `${user?.name || "Saad Matar"} — Executive Director`,
       proposal: JSON.parse(opp.proposalJson || "{}")
     });
 
@@ -4166,7 +4166,7 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
       quoteNo: quote.quoteNo,
       date: quote.date,
       validUntil: quote.validUntil,
-      preparedBy: `${user?.name || "Saad Matar"} — Program Director`,
+      preparedBy: `${user?.name || "Saad Matar"} — Executive Director`,
       clientName: client.name,
       clientContact: client.contact,
       clientPhone: client.phone,
@@ -4222,7 +4222,7 @@ app.get("/api/quotations/:id/pdf", async (req, res) => {
       quoteNo: quote.quoteNo,
       date: quote.date,
       validUntil: quote.validUntil,
-      preparedBy: `${viewer?.name || "Saad Matar"} — ${viewer?.role === "Super Admin" ? "Program Director" : viewer?.role || "Program Director"}`,
+      preparedBy: `${viewer?.name || "Saad Matar"} — ${viewer?.role === "Super Admin" ? "Executive Director" : viewer?.role || "Executive Director"}`,
       clientName: client.name,
       clientContact: client.contact,
       clientPhone: client.phone,
@@ -6241,7 +6241,7 @@ ${(r.internalMovements || []).length ? `<h3>4b. Internal Movements — excluded 
 <div class="note"><b>NOTES &amp; KNOWN LIMITATIONS</b><br>${r.caveats.map((c: string) => "• " + esc(c)).join("<br>")}</div>
 <div class="sig">
   <div>Prepared by — Finance Officer (Policy 11.7)<br><br>Name &amp; signature: ____________________</div>
-  <div>Approved by — Program Director (Policy 11.7)<br><br>Name &amp; signature: ____________________</div>
+  <div>Approved by — Executive Director (Policy 11.7)<br><br>Name &amp; signature: ____________________</div>
 </div>
 </body></html>`;
 }
