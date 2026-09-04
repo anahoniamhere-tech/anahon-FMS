@@ -198,6 +198,14 @@ export const HELP: HelpEntry[] = [
       ar: "كل شاشة يفتحها مقعدك، بطاقة لكل واحدة، مجمّعة حسب العمل الذي تنتمي إليه — الأبواب نفسها الموجودة في الشريط الجانبي، في العرض الكبير. الرقم الأحمر هو ما ينتظرك خلف ذلك الباب؛ والرقم الوردي ما هو مستحق هذا الأسبوع على مكتب شخص آخر هناك. تختلف البطاقات حسب المقعد: المراسل يرى مكتب التحرير، ومسؤول المشتريات أبواب الشراء، والحساب الرئيسي كل شيء. لا شيء مخفي خلف بطاقة يعرضه الشريط الجانبي.",
     },
   },
+  {
+    id: "tasks", area: "Seats & approvals",
+    q: { en: "How do tasks work?", ar: "كيف تعمل المهام؟" },
+    a: {
+      en: "A task is the one thing on the desk with no record of its own behind it — a filing, a call, a step somebody must simply do — so the director writes it on My Desk with a due date and, if it belongs to someone, their name. It then appears on that person's desk under “Waiting on you”, and only they (or the director) can tick it. A task with no name stays the director's own. Everything else on the desk arrives by doing the work on its own screen; tasks are the exception, not the pattern.",
+      ar: "المهمة هي الشيء الوحيد على المكتب بلا سجل خاص خلفه — تقديم ورقة، اتصال، خطوة على أحدهم أن ينفّذها ببساطة — لذلك يكتبها المدير في «مكتبي» بتاريخ استحقاق، وباسم صاحبها إن كانت تخصّ أحداً. عندها تظهر على مكتب ذلك الشخص تحت «بانتظارك»، ولا يستطيع تعليمها كمنجزة سواه (أو المدير). والمهمة بلا اسم تبقى مهمة المدير نفسه. كل ما عدا ذلك يصل إلى المكتب من العمل على شاشته الخاصة؛ المهام هي الاستثناء لا القاعدة.",
+    },
+  },
 ];
 
 export const helpById = (id: string) => HELP.find(h => h.id === id);

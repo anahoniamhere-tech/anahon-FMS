@@ -100,8 +100,8 @@ export const RULES: Rule[] = [
   { kind: "quotations", status: "Paid",     seat: null, door: "production", verb: "" },
   { kind: "quotations", status: "Rejected", seat: null, door: "production", verb: "" },
   { kind: "quotations", status: "Expired",  seat: null, door: "production", verb: "" },
-  // ComplianceTask — Pending, Done. No owner column: the master account's own checklist until phase 4 adds an assignee.
-  { kind: "complianceTasks", status: "Pending", seat: MASTER, when: "dueDate", door: "mydesk", verb: "Settle" },
+  // ComplianceTask — Pending, Done. Given to someone, it is theirs; otherwise the master account's own list.
+  { kind: "complianceTasks", status: "Pending", seat: MASTER, person: "assigneeUserId", when: "dueDate", door: "mydesk", verb: "Settle" },
   { kind: "complianceTasks", status: "Done",    seat: null, door: "mydesk", verb: "" },
   // Subscription — Active, Paused, Cancelled. Surfaces a week before renewal (the Suppliers sheet's own alert window).
   { kind: "subscriptions", status: "Active",    seat: SUPPLIER_EDITORS, when: "nextRenewal", horizon: 7, door: "vendors", verb: "Confirm paid and roll" },

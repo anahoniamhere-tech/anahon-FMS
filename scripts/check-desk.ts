@@ -133,7 +133,11 @@ const bare = [...desk.matchAll(/(?<![=-])>\s*([^<>{}]*[A-Za-z]{2,}[^<>{}]*?)\s*<
 ok("no bare English text nodes in MyDeskTab", bare.length === 0, bare.slice(0, 8).join(" | "));
 ok("MyDeskTab keeps only rows on doors the viewer can open", /filter\(i => doors\.has\(i\.door\)\)/.test(desk));
 ok("MyDeskTab asks for the diary only as a director", desk.includes("if (isDirector) loadCalendar()") && desk.includes("{isDirector && <div"));
-ok("compliance tick, Done list and day-panel tick are for directors only", /isTask && isDirector \?/.test(desk) && /isDirector && \(state\.complianceTasks/.test(desk) && /complianceTasks" && isDirector &&/.test(desk));
+// Phase 4: a task is ticked by whoever holds it, or by a director when nobody does.
+ok("the tick belongs to the task's holder, or the director when it has none",
+  /isTask && \(i\.record\.assigneeUserId \? i\.record\.assigneeUserId === currentUser\?\.id \|\| isDirector : isDirector\)/.test(desk)
+  && /x\.assigneeUserId \? x\.assigneeUserId === currentUser\?\.id \|\| isDirector : isDirector/.test(desk));
+ok("only a director writes or removes a task", /isDirector && \(\n?\s*<div className="rounded-xl border border-slate-200 bg-white p-4">\n?\s*\{!taskForm/.test(desk) && /isTask && isDirector && \(/.test(desk));
 
 console.log("\nF. behaviour fixtures");
 const sa = viewer("Super Admin");
@@ -182,6 +186,9 @@ ok("a Submitted timesheet for August is due 1 September and overdue on the 4th",
 
 r1 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], complianceTasks: [{ id: "k1", title: "File annual return", status: "Pending", dueDate: today, notes: "" }] }), today);
 ok("a Pending statutory task is the master account's own (mine, not cover)", r1.length === 1 && r1[0].group === "mine" && r1[0].seats.length === 0);
+r1 = deskItems(viewer("Reporter"), st({ complianceTasks: [{ id: "k2", title: "Send the receipts", status: "Pending", dueDate: today, notes: "", assigneeUserId: "u-x" }] }), today);
+const r6 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }, { id: "u-x", role: "Reporter", active: true }], complianceTasks: [{ id: "k2", title: "Send the receipts", status: "Pending", dueDate: today, notes: "", assigneeUserId: "u-x" }] }), today);
+ok("a task given to someone is theirs, and the director sees it only as due", r1.length === 1 && r1[0].group === "mine" && r6.length === 1 && r6[0].group === "week");
 r1 = deskItems(viewer("Finance Officer"), st({ complianceTasks: [{ id: "k1", title: "File annual return", status: "Pending", dueDate: today, notes: "" }] }), today);
 ok("the same task is Due this week for Finance, never theirs to tick", r1.length === 1 && r1[0].group === "week");
 const rev = ci({ status: "Editorial Review", assigneeUserId: "u-z", dueDate: "2026-09-06" });

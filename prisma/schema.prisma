@@ -287,6 +287,10 @@ model ComplianceTask {
   dueDate  String
   status   String
   notes    String
+  /// User.id of the person whose turn it is. Null = the master account's own checklist.
+  assigneeUserId String?
+  /// User.id of whoever put the task on the list.
+  createdBy      String?
 }
 
 // Production stream: paying clients (earned income side). Distinct from Donor

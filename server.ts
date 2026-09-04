@@ -130,9 +130,13 @@ const EDITOR_ALLOWED_POSTS = new Set([
   "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/delete", "/api/social/edit", "/api/social/publish", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
 ]);
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
+// Anyone can be given a task, so every working seat may tick its own and put it back;
+// the routes themselves check that the task is theirs. The auditor is read-only.
+const TASK_POSTS = ["/api/compliance/complete", "/api/compliance/reopen"];
 const AUDITOR_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/assets/verify"]);
 // A self-service employee files their own timesheet and their own papers, nothing else.
-const SELF_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/timesheets/submit", "/api/document/upload"]);
+const SELF_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/timesheets/submit", "/api/document/upload", ...TASK_POSTS]);
+for (const list of [PO_ALLOWED_POSTS, CREW_ALLOWED_POSTS, PLO_ALLOWED_POSTS, DIGITAL_ALLOWED_POSTS, EDITOR_ALLOWED_POSTS]) TASK_POSTS.forEach(r => list.add(r));
 const PLO_ROLE = PLO_SEAT;
 const DIGITAL_ROLE = DIGITAL_SEAT;
 
@@ -451,7 +455,7 @@ async function loadState(viewer?: any) {
       employees: employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase()),
       timesheets: formattedTimesheets.filter(t => employees.some(e => e.id === t.employeeId && e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase())),
       fixedAssets: [],
-      partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: [],
+      partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [],
       opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], tools: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
@@ -476,7 +480,7 @@ async function loadState(viewer?: any) {
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
-      auditLogs: [], complianceTasks: [], opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], tools: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: [], editorialMeetings: [],
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
@@ -511,7 +515,7 @@ async function loadState(viewer?: any) {
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
-      auditLogs: [], complianceTasks: [], opportunities: [], cashCounts: [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], opportunities: [], cashCounts: [],
       subscriptions: buys ? subscriptions : [],
       projectActivities: projectActivities.filter((a: any) => visibleIds.has(a.projectId)),
       clients: [], quotations: [],
@@ -555,7 +559,7 @@ async function loadState(viewer?: any) {
           linkedRecordId: d.linkedRecordId, partyId: d.partyId, created_at: d.created_at,
           contentHash: d.contentHash, note: d.note
         })),
-      auditLogs: [], complianceTasks: [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [],
       opportunities: [], cashCounts: [], subscriptions: [],
       projectActivities: projectActivities.filter(a => myProjectIds.has(a.projectId)),
       clients: [], quotations: [], networkContacts: [], tools: [],
@@ -5914,12 +5918,64 @@ app.post("/api/partners/draw", async (req, res) => {
 });
 
 // Compliance task completion
+/** A task is ticked by the person it was given to, or by a director when nobody holds it. */
+function mayTickTask(task: { assigneeUserId?: string | null }, user: any): boolean {
+  if (task.assigneeUserId) return task.assigneeUserId === user?.id || isDirector(user?.role);
+  return isDirector(user?.role);
+}
+
+// Phase 4: the checklist is writable. Until now rows only arrived by seeding or by hand
+// on the database, so nothing could be added, given to someone, or struck off.
+app.post("/api/compliance/save", async (req, res) => {
+  try {
+    const { id, title, category, dueDate, notes, assigneeUserId, user } = req.body;
+    if (!isDirector(user?.role)) return res.status(403).json({ error: "Tasks are set by the director." });
+    if (!String(title || "").trim()) return res.status(400).json({ error: "A task needs a title." });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dueDate || ""))) return res.status(400).json({ error: "A task needs a due date (YYYY-MM-DD)." });
+    const holder = assigneeUserId ? await prisma.user.findUnique({ where: { id: String(assigneeUserId) } }) : null;
+    if (assigneeUserId && (!holder || !holder.active)) return res.status(400).json({ error: "That person has no active account." });
+
+    const data = {
+      title: String(title).trim(), category: String(category || "Governance"), dueDate: String(dueDate),
+      notes: String(notes || ""), assigneeUserId: assigneeUserId ? String(assigneeUserId) : null,
+    };
+    const existing = id ? await prisma.complianceTask.findUnique({ where: { id: String(id) } }) : null;
+    const task = existing
+      ? await prisma.complianceTask.update({ where: { id: existing.id }, data })
+      : await prisma.complianceTask.create({ data: { ...data, id: `task-${Date.now()}`, status: "Pending", createdBy: user?.id || null } });
+
+    await createAuditLog(user?.id || "u-1", user?.name || "Director",
+      existing ? "Task Changed" : "Task Added",
+      `"${task.title}" due ${task.dueDate}${holder ? `, given to ${holder.name}` : ", held by the director"}.`);
+    res.json({ success: true, task });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/compliance/delete", async (req, res) => {
+  try {
+    const { taskId, user } = req.body;
+    if (!isDirector(user?.role)) return res.status(403).json({ error: "Tasks are removed by the director." });
+    const task = await prisma.complianceTask.findUnique({ where: { id: String(taskId) } });
+    if (!task) return res.status(404).json({ error: "Task not listed." });
+    await prisma.complianceTask.delete({ where: { id: task.id } });
+    await createAuditLog(user?.id || "u-1", user?.name || "Director", "Task Removed",
+      `"${task.title}" (due ${task.dueDate}, ${task.status}) taken off the list.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/compliance/complete", async (req, res) => {
   try {
     const { taskId, user } = req.body;
 
     const task = await prisma.complianceTask.findUnique({ where: { id: taskId } });
     if (!task) return res.status(404).json({ error: "Task not listed." });
+    if (!mayTickTask(task, req.body.user)) return res.status(403).json({ error: "This task is not yours to reopen." });
+    if (!mayTickTask(task, user)) return res.status(403).json({ error: "This task is not yours to tick." });
 
     const updated = await prisma.complianceTask.update({
       where: { id: taskId },

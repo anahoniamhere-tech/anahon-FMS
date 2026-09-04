@@ -363,10 +363,14 @@ export interface AuditLog {
 export interface ComplianceTask {
   id: string;
   title: string;
-  category: "Tax" | "Donor Report" | "Licensing" | "Audit Support";
+  /** Free text: the live register uses Donor, Governance, Tax and Travel. */
+  category: string;
   dueDate: string;
-  status: "Pending" | "Done" | "Overdue";
+  status: "Pending" | "Done";
   notes: string;
+  /** Whose turn it is. Empty = the master account's own checklist. */
+  assigneeUserId?: string;
+  createdBy?: string;
 }
 
 export interface OrgSettings {

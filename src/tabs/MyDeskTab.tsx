@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock, LayoutGrid } from "lucide-react";
+import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock, LayoutGrid, Plus, Trash2 } from "lucide-react";
 import { SharedProps } from "./shared";
 import { PERSONNEL_CATEGORIES, isPersonnelDoc } from "../personnelDocs";
 import { deskItems, localToday, DeskItem } from "../workflow";
@@ -42,6 +42,8 @@ export default function MyDeskTab({
   const [calView, setCalView] = useState<"month" | "list">("month");
   const [monthOffset, setMonthOffset] = useState(0);   // months forward from the current one
   const [pickedDay, setPickedDay] = useState<string | null>(null);
+  // The task being written or edited (directors only). null = the form is closed.
+  const [taskForm, setTaskForm] = useState<null | { id?: string; title: string; category: string; dueDate: string; notes: string; assigneeUserId: string }>(null);
   const toggle = (set: (f: (p: Set<string>) => Set<string>) => void, id: string) =>
     set(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
@@ -77,6 +79,39 @@ export default function MyDeskTab({
     () => (state.complianceTasks || []).filter(x => x.status === "Done").sort((a, b) => b.dueDate.localeCompare(a.dueDate)),
     [state.complianceTasks]
   );
+
+  const TASK_CATEGORIES = ["Governance", "Donor", "Tax", "Travel"];
+
+  /** Write or change a task. Directors only; the server refuses everyone else. */
+  const saveTask = async () => {
+    if (!taskForm) return;
+    setBusy("task");
+    try {
+      const r = await fetch("/api/compliance/save", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...taskForm, user: currentUser }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || t("Could not save the task."));
+      setTaskForm(null);
+      triggerToast(t("Task saved."));
+      await refreshState();
+    } catch (e: any) { triggerToast(e.message); } finally { setBusy(null); }
+  };
+
+  const deleteTask = async (taskId: string, title: string) => {
+    setBusy(taskId);
+    try {
+      const r = await fetch("/api/compliance/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId, user: currentUser }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || t("Could not remove the task."));
+      triggerToast(`${t("Removed")}: ${title.slice(0, 44)}`);
+      await refreshState();
+    } catch (e: any) { triggerToast(e.message); } finally { setBusy(null); }
+  };
 
   /** Tick a task, or put it back. Both directions go through here so the two can never
    *  drift apart, and both leave their own line in the audit trail. */
@@ -224,7 +259,7 @@ export default function MyDeskTab({
         onKeyDown={e => { if (clickable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); act(); } }}
         className={`flex items-start gap-3 rounded-lg border-b border-slate-100 px-1 py-2.5 last:border-0 ${clickable ? "cursor-pointer hover:bg-slate-50" : ""} ${isOpen ? "bg-slate-50" : ""}`}
       >
-        {isTask && isDirector ? (
+        {isTask && (i.record.assigneeUserId ? i.record.assigneeUserId === currentUser?.id || isDirector : isDirector) ? (
           <button
             onClick={e => { e.stopPropagation(); setDone(i.recordId, i.title, true); }}
             disabled={busy === i.recordId}
@@ -247,6 +282,24 @@ export default function MyDeskTab({
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{t(i.status)}</span>
             {i.seats.length > 0 && (
               <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800">{t("seat")}: {i.seats.map(x => t(x)).join(", ")}</span>
+            )}
+            {isTask && i.record.assigneeUserId && i.record.assigneeUserId !== currentUser?.id && (
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                {(state.users || []).find(u => u.id === i.record.assigneeUserId)?.name || i.record.assigneeUserId}
+              </span>
+            )}
+            {isTask && isDirector && (
+              <>
+                <button
+                  onClick={e => { e.stopPropagation(); setTaskForm({ id: i.recordId, title: i.record.title, category: i.record.category || "Governance", dueDate: i.record.dueDate, notes: i.record.notes || "", assigneeUserId: i.record.assigneeUserId || "" }); }}
+                  className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500 hover:border-[#6D1A1A] hover:text-[#6D1A1A]"
+                >{t("Edit")}</button>
+                <button
+                  onClick={e => { e.stopPropagation(); deleteTask(i.recordId, i.title); }}
+                  disabled={busy === i.recordId}
+                  className="rounded-full border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500 hover:border-[#E23B3B] hover:text-[#E23B3B] disabled:opacity-40"
+                ><Trash2 className="inline h-3 w-3" /></button>
+              </>
             )}
           </p>
           {notes && (
@@ -410,6 +463,71 @@ export default function MyDeskTab({
           );
         })}
       </div>
+
+      {/* A task is the one thing on the desk with no record of its own behind it, so it is
+          written here. Everything else arrives by doing the work on its own screen. */}
+      {isDirector && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          {!taskForm ? (
+            <button
+              onClick={() => setTaskForm({ title: "", category: "Governance", dueDate: today, notes: "", assigneeUserId: "" })}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#4A1010]"
+            >
+              <Plus className="h-3.5 w-3.5" /> {t("New task")}
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <input
+                  value={taskForm.title}
+                  onChange={e => setTaskForm({ ...taskForm, title: e.target.value })}
+                  placeholder={t("What has to be done")}
+                  className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2 py-1.5 text-[12px]"
+                />
+                <input
+                  type="date"
+                  value={taskForm.dueDate}
+                  onChange={e => setTaskForm({ ...taskForm, dueDate: e.target.value })}
+                  className="rounded-lg border border-slate-300 px-2 py-1.5 text-[12px]"
+                />
+                <select
+                  value={taskForm.category}
+                  onChange={e => setTaskForm({ ...taskForm, category: e.target.value })}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[12px]"
+                >
+                  {TASK_CATEGORIES.map(c => <option key={c} value={c}>{t(c)}</option>)}
+                </select>
+                <select
+                  value={taskForm.assigneeUserId}
+                  onChange={e => setTaskForm({ ...taskForm, assigneeUserId: e.target.value })}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[12px]"
+                >
+                  <option value="">{t("Held by the director")}</option>
+                  {(state.users || []).filter(u => u.active).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+              <textarea
+                value={taskForm.notes}
+                onChange={e => setTaskForm({ ...taskForm, notes: e.target.value })}
+                placeholder={t("Context — what the person needs to know")}
+                rows={2}
+                className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-[12px]"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={saveTask}
+                  disabled={busy === "task" || !taskForm.title.trim()}
+                  className="rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#4A1010] disabled:opacity-40"
+                >{busy === "task" ? t("Saving…") : t("Save task")}</button>
+                <button
+                  onClick={() => setTaskForm(null)}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                >{t("Cancel")}</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {group("mine", t("Waiting on you"), Inbox, mine, { info: "my-desk", empty: t("Nothing is waiting on you.") })}
 
@@ -677,7 +795,7 @@ export default function MyDeskTab({
 
       {/* Done tasks leave the list above but not the register. Kept collapsed so the desk
           stays about what is outstanding, and one click puts anything back. */}
-      {isDirector && (state.complianceTasks || []).length > 0 && (
+      {(state.complianceTasks || []).length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <button
             onClick={() => setShowDone(v => !v)}
@@ -699,7 +817,7 @@ export default function MyDeskTab({
                   <p className="min-w-0 flex-1 text-[13px] leading-snug text-slate-500 line-through decoration-slate-300">{x.title}</p>
                   <button
                     onClick={() => setDone(x.id, x.title, false)}
-                    disabled={busy === x.id}
+                    disabled={busy === x.id || !(x.assigneeUserId ? x.assigneeUserId === currentUser?.id || isDirector : isDirector)}
                     className="shrink-0 rounded-lg border border-slate-300 px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:border-[#6D1A1A] hover:text-[#6D1A1A] disabled:opacity-50"
                   >
                     <Undo2 className="mr-1 inline h-3 w-3" /> {t("Reopen")}
