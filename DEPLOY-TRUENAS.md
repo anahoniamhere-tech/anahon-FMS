@@ -113,3 +113,13 @@ correction). Set in `src/.env` on the NAS: `SITE_URL=http://192.168.1.22:4321` (
 this one; see anahon-astro/DEPLOY-TRUENAS.md). Fire-and-forget — the FMS never waits on the site, and the
 site re-reads this database and refuses anything not Published. Log line prefix: `[site]`.
 
+
+## Live editor (4 Sep 2026)
+
+`src/tabs/LiveTab.tsx` frames the site's dev server (`state.siteUrl` = `SITE_PUBLIC_URL` ‖
+`SITE_URL`) — the browser must reach that URL, so on the NAS set
+`SITE_URL=http://192.168.1.22:4321` (LAN) in `src/.env`. Routes: `POST /api/website/edit`
+(text/image string replace across the four content JSONs, editor roles), `GET
+/api/website/library` (pictures under the site's `/uploads/website` + `/images`),
+`POST /api/website/build` (→ site `/__build`; audit "Website Published"). See the site's
+DEPLOY-TRUENAS.md › Live editor for the publish target.

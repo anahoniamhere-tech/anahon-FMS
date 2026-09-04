@@ -3187,6 +3187,70 @@ app.post("/api/website/image", async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
+// ---- Live editor (Website › Live editor tab) -------------------------------------
+// The tab frames the site's dev server; the injected edit script sends "this text /
+// this image became that". We find the exact string in the content files (scoped to
+// the page's language for text) and replace it wherever it appears, then refresh.
+const langOfPath = (p: string) => /[._\[]en(?=[.\[]|$)/.test(p) ? "en" : /[._\[]ar(?=[.\[]|$)/.test(p) ? "ar" : null;
+app.post("/api/website/edit", async (req, res) => {
+  try {
+    const { kind, from, to, lang, url, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
+    if (!["text", "image"].includes(kind) || typeof from !== "string" || typeof to !== "string") return res.status(400).json({ error: "kind, from, to required" });
+    const norm = (x: string) => x.replace(/\s+/g, " ").trim();
+    const want = kind === "text" ? norm(from) : from;
+    if (!want) return res.status(400).json({ error: "nothing to match" });
+    if (kind === "image" && !/^(\/|https?:)/.test(to)) return res.status(400).json({ error: "image path must start with / or http" });
+    const hits: string[] = [];
+    const walk = (node: any, p: string) => {
+      for (const k of Object.keys(node)) {
+        const v = node[k], path = `${p}.${k}`;
+        if (typeof v === "string") {
+          const match = kind === "text" ? norm(v) === want : v === want;
+          const langOk = kind === "image" || !lang || (langOfPath(path) ?? lang) === lang;
+          if (match && langOk) { node[k] = kind === "text" ? to.trim() : to; hits.push(path); }
+        } else if (v && typeof v === "object") walk(v, path);
+      }
+    };
+    for (const f of Object.values(WEBSITE_FILES)) {
+      const p = path.join(SITE_DIR, "src/data", f);
+      const doc = readJsonFile(p, null); if (!doc) continue;
+      const before = hits.length; walk(doc, f.replace(/\.json$/, ""));
+      if (hits.length > before) fs.writeFileSync(p, JSON.stringify(doc, null, 1) + "\n");
+    }
+    if (!hits.length) return res.status(404).json({ error: kind === "text"
+      ? "This text is written in the site's code, not in the content files — tell Saad's assistant to move it."
+      : "This picture is set in the site's code, not in the content files." });
+    await createAuditLog(user?.id, user?.name, "Website Content Saved", `Live editor (${url || "?"}): ${kind} "${want.slice(0, 60)}" → "${to.slice(0, 60)}" in ${hits.join(", ")}`);
+    res.json({ success: true, count: hits.length, paths: hits, refreshed: await siteRefresh() });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+// Pictures the site can serve: what the desk uploaded plus the brand assets.
+app.get("/api/website/library", (_req, res) => {
+  const out: { path: string; name: string; size: number; mtime: number }[] = [];
+  for (const [dir, prefix] of [["public/uploads/website", "/uploads/website/"], ["public/images", "/images/"]] as const) {
+    const abs = path.join(SITE_DIR, dir); if (!fs.existsSync(abs)) continue;
+    for (const f of fs.readdirSync(abs)) {
+      if (!/\.(jpe?g|png|webp|gif|svg)$/i.test(f)) continue;
+      const st = fs.statSync(path.join(abs, f)); if (!st.isFile()) continue;
+      out.push({ path: prefix + f, name: f, size: st.size, mtime: st.mtimeMs });
+    }
+  }
+  out.sort((a, b) => b.mtime - a.mtime);
+  res.json(out);
+});
+// Publish: the site builds itself to dist/ and runs its DEPLOY_CMD (see the site's .env).
+app.post("/api/website/build", async (req, res) => {
+  try {
+    const { user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing the website needs an editor role." });
+    const r = await fetch(`${SITE_URL}/__build`, { method: "POST" });
+    const j: any = await r.json().catch(() => ({ ok: false, error: `site answered ${r.status}` }));
+    await createAuditLog(user?.id, user?.name, j.ok ? "Website Published" : "Website Publish Failed", `build ${j.built ? "ok" : "failed"}, deploy ${j.deployed === null ? "not configured" : j.deployed ? "ok" : "failed"}, ${j.seconds ?? "?"}s`);
+    res.status(j.ok ? 200 : 500).json(j);
+  } catch (err: any) { res.status(500).json({ ok: false, error: `site unreachable at ${SITE_URL}: ${err.message}` }); }
+});
+
 // Retract: the piece comes off the website. The record stays Published — with the
 // reason and date — because Policy 005 forbids silent edits to the published record.
 app.post("/api/content/retract", async (req, res) => {
