@@ -3,7 +3,7 @@ import { RefreshCw, Settings } from "lucide-react";
 import { Project } from "../types";
 import { STREAMS } from "../constants";
 import { SharedProps } from "./shared";
-import { MANAGERS } from "../roles";
+import { ALL_ROLES } from "../roles";
 
 export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput, refreshState, setEurRateInput, setLbpRateInput, state, t, triggerToast }: SharedProps) {
   // Gemini Compliance scan response
@@ -73,7 +73,7 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
                             className="finance-input text-xs py-1"
                             disabled={u.id === currentUser.id}
                           >
-                            {[...MANAGERS, "Project Officer"].map(r => <option key={r} value={r}>{r}</option>)}
+                            {ALL_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                           </select>
                           {u.role === "Project Officer" && (
                             <span className="flex flex-wrap items-center gap-2">

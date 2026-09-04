@@ -41,4 +41,15 @@ export const ARCHIVE_EDITORS = [...SITE_EDITORS, "Project Officer"];
 export const CONTACT_EDITORS = [...MANAGERS, "Production Manager", PLO, DIGITAL];
 export const TOOL_EDITORS = CONTACT_EDITORS;
 
+export const AUDITOR = "Auditor / Read-Only Reviewer";
+export const SELF = "Employee (Self-Service)";
+/** Every role an account may hold — the server's whitelist and the Admin tab's selector. */
+export const ALL_ROLES = [
+  "Super Admin", "Finance Officer", "Program Director", "Project Officer", "Project Lead", "HR / Payroll Officer",
+  AUDITOR, SELF, "Production Manager", "Reporter", "Content Creator", "Podcaster",
+  "Chief Editor", PLO, DIGITAL, "Graphic Designer",
+];
+/** May read the financial statements. */
+export const REPORT_READERS = [...MANAGERS, AUDITOR];
+
 export const has = (list: readonly string[], role?: string | null) => list.includes(role || "");

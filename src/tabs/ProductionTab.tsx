@@ -5,6 +5,7 @@ import { EXTRAS_DEFAULT, FINANCIAL_TERMS, PRODUCTION_NOTE, QUOTE_STATUSES, SERVI
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { FINANCE, MANAGERS } from "../roles";
+import { withTicket } from "../docTicket";
 
 export default function ProductionTab({ currentUser, formatIn, formatUSD, openDoc, refreshState, state, t, triggerToast }: SharedProps) {
   // Production stream: client / quotation being added-edited (null = form closed)
@@ -618,7 +619,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                             </td>
                             <td className="p-3 whitespace-nowrap">
                               <button onClick={() => generateQuoteDoc(q)} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="View client document" aria-label={`View document for ${q.quoteNo}`}>📄</button>
-                              <a href={`/api/quotations/${q.id}/pdf?uid=${encodeURIComponent(currentUser?.id || "")}`} download
+                              <a href={withTicket(`/api/quotations/${q.id}/pdf`)} download
                                 className="text-slate-400 hover:text-red-700 p-1 transition-colors rounded hover:bg-slate-100 inline-block" title="Download PDF" aria-label={`Download PDF for ${q.quoteNo}`}>
                                 <Download className="h-3.5 w-3.5 inline" />
                               </a>

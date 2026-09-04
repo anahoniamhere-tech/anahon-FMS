@@ -79,6 +79,7 @@ import WebsiteTab from "./tabs/WebsiteTab";
 import LiveTab from "./tabs/LiveTab";
 import RoleSwitch, { ActingBanner } from "./RoleSwitch";
 import { visibleNav, LANDING } from "./nav";
+import { withTicket, refreshDocTicket } from "./docTicket";
 import { SharedProps } from "./tabs/shared";
 import { auth } from "./firebaseConfig";
 import {
@@ -211,7 +212,8 @@ export default function App() {
   /** Every document URL carries the viewer's id: personnel documents (passports, IDs, CVs)
    *  are refused by the server to anyone outside the personnel file, and it needs to know
    *  who is asking. Harmless on ordinary documents, which ignore it. */
-  const docUrl = (p: string) => `${p}${p.includes("?") ? "&" : "?"}uid=${encodeURIComponent(currentUser?.id || "")}`;
+  // Documents are opened with a signed ticket for this sign-in, never with a uid in the URL.
+  const docUrl = (p: string) => withTicket(p);
 
   /** Open a document in the in-app viewer instead of a new tab. Pass the AppDoc (or any
    *  object carrying id/filename/mimeType). Falls back to a plain link if id is missing. */
@@ -454,11 +456,12 @@ export default function App() {
 
   // Load backend state on initialization
   const refreshState = async () => {
+    refreshDocTicket();
     try {
       // Identify the viewer so the server can narrow the payload: a Project Officer
       // is sent only their programme's records, never the whole organisation's.
       const uid = localStorage.getItem("anahon-uid") || "";
-      const res = await fetch(`/api/state${uid ? `?uid=${encodeURIComponent(uid)}` : ""}`);
+      const res = await fetch("/api/state"); // the sign-in token names the viewer; a uid in the URL is ignored
       if (!res.ok) throw new Error("Could not load backend finances state.");
       const data: DatabaseState = await res.json();
       setState(data);

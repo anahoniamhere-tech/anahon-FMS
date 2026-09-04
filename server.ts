@@ -11,7 +11,7 @@ import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml} from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
-import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT } from "./src/roles.js";
+import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS } from "./src/roles.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs } from "./src/personnelDocs.js";
@@ -54,6 +54,7 @@ const PO_ALLOWED_POSTS = new Set([
   "/api/activities/generate",
   "/api/document/upload",
   "/api/materials/link",
+  "/api/documents/meta",
   "/api/expense/scan-invoice",
   // Policy 002: each Project Officer runs their programme's content operations.
   "/api/content/save",
@@ -124,10 +125,14 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 ]);
 // Chief Editor and Production Manager: the editorial pipeline and site work, nothing financial.
 const EDITOR_ALLOWED_POSTS = new Set([
-  "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit",
+  "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
   "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/delete", "/api/social/edit", "/api/social/publish", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
 ]);
+// The auditor reads; the one write is confirming that a piece of equipment physically exists.
+const AUDITOR_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/assets/verify"]);
+// A self-service employee files their own timesheet and their own papers, nothing else.
+const SELF_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/timesheets/submit", "/api/document/upload"]);
 const PLO_ROLE = PLO_SEAT;
 const DIGITAL_ROLE = DIGITAL_SEAT;
 
@@ -217,8 +222,10 @@ app.use(async (req: any, res, next) => {
         // The seat's limits come with the seat: standing in as Digital Officer does not
         // let the master account pay a voucher through that hat.
         const seatList = wanted === "Project Officer" ? PO_ALLOWED_POSTS : CONTENT_CREW_ROLES.includes(wanted) ? CREW_ALLOWED_POSTS
-          : wanted === PLO_ROLE ? PLO_ALLOWED_POSTS : wanted === DIGITAL_ROLE ? DIGITAL_ALLOWED_POSTS : EDITORS.includes(wanted) ? EDITOR_ALLOWED_POSTS : null;
+          : wanted === PLO_ROLE ? PLO_ALLOWED_POSTS : wanted === DIGITAL_ROLE ? DIGITAL_ALLOWED_POSTS : EDITORS.includes(wanted) ? EDITOR_ALLOWED_POSTS
+          : wanted === AUDITOR ? AUDITOR_ALLOWED_POSTS : wanted === SELF ? SELF_ALLOWED_POSTS : null;
         if (seatList && !seatList.has(req.path)) {
+          await createAuditLog(dbUser.id, dbUser.name, "Role Assumption Refused", `${dbUser.name} tried ${req.path} while standing in as ${wanted}; that seat may not.`);
           return res.status(403).json({ error: `The ${wanted} seat cannot do this. Stop acting to use your own authority.` });
         }
         const ctx = { actingAs: wanted, ownRole: dbUser.role, vacant: !holder };
@@ -242,6 +249,12 @@ app.use(async (req: any, res, next) => {
       }
       if (EDITORS.includes(dbUser.role) && !EDITOR_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "Editorial seats act on the pipeline and the site — nothing financial." });
+      }
+      if (dbUser.role === AUDITOR && !AUDITOR_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "The auditor's account is read-only." });
+      }
+      if (dbUser.role === SELF && !SELF_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "A self-service account files its own timesheet and papers only." });
       }
       if (CONTENT_CREW_ROLES.includes(dbUser.role) && !CREW_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "Content-team accounts act on the editorial pipeline only — this action needs an editor or finance role." });
@@ -448,6 +461,29 @@ async function loadState(viewer?: any) {
     };
   }
 
+  // A self-service employee (Policy 8.5): their own employee row, timesheets and papers.
+  if (viewer && viewer.role === SELF) {
+    const mine = employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase());
+    const mineIds = new Set(mine.map(e => e.id));
+    return {
+      users, accounts: [], donors: [], projects: [], budgetLines: [], vendors: [],
+      expenses: [], procurements: [], bankAccounts: [], bankTransactions: [], journalEntries: [],
+      employees: mine, timesheets: formattedTimesheets.filter(t => mineIds.has(t.employeeId)),
+      fixedAssets: [], partnerAccounts: [],
+      documents: filterPersonnelDocs(documents, viewer, employees).filter(d => d.partyId && mineIds.has(d.partyId)).map(d => ({
+        id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
+        base64: d.base64.startsWith("link://") ? d.base64 : "", category: d.category,
+        linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
+        created_at: d.created_at, contentHash: d.contentHash, note: d.note
+      })),
+      auditLogs: [], complianceTasks: [], opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
+      clients: [], quotations: [], networkContacts: [], tools: [],
+      siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: [], editorialMeetings: [],
+      orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
+      fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
+    };
+  }
+
   // The two operational seats see the work, never the books. Procurement and Logistics
   // gets projects, budgets, suppliers, requests, bids, equipment and contacts; the Digital
   // Officer gets the site, archive, social, tools, subscriptions and contacts. Neither gets
@@ -457,7 +493,7 @@ async function loadState(viewer?: any) {
     const me = employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase());
     const myIds = new Set(me.map(e => e.id));
     const visibleIds = new Set(visibleProjects.map((p: any) => p.id));
-    const DOMAIN = buys ? new Set(["Vendor", "Expense", "Procurement", "Project", "FixedAsset", "Website"]) : new Set(["Website"]);
+    const DOMAIN = buys ? new Set(["Expense", "Project", "Website"]) : new Set(["Website"]);
     return {
       users, accounts: [], donors: buys ? donors : [], projects: visibleProjects,
       budgetLines: budgetLines.filter((b: any) => visibleIds.has(b.projectId)),
@@ -477,7 +513,7 @@ async function loadState(viewer?: any) {
       })),
       auditLogs: [], complianceTasks: [], opportunities: [], cashCounts: [],
       subscriptions: buys ? subscriptions : [],
-      projectActivities,
+      projectActivities: projectActivities.filter((a: any) => visibleIds.has(a.projectId)),
       clients: [], quotations: [],
       networkContacts, tools,
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "",
@@ -1896,11 +1932,7 @@ app.post("/api/opportunities/delete", async (req, res) => {
 
 // Assign a user's role (and, for Project Officers, their project scope).
 // MASTER ACCOUNT ONLY. Role authority is the database — see the middleware above.
-const ASSIGNABLE_ROLES = ["Super Admin", "Finance Officer", "Program Director", "Project Officer", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer", "Employee (Self-Service)",
-  // Editorial roles named by Policy 002 ("Programs Director" is the existing Program Director).
-  "Production Manager", "Reporter", "Content Creator", "Podcaster",
-  // Seats named in the 4 Sep 2026 roles paper. Vacant today; the Executive Director stands in them, logged.
-  "Chief Editor", "Procurement and Logistics Officer", "Digital Officer", "Graphic Designer"];
+const ASSIGNABLE_ROLES = ALL_ROLES;
 
 // The seats and who sits in them. A Super Admin uses this to see what is standing
 // empty before deciding to fill it themselves.
@@ -4366,7 +4398,7 @@ app.get("/api/quotations/:id/pdf", async (req, res) => {
     const client = await prisma.client.findUnique({ where: { id: quote.clientId } });
     if (!client) return res.status(400).json({ error: "Quotation's client no longer exists." });
 
-    const uid = String(req.query.uid || "");
+    const uid = await viewerIdFromReq(req);
     const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
 
     const html = quotationHtml({
@@ -6086,21 +6118,46 @@ app.post("/api/compliance/reopen", async (req, res) => {
 // to PDF on demand. Generic on purpose: the alternative was a per-document-type route and
 // a matching button each time, which is how you end up with three of them and one that
 // nobody maintained.
+
+// ---- Who is asking for a file? --------------------------------------------------
+// fetch() carries the sign-in token; <img>, <iframe> and download links cannot. For those
+// the browser first asks for a ticket (GET /api/document/ticket, signed for the user for
+// 12 hours) and puts it in the URL. A uid in the URL is never trusted.
+const TICKET_SECRET = process.env.DOC_TICKET_SECRET || crypto.randomBytes(32).toString("hex");
+function mintTicket(userId: string): string {
+  const exp = Date.now() + 12 * 60 * 60 * 1000;
+  const sig = crypto.createHmac("sha256", TICKET_SECRET).update(`${userId}.${exp}`).digest("hex");
+  return `${userId}.${exp}.${sig}`;
+}
+function ticketUser(t: string): string {
+  const [userId, exp, sig] = String(t || "").split(".");
+  if (!userId || !exp || !sig || Number(exp) < Date.now()) return "";
+  const want = crypto.createHmac("sha256", TICKET_SECRET).update(`${userId}.${exp}`).digest("hex");
+  if (sig.length !== want.length) return "";
+  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want)) ? userId : "";
+}
+async function viewerIdFromReq(req: any): Promise<string> {
+  const tok = bearerToken(req);
+  if (tok) { try { const v = await verifyIdToken(tok); const u = await prisma.user.findUnique({ where: { email: v.email } }); if (u && u.active) return u.id; } catch { /* fall through */ } }
+  return ticketUser(String(req.query.t || ""));
+}
+app.get("/api/document/ticket", async (req, res) => {
+  const id = await viewerIdFromReq(req);
+  if (!id) return res.status(401).json({ error: "Sign in to open documents." });
+  res.json({ t: mintTicket(id) });
+});
 app.get("/api/document/:id/pdf", async (req, res) => {
   try {
     const doc = await prisma.appDoc.findUnique({ where: { id: req.params.id } });
     if (!doc) return res.status(404).json({ error: "Document not found." });
-    // Prefer the verified sign-in over a uid typed into the URL.
-    let viewerId = String(req.query.uid || "");
-    const tok = bearerToken(req);
-    if (tok) { try { const v = await verifyIdToken(tok); const u = await prisma.user.findUnique({ where: { email: v.email } }); if (u) viewerId = u.id; } catch { /* fall back to uid, which personnelBlocked treats as untrusted */ } }
+    const viewerId = await viewerIdFromReq(req);
     if (await personnelBlocked(doc, viewerId)) {
       return res.status(403).json({ error: "This document is part of a personnel file." });
     }
     if (!/\.html?$/i.test(doc.filename)) {
       return res.status(400).json({ error: "Only HTML documents can be rendered to PDF. Download this one as it is." });
     }
-    const { file, cleanup } = await docOnDisk(doc.id, String(req.query.uid || ""));
+    const { file, cleanup } = await docOnDisk(doc.id, await viewerIdFromReq(req));
     let pdf: Buffer;
     try { pdf = await htmlToPdf(fs.readFileSync(file, "utf8")); } finally { cleanup(); }
     res.setHeader("Content-Type", "application/pdf");
@@ -6115,7 +6172,7 @@ app.get("/api/document/content/:id", async (req, res) => {
   try {
     const doc = await prisma.appDoc.findUnique({ where: { id: req.params.id } });
     if (!doc) return res.status(404).json({ error: "Document not found." });
-    if (await personnelBlocked(doc, String(req.query.uid || ""))) {
+    if (await personnelBlocked(doc, await viewerIdFromReq(req))) {
       return res.status(403).json({ error: "This document is part of a personnel file." });
     }
 
@@ -6143,15 +6200,15 @@ async function personnelBlocked(doc: any, uid: string): Promise<boolean> {
   if (!isPersonnelDoc(doc)) return false;
   const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
   const employees = await prisma.employee.findMany({ select: { id: true, userEmail: true } });
-  return !maySeePersonnelFile(viewer, employees, doc.partyId);
+  return !maySeePersonnelFile(viewer, employees, doc.partyId, doc.category);
 }
 
 /** Locate a document on disk. Legacy inline-base64 rows are spilled to a temp file so
  *  PyMuPDF can read them; the caller gets back a cleanup to run when it's done. */
 async function docOnDisk(id: string, uid = ""): Promise<{ file: string; cleanup: () => void; doc: any }> {
   const doc = await prisma.appDoc.findUnique({ where: { id } });
-  if (!doc) throw new Error("Document not found.");
-  if (await personnelBlocked(doc, uid)) throw new Error("This document is part of a personnel file.");
+  if (!doc) throw Object.assign(new Error("Document not found."), { status: 404 });
+  if (await personnelBlocked(doc, uid)) throw Object.assign(new Error("This document is part of a personnel file."), { status: 403 });
   const vaultPath = vaultPathFromPointer(doc.base64 || "");
   if (vaultPath) {
     if (!fs.existsSync(vaultPath)) throw new Error(`File missing from vault: ${doc.filename}. Check the AnaHon_Document_Vault folder.`);
@@ -6175,12 +6232,12 @@ const py = async (script: string, args: string[], binary = false): Promise<any> 
 app.get("/api/document/pages/:id", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id, String(req.query.uid || ""));
+    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req));
     cleanup = d.cleanup;
     const out = await py("import sys,fitz;print(fitz.open(sys.argv[1]).page_count)", [d.file]);
     res.json({ pages: parseInt(String(out).trim(), 10) || 0 });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   } finally { cleanup(); }
 });
 
@@ -6189,7 +6246,7 @@ app.get("/api/document/pages/:id", async (req, res) => {
 app.get("/api/document/page/:id/:n", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id, String(req.query.uid || ""));
+    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req));
     cleanup = d.cleanup;
     const png: Buffer = await py(
       "import sys,fitz;d=fitz.open(sys.argv[1]);sys.stdout.buffer.write(" +
@@ -6199,7 +6256,7 @@ app.get("/api/document/page/:id/:n", async (req, res) => {
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.send(png);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   } finally { cleanup(); }
 });
 
@@ -6209,7 +6266,7 @@ app.get("/api/document/page/:id/:n", async (req, res) => {
 app.get("/api/document/docx-text/:id", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id, String(req.query.uid || ""));
+    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req));
     cleanup = d.cleanup;
     const text = await py(
       "import sys,zipfile,re,html\n" +
@@ -6222,7 +6279,7 @@ app.get("/api/document/docx-text/:id", async (req, res) => {
       [d.file]);
     res.type("text/plain; charset=utf-8").send(String(text));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   } finally { cleanup(); }
 });
 
@@ -6449,6 +6506,9 @@ async function htmlToPdf(html: string): Promise<Buffer> {
 
 app.get("/api/reports/pdf", async (req, res) => {
   try {
+    const rid = await viewerIdFromReq(req);
+    const reader = rid ? await prisma.user.findUnique({ where: { id: rid } }) : null;
+    if (!reader || !REPORT_READERS.includes(reader.role)) return res.status(403).json({ error: "The financial statements are for finance, the director and the auditor." });
     // Any timeframe: months=1..60, or start=YYYY-MM which overrides months (end stays inclusive).
     let months = Math.min(60, Math.max(1, Number(req.query.months) || 6));
     if (/^\d{4}-\d{2}$/.test(String(req.query.start || ""))) {
@@ -6475,6 +6535,9 @@ app.get("/api/reports/pdf", async (req, res) => {
 // Periodic financial report (Policy 11.2) — aggregates a 6- or 12-month window.
 app.get("/api/reports/period", async (req, res) => {
   try {
+    const rid = await viewerIdFromReq(req);
+    const reader = rid ? await prisma.user.findUnique({ where: { id: rid } }) : null;
+    if (!reader || !REPORT_READERS.includes(reader.role)) return res.status(403).json({ error: "The financial statements are for finance, the director and the auditor." });
     // Any timeframe: months=1..60, or start=YYYY-MM which overrides months (end stays inclusive).
     let months = Math.min(60, Math.max(1, Number(req.query.months) || 6));
     if (/^\d{4}-\d{2}$/.test(String(req.query.start || ""))) {

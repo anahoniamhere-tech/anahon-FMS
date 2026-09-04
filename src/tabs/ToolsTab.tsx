@@ -177,7 +177,7 @@ export default function ToolsTab({ state, currentUser, refreshState, triggerToas
           <div className="font-bold text-amber-800 text-xs uppercase mb-1">Costs money, no subscription record</div>
           <p className="text-amber-900 text-xs">
             {unlinked.map(t => t.name).join(", ")} — a charge the books do not know about yet.{" "}
-            <button onClick={() => handleNavClick("compliance")} className="underline font-semibold">Open subscriptions</button>
+            <button onClick={() => handleNavClick("vendors")} className="underline font-semibold">Open subscriptions</button>
           </p>
         </div>
       )}

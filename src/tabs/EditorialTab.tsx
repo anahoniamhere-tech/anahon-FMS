@@ -4,7 +4,7 @@ import { ContentItem } from "../types";
 import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "../constants";
 import { SharedProps } from "./shared";
 import Info from "../Info";
-import { CONTENT_EDITORS } from "../roles";
+import { CONTENT_EDITORS, CREW } from "../roles";
 
 // Editorial pipeline (Policies 002 & 005). The tab renders the register and the
 // buttons; every rule lives server-side — the same publishBlockers() the server
@@ -434,7 +434,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   // Policy 002 participants per meeting kind, preticked on a fresh attendance sheet.
   const policyAttendeesFor = (kind: string) => activeUsers
     .filter(u => (kind === "Daily Production"
-      ? ["Production Manager", "Project Officer", "Reporter", "Content Creator", "Podcaster", "Super Admin"]
+      ? [...CREW, "Production Manager", "Project Officer", "Super Admin"]
       : [...CONTENT_EDITORS, "Project Officer"]).includes(u.role))
     .map(u => u.id);
   const canRecordMeeting = isEditor || currentUser.role === "Project Officer";
