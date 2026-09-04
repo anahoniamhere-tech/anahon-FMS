@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock } from "lucide-react";
+import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock, LayoutGrid } from "lucide-react";
 import { SharedProps } from "./shared";
 import { PERSONNEL_CATEGORIES, isPersonnelDoc } from "../personnelDocs";
 import { deskItems, localToday, DeskItem } from "../workflow";
@@ -61,6 +61,17 @@ export default function MyDeskTab({
   const cover = items.filter(i => i.group === "cover");
   const week = items.filter(i => i.group === "week");
   const overdueCount = items.filter(i => i.urgency === "overdue" && i.group !== "week").length;
+  // The doors this role opens, in sidebar order, each with what waits behind it.
+  const sections = useMemo(() => visibleNav(currentUser?.role || ""), [currentUser]);
+  const byDoor = useMemo(() => {
+    const m = new Map<string, { owed: number; week: number }>();
+    for (const i of items) {
+      const c = m.get(i.door) || { owed: 0, week: 0 };
+      if (i.group === "week") c.week++; else c.owed++;
+      m.set(i.door, c);
+    }
+    return m;
+  }, [items]);
 
   const done = useMemo(
     () => (state.complianceTasks || []).filter(x => x.status === "Done").sort((a, b) => b.dueDate.localeCompare(a.dueDate)),
@@ -355,6 +366,50 @@ export default function MyDeskTab({
           </button>
         </div>
       )}
+
+      {/* The doors — every screen this role opens, one tile each, grouped by job. The red
+          number is what waits on this person behind the door; the pink one what is due this
+          week on someone else's desk. The sidebar shows the same doors; this is the big view. */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+          <LayoutGrid className="h-4 w-4 text-[#6D1A1A]" /> {t("Doors")}
+          <Info id="doors" lang={lang} />
+        </h3>
+        {sections.map(s => {
+          const tiles = s.items.filter(d => d.navKey !== "mydesk");
+          if (!tiles.length) return null;
+          return (
+            <div key={s.section} className="mt-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t(s.section)}</p>
+              <div className="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                {tiles.map(d => {
+                  const c = byDoor.get(d.navKey);
+                  return (
+                    <button
+                      key={d.navKey}
+                      onClick={() => handleNavClick(d.navKey)}
+                      className="flex min-h-[84px] flex-col items-start justify-between rounded-xl border border-[#E6D3CA] bg-white p-3 text-left shadow-sm transition-colors hover:border-[#6D1A1A] hover:bg-[#E23B3B]/[0.04]"
+                    >
+                      <span className="flex w-full items-center justify-between">
+                        <span className="text-[#6D1A1A]">{d.icon}</span>
+                        {c?.owed ? (
+                          <span className="rounded-full bg-[#E23B3B] px-2 py-0.5 text-[10px] font-bold text-white">{c.owed}</span>
+                        ) : c?.week ? (
+                          <span className="rounded-full bg-[#F88888]/30 px-2 py-0.5 text-[10px] font-bold text-[#8f2020]">{c.week}</span>
+                        ) : null}
+                      </span>
+                      <span className="text-[12px] font-bold leading-tight text-slate-900">{t(d.label)}</span>
+                      <span className="text-[10px] text-slate-500">
+                        {c?.owed ? `${c.owed} ${t("waiting")}` : c?.week ? `${c.week} ${t("this week")}` : "\u00a0"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
 
       {group("mine", t("Waiting on you"), Inbox, mine, { info: "my-desk", empty: t("Nothing is waiting on you.") })}
 

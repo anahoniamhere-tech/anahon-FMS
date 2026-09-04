@@ -339,6 +339,9 @@ export const AR: Record<string, string> = {
   "Timesheets & payroll": "الجداول الزمنية والرواتب",
   "Team, rates & audit log": "الفريق والأسعار وسجل التدقيق",
   // my desk (phase 3)
+  "Doors": "الأبواب",
+  "waiting": "بالانتظار",
+  "this week": "هذا الأسبوع",
   "all day": "طوال اليوم",
   "Diary": "المفكرة",
   "ongoing": "جارٍ",

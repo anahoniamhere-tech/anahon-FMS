@@ -190,6 +190,14 @@ export const HELP: HelpEntry[] = [
       ar: "قاعدة واحدة لكل حالة سجل، محفوظة في src/workflow.ts. طلب الدفع «المُقدَّم» بانتظار المدير؛ وبعد الموافقة بانتظار المالية؛ والمادة «قيد التحقق» بانتظار المدقّق المسمّى؛ والمادة غير المكلَّف بها أحد بانتظار المحرّرين؛ وخطوة الجدول الزمني بلا اسم بانتظار مسؤول مشروع البرنامج ثم المدير. «بانتظارك» يعرض ما هو دورك، و«مستحق هذا الأسبوع» ما له تاريخ خلال سبعة أيام (أو متأخر بأسبوع على الأكثر) على أي مكتب تراه، و«المقاعد التي أشغلها» (الحساب الرئيسي فقط) ما هو مستحق على مقعد لا يشغله أحد بعد — ويختفي البند حالما يشغل شخص آخر أي مقعد يملكه؛ وقائمة الالتزامات النظامية عمل الحساب الرئيسي نفسه إلى أن تُسنَد المهام. الطلب الذي رفعته أنت لا يطلب منك الموافقة عليه أبداً. تظهر الاشتراكات قبل أسبوع من التجديد، والأدوات وجهات الاتصال في يومها. لا شيء هنا قائمة مهام منفصلة — نفّذ على السجل نفسه فيغادر المكتب.",
     },
   },
+  {
+    id: "doors", area: "Seats & approvals",
+    q: { en: "What are the doors on My Desk?", ar: "ما هي الأبواب في «مكتبي»؟" },
+    a: {
+      en: "Every screen your seat opens, one tile each, grouped by the job it belongs to — the same doors as the sidebar, in the big view. A red number is what is waiting on you behind that door; a pink number is what is due this week on someone else's desk there. Tiles differ by seat: a Reporter sees the editorial desk, the Procurement officer the buying doors, the master account everything. Nothing is hidden behind a tile that the sidebar would show.",
+      ar: "كل شاشة يفتحها مقعدك، بطاقة لكل واحدة، مجمّعة حسب العمل الذي تنتمي إليه — الأبواب نفسها الموجودة في الشريط الجانبي، في العرض الكبير. الرقم الأحمر هو ما ينتظرك خلف ذلك الباب؛ والرقم الوردي ما هو مستحق هذا الأسبوع على مكتب شخص آخر هناك. تختلف البطاقات حسب المقعد: المراسل يرى مكتب التحرير، ومسؤول المشتريات أبواب الشراء، والحساب الرئيسي كل شيء. لا شيء مخفي خلف بطاقة يعرضه الشريط الجانبي.",
+    },
+  },
 ];
 
 export const helpById = (id: string) => HELP.find(h => h.id === id);
