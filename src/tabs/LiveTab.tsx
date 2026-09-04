@@ -29,6 +29,9 @@ const PAGES: { label: string; en: string; ar: string }[] = [
 ];
 
 type LibItem = { path: string; name: string; size: number; mtime: number };
+type ArchiveItem = { id: string; platform: string; kind: string; title: string; thumb: string; date: string; tags: string[]; series: string };
+type Article = { slug: string; lang: string; title: string; date: string };
+const WIDGET_LABEL: Record<string, string> = { hero: "Home hero slider", episodes: "Latest episodes", articles: "Latest articles" };
 
 export default function LiveTab({ state, currentUser, triggerToast }: SharedProps) {
   const canEdit = EDIT_ROLES.includes(currentUser?.role);
@@ -39,13 +42,22 @@ export default function LiveTab({ state, currentUser, triggerToast }: SharedProp
   const [path, setPath] = useState("/");
   const [pageLang, setPageLang] = useState<"en" | "ar">("en");
   const [lib, setLib] = useState<LibItem[]>([]);
+  const [panel, setPanel] = useState<"library" | "pictures">("library");
+  const [items, setItems] = useState<ArchiveItem[]>([]);
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<"podcast" | "documentary" | "video" | "article" | "all">("podcast");
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<string | null>(null);
   const editRef = useRef(edit); editRef.current = edit;
 
   const tell = (m: any) => frame.current?.contentWindow?.postMessage({ anahon: true, ...m }, siteOrigin || "*");
   const loadLib = () => fetch("/api/website/library").then(r => r.json()).then(setLib).catch(() => {});
-  useEffect(() => { loadLib(); }, []);
+  useEffect(() => {
+    loadLib();
+    fetch("/api/archive/items").then(r => r.json()).then(j => setItems((j.items || []).filter((i: ArchiveItem) => i.thumb && i.date).sort((a: ArchiveItem, b: ArchiveItem) => b.date.localeCompare(a.date)))).catch(() => {});
+    fetch("/api/archive/home").then(r => r.json()).then(j => setArticles(j.articles || [])).catch(() => {});
+  }, []);
   useEffect(() => { tell({ type: "edit", on: edit }); }, [edit]);
 
   useEffect(() => {
@@ -53,6 +65,19 @@ export default function LiveTab({ state, currentUser, triggerToast }: SharedProp
       const d = e.data; if (!d || d.anahon !== true) return;
       if (siteOrigin && e.origin !== siteOrigin) return;
       if (d.type === "ready") { setPath(d.url || "/"); setPageLang(d.lang === "ar" ? "ar" : "en"); tell({ type: "edit", on: editRef.current }); return; }
+      if (d.type === "widget") {
+        const w = String(d.widget || ""); const id = String(d.id || "");
+        if (!WIDGET_LABEL[w] || !id) return;
+        const cur = await fetch("/api/archive/home").then(r => r.json()).catch(() => ({}));
+        const c = (cur.home || {})[w] || {};
+        const pinned: string[] = (c.pinned || []).filter((x: string) => x !== id), removed: string[] = (c.removed || []).filter((x: string) => x !== id);
+        const next = d.op === "pin" ? { pinned: [id, ...pinned], removed } : { pinned, removed: [...removed, id] };
+        const r = await post("/api/archive/home", { widgets: { [w]: next } });
+        if (r.success) triggerToast(d.op === "pin" ? `Pinned to ${WIDGET_LABEL[w]}` : `Removed from ${WIDGET_LABEL[w]}`, "success");
+        else triggerToast(r.error || "Not saved", "error");
+        tell({ type: "result", ok: !!r.success });
+        return;
+      }
       if (d.type === "text" || d.type === "image") {
         const r = await post("/api/website/edit", { kind: d.type, from: d.from, to: d.to, lang: d.lang, url: d.url });
         if (r.success) triggerToast(`Saved — ${r.count} place${r.count === 1 ? "" : "s"}: ${r.paths.join(", ")}`, "success");
@@ -107,7 +132,35 @@ export default function LiveTab({ state, currentUser, triggerToast }: SharedProp
       <div className="flex min-h-0 flex-1 gap-2">
         <iframe ref={frame} src={siteUrl + "/"} title="AnaHon website" className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white" />
         {canEdit && (
-          <aside className="flex w-52 shrink-0 flex-col rounded-lg border border-slate-200 bg-white">
+          <aside className="flex w-64 shrink-0 flex-col rounded-lg border border-slate-200 bg-white">
+            <div className="flex border-b text-xs font-semibold">
+              {(["library", "pictures"] as const).map(p => <button key={p} onClick={() => setPanel(p)} className={`flex-1 px-2 py-1.5 capitalize ${panel === p ? "bg-slate-800 text-white" : ""}`}>{p}</button>)}
+            </div>
+            {panel === "library" && (
+              <>
+                <div className="space-y-1 border-b p-1.5">
+                  <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search titles…" className="w-full rounded border border-slate-300 px-2 py-1 text-xs" />
+                  <div className="flex flex-wrap gap-1 text-[10px]">
+                    {(["podcast", "documentary", "video", "article", "all"] as const).map(f => <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-1.5 py-0.5 capitalize ${filter === f ? "border-red-600 bg-red-600 text-white" : "border-slate-300"}`}>{f}</button>)}
+                  </div>
+                </div>
+                <div className="flex-1 space-y-1 overflow-y-auto p-1">
+                  {filter === "article"
+                    ? articles.filter(a => a.lang === pageLang && (!q || a.title.toLowerCase().includes(q.toLowerCase()))).slice(0, 60).map(a => (
+                      <div key={a.slug + a.lang} draggable onDragStart={e => { e.dataTransfer.setData("text/plain", "item:" + a.slug); e.dataTransfer.effectAllowed = "copy"; }} title="Drag onto the Latest articles widget"
+                        className="cursor-grab rounded border border-slate-200 px-2 py-1 text-xs hover:border-red-400"><div className="line-clamp-2">{a.title}</div><div className="text-[10px] text-slate-400">{a.date}</div></div>))
+                    : items.filter(i => (filter === "all" || (filter === "video" ? ["video", "reel"].includes(i.kind) && !i.tags.includes("podcast") : i.tags.includes(filter))) && (!q || i.title.toLowerCase().includes(q.toLowerCase()))).slice(0, 80).map(i => (
+                      <div key={i.id} draggable onDragStart={e => { e.dataTransfer.setData("text/plain", "item:" + i.id); e.dataTransfer.effectAllowed = "copy"; }} title="Drag onto a widget on the page"
+                        className="flex cursor-grab gap-1.5 rounded border border-slate-200 p-1 text-xs hover:border-red-400">
+                        <img src={i.thumb} alt="" className="h-10 w-14 shrink-0 rounded object-cover" />
+                        <div className="min-w-0"><div className="line-clamp-2 leading-tight">{i.title}</div><div className="text-[10px] text-slate-400">{i.date} · {i.tags.includes("podcast") ? "podcast" : i.tags.includes("documentary") ? "documentary" : i.kind}</div></div>
+                      </div>))}
+                  {!items.length && <div className="p-2 text-xs text-slate-400">Loading the library…</div>}
+                </div>
+                <div className="border-t px-2 py-1 text-[10px] text-slate-400">Drop on the hero, episodes or articles widget to pin it first. Hover an entry on the page and click × to remove it.</div>
+              </>
+            )}
+            {panel === "pictures" && <>
             <div className="flex items-center justify-between border-b px-2 py-1.5 text-xs font-semibold">
               <span>Pictures</span>
               <label className="cursor-pointer rounded border px-1.5 py-0.5 font-normal">+ upload<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} /></label>
@@ -120,6 +173,7 @@ export default function LiveTab({ state, currentUser, triggerToast }: SharedProp
               ))}
               {!lib.length && <div className="col-span-2 p-2 text-xs text-slate-400">No pictures yet — upload one.</div>}
             </div>
+            </>}
           </aside>
         )}
       </div>
