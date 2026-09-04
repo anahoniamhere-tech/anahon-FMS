@@ -2,7 +2,6 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import os from "os";
-import { AsyncLocalStorage } from "async_hooks";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
@@ -11,6 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml} from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
+import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs } from "./src/personnelDocs.js";
@@ -508,13 +508,8 @@ async function loadState(viewer?: any) {
 }
 
 // Helper to append a structured audit log action
-// Which seat the caller is standing in for the current request. Set by the auth
-// middleware from the X-Acting-As header; read by createAuditLog so the ~100 call
-// sites stay untouched and no action can be logged without its hat.
-const actingContext = new AsyncLocalStorage<{ actingAs: string; ownRole: string; vacant: boolean }>();
-
 async function createAuditLog(userId: string, userName: string, action: string, details: string) {
-  const acting = actingContext.getStore();
+  const acting = currentSeat();
   try {
     await prisma.auditLog.create({
       data: {
@@ -522,9 +517,9 @@ async function createAuditLog(userId: string, userName: string, action: string, 
         userId: userId || "u-1",
         userName: userName || "User",
         action,
-        details: acting ? `${details} [acting as ${acting.actingAs}${acting.vacant ? " — seat vacant" : " — seat also held by someone else"}; own role ${acting.ownRole}]` : details,
+        details: stampDetails(details, acting),
         timestamp: new Date().toISOString(),
-        actingAs: acting?.actingAs ?? null
+        actingAs: stampActingAs(acting)
       }
     });
   } catch (err) {
