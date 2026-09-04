@@ -112,6 +112,10 @@ export default function App() {
 
   // Active Simulated User Role
   const [activeUserId, setActiveUserId] = useState<string>("u-1");
+  // The seat the Super Admin is standing in, if any. The server is told on every write.
+  // Declared with the other hooks: a hook below the early returns changes the hook count
+  // between the sign-in render and the signed-in render, and React then renders nothing.
+  const [actingAs, setActingAs] = useState<string | null>(null);
   // Banking ledger view controls (shared: global search pre-fills them)
   const [bankFilterAcc, setBankFilterAcc] = useState<string>("");
   const [bankSearch, setBankSearch] = useState<string>("");
@@ -793,8 +797,6 @@ export default function App() {
 
   // Active simulated user
   const currentUser = state.users.find(u => u.id === activeUserId) || state.users[0];
-  // The seat the Super Admin is standing in, if any. The server is told on every write.
-  const [actingAs, setActingAs] = useState<string | null>(null);
 
   // Self-service staff (Policy 8.5) see only their own timesheet screen.
   const isSelfService = currentUser?.role === "Employee (Self-Service)";
