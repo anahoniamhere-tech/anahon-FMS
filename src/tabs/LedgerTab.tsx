@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Activity } from "lucide-react";
 import { Account, Project } from "../types";
 import { SharedProps } from "./shared";
+import { FINANCE } from "../roles";
 
 export default function LedgerTab({ currentUser, formatUSD, refreshState, state, t, triggerToast }: SharedProps) {
   // Manual Adjustment Journal Entry states
@@ -144,7 +145,7 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
               </div>
 
               {/* Manual Adjustment Journal Entry Form */}
-              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+              {FINANCE.includes(currentUser.role) && (
                 <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
                   <div className="border-b border-slate-100 pb-3">
                     <h3 className="text-md font-bold text-slate-800 uppercase font-mono flex items-center gap-1.5">

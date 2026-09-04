@@ -4,6 +4,7 @@ import { ContentItem } from "../types";
 import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "../constants";
 import { SharedProps } from "./shared";
 import Info from "../Info";
+import { CONTENT_EDITORS } from "../roles";
 
 // Editorial pipeline (Policies 002 & 005). The tab renders the register and the
 // buttons; every rule lives server-side — the same publishBlockers() the server
@@ -18,7 +19,7 @@ const STATUS_STYLE: Record<string, string> = {
   "Published": "bg-emerald-600 text-white"
 };
 
-const EDITOR_ROLES = ["Production Manager", "Executive Director", "Super Admin"];
+const EDITOR_ROLES = CONTENT_EDITORS;
 
 export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc, lang }: SharedProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -434,7 +435,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const policyAttendeesFor = (kind: string) => activeUsers
     .filter(u => (kind === "Daily Production"
       ? ["Production Manager", "Project Officer", "Reporter", "Content Creator", "Podcaster", "Super Admin"]
-      : ["Executive Director", "Production Manager", "Project Officer", "Super Admin"]).includes(u.role))
+      : [...CONTENT_EDITORS, "Project Officer"]).includes(u.role))
     .map(u => u.id);
   const canRecordMeeting = isEditor || currentUser.role === "Project Officer";
 

@@ -11,6 +11,7 @@ import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml} from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
+import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT } from "./src/roles.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs } from "./src/personnelDocs.js";
@@ -73,10 +74,10 @@ const PO_ALLOWED_POSTS = new Set([
 // are content-only accounts: they act on the editorial pipeline and nothing else —
 // same containment idea as the Project Officer gate. loadState also gives these roles
 // no financial domain; this closes the write side.
-const CONTENT_CREW_ROLES = ["Reporter", "Content Creator", "Podcaster"];
+const CONTENT_CREW_ROLES = CREW;
 // The seats that may sign as director: the Programme Director seat and the master
 // account that stands in for every vacant seat. Spelled out once, here.
-const DIRECTOR_ROLES = ["Super Admin", "Program Director"];
+const DIRECTOR_ROLES = DIRECTORS;
 const isDirector = (role?: string) => DIRECTOR_ROLES.includes(role || "");
 const CREW_ALLOWED_POSTS = new Set([
   "/api/content/cover",
@@ -102,10 +103,12 @@ const PLO_ALLOWED_POSTS = new Set([
   "/api/vendors/new", "/api/vendors/payment-doc",
   "/api/expense/new", "/api/expense/scan-invoice",
   "/api/document/upload", "/api/materials/link",
-  "/api/assets/register", "/api/assets/verify",
+  "/api/assets/register",
   "/api/contacts/save", "/api/contacts/delete",
-  "/api/activities/save", "/api/activities/generate",
-  "/api/meetings/save"
+  "/api/activities/save", "/api/activities/generate", "/api/activities/delete", "/api/activities/import-timetable",
+  "/api/vendor/scan",
+  "/api/subscriptions/save", "/api/subscriptions/verify", "/api/subscriptions/roll", "/api/subscriptions/delete",
+  "/api/timesheets/submit"
 ]);
 // Digital Officer: the website, the archive, the social accounts, the tools and
 // subscriptions. No money, no editorial approval.
@@ -115,13 +118,18 @@ const DIGITAL_ALLOWED_POSTS = new Set([
   "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
   "/api/social/publish", "/api/social/edit", "/api/social/delete",
   "/api/tools/save", "/api/tools/delete",
-  "/api/subscriptions/save", "/api/subscriptions/verify", "/api/subscriptions/roll", "/api/subscriptions/delete",
   "/api/contacts/save", "/api/contacts/delete",
   "/api/document/upload", "/api/materials/link",
-  "/api/meetings/save"
+  "/api/timesheets/submit"
 ]);
-const PLO_ROLE = "Procurement and Logistics Officer";
-const DIGITAL_ROLE = "Digital Officer";
+// Chief Editor and Production Manager: the editorial pipeline and site work, nothing financial.
+const EDITOR_ALLOWED_POSTS = new Set([
+  "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit",
+  "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
+  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/delete", "/api/social/edit", "/api/social/publish", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
+]);
+const PLO_ROLE = PLO_SEAT;
+const DIGITAL_ROLE = DIGITAL_SEAT;
 
 // Money-moving/control endpoints where an anonymous request is not acceptable.
 const IDENTITY_REQUIRED_POSTS = new Set([
@@ -188,7 +196,7 @@ app.use(async (req: any, res, next) => {
     {
       if (!dbUser.active) return res.status(403).json({ error: "This user account is deactivated." });
       // The database is the authority on what this verified person may do.
-      req.body.user = { id: dbUser.id, name: dbUser.name, role: dbUser.role };
+      req.body.user = { id: dbUser.id, name: dbUser.name, role: dbUser.role, email: dbUser.email };
       req.dbUser = dbUser;
 
       // Standing in for a seat. Only a Super Admin may do it, only for a real role,
@@ -206,6 +214,13 @@ app.use(async (req: any, res, next) => {
           return res.status(400).json({ error: "That is already your own role." });
         }
         const holder = await prisma.user.findFirst({ where: { role: wanted, active: true, NOT: { id: dbUser.id } } });
+        // The seat's limits come with the seat: standing in as Digital Officer does not
+        // let the master account pay a voucher through that hat.
+        const seatList = wanted === "Project Officer" ? PO_ALLOWED_POSTS : CONTENT_CREW_ROLES.includes(wanted) ? CREW_ALLOWED_POSTS
+          : wanted === PLO_ROLE ? PLO_ALLOWED_POSTS : wanted === DIGITAL_ROLE ? DIGITAL_ALLOWED_POSTS : EDITORS.includes(wanted) ? EDITOR_ALLOWED_POSTS : null;
+        if (seatList && !seatList.has(req.path)) {
+          return res.status(403).json({ error: `The ${wanted} seat cannot do this. Stop acting to use your own authority.` });
+        }
         const ctx = { actingAs: wanted, ownRole: dbUser.role, vacant: !holder };
         req.body.user.role = wanted;
         req.body.user.actingAs = wanted;
@@ -224,6 +239,9 @@ app.use(async (req: any, res, next) => {
       }
       if (dbUser.role === DIGITAL_ROLE && !DIGITAL_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "The Digital Officer seat runs the website, archive, social and tools — nothing financial or editorial." });
+      }
+      if (EDITORS.includes(dbUser.role) && !EDITOR_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "Editorial seats act on the pipeline and the site — nothing financial." });
       }
       if (CONTENT_CREW_ROLES.includes(dbUser.role) && !CREW_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "Content-team accounts act on the editorial pipeline only — this action needs an editor or finance role." });
@@ -416,7 +434,10 @@ async function loadState(viewer?: any) {
     return {
       users, accounts: [], donors: [], projects: [], budgetLines: [], vendors: [],
       expenses: [], procurements: [], bankAccounts: [], bankTransactions: [],
-      journalEntries: [], employees: [], timesheets: [], fixedAssets: [],
+      journalEntries: [],
+      employees: employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase()),
+      timesheets: formattedTimesheets.filter(t => employees.some(e => e.id === t.employeeId && e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase())),
+      fixedAssets: [],
       partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: [],
       opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], tools: [],
@@ -435,8 +456,11 @@ async function loadState(viewer?: any) {
     const buys = viewer.role === PLO_ROLE;
     const me = employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase());
     const myIds = new Set(me.map(e => e.id));
+    const visibleIds = new Set(visibleProjects.map((p: any) => p.id));
+    const DOMAIN = buys ? new Set(["Vendor", "Expense", "Procurement", "Project", "FixedAsset", "Website"]) : new Set(["Website"]);
     return {
-      users, accounts: [], donors, projects, budgetLines,
+      users, accounts: [], donors: buys ? donors : [], projects: visibleProjects,
+      budgetLines: budgetLines.filter((b: any) => visibleIds.has(b.projectId)),
       vendors: buys ? vendors : [],
       expenses: buys ? formattedExpenses : [],
       procurements: buys ? formattedProcurements : [],
@@ -445,14 +469,14 @@ async function loadState(viewer?: any) {
       timesheets: formattedTimesheets.filter(t => myIds.has(t.employeeId)),
       fixedAssets: buys ? fixedAssets : [],
       partnerAccounts: [],
-      documents: filterPersonnelDocs(documents, viewer, employees).map(d => ({
+      documents: filterPersonnelDocs(documents, viewer, employees).filter(d => DOMAIN.has(String(d.linkedRecordType || "")) || (d.partyId && myIds.has(d.partyId))).map(d => ({
         id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
         base64: d.base64.startsWith("link://") ? d.base64 : "", category: d.category,
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
       auditLogs: [], complianceTasks: [], opportunities: [], cashCounts: [],
-      subscriptions: buys ? [] : subscriptions,
+      subscriptions: buys ? subscriptions : [],
       projectActivities,
       clients: [], quotations: [],
       networkContacts, tools,
@@ -810,6 +834,7 @@ app.get("/api/state", async (req, res) => {
 app.post("/api/state", async (req, res) => {
   try {
     const { accounts, user } = req.body;
+    if (!["Super Admin", "Finance Officer"].includes(user?.role)) return res.status(403).json({ error: "Only finance may change the chart of accounts." });
     if (!accounts || !Array.isArray(accounts)) {
       return res.status(400).json({ error: "Invalid accounts array parameter" });
     }
@@ -840,7 +865,7 @@ app.post("/api/state", async (req, res) => {
       );
     }
 
-    const state = await loadState();
+    const state = await loadState((req as any).dbUser);
     res.json(state);
   } catch (err: any) {
     res.status(500).json({ error: "Failed updating database: " + err.message });
@@ -2554,7 +2579,7 @@ app.get("/api/subscriptions/detect", async (req, res) => {
 // legal attestation when flagged, a publish gate, and dated public corrections.
 // One narrow route per transition; every route writes its own audit line.
 
-const CONTENT_EDITOR_ROLES = ["Production Manager", "Program Director", "Super Admin", "Chief Editor"];
+const CONTENT_EDITOR_ROLES = CONTENT_EDITORS;
 
 // After the desk's last gate, tell the website to render the piece. The site
 // re-reads this database and refuses anything not Published, so the call carries
@@ -3028,8 +3053,8 @@ const ARCHIVE_DIR = process.env.ARCHIVE_DIR || "/Users/saadmatar/AnaHon/archive"
 const SITE_DIR = process.env.SITE_DIR || "/Users/saadmatar/AnaHon/website";
 // Site work — website copy, the live editor, the archive, social posting — belongs to the Digital
 // Officer as well as the editors. Editorial approval (content/approve, publish, retract) does not.
-const SITE_EDITOR_ROLES = [...CONTENT_EDITOR_ROLES, "Digital Officer"];
-const ARCHIVE_EDIT_ROLES = [...SITE_EDITOR_ROLES, "Project Officer"];
+const SITE_EDITOR_ROLES = SITE_EDITORS;
+const ARCHIVE_EDIT_ROLES = ARCHIVE_EDITORS;
 const readJsonFile = (p: string, fallback: any) => { try { return JSON.parse(fs.readFileSync(p, "utf-8")); } catch { return fallback; } };
 const libraryFile = (collection: string) => path.join(SITE_DIR, "src/data", collection === "icontent" ? "icontent-library.json" : "library.json");
 const cleanTag = (t: any) => String(t).trim().toLowerCase().replace(/\s+/g, "-");
@@ -6065,7 +6090,11 @@ app.get("/api/document/:id/pdf", async (req, res) => {
   try {
     const doc = await prisma.appDoc.findUnique({ where: { id: req.params.id } });
     if (!doc) return res.status(404).json({ error: "Document not found." });
-    if (await personnelBlocked(doc, String(req.query.uid || ""))) {
+    // Prefer the verified sign-in over a uid typed into the URL.
+    let viewerId = String(req.query.uid || "");
+    const tok = bearerToken(req);
+    if (tok) { try { const v = await verifyIdToken(tok); const u = await prisma.user.findUnique({ where: { email: v.email } }); if (u) viewerId = u.id; } catch { /* fall back to uid, which personnelBlocked treats as untrusted */ } }
+    if (await personnelBlocked(doc, viewerId)) {
       return res.status(403).json({ error: "This document is part of a personnel file." });
     }
     if (!/\.html?$/i.test(doc.filename)) {

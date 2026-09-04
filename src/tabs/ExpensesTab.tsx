@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { Procurement, Project, Vendor } from "../types";
 import { SharedProps } from "./shared";
 import Info from "../Info";
+import { DIRECTORS, FINANCE, REQUESTERS } from "../roles";
 
 export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUpload, openDoc, refreshState, requestableProjects, searchTerm, setDrawerExpenseId, setSearchTerm, state, t, triggerToast, lang }: SharedProps) {
   const [vFilter, setVFilter] = useState({ from: "", to: "", type: "", status: "" });
@@ -310,7 +311,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
               </div>
 
               {/* Expense submission Drawer form */}
-              {["Super Admin", "Finance Officer", "Project Lead", "Project Officer"].includes(currentUser.role) && (
+              {REQUESTERS.includes(currentUser.role) && (
                 <div className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm">
                   <h3 className="text-sm font-bold text-slate-950 uppercase border-b border-slate-100 pb-2 mb-4">Lodge Disbursement Voucher PV-2026</h3>
                   <form onSubmit={handleExpenseSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -836,7 +837,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                           >
                             🔎 Details
                           </button>
-                          {exp.status === "Submitted" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                          {exp.status === "Submitted" && FINANCE.includes(currentUser.role) && (
                             <><button
                               onClick={() => handleExpenseAction(exp.id, "finance-review", { comment: "Flagged for finance review." })}
                               className="text-[11px] bg-slate-800 hover:bg-slate-950 text-white px-3 py-1.5 rounded font-medium"
@@ -845,7 +846,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             </button><Info id="expense-finance-review" lang={lang} /></>
                           )}
 
-                          {["Submitted", "Under Finance Review"].includes(exp.status) && ["Super Admin", "Program Director"].includes(currentUser.role) && (
+                          {["Submitted", "Under Finance Review"].includes(exp.status) && DIRECTORS.includes(currentUser.role) && (
                             <>
                               <><button
                                 onClick={() => handleExpenseAction(exp.id, "approve")}
@@ -865,7 +866,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             </>
                           )}
 
-                          {exp.status === "Approved" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (() => {
+                          {exp.status === "Approved" && FINANCE.includes(currentUser.role) && (() => {
                             const hasTaxId = vendor && vendor.taxId && vendor.taxId.trim() !== "" && vendor.taxId.trim().toUpperCase() !== "N/A";
                             const whtRate = hasTaxId ? 0 : 0.075;
                             const whtVal = (exp.amount || 0) * whtRate;
@@ -929,7 +930,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             );
                           })()}
 
-                          {exp.status === "Paid" && ["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                          {exp.status === "Paid" && FINANCE.includes(currentUser.role) && (
                             <><button
                               onClick={() => handleExpenseAction(exp.id, "general-ledger-post")}
                               className="text-[11px] bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded font-medium"
@@ -943,7 +944,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             {expInvoices.length
                               ? `📄 Invoice secured${expInvoices.length > 1 ? ` (${expInvoices.length})` : ""}`
                               : "⚠️ Invoice required to close"}
-                            {["Super Admin", "Finance Officer", "Project Lead", "Project Officer"].includes(currentUser.role) && (<>
+                            {REQUESTERS.includes(currentUser.role) && (<>
                               <label className="text-red-650 hover:underline font-bold cursor-pointer inline-flex items-center min-h-[44px] px-2" title="The bill itself">
                                 🧾 {expInvoices.length ? "Add invoice" : "Attach invoice"}
                                 <input

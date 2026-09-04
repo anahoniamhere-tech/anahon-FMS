@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { SharedProps } from "./shared";
+import { SITE_EDITORS } from "../roles";
 
 /**
  * Website — every piece of copy the site renders, edited here.
@@ -10,7 +11,7 @@ import { SharedProps } from "./shared";
  * objects with `en` / `ar` keys become two columns; strings, numbers, booleans and
  * lists are edited in place. Saving a section writes the file and refreshes the site.
  */
-const EDIT_ROLES = ["Production Manager", "Program Director", "Super Admin"];
+const EDIT_ROLES = SITE_EDITORS;
 const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then(r => r.json());
 
 const FILE_LABEL: Record<string, string> = { site: "Pages & sections", i18n: "Navigation, footer & labels", programs: "Programs & mission", home: "Home widgets (see Archive › Website home)" };

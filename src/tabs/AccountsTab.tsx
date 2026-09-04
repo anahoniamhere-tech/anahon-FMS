@@ -2,6 +2,7 @@ import React, { useState, FormEvent } from "react";
 import { Account, Expense } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
+import { FINANCE } from "../roles";
 
 export default function AccountsTab({ currentUser, setState, state, t, triggerToast }: SharedProps) {
   // Sub-forms and interactive options
@@ -71,7 +72,7 @@ export default function AccountsTab({ currentUser, setState, state, t, triggerTo
               </div>
 
               {/* Add Account Inline form */}
-              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+              {FINANCE.includes(currentUser.role) && (
                 <form onSubmit={handleCreateAccount} className="p-4 bg-white border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Account Number Code")}</label>

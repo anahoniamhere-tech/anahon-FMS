@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { NetworkContact } from "../types";
 import { STREAMS } from "../constants";
 import { SharedProps } from "./shared";
+import { CONTACT_EDITORS } from "../roles";
 
 const KINDS = ["Trainer", "Participant", "Organiser", "Speaker", "Other"];
 const STATUSES = ["New", "Contacted", "Warm", "Dormant"];
@@ -36,7 +37,7 @@ export default function NetworkTab({ state, currentUser, refreshState, triggerTo
   const [kindFilter, setKindFilter] = useState("");
 
   const contacts: NetworkContact[] = state.networkContacts || [];
-  const canEdit = ["Super Admin", "Finance Officer", "Programs Director", "Production Manager"].includes(currentUser?.role);
+  const canEdit = CONTACT_EDITORS.includes(currentUser?.role);
   const today = new Date().toISOString().slice(0, 10);
 
   const events = useMemo(

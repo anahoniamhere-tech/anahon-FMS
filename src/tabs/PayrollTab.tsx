@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Donor, Employee, Project } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
+import { DIRECTORS, HR, PAYROLL_VIEWERS } from "../roles";
 
 export default function PayrollTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, formatUSD, handleGenerateContract, isSelfService, openDoc, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps) {
   // Employee registration states
@@ -141,7 +142,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
               </div>
 
               {/* Register New Employee Form */}
-              {["Super Admin", "HR / Payroll Officer"].includes(currentUser.role) && (
+              {HR.includes(currentUser.role) && (
                 <form onSubmit={handleEmployeeRegister} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                   <div>
                     <label htmlFor="emp-name" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Full Name")}</label>
@@ -255,7 +256,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                               </p>
                             );
                           })()}
-                          {["Super Admin", "HR / Payroll Officer", "Finance Officer"].includes(currentUser.role) && (
+                          {PAYROLL_VIEWERS.includes(currentUser.role) && (
                             <button
                               type="button"
                               onClick={() => { setContractFor(contractFor === emp.id ? null : emp.id); setContractParty("employee"); }}
@@ -265,7 +266,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                               {contractFor === emp.id ? "✕ Cancel contract" : "📄 Employment contract"}
                             </button>
                           )}
-                          {["Super Admin", "Finance Officer", "HR / Payroll Officer"].includes(currentUser.role) && (
+                          {PAYROLL_VIEWERS.includes(currentUser.role) && (
                             <button
                               type="button"
                               onClick={() => generatePayslip(emp.id, emp.name, selectedTSMonth)}
@@ -382,7 +383,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                           );
                         })}
 
-                        {activeTimesheet?.status !== "Approved" && enteredPool > 0 && (["Super Admin", "HR / Payroll Officer"].includes(currentUser.role) || (isSelfService && isOwnCard)) && (
+                        {activeTimesheet?.status !== "Approved" && enteredPool > 0 && (HR.includes(currentUser.role) || isOwnCard) && (
                           <button
                             onClick={() => handleTimesheetSubmit(emp.id)}
                             className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5"
@@ -391,7 +392,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                           </button>
                         )}
 
-                        {activeTimesheet && activeTimesheet.status === "Submitted" && ["Super Admin", "Executive Director"].includes(currentUser.role) && (
+                        {activeTimesheet && activeTimesheet.status === "Submitted" && DIRECTORS.includes(currentUser.role) && (
                           <button
                             onClick={() => handleApproveTimesheet(activeTimesheet.id)}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded px-4 py-2.5"

@@ -40,7 +40,7 @@ const placed: Record<string, string[]> = {
   "Procurement and Logistics Officer": ["mydesk", "help", "handbooks", "projects", "network", "procurement", "vendors", "expenses", "assets", "payroll"],
   "Digital Officer": ["mydesk", "help", "handbooks", "social", "live", "website", "archive", "tools", "network", "payroll"],
   "Chief Editor": ["mydesk", "help", "handbooks", "editorial", "social", "live", "website", "archive", "payroll"],
-  "Production Manager": ["mydesk", "help", "handbooks", "editorial", "social", "live", "website", "archive", "production", "payroll"],
+  "Production Manager": ["mydesk", "help", "handbooks", "editorial", "social", "live", "website", "archive", "payroll"],
   "Graphic Designer": ["editorial", "help", "handbooks"],
 };
 for (const [role, want] of Object.entries(placed)) ok(`${role}: ${want.length} doors`, same(keys(role), [...want].sort()), `got ${keys(role).join(",")}`);

@@ -73,7 +73,7 @@ export const NAV: NavSection[] = [
     items: [
       { navKey: "projects", label: "Projects & donors", icon: ic(FolderGit2), roles: ["*full", ...OFFICER, ...PLO] },
       { navKey: "funnel", label: "Funding pipeline", icon: ic(Layers), roles: ["*full"] },
-      { navKey: "production", label: "Clients & quotations", icon: ic(Briefcase), roles: ["*full", "Production Manager"] },
+      { navKey: "production", label: "Clients & quotations", icon: ic(Briefcase), roles: ["*full"] },
       { navKey: "network", label: "Contacts", icon: ic(Share2), roles: ["*full", ...PLO, ...DIGITAL] },
     ],
   },

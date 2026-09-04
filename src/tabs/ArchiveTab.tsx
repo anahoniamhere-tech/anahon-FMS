@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { SharedProps } from "./shared";
 import Info from "../Info";
+import { ARCHIVE_EDITORS, SITE_EDITORS } from "../roles";
 
 /**
  * Archive — the whole media archive, curated here and published to the website.
@@ -17,8 +18,8 @@ type Widget = { title_en?: string; title_ar?: string; pinned?: string[]; removed
 type Home = { hero?: Widget; articles?: Widget; episodes?: Widget };
 
 const PAGE = 60;
-const EDIT_ROLES = ["Production Manager", "Program Director", "Super Admin", "Project Officer"];
-const PUBLISH_ROLES = ["Production Manager", "Program Director", "Super Admin"];
+const EDIT_ROLES = ARCHIVE_EDITORS;
+const PUBLISH_ROLES = SITE_EDITORS;
 const LANES = ["format", "genre", "series", "topic", "place", "person"] as const;
 const UNPUBLISHED = "hidden"; // storage name of the unpublished flag
 

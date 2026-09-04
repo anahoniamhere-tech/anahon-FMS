@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { SharedProps } from "./shared";
 import Info from "../Info";
+import { SITE_EDITORS } from "../roles";
 
 /**
  * Live editor — the website itself, framed from its editing server, edited in place.
@@ -10,7 +11,7 @@ import Info from "../Info";
  * files (site.json, i18n.json, programs.json, home.json) and written; the preview
  * reloads with the new content. Publish builds the public site and pushes it out.
  */
-const EDIT_ROLES = ["Production Manager", "Program Director", "Super Admin"];
+const EDIT_ROLES = SITE_EDITORS;
 const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then(r => r.json());
 
 const PAGES: { label: string; en: string; ar: string }[] = [

@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Expense, Project, Quotation } from "../types";
 import { SharedProps } from "./shared";
 import Info from "../Info";
+import { DIRECTORS, REQUESTERS } from "../roles";
 
 export default function ProcurementTab({ currentUser, refreshState, requestableProjects, state, t, triggerToast, lang }: SharedProps) {
   // Procurement sourcing form
@@ -87,7 +88,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
               </div>
 
               {/* Submit bid comparison */}
-              {["Super Admin", "Finance Officer", "Project Lead", "Project Officer"].includes(currentUser.role) && (
+              {REQUESTERS.includes(currentUser.role) && (
                 <form onSubmit={handleProcurementSubmit} className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">{t("Comparative RFQ Title")}</label>
@@ -294,7 +295,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                       {(pr as any).approvedBy && <span className="block mt-1 not-italic text-[10px]">Approved by {(pr as any).approvedBy}</span>}
                     </div>
 
-                    {pr.status === "Under Evaluation" && ["Super Admin", "Executive Director"].includes(currentUser.role) && (
+                    {pr.status === "Under Evaluation" && DIRECTORS.includes(currentUser.role) && (
                       <><button
                         onClick={async () => {
                           const res = await fetch("/api/procurement/approve", {

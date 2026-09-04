@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Account } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
+import { FINANCE } from "../roles";
 
 export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch, setBankSearch, currentUser, refreshState, state, t, triggerToast }: SharedProps) {
   // Bank Reconciliation Trigger form
@@ -54,7 +55,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
               </div>
 
               {/* Direct Reconcile form */}
-              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+              {FINANCE.includes(currentUser.role) && (
                 <form onSubmit={handleBankReconcile} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                   <div className="md:col-span-2">
                     <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Target Account Vault Drawer")}</label>

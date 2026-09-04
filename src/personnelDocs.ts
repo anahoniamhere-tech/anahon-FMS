@@ -1,3 +1,4 @@
+import { PERSONNEL_FILE } from "./roles";
 /**
  * Personnel documents — the HR side of the vault.
  *
@@ -20,10 +21,11 @@ export const PERSONNEL_CATEGORIES = [
   "Diploma / Certificate",
   "Personal Photo",
   "Personnel",
+  "Payslip",
 ] as const;
 
 /** Roles that hold the personnel file for the whole organisation. */
-export const PERSONNEL_ROLES = ["Super Admin", "HR / Payroll Officer", "Executive Director"];
+export const PERSONNEL_ROLES = PERSONNEL_FILE;
 
 export function isPersonnelDoc(doc: { category?: string }): boolean {
   return PERSONNEL_CATEGORIES.includes(String(doc?.category || "") as any);

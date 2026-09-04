@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { Account, Vendor } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
+import { MANAGERS, SUPPLIER_EDITORS } from "../roles";
 
 export default function VendorsTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, formatUSD, handleGenerateContract, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps) {
   // Subscriptions sheet (Vendor Registry) — renewal tracking with alerts.
@@ -215,7 +216,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">🔁 Subscriptions & Renewals</h3>
                   <div className="flex items-center gap-2">
-                    {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                    {SUPPLIER_EDITORS.includes(currentUser.role) && (
                       <>
                         <button type="button" disabled={subBusy} onClick={detectSubscriptions}
                           className="text-xs font-medium bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-2 disabled:opacity-50 transition-all">
@@ -380,7 +381,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
               </div>
 
               {/* Register New Vendor Form */}
-              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+              {SUPPLIER_EDITORS.includes(currentUser.role) && (
                 <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
                   <h3 className="text-xs font-bold text-slate-800 uppercase font-mono tracking-wider">Onboard New Provider (Supplier / Consultant / Freelancer)</h3>
                   <div className="p-2 rounded-lg border border-indigo-200 bg-indigo-50/40 md:w-1/2">
@@ -542,7 +543,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                           {/* Only engagement-type vendors can hold an agreement. A software
                               subscription or a taxi is a purchase — it needs a voucher, not a contract. */}
                           {(() => {
-                            const canManage = ["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role);
+                            const canManage = MANAGERS.includes(currentUser.role);
                             if (!v.engageable) {
                               return (
                                 <div className="space-y-0.5">

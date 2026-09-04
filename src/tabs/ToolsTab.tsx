@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Tool } from "../types";
 import { STREAMS } from "../constants";
 import { SharedProps } from "./shared";
+import { TOOL_EDITORS } from "../roles";
 
 const CATEGORIES = [
   "Automation", "Models & APIs", "Research", "OSINT & Satellite",
@@ -40,7 +41,7 @@ export default function ToolsTab({ state, currentUser, refreshState, triggerToas
 
   const tools: Tool[] = state.tools || [];
   const subs = state.subscriptions || [];
-  const canEdit = ["Super Admin", "Finance Officer", "Programs Director", "Production Manager"].includes(currentUser?.role);
+  const canEdit = TOOL_EDITORS.includes(currentUser?.role);
   const today = new Date().toISOString().slice(0, 10);
 
   const rows = useMemo(() => {
