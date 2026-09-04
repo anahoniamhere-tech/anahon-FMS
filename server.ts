@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import os from "os";
+import { AsyncLocalStorage } from "async_hooks";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
@@ -155,6 +156,32 @@ app.use(async (req: any, res, next) => {
       // The database is the authority on what this verified person may do.
       req.body.user = { id: dbUser.id, name: dbUser.name, role: dbUser.role };
       req.dbUser = dbUser;
+
+      // Standing in for a seat. Only a Super Admin may do it, only for a real role,
+      // and never silently: the seat is carried into every audit line this request
+      // writes, and the assumption itself is logged before the action runs.
+      const wanted = String(req.get("X-Acting-As") || "").trim();
+      if (wanted) {
+        if (dbUser.role !== "Super Admin") {
+          return res.status(403).json({ error: "Only a Super Admin may act in another role." });
+        }
+        if (!ASSIGNABLE_ROLES.includes(wanted)) {
+          return res.status(400).json({ error: `"${wanted}" is not a role in this system.` });
+        }
+        if (wanted === dbUser.role) {
+          return res.status(400).json({ error: "That is already your own role." });
+        }
+        const holder = await prisma.user.findFirst({ where: { role: wanted, active: true, NOT: { id: dbUser.id } } });
+        const ctx = { actingAs: wanted, ownRole: dbUser.role, vacant: !holder };
+        req.body.user.role = wanted;
+        req.body.user.actingAs = wanted;
+        return actingContext.run(ctx, async () => {
+          await createAuditLog(dbUser.id, dbUser.name, "Role Assumed",
+            `${dbUser.name} (${dbUser.role}) acted as ${wanted} on ${req.path}. ` +
+            (holder ? `Note: ${holder.name} also holds ${wanted} — this action bypassed them.` : `The ${wanted} seat is vacant.`));
+          next();
+        });
+      }
       if (dbUser.role === "Project Officer" && !PO_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "Project Officers can raise purchase requests and upload evidence only — this action needs the Finance Officer or master account." });
       }
@@ -481,7 +508,13 @@ async function loadState(viewer?: any) {
 }
 
 // Helper to append a structured audit log action
+// Which seat the caller is standing in for the current request. Set by the auth
+// middleware from the X-Acting-As header; read by createAuditLog so the ~100 call
+// sites stay untouched and no action can be logged without its hat.
+const actingContext = new AsyncLocalStorage<{ actingAs: string; ownRole: string; vacant: boolean }>();
+
 async function createAuditLog(userId: string, userName: string, action: string, details: string) {
+  const acting = actingContext.getStore();
   try {
     await prisma.auditLog.create({
       data: {
@@ -489,8 +522,9 @@ async function createAuditLog(userId: string, userName: string, action: string, 
         userId: userId || "u-1",
         userName: userName || "User",
         action,
-        details,
-        timestamp: new Date().toISOString()
+        details: acting ? `${details} [acting as ${acting.actingAs}${acting.vacant ? " — seat vacant" : " — seat also held by someone else"}; own role ${acting.ownRole}]` : details,
+        timestamp: new Date().toISOString(),
+        actingAs: acting?.actingAs ?? null
       }
     });
   } catch (err) {
@@ -1771,6 +1805,24 @@ app.post("/api/opportunities/delete", async (req, res) => {
 const ASSIGNABLE_ROLES = ["Super Admin", "Finance Officer", "Program Director", "Project Officer", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer", "Employee (Self-Service)",
   // Editorial roles named by Policy 002 ("Programs Director" is the existing Program Director).
   "Production Manager", "Reporter", "Content Creator", "Podcaster"];
+
+// The seats and who sits in them. A Super Admin uses this to see what is standing
+// empty before deciding to fill it themselves.
+app.get("/api/roles/seats", async (_req, res) => {
+  const users = await prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, role: true } });
+  res.json(ASSIGNABLE_ROLES.map(role => {
+    const holders = users.filter(u => u.role === role);
+    return { role, holders: holders.map(h => h.name), vacant: holders.length === 0 };
+  }));
+});
+
+// Every action taken while standing in someone else's seat, newest first.
+app.get("/api/audit/acting", async (_req, res) => {
+  const rows = await prisma.auditLog.findMany({
+    where: { NOT: { actingAs: null } }, orderBy: { timestamp: "desc" }, take: 200
+  });
+  res.json(rows);
+});
 
 app.post("/api/users/set-role", async (req, res) => {
   try {

@@ -276,6 +276,8 @@ model AuditLog {
   action    String
   details   String
   timestamp String
+  // The seat the person was standing in, when it was not their own. Null = themselves.
+  actingAs  String?
 }
 
 model ComplianceTask {

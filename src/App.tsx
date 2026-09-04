@@ -76,6 +76,7 @@ import ArchiveTab from "./tabs/ArchiveTab";
 import SocialTab from "./tabs/SocialTab";
 import WebsiteTab from "./tabs/WebsiteTab";
 import LiveTab from "./tabs/LiveTab";
+import RoleSwitch, { ActingBanner } from "./RoleSwitch";
 import { SharedProps } from "./tabs/shared";
 import { auth } from "./firebaseConfig";
 import {
@@ -786,6 +787,8 @@ export default function App() {
 
   // Active simulated user
   const currentUser = state.users.find(u => u.id === activeUserId) || state.users[0];
+  // The seat the Super Admin is standing in, if any. The server is told on every write.
+  const [actingAs, setActingAs] = useState<string | null>(null);
 
   // Self-service staff (Policy 8.5) see only their own timesheet screen.
   const isSelfService = currentUser?.role === "Employee (Self-Service)";
@@ -1063,6 +1066,7 @@ export default function App() {
             {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/ /g, " ")}
           </span>
           {/* One-click Arabic: menus and main actions switch, and the page flips to RTL. */}
+          <RoleSwitch currentUser={currentUser} onChange={(r) => { setActingAs(r); refreshState(); }} />
           {state?.siteUrl && (
             <a href={state.siteUrl} target="_blank" rel="noopener"
               className="rounded-full border border-slate-600 px-3 py-1 text-xs font-bold text-slate-200 hover:bg-slate-800"
@@ -1083,6 +1087,7 @@ export default function App() {
           </button>
         </div>
       </header>
+      <ActingBanner acting={actingAs} onStop={() => { (window as any).__actingAs = undefined; setActingAs(null); refreshState(); }} />
 
       {/* Mobile Header */}
       <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between text-white relative z-50 h-16">
