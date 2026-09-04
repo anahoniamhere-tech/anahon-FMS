@@ -403,7 +403,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                       <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Provider / Vendor Name")}</label>
                       <input
                         type="text"
-                        placeholder="e.g. Layale El-Khatib (Consultant)"
+                        placeholder="e.g. Nour Haddad (Consultant)"
                         required
                         value={newVendorName}
                         onChange={(e) => setNewVendorName(e.target.value)}

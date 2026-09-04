@@ -7,6 +7,9 @@ import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 
 export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, workspaceRef }: SharedProps) {
+  // Whoever holds the Finance Officer seat signs the printed project sheet — never a name in code.
+  const financeOfficerName = state.users.find((u: any) => u.role === "Finance Officer" && u.active)?.name || "Finance Officer";
+
   // New Project form states
   const [newProjectName, setNewProjectName] = useState("");
 
@@ -1811,11 +1814,11 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                     <div className="grid grid-cols-2 gap-12 pt-6">
                                       <div className="text-center space-y-12">
                                         <div className="font-mono text-xs border-b border-slate-350 pb-2 mx-6 italic text-slate-600">
-                                          Layale Ghorayeb
+                                          {financeOfficerName}
                                         </div>
                                         <div>
                                           <span className="block text-xs font-bold text-slate-800 uppercase font-sans">Prepared By</span>
-                                          <span className="block text-[10px] text-slate-500 uppercase font-mono">Layale Ghorayeb (Finance Officer)</span>
+                                          <span className="block text-[10px] text-slate-500 uppercase font-mono">{financeOfficerName} (Finance Officer)</span>
                                         </div>
                                       </div>
 

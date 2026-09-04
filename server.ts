@@ -216,12 +216,9 @@ const DEFAULT_DATABASE = {
     // Marwan El Cheikh is Secondary (Finance Officer). No account holds both authorities:
     // Policy 4.3 forbids one person initiating, approving, and executing the same transaction.
     { id: "u-1", name: "Saad Matar", email: "anahoniamhere@gmail.com", role: "Program Director", active: true },
-    { id: "u-2", name: "Marwan El Cheikh", email: "marwan@anahon.org", role: "Finance Officer", active: true },
-    // Capital partner (equity accounts 3200/3400, pt-2) — not an officer under Policy 4.2, so no approval authority.
-    { id: "u-3", name: "Samer Ghamrawi", email: "samer@anahon.org", role: "Auditor / Read-Only Reviewer", active: true },
-    { id: "u-4", name: "Tarek Rifai", email: "tarek@anahon.org", role: "Project Lead", active: true },
-    { id: "u-5", name: "Mona Merhabi", email: "mona@anahon.org", role: "HR / Payroll Officer", active: true },
-    { id: "u-6", name: "External Auditor", email: "auditor@deloitte.com", role: "Auditor / Read-Only Reviewer", active: true }
+    { id: "u-2", name: "Marwan El Cheikh", email: "marwan@anahon.org", role: "Finance Officer", active: true }
+    // Template people (Samer Ghamrawi, Tarek Rifai, Mona Merhabi, a Deloitte auditor) removed 4 Sep 2026: none was real.
+    // Template people (Samer Ghamrawi, Tarek Rifai, Mona Merhabi, a Deloitte auditor) removed 4 Sep 2026: none was real.
   ],
   orgSettings: {
     profileName: "AnaHon Media Platform",
