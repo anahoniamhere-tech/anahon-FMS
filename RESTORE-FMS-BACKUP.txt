@@ -1,0 +1,64 @@
+HOW TO RESTORE THIS BACKUP
+==========================
+
+These two files are AES-256-CBC encrypted with PBKDF2 (200,000 iterations),
+the same scheme and the SAME KEY as the AnaHon media archive.
+
+  fms-database-YYYY-MM-DD.db.enc     the whole financial system: accounts,
+                                     journals, vouchers, payroll, bank
+                                     transactions, donors, projects
+  document-vault-YYYY-MM-DD.tar.gz.enc   the 643-file document vault
+                                         (registration papers, contracts,
+                                         grant agreements, receipts)
+
+THE KEY IS NOT HERE AND MUST NEVER BE UPLOADED HERE.
+It lives on Saad's Mac at ~/anahon-archive-keys/anahon-archive-2026-08-17.key
+and in his password manager. Without it these files are unrecoverable —
+there is no reset, no recovery link, no support line.
+
+
+1. CHECK NOTHING WAS CORRUPTED IN TRANSIT
+-----------------------------------------
+    shasum -a 256 -c SHA256SUMS.txt
+
+Every line must say OK.
+
+
+2. DECRYPT
+----------
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+      -in fms-database-YYYY-MM-DD.db.enc \
+      -out dev.db -pass file:/path/to/anahon-archive-2026-08-17.key
+
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+      -in document-vault-YYYY-MM-DD.tar.gz.enc \
+      -out vault.tar.gz -pass file:/path/to/anahon-archive-2026-08-17.key
+
+If you are typing the passphrase instead of using the key file, replace
+`-pass file:...` with `-pass pass:THEPASSPHRASE` — but the key file is the
+supported path.
+
+
+3. PUT IT BACK
+--------------
+Database — confirm it is intact, then drop it into place:
+
+    sqlite3 dev.db "pragma integrity_check;"     # must print: ok
+    sqlite3 dev.db "select count(*) from JournalEntry;"
+    cp dev.db <FMS>/prisma/dev.db
+
+Vault:
+
+    tar -xzf vault.tar.gz -C ~/Documents/
+
+The FMS application code is a separate matter — it lives in git at
+https://github.com/anahoniamhere-tech/anahon-FMS. This backup deliberately
+contains DATA ONLY, because the data is what cannot be rebuilt.
+
+
+WHAT THIS BACKUP IS NOT
+-----------------------
+It is a snapshot, not a sync. It reflects the moment the script last ran.
+Re-run scripts/backup_to_drive.sh after any significant bookkeeping session.
+
+[3 Sep 2026] The encryption key also lives in Apple Passwords under "AnaHon archive key 2026-08-17" (iCloud Keychain, phone + Mac) and as a printed copy in the office file. If the Mac is gone, start there.

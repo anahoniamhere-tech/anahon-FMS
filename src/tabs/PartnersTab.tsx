@@ -420,7 +420,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                     {/* ⚡ Daily direct expense — the one form for day-to-day spending.
                         Posts the full chain in a single submit; nothing to approve later
                         because the money has already left (Policy: record same day). */}
-                    {["Super Admin", "Finance Officer", "Program Director"].includes(currentUser.role) && (
+                    {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && (
                       <form
                         onSubmit={(e) => handleDailyDirectSubmit(e, selectedBankId)}
                         aria-label="Lodge a daily direct expense"

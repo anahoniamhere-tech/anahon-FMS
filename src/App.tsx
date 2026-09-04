@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import React, { useState, useEffect, useRef, FormEvent, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { selfDealingRequester } from "./selfDealing";
+import { isPersonnelDoc, maySeePersonnelFile, PERSONNEL_CATEGORIES } from "./personnelDocs";
 import {
   Building,
   User,
@@ -55,6 +56,7 @@ import ProjectsTab from "./tabs/ProjectsTab";
 import ExpensesTab from "./tabs/ExpensesTab";
 import PartnersTab from "./tabs/PartnersTab";
 import ComplianceTab from "./tabs/ComplianceTab";
+import MyDeskTab from "./tabs/MyDeskTab";
 import FunnelTab from "./tabs/FunnelTab";
 import VendorsTab from "./tabs/VendorsTab";
 import ProductionTab from "./tabs/ProductionTab";
@@ -68,17 +70,23 @@ import AssetsTab from "./tabs/AssetsTab";
 import AccountsTab from "./tabs/AccountsTab";
 import HandbooksTab from "./tabs/HandbooksTab";
 import EditorialTab from "./tabs/EditorialTab";
+import NetworkTab from "./tabs/NetworkTab";
+import ToolsTab from "./tabs/ToolsTab";
+import ArchiveTab from "./tabs/ArchiveTab";
+import SocialTab from "./tabs/SocialTab";
+import WebsiteTab from "./tabs/WebsiteTab";
+import LiveTab from "./tabs/LiveTab";
 import { SharedProps } from "./tabs/shared";
 import { auth } from "./firebaseConfig";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
   signOut,
   onAuthStateChanged,
   updateProfile
 } from "firebase/auth";
-  GoogleAuthProvider,
-  signInWithPopup,
 
 
 
@@ -169,6 +177,10 @@ export default function App() {
 
   // ---- Party file: everything on record for one person/provider, in one panel ----
   const [partyFileFor, setPartyFileFor] = useState<string | null>(null);
+  // Filing a document INTO someone else's personnel file — HR/Payroll and the Program
+  // Director do this for the team; everyone else never sees the control at all.
+  const [personnelCat, setPersonnelCat] = useState<string>("CV");
+  const [personnelBusy, setPersonnelBusy] = useState(false);
 
   // Documents carry an explicit partyId (set by the 31-Jul migration, and stamped on every
   // newly generated contract). The name heuristic survives only as a labelled safety net for
@@ -176,8 +188,12 @@ export default function App() {
   const collectPartyFile = (partyId: string, partyName: string) => {
     const firstName = (partyName.split(/\s+/)[0] || "").toLowerCase();
     const linked = state.documents.filter(d => d.partyId === partyId);
-    const agreements = linked.filter(d => /contract|agreement|addendum/i.test(`${d.category} ${d.filename}`));
-    const other = linked.filter(d => !agreements.includes(d));
+    // Identity papers and CVs form their own section — they are not "other documents".
+    // The server has already withheld them from anyone outside this person's personnel
+    // file, so whatever reaches here is legitimately visible.
+    const personal = linked.filter(isPersonnelDoc);
+    const agreements = linked.filter(d => !personal.includes(d) && /contract|agreement|addendum/i.test(`${d.category} ${d.filename}`));
+    const other = linked.filter(d => !agreements.includes(d) && !personal.includes(d));
     const unlinkedByName = firstName.length < 3 ? [] : state.documents.filter(d =>
       !d.partyId &&
       /contract|agreement|timesheet|addendum|receipt|ts_/i.test(`${d.category} ${d.filename}`) &&
@@ -186,8 +202,13 @@ export default function App() {
       .filter(e => e.vendorId === partyId)
       .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
     const docsOf = (eid: string) => state.documents.filter(d => d.linkedRecordType === "Expense" && d.linkedRecordId === eid);
-    return { agreements, other, unlinkedByName, vouchers, docsOf };
+    return { agreements, other, personal, unlinkedByName, vouchers, docsOf };
   };
+
+  /** Every document URL carries the viewer's id: personnel documents (passports, IDs, CVs)
+   *  are refused by the server to anyone outside the personnel file, and it needs to know
+   *  who is asking. Harmless on ordinary documents, which ignore it. */
+  const docUrl = (p: string) => `${p}${p.includes("?") ? "&" : "?"}uid=${encodeURIComponent(currentUser?.id || "")}`;
 
   /** Open a document in the in-app viewer instead of a new tab. Pass the AppDoc (or any
    *  object carrying id/filename/mimeType). Falls back to a plain link if id is missing. */
@@ -197,23 +218,55 @@ export default function App() {
     setDocPages(null);
     setDocText(null);
     if (/pdf/i.test(d.mimeType || "") || /\.pdf$/i.test(filename)) {
-      fetch(`/api/document/pages/${d.id}`)
+      fetch(docUrl(`/api/document/pages/${d.id}`))
         .then(r => r.json())
         .then(j => setDocPages(j.pages || 0))
         .catch(() => setDocPages(0));
     } else if (/\.docx$/i.test(filename)) {
-      fetch(`/api/document/docx-text/${d.id}`)
+      fetch(docUrl(`/api/document/docx-text/${d.id}`))
         .then(r => r.ok ? r.text() : Promise.reject())
         .then(t => setDocText(t))
         .catch(() => setDocText(""));
     }
   };
 
+  /** File a personnel document (CV, passport, ID…) against a named employee. Goes through
+   *  the same upload endpoint as everything else, which routes it to PERSONNEL/<name>/ and
+   *  refuses the write unless this user is entitled to that person's file. */
+  const uploadPersonnelDoc = async (partyId: string, file: File, category: string) => {
+    setPersonnelBusy(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result).split(",")[1] || "");
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      const res = await fetch("/api/document/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name, mimeType: file.type,
+          sizeStr: `${Math.max(1, Math.round(file.size / 1024))} KB`,
+          base64, category, partyId, user: currentUser,
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Could not file the document.");
+      triggerToast(d.duplicate ? "Already on file — no second copy made." : `${category} filed.`);
+      await refreshState();
+    } catch (e: any) {
+      triggerToast(e.message);
+    } finally {
+      setPersonnelBusy(false);
+    }
+  };
+
   const renderPartyFile = (partyId: string, partyName: string) => {
-    const { agreements, other, unlinkedByName, vouchers, docsOf } = collectPartyFile(partyId, partyName);
+    const { agreements, other, personal, unlinkedByName, vouchers, docsOf } = collectPartyFile(partyId, partyName);
     const total = vouchers.reduce((s, e) => s + e.convertedAmount, 0);
     const docLink = (d: any) => (
-      <a key={d.id} href={`/api/document/content/${d.id}`} target="_blank" onClick={e => { e.preventDefault(); openDoc(d); }} rel="noreferrer"
+      <a key={d.id} href={docUrl(`/api/document/content/${d.id}`)} target="_blank" onClick={e => { e.preventDefault(); openDoc(d); }} rel="noreferrer"
         className="inline-flex items-center gap-1 text-[11px] text-red-650 hover:text-red-700 hover:underline mr-3">
         📄 {d.filename}
       </a>
@@ -221,6 +274,49 @@ export default function App() {
     return (
       <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3 text-left">
         <h5 className="text-xs font-bold text-slate-800 font-mono uppercase">📂 File — {partyName}</h5>
+        {maySeePersonnelFile(currentUser, state.employees, partyId) && (
+          <div className="rounded-lg border border-[#E23B3B]/30 bg-[#E23B3B]/[0.04] p-2.5">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#8f2020] mb-1">
+              🔒 Personal file — restricted
+            </p>
+            {personal.length === 0 && (
+              <p className="text-[11px] italic text-slate-500">No personal documents on file yet.</p>
+            )}
+            {personal.map(d => (
+              <div key={d.id} className="flex items-baseline gap-2">
+                <span className="w-32 shrink-0 text-[9px] font-bold uppercase text-slate-500">{d.category}</span>
+                {docLink(d)}
+                <span className="shrink-0 font-mono text-[9px] text-slate-400">{d.refNo}</span>
+              </div>
+            ))}
+            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-[#E23B3B]/15 pt-2">
+              <select
+                value={personnelCat}
+                onChange={e => setPersonnelCat(e.target.value)}
+                className="rounded border border-slate-300 bg-white px-1.5 py-1 text-[10px]"
+                aria-label={`Document type for ${partyName}`}
+              >
+                {PERSONNEL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <label className={`cursor-pointer rounded bg-[#6D1A1A] px-2.5 py-1 text-[10px] font-bold text-white hover:bg-[#4A1010] ${personnelBusy ? "opacity-50" : ""}`}>
+                {personnelBusy ? "Filing…" : "+ Add document"}
+                <input
+                  type="file"
+                  className="hidden"
+                  disabled={personnelBusy}
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadPersonnelDoc(partyId, f, personnelCat);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <span className="text-[10px] text-slate-500">
+                Filed to PERSONNEL / {partyName}. Visible to {partyName.split(/\s+/)[0]}, the Executive Director and HR / Payroll only.
+              </span>
+            </div>
+          </div>
+        )}
         <div>
           <p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Contracts & agreements</p>
           {agreements.length ? agreements.map(docLink)
@@ -379,14 +475,27 @@ export default function App() {
         setFbUser(user);
         try {
           // Sync Firebase session credentials with local SQLite database roles
+          // Send the signed token, not a claimed email. The server verifies Google's
+          // signature and looks the account up from what the signature says.
+          const idToken = await user.getIdToken();
           const syncRes = await fetch("/api/auth/sync", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: user.email,
-              name: user.displayName || user.email?.split("@")[0]
-            })
+            body: JSON.stringify({ idToken })
           });
+          if (!syncRes.ok) {
+            // Firebase knows this person; this system does not (or has deactivated them).
+            // They must land back on the sign-in window with the reason, NOT half-way
+            // inside a shell they have no data for — being signed in to Firebase but not
+            // here is exactly the state that renders an empty, broken workspace.
+            const problem = await syncRes.json().catch(() => ({ error: "Sign-in failed." }));
+            await signOut(auth);
+            setFbUser(null);
+            setAuthError(problem.error || "Sign-in failed.");
+            setLoading(false);
+            setAuthLoading(false);
+            return;
+          }
           if (syncRes.ok) {
             const syncData = await syncRes.json();
             setActiveUserId(syncData.user.id);
@@ -421,6 +530,19 @@ export default function App() {
       // Reset input fields
       setAuthEmail("");
       setAuthPassword("");
+    } catch (err: any) {
+      setAuthError(err.message.replace("Firebase: ", ""));
+    } finally {
+      setAuthBtnLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setAuthBtnLoading(true);
+    setAuthError(null);
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+      triggerToast("Logged in with Google.");
     } catch (err: any) {
       setAuthError(err.message.replace("Firebase: ", ""));
     } finally {
@@ -533,19 +655,6 @@ export default function App() {
               <span>{authError}</span>
             </div>
           )}
-  const handleGoogleSignIn = async () => {
-    setAuthBtnLoading(true);
-    setAuthError(null);
-    try {
-      await signInWithPopup(auth, new GoogleAuthProvider());
-      triggerToast("Logged in with Google.");
-    } catch (err: any) {
-      setAuthError(err.message.replace("Firebase: ", ""));
-    } finally {
-      setAuthBtnLoading(false);
-    }
-  };
-
 
           {/* Forms */}
           <form onSubmit={authTab === "signin" ? handleFirebaseSignIn : handleFirebaseSignUp} className="space-y-4 text-left">
@@ -612,7 +721,25 @@ export default function App() {
             </button>
           </form>
 
+          <div className="flex items-center gap-3 text-[10px] text-slate-500 font-mono uppercase tracking-widest">
+            <div className="flex-1 h-px bg-slate-800" /><span>or</span><div className="flex-1 h-px bg-slate-800" />
+          </div>
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            disabled={authBtnLoading}
+            className="w-full p-3 bg-white hover:bg-slate-100 text-slate-900 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.3l7.8 6C12.3 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 7.1-10 7.1-17.5z"/><path fill="#FBBC05" d="M10.4 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.8-6A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.7-4.1-13.6-9.8l-7.8 6C6.5 42.6 14.6 48 24 48z"/></svg>
+            <span>Sign in with Google</span>
+          </button>
+
           {/* Local testing helper banner */}
+          {/* Seed shortcuts print a working password on the sign-in screen, so they exist
+              only in a dev build. import.meta.env.DEV is compiled to false by `vite build`,
+              and the whole block is then dropped by dead-code elimination — it cannot be
+              re-enabled by a flag someone forgets to unset in production. */}
+          {import.meta.env.DEV && (
           <div className="pt-4 border-t border-slate-800/80 space-y-2">
             <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono text-center">
               Local Development Seed Roles
@@ -626,15 +753,19 @@ export default function App() {
               </div>
               <div className="space-y-1">
                 <span className="block text-slate-500">Finance Officer:</span>
-                <span className="block text-slate-300 select-all cursor-pointer hover:text-white" onClick={() => { setAuthEmail("marwan@anahon.org"); setAuthPassword("password123"); setAuthTab("signin"); }}>
-                  marwan@anahon.org
+                {/* Real person, real account — fills the address only. Marwan sets and knows
+                    his own password; anyone else knowing it would make "Marwan approved this"
+                    worth nothing, which is the whole reason the role exists. */}
+                <span className="block text-slate-300 select-all cursor-pointer hover:text-white" onClick={() => { setAuthEmail("marwancheikh315@gmail.com"); setAuthPassword(""); setAuthTab("signin"); }}>
+                  marwancheikh315@gmail.com
                 </span>
               </div>
             </div>
             <p className="text-[9px] text-slate-500 italic text-center">
-              Tip: Click any seed email to auto-fill. Password: <strong>password123</strong>
+              Tip: Click an address to fill it in. Seed accounts use <strong>password123</strong>; real accounts use their owner's own password.
             </p>
           </div>
+          )}
 
         </div>
       </div>
@@ -717,21 +848,11 @@ export default function App() {
         ...JSON.parse((currentUser as any)?.projectIdsJson || "[]"),
         ...(state?.projects || []).filter(p => officerScopeStream && p.stream === officerScopeStream).map(p => p.id)
       ])
-          <div className="flex items-center gap-3 text-[10px] text-slate-500 font-mono uppercase tracking-widest">
-            <div className="flex-1 h-px bg-slate-800" /><span>or</span><div className="flex-1 h-px bg-slate-800" />
-          </div>
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={authBtnLoading}
-            className="w-full p-3 bg-white hover:bg-slate-100 text-slate-900 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.3l7.8 6C12.3 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 7.1-10 7.1-17.5z"/><path fill="#FBBC05" d="M10.4 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.8-6A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.7-4.1-13.6-9.8l-7.8 6C6.5 42.6 14.6 48 24 48z"/></svg>
-            <span>Sign in with Google</span>
-          </button>
-
     : null;
-  const requestableProjects = officerProjectIds ? (state?.projects || []).filter(p => officerProjectIds.has(p.id)) : (state?.projects || []);
+  // Closed projects keep their history but stop accepting new charges — a completed
+  // grant's budget is settled, so it must not appear in any project picker.
+  const requestableProjects = (officerProjectIds ? (state?.projects || []).filter(p => officerProjectIds.has(p.id)) : (state?.projects || []))
+    .filter(p => p.status !== "Completed" && p.status !== "Closed");
 
 
 
@@ -888,7 +1009,7 @@ export default function App() {
       {/* Header */}
       <header className="hidden md:flex flex-row items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-3 text-white">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded bg-red-600 text-white font-bold text-lg shadow-inner">AH</div>
+          <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="h-10 w-auto drop-shadow" />
           <div>
             <h1 className="text-lg font-bold tracking-tight font-sans">AnaHon Management System</h1>
             <p className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">Tripoli Civil Co. Compliance Terminal</p>
@@ -936,7 +1057,17 @@ export default function App() {
           </div>
         )}
         <div className="flex items-center gap-4">
+          {/* Brand date pill (§7): red dot, letter-spaced caps, translucent on dark. */}
+          <span className="hidden lg:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-bold tracking-[0.15em] text-white/90 uppercase">
+            <span className="h-1.5 w-1.5 rounded-full bg-red-500 inline-block" />
+            {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/ /g, " ")}
+          </span>
           {/* One-click Arabic: menus and main actions switch, and the page flips to RTL. */}
+          {state?.siteUrl && (
+            <a href={state.siteUrl} target="_blank" rel="noopener"
+              className="rounded-full border border-slate-600 px-3 py-1 text-xs font-bold text-slate-200 hover:bg-slate-800"
+              title={state.siteUrl}>🌐 {t("Website")}</a>
+          )}
           <button
             onClick={() => setLang(lang === "ar" ? "en" : "ar")}
             aria-label={lang === "ar" ? "Switch interface to English" : "تحويل الواجهة إلى العربية"}
@@ -965,7 +1096,7 @@ export default function App() {
           >
             <span className="text-lg leading-none">{isOpen ? "✕" : "☰"}</span>
           </button>
-          <div className="flex h-9 w-9 items-center justify-center rounded bg-red-650 bg-red-600 text-white font-bold text-base shadow-inner">AH</div>
+          <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="h-9 w-auto drop-shadow" />
           <div className="flex flex-col">
             <h1 className="text-xs font-bold tracking-tight font-sans">AnaHon MS</h1>
             <span className="text-[9px] font-bold font-mono text-red-400 bg-red-950/40 px-1.5 py-0.5 rounded border border-red-900/40 uppercase w-fit leading-none mt-0.5">
@@ -1036,6 +1167,10 @@ export default function App() {
 
             {!isSelfService && !isProjectOfficer && !isContentCrew && (<>
             <p className="px-3 pt-1 pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none">{t("Overview")}</p>
+            <button onClick={() => handleNavClick("mydesk")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "mydesk" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <UserCheck className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("My Desk")}</span>
+            </button>
             <button onClick={() => handleNavClick("dashboard")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "dashboard" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Activity className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">{t("Overview Dashboard")}</span>
@@ -1115,6 +1250,32 @@ export default function App() {
             <button onClick={() => handleNavClick("partners")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "partners" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
               <Briefcase className="h-4 w-4 shrink-0" />
               <span className="text-left flex-1">{t("Partner Capital Tracking")}</span>
+            </button>
+
+            <button onClick={() => handleNavClick("network")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "network" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Share2 className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Networking Register")}</span>
+            </button>
+
+            <button onClick={() => handleNavClick("tools")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "tools" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <Sliders className="h-4 w-4 shrink-0" />
+              <span className="text-left flex-1">{t("Tool Register")}</span>
+            </button>
+            <button onClick={() => handleNavClick("archive")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "archive" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <span className="h-4 w-4 shrink-0 text-center leading-4">🗂</span>
+              <span className="text-left flex-1">{t("Archive")}</span>
+            </button>
+            <button onClick={() => handleNavClick("social")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "social" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <span className="h-4 w-4 shrink-0 text-center leading-4">📣</span>
+              <span className="text-left flex-1">{t("Social desk")}</span>
+            </button>
+            <button onClick={() => handleNavClick("website")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "website" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <span className="h-4 w-4 shrink-0 text-center leading-4">🌐</span>
+              <span className="text-left flex-1">{t("Website")}</span>
+            </button>
+            <button onClick={() => handleNavClick("live")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "live" ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+              <span className="h-4 w-4 shrink-0 text-center leading-4">✎</span>
+              <span className="text-left flex-1">{t("Live editor")}</span>
             </button>
 
             <button onClick={() => handleNavClick("compliance")} className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === "compliance" ? "bg-red-650 bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
@@ -1213,8 +1374,15 @@ export default function App() {
           {activeTab === "partners" && <PartnersTab {...shared} />}
 
           {/* tab content Compliance & AI Audit Desk */}
+          {activeTab === "network" && <NetworkTab {...shared} />}
+          {activeTab === "tools" && <ToolsTab {...shared} />}
+          {activeTab === "archive" && <ArchiveTab {...shared} />}
+          {activeTab === "social" && <SocialTab {...shared} />}
+          {activeTab === "website" && <WebsiteTab {...shared} />}
+          {activeTab === "live" && <LiveTab {...shared} />}
           {activeTab === "handbooks" && <HandbooksTab {...shared} />}
 
+          {activeTab === "mydesk" && <MyDeskTab {...shared} />}
           {activeTab === "compliance" && <ComplianceTab {...shared} />}
 
         </main>
@@ -1329,7 +1497,7 @@ export default function App() {
       {/* Document viewer — scans, contracts and generated papers open here rather than in a
           new tab. z above the voucher drawer so an invoice can be checked against its voucher. */}
       {docView && (() => {
-        const src = `/api/document/content/${docView.id}`;
+        const src = docUrl(`/api/document/content/${docView.id}`);
         const mt = (docView.mimeType || "").toLowerCase();
         const ext = (docView.filename.split(".").pop() || "").toLowerCase();
         const isImage = mt.startsWith("image/") || ["png", "jpg", "jpeg", "gif", "webp", "heic"].includes(ext);
@@ -1346,12 +1514,28 @@ export default function App() {
                 <p className="flex-1 text-sm font-mono truncate" title={docView.filename}>{docView.filename}</p>
                 <a href={src} download={docView.filename}
                   className="text-[11px] bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-1.5 transition-colors">⬇ Download</a>
+                {isText && !/\.(txt|md|csv|json)$/i.test(docView.filename) && (
+                  <a href={docUrl(`/api/document/${docView.id}/pdf`)} download
+                    className="text-[11px] bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-1.5 transition-colors">⬇ PDF</a>
+                )}
+                {/* Print the document itself, not the app around it. Same-origin iframe, so
+                    its own print dialog gives a clean page with no chrome or sidebar. */}
+                <button
+                  onClick={() => {
+                    const frame = document.getElementById("doc-view-frame") as HTMLIFrameElement | null;
+                    if (frame?.contentWindow) { frame.contentWindow.focus(); frame.contentWindow.print(); }
+                    else window.open(src, "_blank", "noopener");
+                  }}
+                  className="text-[11px] bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-1.5 transition-colors">🖨 Print</button>
                 <a href={src} target="_blank" rel="noreferrer"
                   className="text-[11px] bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-1.5 transition-colors">↗ New tab</a>
                 <button onClick={() => setDocView(null)} aria-label="Close document viewer"
                   className="text-slate-300 hover:text-white text-xl leading-none px-2">✕</button>
               </div>
-              <div className="flex-1 bg-slate-100 overflow-auto">
+              {/* min-h-0: a flex child defaults to min-height:auto, so the iframe's h-full
+                  resolves against an indefinite height and collapses to 0 in a short window.
+                  Without this the viewer opens with the document loaded but nothing visible. */}
+              <div className="flex-1 min-h-0 bg-slate-100 overflow-auto">
                 {isImage ? (
                   <div className="min-h-full flex items-center justify-center p-4">
                     <img src={src} alt={docView.filename} className="max-w-full max-h-full object-contain shadow-lg" />
@@ -1375,7 +1559,7 @@ export default function App() {
                   ) : (
                     <div className="flex flex-col items-center gap-4 p-4">
                       {Array.from({ length: docPages }, (_, i) => (
-                        <img key={i} src={`/api/document/page/${docView.id}/${i}`} alt={`Page ${i + 1}`}
+                        <img key={i} src={docUrl(`/api/document/page/${docView.id}/${i}`)} alt={`Page ${i + 1}`}
                           className="max-w-full shadow-lg bg-white" loading={i < 2 ? "eager" : "lazy"} />
                       ))}
                       {docPages > 1 && <p className="text-xs text-slate-500 pb-2">{docPages} pages</p>}
@@ -1397,7 +1581,7 @@ export default function App() {
                     </div>
                   )
                 ) : isText ? (
-                  <iframe src={src} title={docView.filename} className="w-full h-full border-0 bg-white" />
+                  <iframe id="doc-view-frame" src={src} title={docView.filename} className="w-full h-full border-0 bg-white" />
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center gap-3 text-center p-8">
                     <p className="text-4xl">📎</p>

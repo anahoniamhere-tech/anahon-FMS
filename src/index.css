@@ -1,17 +1,57 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
+/* AnaHon Brand Guidelines v2.0 — Tajawal type; red-* remapped to the official
+   palette so every existing red-600/650/700 call site renders brand maroon.
+   Maroon #6D1A1A · Maroon Dark #4A1010 · Signal Red #E23B3B · Coral #F88888 */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Tajawal", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --color-red-400: #F88888;
+  --color-red-500: #E23B3B;
+  --color-red-600: #6D1A1A;
+  --color-red-650: #4A1010;
+  --color-red-700: #4A1010;
+  /* Shape language (§5): the rounded system, scaled from the 1080px canvas
+     down to app density. Pills stay rounded-full. Nesting order preserved. */
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;   /* inner cards / list rows (28px @1080 → 14px UI) */
+  --radius-xl: 1.25rem;    /* media wells (40px → 20px) */
+  --radius-2xl: 1.75rem;   /* outer cards (56px → 28px) */
+  --radius-3xl: 2.5rem;
+  /* 60% maroon dominance (§3): the slate scale becomes warm maroon-tinted
+     neutrals — dark chrome reads maroon/ink, light surfaces read warm. */
+  --color-slate-50: #F7F1EC;
+  --color-slate-100: #F1E6DF;
+  --color-slate-200: #E6D3CA;
+  --color-slate-300: #D2B9AE;
+  --color-slate-400: #A78C82;
+  --color-slate-500: #7C5F55;
+  --color-slate-600: #5C4038;
+  --color-slate-700: #46261F;
+  --color-slate-800: #3A1414;
+  --color-slate-900: #2A0E0E;
+  --color-slate-950: #0B0B0B; /* Ink Black */
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #f8fafc;
-  color: #0f172a;
+  background-color: #F7F1EC; /* brand warm off-white */
+  color: #1a1212;
   margin: 0;
   padding: 0;
+}
+
+/* §5 — soft ambient glow: blurred red/coral light, never competing with text */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(560px 380px at 88% -6%, rgba(226, 59, 59, 0.10), transparent 70%),
+    radial-gradient(640px 420px at -8% 104%, rgba(248, 136, 136, 0.12), transparent 70%);
 }
 
 /* Custom continuous focus ring & styles */

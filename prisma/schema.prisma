@@ -44,6 +44,11 @@ model Project {
   code        String @unique
   donorId     String
   budgetUSD   Float
+  // The grant's own currency and the contract amount as signed. budgetUSD stays the
+  // USD figure used for cross-project rollups; budgetNative is what the donor agreement
+  // says and never moves with the exchange rate.
+  currency     String @default("USD")
+  budgetNative Float  @default(0)
   startDate   String
   endDate     String
   fundingType String
@@ -85,6 +90,8 @@ model BudgetLine {
   category     String
   description  String
   allocatedUSD Float
+  // Approved amount in the project's own currency — the number in the signed budget.
+  allocatedNative Float @default(0)
   actualUSD    Float  @default(0)
   committedUSD Float  @default(0)
 }
@@ -420,6 +427,11 @@ model ContentItem {
   pdApprovedAt        String  @default("")
   factCheckTag        Boolean @default(false)    // Policy 005 "tags or labels" — set at publish
   publishedAt         String  @default("")
+  websiteUrl          String  @default("")       // where the site put it — written back by the publish hook
+  retractedAt         String  @default("")       // taken off the website; the record stays (Policy 005)
+  retractReason       String  @default("")
+  coverPath           String  @default("")       // vault-relative path of the cover image (GENERAL/Cover/…)
+  coverProvider       String  @default("")       // higgsfield | gemini | upload
   correctionsJson     String  @default("[]")     // [{date, nature, correction, by}] — dated public record
   materialsJson       String  @default("[]")     // [{label, url, kind: link|photo|video|doc}] — reference material
   draftsJson          String  @default("[]")     // [{label, kind, text, date, by}] — production drafts the fact-checker verifies

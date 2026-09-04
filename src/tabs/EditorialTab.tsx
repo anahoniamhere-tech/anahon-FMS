@@ -17,7 +17,7 @@ const STATUS_STYLE: Record<string, string> = {
   "Published": "bg-emerald-600 text-white"
 };
 
-const EDITOR_ROLES = ["Production Manager", "Program Director", "Super Admin"];
+const EDITOR_ROLES = ["Production Manager", "Executive Director", "Super Admin"];
 
 export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc }: SharedProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -433,7 +433,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   const policyAttendeesFor = (kind: string) => activeUsers
     .filter(u => (kind === "Daily Production"
       ? ["Production Manager", "Project Officer", "Reporter", "Content Creator", "Podcaster", "Super Admin"]
-      : ["Program Director", "Production Manager", "Project Officer", "Super Admin"]).includes(u.role))
+      : ["Executive Director", "Production Manager", "Project Officer", "Super Admin"]).includes(u.role))
     .map(u => u.id);
   const canRecordMeeting = isEditor || currentUser.role === "Project Officer";
 
@@ -1064,6 +1064,11 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                     </span>
                   )}
                   {item.corrections.length > 0 && <span className="text-amber-700 text-[10px] font-bold">{item.corrections.length} {t("Corrections")}</span>}
+                  {item.websiteUrl && !item.retractedAt && (
+                    <a href={item.websiteUrl} target="_blank" rel="noopener" onClick={ev => ev.stopPropagation()}
+                      className="text-sky-700 text-[10px] font-bold underline" title={item.websiteUrl}>🔗 {t("View on website")}</a>
+                  )}
+                  {item.retractedAt && <span className="text-red-700 text-[10px] font-bold" title={item.retractReason}>⛔ {t("Retracted from website")} {item.retractedAt.slice(0, 10)}</span>}
                   <span className="ml-auto text-slate-500 font-mono">{nameOf(item.assigneeUserId)}{item.dueDate ? ` · ${item.dueDate}` : ""}</span>
                 </div>
 
@@ -1170,6 +1175,27 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                               </div>
                             </details>
                           )}
+                          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                            {item.coverPath
+                              ? <img src={`/api/cover/${item.id}?v=${encodeURIComponent(item.coverPath)}`} alt="" className="h-16 w-28 object-cover rounded border border-slate-200" title={item.coverProvider} />
+                              : <span className="text-slate-400">{t("No cover yet")}</span>}
+                            {canProduce && !item.retractedAt && (<>
+                              <button onClick={() => post("/api/content/cover", { id: item.id, provider: "higgsfield" }, "Cover generated with Higgsfield")}
+                                className="bg-slate-900 hover:bg-slate-950 text-white rounded px-3 py-1.5">🖼 {t("Cover: Higgsfield")}</button>
+                              <button onClick={() => post("/api/content/cover", { id: item.id, provider: "gemini" }, "Cover generated with Gemini")}
+                                className="bg-slate-200 hover:bg-slate-300 text-slate-800 rounded px-3 py-1.5">{t("Cover: Gemini")}</button>
+                              <label className="cursor-pointer underline text-slate-600">{t("Upload cover")}
+                                <input type="file" accept="image/*" className="hidden" onChange={async ev => {
+                                  const f = ev.target.files?.[0]; if (!f) return;
+                                  const b64 = await new Promise<string>(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(",")[1] || ""); fr.readAsDataURL(f); });
+                                  const up: any = await fetch("/api/document/upload", { method: "POST", headers: { "content-type": "application/json" },
+                                    body: JSON.stringify({ filename: f.name, mimeType: f.type, sizeStr: `${Math.round(f.size / 1024)} KB`, base64: b64, category: "Cover", linkedRecordType: "Content", linkedRecordId: item.id }) }).then(r => r.json());
+                                  const docId = up.doc?.id || up.document?.id || up.id;
+                                  if (docId) await post("/api/content/cover", { id: item.id, docId }, "Cover set"); else triggerToast(up.error || "Upload failed");
+                                }} />
+                              </label>
+                            </>)}
+                          </div>
                           {working && canProduce && studio?.itemId !== item.id && (
                             <span className="flex flex-wrap gap-1.5">
                               <button onClick={() => { setStudio({ itemId: item.id, messages: [], busy: false, draft: null, provider: "" }); setStudioInput(""); }}
@@ -1386,6 +1412,12 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                             <input placeholder="The correction" value={corrForm.correction} onChange={e => setCorrForm({ ...corrForm, correction: e.target.value })} className="finance-input flex-1 min-w-[160px]" />
                             <button onClick={async () => { if (await post("/api/content/correction", { id: item.id, ...corrForm }, "Correction issued")) setCorrForm({ nature: "", correction: "" }); }}
                               className="bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-1.5">{t("Add Correction")}</button>
+                            {!item.retractedAt && (
+                              <button onClick={async () => {
+                                const reason = window.prompt(t("Why is this piece being retracted from the website? (public record)"));
+                                if (reason) await post("/api/content/retract", { id: item.id, reason }, "Retracted from the website");
+                              }} className="ml-2 border border-red-300 text-red-700 rounded px-3 py-1.5 hover:bg-red-50">⛔ {t("Retract from website")}</button>
+                            )}
                           </div>
                         )}
                       </div>

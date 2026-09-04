@@ -74,8 +74,22 @@ scp .calendar-feed.json                    admin@192.168.1.22:/mnt/mainpool/anah
 
 - Snapshots: Data Protection → Periodic Snapshot Tasks → `mainpool/anahon/fms`, hourly, keep 2 weeks.
 - Stop running `npm run dev` on the Mac; the NAS copy is now the system of record.
-- Update: re-run the `scp` of source files, then `docker compose up -d --build` again.
+- **The Mac is a one-way mirror** (since 3 Sep 2026): `scripts/mirror_from_nas.sh`, run by launchd
+  `org.anahon.fms-mirror` daily at 03:30, pulls `db/dev.db` and `vault/` from the newest ZFS snapshot.
+  Never edit the Mac database or vault for real data — it is overwritten by design. File documents
+  through the app or directly on the NAS.
+- **Schema changes are tracked migrations only** — add a folder under `prisma/migrations/` (hand
+  timestamp, see existing names), ship `prisma/` to the NAS `src/`, rebuild. The entrypoint runs
+  `prisma migrate deploy`. Never `prisma db push` against the NAS, never hand-run SQL on it.
+- Update: re-run the `scp` of source files (never `.env`), then `docker compose up -d --build` again.
   Migrations apply automatically on start.
+- `db/` and `vault/` belong to uid 1000; writes there and `docker` need `sudo` on the NAS — run those
+  from Saad's terminal. Read-only ssh/rsync and writes to `src/` work as `admin` without sudo.
+- Off-site: `scripts/backup_to_drive.sh` via `org.anahon.fms-backup`, **daily 03:00**, from the newest
+  ZFS snapshot, AES-256 to Drive `AnaHon_FMS_Cloud_Backup`, two sets kept. Restore-tested 3 Sep 2026.
+  The key `~/anahon-archive-keys/anahon-archive-2026-08-17.key` is also in Apple Passwords
+  ("AnaHon archive key 2026-08-17") and on paper in the office file.
+- LAN fallback: the NAS is `100.91.229.30` on Tailscale (same host key as 192.168.1.22).
 - Remote access: Apps → Tailscale, then use the NAS tailnet IP instead of 192.168.1.22.
 
 ## Remote access (Tailscale, added 3 Sep 2026)
@@ -91,3 +105,21 @@ tailnet members only at **https://anahon-1.tailbcb2b7.ts.net** via
 - HTTPS certificates must stay enabled under Tailscale admin → DNS.
 - Why not Cloudflare Tunnel / Vercel: no access to anahon.org DNS (Hostinger) or its registrar; Vercel has
   no local disk for SQLite + vault.
+
+## Website publish hook (3 Sep 2026)
+
+`server.ts` calls `SITE_URL/__publish {id}` after a website-bound item passes the last gate (and after a
+correction). Set in `src/.env` on the NAS: `SITE_URL=http://192.168.1.22:4321` (the site container beside
+this one; see anahon-astro/DEPLOY-TRUENAS.md). Fire-and-forget — the FMS never waits on the site, and the
+site re-reads this database and refuses anything not Published. Log line prefix: `[site]`.
+
+
+## Live editor (4 Sep 2026)
+
+`src/tabs/LiveTab.tsx` frames the site's dev server (`state.siteUrl` = `SITE_PUBLIC_URL` ‖
+`SITE_URL`) — the browser must reach that URL, so on the NAS set
+`SITE_URL=http://192.168.1.22:4321` (LAN) in `src/.env`. Routes: `POST /api/website/edit`
+(text/image string replace across the four content JSONs, editor roles), `GET
+/api/website/library` (pictures under the site's `/uploads/website` + `/images`),
+`POST /api/website/build` (→ site `/__build`; audit "Website Published"). See the site's
+DEPLOY-TRUENAS.md › Live editor for the publish target.

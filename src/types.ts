@@ -423,6 +423,11 @@ export interface ContentItem {
   pdApprovedAt: string;
   factCheckTag: boolean;
   publishedAt: string;
+  websiteUrl?: string;         // live page on the website, set by the publish hook
+  retractedAt?: string;        // taken off the website (record stays)
+  retractReason?: string;
+  coverPath?: string;          // vault-relative cover image (GENERAL/Cover/…)
+  coverProvider?: string;      // higgsfield | gemini | upload
   corrections: { date: string; nature: string; correction: string; by: string }[];
   materials: { label: string; url: string; kind: "link" | "photo" | "video" | "doc" }[];
   drafts: { label: string; kind: string; text: string; date: string; by: string }[];
@@ -445,7 +450,47 @@ export interface EditorialMeeting {
   created_at: string;
 }
 
+export interface NetworkContact {
+  id: string;
+  name: string;
+  nameAr: string;
+  org: string;
+  role: string;
+  country: string;
+  email: string;
+  phone: string;
+  links: string;
+  kind: string;
+  metAt: string;
+  metOn: string;
+  stream: string;
+  followUp: string;
+  followUpBy: string;
+  status: string;
+  notes: string;
+  created_at: string;
+}
+
+export interface Tool {
+  id: string;
+  name: string;
+  url: string;
+  category: string;
+  purpose: string;
+  stream: string;
+  status: string;
+  pricing: string;
+  owner: string;
+  source: string;
+  addedOn: string;
+  reviewBy: string;
+  subscriptionId: string;
+  notes: string;
+  created_at: string;
+}
+
 export interface DatabaseState {
+  siteUrl?: string;            // the website's public address (from SITE_PUBLIC_URL) — header link
   users: { id: string; name: string; email: string; role: string; active: boolean; projectIdsJson?: string; streamScope?: string }[];
   accounts: Account[];
   donors: Donor[];
@@ -472,6 +517,8 @@ export interface DatabaseState {
   editorialMeetings: EditorialMeeting[];
   clients: Client[];
   quotations: Quotation[];
+  networkContacts: NetworkContact[];
+  tools: Tool[];
   orgSettings: OrgSettings;
   fxRates: { EUR: number; LBP: number };
 }

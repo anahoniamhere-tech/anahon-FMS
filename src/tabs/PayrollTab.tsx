@@ -391,7 +391,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                           </button>
                         )}
 
-                        {activeTimesheet && activeTimesheet.status === "Submitted" && ["Super Admin", "Program Director"].includes(currentUser.role) && (
+                        {activeTimesheet && activeTimesheet.status === "Submitted" && ["Super Admin", "Executive Director"].includes(currentUser.role) && (
                           <button
                             onClick={() => handleApproveTimesheet(activeTimesheet.id)}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded px-4 py-2.5"

@@ -9,8 +9,17 @@ services:
     env_file: .env            # GEMINI_API_KEY, ANTHROPIC_API_KEY, FIREBASE_PROJECT_ID — never on the SMB share
     environment:
       FMS_PUBLIC_URL: http://anahon.local:3100   # shown in "open on your phone"; must be a Firebase-authorized domain
+      ARCHIVE_DIR: /data/archive
+      SITE_DIR: /data/site
     volumes:
       - ${FMS_DATA:-/mnt/mainpool/anahon/fms}/db:/data/db
       - ${FMS_DATA:-/mnt/mainpool/anahon/fms}/vault:/data/vault
       - ${FMS_DATA:-/mnt/mainpool/anahon/fms}/calendar-feed.json:/app/dist/.calendar-feed.json:ro
+      # the archive is curated HERE now (3 Sep 2026): overrides are written, the library is rebuilt,
+      # and the site's data folders receive the result. Site paths mirror the site repo layout.
+      - ${ARCHIVE_DATA:-/mnt/mainpool/anahon/archive}:/data/archive
+      - ${SITE_DATA:-/mnt/mainpool/anahon/site}/data:/data/site/src/data
+      - ${SITE_DATA:-/mnt/mainpool/anahon/site}/images:/data/site/public/images
+      - ${SITE_DATA:-/mnt/mainpool/anahon/site}/content:/data/site/src/content:ro
+      - ${SITE_DATA:-/mnt/mainpool/anahon/site}/uploads:/data/site/public/uploads
     shm_size: 512m            # chromium PDF rendering
