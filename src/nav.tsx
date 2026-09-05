@@ -1,7 +1,7 @@
 import React from "react";
 import {
   Activity, BookOpen, Briefcase, Building, Coins, FileText, FolderGit2, HardDrive, Layers,
-  Newspaper, Share2, ShieldAlert, Sliders, User, UserCheck, Users,
+  LayoutGrid, Newspaper, Share2, ShieldAlert, Sliders, User, UserCheck, Users,
 } from "lucide-react";
 
 /**
@@ -43,6 +43,7 @@ export const NAV: NavSection[] = [
   {
     section: "Home",
     items: [
+      { navKey: "doors", label: "Doors", icon: ic(LayoutGrid) },
       { navKey: "mydesk", label: "My Desk", icon: ic(UserCheck) },
       { navKey: "dashboard", label: "Organisation overview", icon: ic(Activity), roles: ["*full", ...OFFICER] },
       { navKey: "help", label: "Help & Q&A", icon: glyph("?") },
@@ -128,5 +129,5 @@ export function visibleNav(role: string): NavSection[] {
 
 export const NAV_KEYS = NAV.flatMap(s => s.items.map(i => i.navKey));
 
-/** Everyone opens on their desk (phase 3); it is also where a role lands after straying onto a door it cannot see. */
-export const LANDING: Record<string, string> = Object.fromEntries(ALL_ROLES.map(r => [r, "mydesk"]));
+/** Everyone opens on the doors (5 Sep 2026); it is also where a role lands after straying onto a door it cannot see. */
+export const LANDING: Record<string, string> = Object.fromEntries(ALL_ROLES.map(r => [r, "doors"]));

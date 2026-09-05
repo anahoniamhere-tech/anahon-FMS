@@ -192,9 +192,9 @@ export const HELP: HelpEntry[] = [
   },
   {
     id: "doors", area: "Seats & approvals",
-    q: { en: "What are the doors on My Desk?", ar: "ما هي الأبواب في «مكتبي»؟" },
+    q: { en: "What is the home screen?", ar: "ما هي الشاشة الرئيسية؟" },
     a: {
-      en: "Every screen your seat opens, one tile each, grouped by the job it belongs to — the same doors as the sidebar, in the big view. A red number is what is waiting on you behind that door; a pink number is what is due this week on someone else's desk there. Tiles differ by seat: a Reporter sees the editorial desk, the Procurement officer the buying doors, the master account everything. Nothing is hidden behind a tile that the sidebar would show.",
+      en: "The screen you land on when you sign in: every screen your seat opens, one tile each, grouped by the job it belongs to — the same doors as the sidebar, in the big view. My Desk is one of the doors. A red number is what is waiting on you behind that door; a pink number is what is due this week on someone else's desk there. Tiles differ by seat: a Reporter sees the editorial desk, the Procurement officer the buying doors, the master account everything. Nothing is hidden behind a tile that the sidebar would show.",
       ar: "كل شاشة يفتحها مقعدك، بطاقة لكل واحدة، مجمّعة حسب العمل الذي تنتمي إليه — الأبواب نفسها الموجودة في الشريط الجانبي، في العرض الكبير. الرقم الأحمر هو ما ينتظرك خلف ذلك الباب؛ والرقم الوردي ما هو مستحق هذا الأسبوع على مكتب شخص آخر هناك. تختلف البطاقات حسب المقعد: المراسل يرى مكتب التحرير، ومسؤول المشتريات أبواب الشراء، والحساب الرئيسي كل شيء. لا شيء مخفي خلف بطاقة يعرضه الشريط الجانبي.",
     },
   },

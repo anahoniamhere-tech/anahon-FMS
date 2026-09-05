@@ -387,6 +387,7 @@ export const AR: Record<string, string> = {
   "Tax": "الضرائب",
   "Travel": "السفر",
   "Doors": "الأبواب",
+  "All of AnaHon, one desk.": "«أنا هون» كلّها، مكتب واحد.",
   "waiting": "بالانتظار",
   "this week": "هذا الأسبوع",
   "all day": "طوال اليوم",

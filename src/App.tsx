@@ -57,6 +57,7 @@ import ExpensesTab from "./tabs/ExpensesTab";
 import PartnersTab from "./tabs/PartnersTab";
 import ComplianceTab from "./tabs/ComplianceTab";
 import MyDeskTab from "./tabs/MyDeskTab";
+import DoorsTab from "./tabs/DoorsTab";
 import FunnelTab from "./tabs/FunnelTab";
 import VendorsTab from "./tabs/VendorsTab";
 import ProductionTab from "./tabs/ProductionTab";
@@ -119,7 +120,7 @@ export default function App() {
   // Banking ledger view controls (shared: global search pre-fills them)
   const [bankFilterAcc, setBankFilterAcc] = useState<string>("");
   const [bankSearch, setBankSearch] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<string>("mydesk");
+  const [activeTab, setActiveTab] = useState<string>("doors");
   // One-click Arabic. Remembered across sessions; flips the page to RTL.
   const [lang, setLang] = useState<string>(() => localStorage.getItem("anahon-lang") || "en");
   const t = (s: string) => tr(lang, s);
@@ -455,7 +456,7 @@ export default function App() {
     // What a role may open is decided by the sidebar data, never by a second list here.
     const role = u?.role || "";
     const allowed = visibleNav(role).flatMap(sec => sec.items.map(i => i.navKey));
-    if (!allowed.includes(activeTab)) setActiveTab(LANDING[role] || allowed[0] || "mydesk");
+    if (!allowed.includes(activeTab)) setActiveTab(LANDING[role] || allowed[0] || "doors");
   }, [state, activeUserId, activeTab]);
 
 
@@ -1267,6 +1268,7 @@ export default function App() {
           {activeTab === "handbooks" && <HandbooksTab {...shared} />}
           {activeTab === "help" && <HelpTab {...shared} />}
 
+          {activeTab === "doors" && <DoorsTab {...shared} />}
           {activeTab === "mydesk" && <MyDeskTab {...shared} />}
           {activeTab === "compliance" && <ComplianceTab {...shared} />}
 
