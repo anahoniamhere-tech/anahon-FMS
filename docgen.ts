@@ -167,8 +167,14 @@ export function contractHtml(o: {
    * things to sign. Ignored unless this is a subcontract.
    */
   parentReference?: string | null;
+  /**
+   * The full monthly salary the framework contract establishes, at a 100% level of effort.
+   * Quoted on a subcontract as context for the level of effort it funds — never used to
+   * recompute the fee, which is a typed figure. 0 or absent means no rate is on record.
+   */
+  fullSalary?: number;
 }) {
-  const { party: emp, project: p, account, countersignatory, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLine, reference, parentReference } = o;
+  const { party: emp, project: p, account, countersignatory, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLine, reference, parentReference, fullSalary } = o;
   const isService = kind === "Service";
   /**
    * A subcontract is an employment engagement that names a project. Nothing new is stored
@@ -178,6 +184,8 @@ export function contractHtml(o: {
    * version of that fact, free to disagree with it.
    */
   const isSub = !isService && !!p;
+  /** The yearly contract: employment, no project. It sets the rate; it pays nothing itself. */
+  const isFramework = !isService && !p;
   /**
    * A yearly framework contract carries no money of its own: it establishes the engagement,
    * and each project that funds the role is contracted separately. Printing "$0.00" as the
@@ -209,7 +217,8 @@ ${isSub ? row("Under framework contract", parentReference
       : "<strong>None on file</strong> — no yearly framework contract has been issued to this person yet") : ""}
 ${row("Period", `${esc(longDate(startDate))} to ${esc(longDate(endDate))}`)}
 ${loePct ? row("Level of Effort", `${esc(loePct)}%`) : ""}
-${monthlyFee ? row(isService ? "Fee per period" : "Monthly Fee", esc(money(monthlyFee))) : ""}
+${monthlyFee ? row(isService ? "Fee per period" : isFramework ? "Full monthly salary (100% level of effort)" : "Monthly Fee", esc(money(monthlyFee))) : ""}
+${isSub && fullSalary ? row("Full monthly salary under the framework contract", esc(money(fullSalary))) : ""}
 ${row("Contract Total", noFixedValue ? esc(TOTAL_TEXT) : `<strong>${esc(money(contractTotal))}</strong>`)}
 ${budgetLine ? row("Budget Line", esc(`${budgetLine.code} — ${budgetLine.description}`)) : ""}
 ${row("MoF Tax Registry ID", registered
@@ -235,13 +244,19 @@ for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.${isSub
       : ""}</p>
 
 <h2 style="color:#1a1a1a;font-size:13px"><strong>2. ${isService ? "Fees" : "Remuneration"}</strong></h2>
-<p>${loePct ? `The engagement is at a <b>${esc(loePct)}% level of effort</b>. ` : ""}${monthlyFee
-      ? `It carries a <b>fixed ${isService ? "fee of" : "monthly fee of"} ${esc(money(monthlyFee))}${isService ? " per agreed period" : ""}</b>${isService
-        ? ". Fees are payable on delivery and acceptance of the agreed outputs, against the provider's invoice."
-        : ", independent of the number of days attended in the month. Attendance is recorded on monthly timesheets; the timesheet records effort, not the billing amount."} `
-      : isService
-        ? `It is a <b>lump-sum engagement</b>: the total below covers the agreed scope for the whole period, payable in instalments on delivery and acceptance of the agreed outputs, against the provider's invoice. `
-        : ""}
+<p>${isFramework
+      ? (monthlyFee
+        ? `This contract establishes a <b>full monthly salary of ${esc(money(monthlyFee))}</b> at a 100% level of effort. It does not by itself oblige payment: salary is drawn only through a subcontract under which a project funds this role, and each subcontract states the level of effort that project funds and the amount that follows from it. `
+        : `This contract establishes the engagement. <b>No full salary rate is recorded on it yet</b>; until one is, every project that funds this role states its own amount on its subcontract. `)
+      : `${loePct ? `The engagement is at a <b>${esc(loePct)}% level of effort</b>. ` : ""}${monthlyFee
+        ? `It carries a <b>fixed ${isService ? "fee of" : "monthly fee of"} ${esc(money(monthlyFee))}${isService ? " per agreed period" : ""}</b>${isService
+          ? ". Fees are payable on delivery and acceptance of the agreed outputs, against the provider's invoice."
+          : ", independent of the number of days attended in the month. Attendance is recorded on monthly timesheets; the timesheet records effort, not the billing amount."} `
+        : isService
+          ? `It is a <b>lump-sum engagement</b>: the total below covers the agreed scope for the whole period, payable in instalments on delivery and acceptance of the agreed outputs, against the provider's invoice. `
+          : ""}${isSub && fullSalary
+            ? `The full monthly salary established by the framework contract is <b>${esc(money(fullSalary))}</b>; this project funds ${loePct ? `the <b>${esc(loePct)}% level of effort</b> stated above` : "the share stated above"}. `
+            : ""}`}
 ${noFixedValue
       ? `This ${isService ? "agreement" : "contract"} has <b>${esc(TOTAL_TEXT[0].toLowerCase() + TOTAL_TEXT.slice(1))}</b>.`
       : `The approved total value of this ${isService ? "agreement" : "contract"} is <b>${esc(money(contractTotal))}</b>.`}</p>

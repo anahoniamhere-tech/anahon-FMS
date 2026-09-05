@@ -229,6 +229,9 @@ model Employee {
   /// WhatsApp number in full international form (+961…), for the timesheet and invoice
   /// nudges. Empty means no WhatsApp button — never a guessed country code.
   phone         String  @default("")
+  /// When this person's employment began (YYYY-MM-DD, "" if not known yet). The yearly
+  /// framework contract's period starts here instead of being guessed each time.
+  startDate     String  @default("")
 }
 
 model Timesheet {

@@ -148,6 +148,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/employees/new": HR,
   "/api/employees/set-active": HR,
   "/api/employees/phone": ANY,                  // the personnel file decides — the route asks maySeePersonnelFile
+  "/api/employees/start-date": HR,
   "/api/timesheets/approve": DIRECTORS,                // and never one's own — checked in the route
   "/api/payroll/payslip": PAYROLL_VIEWERS,
   "/api/contracts/generate": [...HR, ...SUPPLIER_EDITORS],

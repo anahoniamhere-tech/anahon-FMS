@@ -250,6 +250,8 @@ export interface Employee {
    * "not on file OR not yours to see", and the interface treats both the same way.
    */
   phone?: string;
+  /** When employment began, YYYY-MM-DD. Empty until someone records it. */
+  startDate?: string;
 }
 
 export interface Timesheet {

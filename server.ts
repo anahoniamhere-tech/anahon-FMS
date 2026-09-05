@@ -11,7 +11,7 @@ import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
-import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS } from "./src/roles.js";
+import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
@@ -938,6 +938,39 @@ app.post("/api/employees/phone", async (req, res) => {
   }
 });
 
+/* When employment began.
+ *
+ * Its own route rather than a field on the phone one: the phone is personnel-file data
+ * (the file holders, or you about yourself), while a start date is payroll data that HR
+ * keeps and that goes on every contract. Two sensitivities, two existing lists, no new
+ * rule invented for either.
+ */
+app.post("/api/employees/start-date", async (req, res) => {
+  try {
+    const { employeeId, startDate, user } = req.body;
+    if (!HR.includes(user?.role || "")) {
+      return res.status(403).json({ error: "Needs the master account or the HR / Payroll Officer." });
+    }
+    const target = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!target) return res.status(404).json({ error: "Employee not found." });
+    const next = String(startDate ?? "").trim();
+    // Empty clears it. Anything else must be a real calendar date, not just date-shaped:
+    // a contract period is computed from this, and "2026-02-31" would quietly become March.
+    const asDate = next ? new Date(next + "T00:00:00Z") : null;
+    if (next && !(/^\d{4}-\d{2}-\d{2}$/.test(next) && asDate && !Number.isNaN(asDate.getTime())
+      && asDate.toISOString().startsWith(next))) {
+      return res.status(400).json({ error: "Give the start date as a real calendar date, YYYY-MM-DD." });
+    }
+    await prisma.employee.update({ where: { id: employeeId }, data: { startDate: next } });
+    await createAuditLog(user?.id || "u-1", user?.name || "Super Admin",
+      next ? "Employment Start Date Set" : "Employment Start Date Cleared",
+      `${target.name}: employment start ${next ? `${target.startDate ? `changed from ${target.startDate || "blank"} to ` : "recorded as "}${next}` : "removed"}.`);
+    res.json({ success: true, startDate: next });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Same for the personnel record (payroll/HR lists). Kept separate from the login
 // account on purpose: a contractor can have one without the other.
 app.post("/api/employees/set-active", async (req, res) => {
@@ -1787,7 +1820,7 @@ app.post("/api/contracts/generate", async (req, res) => {
     if (employeeId) {
       const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
       if (!employee) return res.status(404).json({ error: "Employee not found." });
-      party = { name: employee.name, position: employee.position, paymentMethod: employee.paymentMethod };
+      party = { name: employee.name, position: employee.position, paymentMethod: employee.paymentMethod, salary: employee.salary };
       party.bankAccountId = employee.bankAccountId;
       partyKey = employee.id;
     } else {
@@ -1847,7 +1880,10 @@ app.post("/api/contracts/generate", async (req, res) => {
       startDate, endDate,
       loePct: loePct === undefined || loePct === null || loePct === "" ? undefined : Number(loePct),
       monthlyFee: Number(monthlyFee), contractTotal: Number(contractTotal),
-      budgetLine, reference, parentReference
+      budgetLine, reference, parentReference,
+      // The rate the framework contract sets. Quoted on a subcontract for context; never
+      // used to recompute the fee, which stays a figure a person typed.
+      fullSalary: isSub ? Number((party as any).salary || 0) : undefined
     });
 
     const filename = `${reference}_${party.name.replace(/\s+/g, "_")}.html`;

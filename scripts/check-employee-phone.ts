@@ -104,5 +104,30 @@ ok("it is wider than PAYROLL_VIEWERS and wider than PERSONNEL_FILE, which is why
   PAYROLL_VIEWERS.every(r => TIMESHEET_FILERS.includes(r)) && PERSONNEL_FILE.every(r => TIMESHEET_FILERS.includes(r))
   && TIMESHEET_FILERS.length > PAYROLL_VIEWERS.length && TIMESHEET_FILERS.length > PERSONNEL_FILE.length);
 
+console.log("\nG. the employment start date");
+// The framework contract's period used to be a guess: nothing on the record said when the
+// employment began. HR keeps it; it is payroll data, not personnel-file data, so it reuses
+// the HR list rather than the file's rule — two sensitivities, two lists already in roles.ts.
+const gates = readFileSync(new URL("../src/gates.ts", import.meta.url), "utf8");
+ok("the route is HR's, not the personnel file's", gates.includes('"/api/employees/start-date": HR'));
+ok("and the route enforces that itself", /app\.post\("\/api\/employees\/start-date"[\s\S]{0,400}HR\.includes\(user\?\.role \|\| ""\)/.test(server));
+ok("the card shows the field to HR and the date to everyone else",
+  payroll.includes("HR.includes(currentUser.role) ? (") && payroll.includes("emp-start-"));
+// A contract period is computed from this: a date-shaped string that is not a date would
+// roll silently into the next month.
+const REAL = (d: string) => {
+  const t = new Date(d + "T00:00:00Z");
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(t.getTime()) && t.toISOString().startsWith(d);
+};
+ok("2026-02-10 is accepted", REAL("2026-02-10"));
+ok("2026-02-31 is refused rather than rolled into March", !REAL("2026-02-31"));
+ok("2026-13-01 is refused", !REAL("2026-13-01"));
+ok("10/02/2026 is refused", !REAL("10/02/2026"));
+ok("the route checks the calendar, not just the shape", server.includes('asDate.toISOString().startsWith(next)'));
+// Date("2026-13-01") is an Invalid Date and toISOString() throws on one: unguarded, a plainly
+// wrong month answers 500 instead of saying what is wrong. This check found that.
+ok("and guards the throw, so a wrong month is a 400 and not a 500", server.includes("!Number.isNaN(asDate.getTime())"));
+ok("clearing it is allowed, and audit-logged as such", /Employment Start Date (Set|Cleared)/.test(server));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

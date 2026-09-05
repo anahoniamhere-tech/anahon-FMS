@@ -56,7 +56,38 @@ ok("the clause names the person it is missing for", noParent.includes("No yearly
 ok("and does not pretend the subcontract is incomplete", noParent.includes("this document stands alone"));
 ok("no framework reference is invented", !noParent.includes("made under the yearly framework contract"));
 
-console.log("\nD. the reference says which instrument it is");
+console.log("\nD. the rate lives on the framework, the share on the subcontract");
+// Saad, 5 Sep 2026: the yearly contract sets the full salary; a subcontract covers a project's
+// portion of it, which may be the whole thing or a level of effort. The framework must not read
+// as an unconditional monthly wage, and the subcontract must not recompute the fee from the rate.
+const rated = text({ reference: "ANH-EC-SK-2026-01", monthlyFee: 1560 });
+ok("the framework states a full monthly salary at 100% effort",
+  rated.includes("establishes a full monthly salary of $1,560.00 at a 100% level of effort"));
+ok("and says plainly that it does not itself oblige payment", rated.includes("It does not by itself oblige payment"));
+ok("and that salary is drawn only through a subcontract", rated.includes("drawn only through a subcontract under which a project funds this role"));
+ok("it does NOT carry the unconditional monthly-wage sentence",
+  !rated.includes("independent of the number of days attended"));
+ok("its particulars label the figure a full salary, not a fee",
+  rated.includes("Full monthly salary (100% level of effort)$1,560.00"));
+ok("and it still has no fixed total", rated.includes("has no fixed value"));
+const unrated = text({ reference: "ANH-EC-SK-2026-01" });
+ok("with no rate on record the framework says so rather than implying zero",
+  unrated.includes("No full salary rate is recorded on it yet") && !unrated.includes("$0.00"));
+
+const shared = { ...SUB, loePct: 20, monthlyFee: 312, parentReference: "ANH-EC-SK-2026-01" };
+const withRate = text({ ...shared, fullSalary: 1560 });
+ok("a subcontract quotes the framework's full salary as context",
+  withRate.includes("full monthly salary established by the framework contract is $1,560.00"));
+ok("and names the level of effort this project funds", withRate.includes("this project funds the 20% level of effort stated above"));
+ok("the fee it charges is the typed one, not one recomputed from the rate",
+  withRate.includes("fixed monthly fee of $312.00"));
+ok("the rate also appears in the particulars",
+  withRate.includes("Full monthly salary under the framework contract$1,560.00"));
+ok("with no rate on record the subcontract simply omits it, inventing nothing",
+  !text({ ...shared, fullSalary: 0 }).includes("full monthly salary established by the framework"));
+ok("a service agreement gains none of this", !text({ kind: "Service", contractTotal: 2000, loePct: 20 }).includes("framework"));
+
+console.log("\nE. the reference says which instrument it is");
 ok("the server prefixes a subcontract SC, a framework EC, an agreement SA",
   /kindVal === "Service" \? "SA" : isSub \? "SC" : "EC"/.test(server));
 ok("and decides that from the project, not from a stored flag",
@@ -67,7 +98,7 @@ ok("the audit line distinguishes the three, and records a missing parent",
   /isSub \? "subcontract" : "yearly framework employment contract"/.test(server)
   && server.includes('under framework contract ${parentReference || "NONE ON FILE"}'));
 
-console.log("\nE. the reference is read back, never guessed at");
+console.log("\nF. the reference is read back, never guessed at");
 ok("it comes out of the id the route builds",
   referenceOfContractDoc("doc-contract-ANH-EC-SK-2026-01-emp-3", "emp-3") === "ANH-EC-SK-2026-01");
 ok("a reference containing the party id still survives",

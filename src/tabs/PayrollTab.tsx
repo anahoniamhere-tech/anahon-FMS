@@ -31,6 +31,24 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
   // Phone numbers being typed, keyed by employee. Absent = not being edited, so the field
   // falls back to what is on file and the Save button only appears once it differs.
   const [phoneDraft, setPhoneDraft] = useState<{ [empId: string]: string }>({});
+  const [startDraft, setStartDraft] = useState<{ [empId: string]: string }>({});
+
+  const saveStartDate = async (empId: string) => {
+    try {
+      const res = await fetch("/api/employees/start-date", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: empId, startDate: startDraft[empId] ?? "", user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to save the start date.");
+      triggerToast(d.startDate ? "Employment start date saved." : "Employment start date removed.");
+      setStartDraft(prev => { const next = { ...prev }; delete next[empId]; return next; });
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
 
   const savePhone = async (empId: string) => {
     try {
@@ -309,6 +327,34 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                               🧾 Payslip {selectedTSMonth}
                             </button>
                           )}
+                          {HR.includes(currentUser.role) ? (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                              <label htmlFor={`emp-start-${emp.id}`} className="text-[10px] font-bold uppercase text-slate-500">
+                                {t("Employment started")}
+                              </label>
+                              <input
+                                id={`emp-start-${emp.id}`}
+                                type="date"
+                                value={startDraft[emp.id] ?? emp.startDate ?? ""}
+                                onChange={e => setStartDraft({ ...startDraft, [emp.id]: e.target.value })}
+                                className="finance-input w-40 font-mono text-xs"
+                              />
+                              {(startDraft[emp.id] ?? emp.startDate ?? "") !== (emp.startDate ?? "") && (
+                                <button
+                                  type="button"
+                                  onClick={() => saveStartDate(emp.id)}
+                                  className="rounded bg-slate-900 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-slate-950"
+                                >
+                                  {t("Save")}
+                                </button>
+                              )}
+                              <span className="text-[10px] text-slate-500">{t("The yearly framework contract runs from this date.")}</span>
+                            </div>
+                          ) : emp.startDate ? (
+                            <p className="mt-1.5 text-[11px] text-slate-500">
+                              {t("Employment started")} <span dir="ltr" className="font-mono">{emp.startDate}</span>
+                            </p>
+                          ) : null}
                           {/* The WhatsApp number is part of the personnel file, so it asks the
                               same question the file asks — maySeePersonnelFile — instead of a
                               second role list that could drift away from it. A Project Officer
