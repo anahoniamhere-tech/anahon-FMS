@@ -1,7 +1,8 @@
 import React from "react";
 import {
-  Activity, BookOpen, Briefcase, Building, Coins, FileText, FolderGit2, HardDrive, Layers,
-  LayoutGrid, Newspaper, Share2, ShieldAlert, Sliders, User, UserCheck, Users,
+  Activity, Archive, BookOpen, Briefcase, Building, Coins, FileText, FolderGit2, HardDrive,
+  Layers, LayoutGrid, LayoutTemplate, Megaphone, Newspaper, PencilLine, RefreshCw, Share2,
+  ShieldAlert, Sliders, User, UserCheck, Users,
 } from "lucide-react";
 
 /**
@@ -55,16 +56,16 @@ export const NAV: NavSection[] = [
     roles: ["*full", ...OFFICER, ...CREW, ...EDITORS, ...DIGITAL],
     items: [
       { navKey: "editorial", label: "Editorial desk", icon: ic(Newspaper), roles: ["*full", ...OFFICER, ...CREW, ...EDITORS] },
-      { navKey: "social", label: "Social desk", icon: glyph("📣"), roles: ["*full", ...EDITORS, ...DIGITAL] },
+      { navKey: "social", label: "Social desk", icon: ic(Megaphone), roles: ["*full", ...EDITORS, ...DIGITAL] },
     ],
   },
   {
     section: "Website & systems",
     roles: ["*full", ...EDITORS, ...DIGITAL],
     items: [
-      { navKey: "live", label: "Live editor", icon: glyph("✎") },
-      { navKey: "website", label: "Site content", icon: glyph("🌐") },
-      { navKey: "archive", label: "Media archive", icon: glyph("🗂") },
+      { navKey: "live", label: "Live editor", icon: ic(PencilLine) },
+      { navKey: "website", label: "Site content", icon: ic(LayoutTemplate) },
+      { navKey: "archive", label: "Media archive", icon: ic(Archive) },
       { navKey: "tools", label: "Tools", icon: ic(Sliders), roles: ["*full", ...DIGITAL] },
     ],
   },
@@ -84,7 +85,7 @@ export const NAV: NavSection[] = [
     items: [
       { navKey: "procurement", label: "Quotes & bids", icon: ic(Layers) },
       { navKey: "vendors", label: "Suppliers", icon: ic(Users), roles: ["*full", ...PLO] },
-      { navKey: "subscriptions", label: "Subscriptions & renewals", icon: glyph("🔁"), roles: ["*full", ...PLO] },
+      { navKey: "subscriptions", label: "Subscriptions & renewals", icon: ic(RefreshCw), roles: ["*full", ...PLO] },
       { navKey: "expenses", label: "Payment requests", icon: ic(FileText), badge: "expenses" },
       { navKey: "assets", label: "Equipment", icon: ic(HardDrive), roles: ["*full", ...PLO] },
     ],
