@@ -6,6 +6,7 @@
 // figure nobody measures is worse than no figure, because it gets quoted to a donor.
 // Run: npx tsx scripts/check-honesty.ts
 import { readFileSync } from "node:fs";
+import { contractHtml } from "../docgen.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -68,6 +69,30 @@ ok("and so does the posting that charges the budget line",
   /const baseCompensation = emp\.salary \+ emp\.allowance;/.test(server));
 ok("no one of the three has quietly gone back to salary alone",
   !/allocatedSalary = \(emp\?\.salary \|\| 0\) \*/.test(projects));
+
+console.log("\nand not on a contract, where it would be signed");
+// The framework contract carries no money of its own — each project is contracted separately.
+// Printing "$0.00" as its approved total would state a value nobody agreed to. Rendered here
+// rather than grepped, because what matters is the sentence a person signs.
+const contract = (o: any) => contractHtml({
+  party: { name: "Sally Kayyali", position: "Graphic Designer", paymentMethod: "Bank Transfer" },
+  countersignatory: { name: "Saad Matar", role: "Executive Director" },
+  startDate: "2026-01-01", endDate: "2026-12-31", monthlyFee: 0, reference: "ANH-EC-SK-2026-01",
+  kind: "Employment", project: null, contractTotal: 0, ...o,
+} as any).replace(/<[^>]+>/g, "");
+const framework = contract({});
+ok("a framework contract states no fixed value", framework.includes("No fixed value; each engagement is contracted separately per project"));
+ok("and says it as a sentence too, in lower case mid-clause", framework.includes("has no fixed value; each engagement"));
+ok("and prints no $0.00 anywhere", !framework.includes("$0.00"));
+const funded = contract({ project: { code: "TRF-2026", name: "Trust Fund" }, monthlyFee: 800, contractTotal: 9600 });
+ok("a funded subcontract still states its real total", funded.includes("total value of this contract is $9,600.00"));
+const service = contract({ kind: "Service", contractTotal: 2000 });
+ok("an unregistered provider's withholding is still computed from a real total",
+  service.includes("$150.00 withheld") && service.includes("$1,850.00 net"));
+ok("and reads as a sentence when there is no total to compute it from",
+  contract({ kind: "Service" }).includes("computed on the contracted value of each engagement, unless the provider"));
+ok("the project select no longer forces one onto a framework contract",
+  /<select id=\{`ct-project-\$\{emp\.id\}`\} value=/.test(payroll) && payroll.includes("None: yearly framework contract"));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

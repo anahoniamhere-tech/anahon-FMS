@@ -150,6 +150,14 @@ export function contractHtml(o: {
 }) {
   const { party: emp, project: p, account, countersignatory, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLine, reference } = o;
   const isService = kind === "Service";
+  /**
+   * A yearly framework contract carries no money of its own: it establishes the engagement,
+   * and each project that funds the role is contracted separately. Printing "$0.00" as the
+   * approved total on an instrument someone signs would state a value that was never agreed,
+   * which is worse on paper than it was on the screens it was removed from. Saad's wording.
+   */
+  const noFixedValue = !contractTotal;
+  const TOTAL_TEXT = "No fixed value; each engagement is contracted separately per project";
   const roleText = String(o.role || "").trim() || emp.position;
   // A missing MoF registration is the REASON withholding is applied — state it on the
   // instrument rather than hiding the row, so the deduction is never a surprise.
@@ -171,7 +179,7 @@ ${row("Contract Type", esc(kind))}
 ${row("Period", `${esc(longDate(startDate))} to ${esc(longDate(endDate))}`)}
 ${loePct ? row("Level of Effort", `${esc(loePct)}%`) : ""}
 ${monthlyFee ? row(isService ? "Fee per period" : "Monthly Fee", esc(money(monthlyFee))) : ""}
-${row("Contract Total", `<strong>${esc(money(contractTotal))}</strong>`)}
+${row("Contract Total", noFixedValue ? esc(TOTAL_TEXT) : `<strong>${esc(money(contractTotal))}</strong>`)}
 ${budgetLine ? row("Budget Line", esc(`${budgetLine.code} — ${budgetLine.description}`)) : ""}
 ${row("MoF Tax Registry ID", registered
       ? esc(taxId)
@@ -199,7 +207,9 @@ for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.</p>
       : isService
         ? `It is a <b>lump-sum engagement</b>: the total below covers the agreed scope for the whole period, payable in instalments on delivery and acceptance of the agreed outputs, against the provider's invoice. `
         : ""}
-The approved total value of this ${isService ? "agreement" : "contract"} is <b>${esc(money(contractTotal))}</b>.</p>
+${noFixedValue
+      ? `This ${isService ? "agreement" : "contract"} has <b>${esc(TOTAL_TEXT[0].toLowerCase() + TOTAL_TEXT.slice(1))}</b>.`
+      : `The approved total value of this ${isService ? "agreement" : "contract"} is <b>${esc(money(contractTotal))}</b>.`}</p>
 
 <h2 style="color:#1a1a1a;font-size:13px"><strong>3. Payment</strong></h2>
 <p>Payment is made ${account
@@ -209,7 +219,9 @@ and ${isService ? "the provider's invoice for the delivered outputs" : "a signed
 organisation's Accounting Policies Manual.${isService
       ? (registered
         ? " The provider is registered with the Ministry of Finance; withholding tax is applied where the law requires it."
-        : ` Because the provider is not registered with the Ministry of Finance, <b>7.5% withholding tax is deducted at source</b> from each payment and remitted to the MoF by AnaHon; the provider receives the net amount. On the total value of this agreement that is ${esc(money(contractTotal * 0.075))} withheld and ${esc(money(contractTotal * 0.925))} net, unless the provider supplies a tax registry number, in which case payments are made gross.`)
+        : ` Because the provider is not registered with the Ministry of Finance, <b>7.5% withholding tax is deducted at source</b> from each payment and remitted to the MoF by AnaHon; the provider receives the net amount.${noFixedValue
+          ? " The withheld and net amounts are computed on the contracted value of each engagement, unless"
+          : ` On the total value of this agreement that is ${esc(money(contractTotal * 0.075))} withheld and ${esc(money(contractTotal * 0.925))} net, unless`} the provider supplies a tax registry number, in which case payments are made gross.`)
       : ""}</p>
 
 <h2 style="color:#1a1a1a;font-size:13px"><strong>4. Other terms</strong></h2>

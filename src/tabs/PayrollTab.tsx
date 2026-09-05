@@ -370,10 +370,10 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                         >
                           <div>
                             <label htmlFor={`ct-project-${emp.id}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Project")}</label>
-                            <select id={`ct-project-${emp.id}`} required value={contractForm.projectId}
+                            <select id={`ct-project-${emp.id}`} value={contractForm.projectId}
                               onChange={(e) => setContractForm({ ...contractForm, projectId: e.target.value })}
                               className="finance-input w-full text-xs">
-                              <option value="">— Select —</option>
+                              <option value="">— None: yearly framework contract —</option>
                               {state.projects.filter(p => p.status === "Active").map(p => (
                                 <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
                               ))}
@@ -426,6 +426,9 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                           <p className="md:col-span-4 text-[10px] text-slate-500 italic">
                             Generated unsigned and filed in the project's vault folder. Countersignatory is taken
                             from the authorised signatories on record. Never backdate — issue a dated addendum instead (Policy §6.8).
+                            {" "}Leave the project as “None” and the fee and total at 0 for the <b>yearly framework contract</b>: it
+                            establishes the engagement and reads “no fixed value; each engagement is contracted separately per
+                            project”. Name a project and put the money in for the subcontract that actually pays.
                           </p>
                         </form>
                       )}
