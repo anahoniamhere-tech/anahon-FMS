@@ -236,6 +236,39 @@ app.use((req, res, next) => {
  */
 const OPEN_GETS = new Set(["/api/desk.ics", "/api/calendar.ics", "/api/document/ticket"]);
 
+/**
+ * Reads worth remembering.
+ *
+ * The audit log answers "who changed this?" well and could not answer "who read this?"
+ * at all. It showed on 5 Sep 2026: /api/reports/pdf had been answering 500 since the GET
+ * guard shipped, and nothing in the system could say whether anyone had ever pressed the
+ * button — the answer had to come from the metadata inside an old PDF.
+ *
+ * Only the reads that carry a record out of the building are listed. /api/state is not
+ * here: it fires on every page load and would bury the log. Neither is the per-page
+ * raster /api/document/page/:id/:n — a twenty-page document would write twenty lines;
+ * /api/document/pages/:id fires once when the viewer opens and stands for the whole file.
+ */
+const READ_AUDIT: [RegExp, string][] = [
+  [/^\/api\/quotations\/[^/]+\/pdf$/, "Quotation, as PDF"],
+  [/^\/api\/reports\/(pdf|period)$/, "Financial statements"],
+  [/^\/api\/document\/[^/]+\/pdf$/, "Document, rendered to PDF"],
+  [/^\/api\/document\/content\/[^/]+$/, "Document"],
+  [/^\/api\/document\/pages\/[^/]+$/, "Document, opened in the viewer"],
+  [/^\/api\/document\/docx-text\/[^/]+$/, "Document, as text"],
+  [/^\/api\/subscriptions\/detect$/, "Bank statement suggestions"],
+  [/^\/api\/audit\/acting$/, "Seat-assumption log"],
+];
+
+/** Name the paper, not just its id — a line an auditor cannot interpret is half a line. */
+async function readSubject(label: string, reqPath: string): Promise<string> {
+  const id = reqPath.split("/").filter(Boolean).pop() || "";
+  if (!/^\/api\/document\//.test(reqPath)) return id && !/^(pdf|period|detect|acting)$/.test(id) ? `${label} ${id}` : label;
+  const docId = /\/api\/document\/([^/]+)\/pdf$/.test(reqPath) ? reqPath.split("/")[3] : id;
+  const doc = await prisma.appDoc.findUnique({ where: { id: docId }, select: { refNo: true, filename: true } }).catch(() => null);
+  return doc ? `${label} — ${doc.refNo} "${doc.filename}"` : `${label} ${docId}`;
+}
+
 app.use(async (req: any, res, next) => {
   if (req.method === "GET" && req.path.startsWith("/api/") && !OPEN_GETS.has(req.path)) {
     const viewerId = await viewerIdFromReq(req);
@@ -243,6 +276,21 @@ app.use(async (req: any, res, next) => {
     const viewer = await prisma.user.findUnique({ where: { id: viewerId } });
     if (!viewer || !viewer.active) return res.status(403).json({ error: "This user account is deactivated." });
     req.dbUser = viewer;
+    // Recorded on the way out, so the line carries what actually happened: a refusal is
+    // as much worth keeping as a download. Only a signed-in reader reaches this point —
+    // an unauthenticated GET was already turned away above, so nobody who cannot sign in
+    // can write rows into the audit log.
+    const watched = READ_AUDIT.find(([re]) => re.test(req.path));
+    if (watched) {
+      res.on("finish", () => {
+        void (async () => {
+          const subject = await readSubject(watched[1], req.path);
+          await createAuditLog(viewer.id, viewer.name,
+            res.statusCode < 400 ? "Record Read" : "Read Refused",
+            `${subject} (HTTP ${res.statusCode})`);
+        })();
+      });
+    }
     return next();
   }
   if (req.method !== "POST" || !req.path.startsWith("/api/")) return next();
@@ -1122,20 +1170,38 @@ app.post("/api/push/unsubscribe", async (req, res) => {
  */
 async function pushTurnsFor(viewer: any) {
   const subs = await prisma.pushSubscription.findMany({ where: { userId: viewer.id } });
-  if (!subs.length) return { sent: 0, closed: 0, dead: 0 };
+  if (!subs.length) return { sent: 0, closed: 0, dead: 0, seeded: 0 };
   const state = await loadState(viewer);
   const mine = deskItems({ id: viewer.id, email: viewer.email, role: viewer.role }, state as any, localDate())
     .filter(i => i.group === "mine" || i.group === "cover");
   const ledger = await prisma.reminder.findMany({ where: { userId: viewer.id, channel: "push" } });
+  // The first run for a person is a seeding run, not fifty-nine buzzes. Everything already
+  // sitting on their desk is what the desk screen is for; push is for the moment something
+  // *becomes* their turn. So the very first time — no push row of any state has ever been
+  // written for them — the ledger is filled and nothing is sent. Every item after that is
+  // genuinely new and does buzz. Counted across all states, so clearing the desk and being
+  // given fresh work does not silence the next one.
+  const firstRun = ledger.length === 0;
   const url = String(process.env.FMS_PUBLIC_URL || "http://anahon.local:3100").replace(/\/$/, "");
   const plan = planReminders(mine, ledger as any, url, { undated: "carry" });
   const byId = new Map(mine.map(i => [i.id, i]));
   const now = new Date().toISOString();
-  let sent = 0, dead = 0;
+  let sent = 0, dead = 0, seeded = 0;
 
   for (const c of plan.create) {
     const item = byId.get(c.itemId);
     if (!item) continue;
+    if (firstRun) {
+      await prisma.reminder.create({
+        data: {
+          id: `rp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          userId: viewer.id, itemId: c.itemId, channel: "push", googleEventId: null,
+          title: c.title, whenDate: c.whenDate, state: "active", createdAt: now, updatedAt: now,
+        },
+      });
+      seeded++;
+      continue;
+    }
     const payload = JSON.stringify({
       title: c.title,
       body: NAV.flatMap(sec => sec.items).find(n => n.navKey === item.door)?.label || item.door,
@@ -1176,7 +1242,7 @@ async function pushTurnsFor(viewer: any) {
     await prisma.reminder.update({ where: { id: c.id }, data: { state: "cancelled", updatedAt: now } });
     closed++;
   }
-  return { sent, closed, dead };
+  return { sent, closed, dead, seeded };
 }
 
 /**
@@ -1199,7 +1265,7 @@ function schedulePush() {
         const u = await prisma.user.findUnique({ where: { id: userId } });
         if (!u || !u.active) continue;
         const r = await pushTurnsFor(u);
-        if (r.sent || r.dead) console.log(`[push] ${u.name}: ${r.sent} sent, ${r.closed} closed, ${r.dead} dead device(s) dropped`);
+        if (r.sent || r.dead || r.seeded) console.log(`[push] ${u.name}: ${r.sent} sent, ${r.seeded} seeded silently, ${r.closed} closed, ${r.dead} dead device(s) dropped`);
       }
     } catch (err: any) {
       console.warn(`[push] run failed: ${String(err?.message).slice(0, 200)}`);

@@ -41,6 +41,14 @@ ok("a second run says nothing — the ledger row stops it",
 ok("and when the work leaves the desk the row is closed, not resent",
   planReminders([], ledger, URL_, { undated: "carry" }).cancel.length === 1);
 
+// A person turning notifications on today has a desk that is already full — 59 pending
+// statutory tasks, in the live data. Sending all of them at once is how a feature gets
+// switched off in its first minute.
+ok("the first run for a person seeds the ledger and sends nothing", /const firstRun = ledger\.length === 0;/.test(read("../server.ts"))
+  && /if \(firstRun\) \{/.test(read("../server.ts")));
+ok("and it counts every state, so a cleared desk is not a second first run",
+  /findMany\(\{ where: \{ userId: viewer\.id, channel: "push" \} \}\)/.test(read("../server.ts")));
+
 console.log("\nB. a phone is never buzzed about someone else's week");
 const server = read("../server.ts");
 ok("the sender keeps only what is this person's turn",
