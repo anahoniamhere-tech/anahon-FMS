@@ -138,7 +138,31 @@ ok("and refuses to let a reissued agreement supersede itself",
   /priorRef && priorRef !== reference/.test(server));
 ok("the audit line records the replacement", server.includes('replacing ${supersedesReference}'));
 
-console.log("\nH. the reference is read back, never guessed at");
+console.log("\nH. who countersigns, and what the page calls them");
+// Saad asked to be given the Program Director role so he countersigns. An account holds exactly
+// one role, so that would have cost the master account its own — and "Super Admin" is a
+// permission key that must never appear as a job title on something a person signs. Instead the
+// master account stands in for the vacant seat, as it does everywhere else, and the page says so.
+ok("the Programme Director is preferred when the seat is filled",
+  /where: \{ role: "Program Director", active: true \}/.test(server));
+ok("the master account stands in before Finance is reached", (() => {
+  const b = (server.match(/const signatory =[\s\S]*?;\n/) || [""])[0];
+  return b.indexOf('"Super Admin"') > b.indexOf('"Program Director"')
+    && b.indexOf('"Super Admin"') < b.indexOf('"Finance Officer"');
+})(), "order of the fallback chain");
+ok("a real seat-holder is titled by the seat", server.includes('? "Programme Director"'));
+ok("the master account is titled by the seat it stands in for, not by its permission key",
+  server.includes('"Signing for the Programme Director seat"'));
+ok("no permission key is ever printed as a title",
+  /countersignatory: signatory \? \{ name: signatory\.name, role: signatoryTitle\(signatory\.role\) \}/.test(server)
+  && !/role: signatory\.role \}/.test(server));
+ok("and a Finance fallback admits the seat is vacant rather than implying authority",
+  server.includes("the Programme Director seat is vacant"));
+ok("the signature block prints the name over that title",
+  /countersignatory\?\.name \|\| "—"[\s\S]{0,60}countersignatory\?\.role/.test(
+    readFileSync(new URL("../docgen.ts", import.meta.url), "utf8")));
+
+console.log("\nI. the reference is read back, never guessed at");
 ok("it comes out of the id the route builds",
   referenceOfContractDoc("doc-contract-ANH-EC-SK-2026-01-emp-3", "emp-3") === "ANH-EC-SK-2026-01");
 ok("a reference containing the party id still survives",

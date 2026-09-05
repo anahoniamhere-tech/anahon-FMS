@@ -1850,10 +1850,21 @@ app.post("/api/contracts/generate", async (req, res) => {
       ? await prisma.bankAccount.findUnique({ where: { id: party.bankAccountId } })
       : null;
 
-    // The Program Director countersigns; fall back to any active officer rather than a name in code.
+    // The Programme Director countersigns. That seat can be vacant, and everywhere else in this
+    // system the master account stands in for a vacant seat — a contract is no exception, so it
+    // is tried before Finance. Two things this deliberately does NOT do: it does not require
+    // anyone to hold "Program Director" as their account role (that would cost the master account
+    // its own role, since an account has exactly one), and it does not print that role onto the
+    // page. "Super Admin" is a permission key, not a job title; the instrument says which SEAT is
+    // being signed for, the same way standing in a seat is recorded everywhere else.
     const signatory =
       (await prisma.user.findFirst({ where: { role: "Program Director", active: true } })) ||
+      (await prisma.user.findFirst({ where: { role: "Super Admin", active: true } })) ||
       (await prisma.user.findFirst({ where: { role: "Finance Officer", active: true } }));
+    const signatoryTitle = (role: string) =>
+      role === "Program Director" ? "Programme Director"
+        : role === "Super Admin" ? "Signing for the Programme Director seat"
+          : `${role} — the Programme Director seat is vacant`;
 
     const kindVal = forcedKind || (kind === "Service" ? "Service" : "Employment");
     // Employment + a project is a subcontract: the yearly framework contract names no project
@@ -1886,7 +1897,7 @@ app.post("/api/contracts/generate", async (req, res) => {
 
     const html = contractHtml({
       party, project, account, role, kind: kindVal as "Employment" | "Service",
-      countersignatory: signatory ? { name: signatory.name, role: signatory.role } : undefined,
+      countersignatory: signatory ? { name: signatory.name, role: signatoryTitle(signatory.role) } : undefined,
       startDate, endDate,
       loePct: loePct === undefined || loePct === null || loePct === "" ? undefined : Number(loePct),
       monthlyFee: Number(monthlyFee), contractTotal: Number(contractTotal),
