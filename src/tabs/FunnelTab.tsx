@@ -402,7 +402,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                     risks are in front of you while you decide whether to keep it. */}
                 {intake && oppForm && (
                   <div className={`p-4 rounded-xl border text-[11px] space-y-2 ${intake.assessment.fit === "Strong" ? "bg-emerald-50 border-emerald-200"
-                    : intake.assessment.fit === "Weak" ? "bg-rose-50 border-rose-200" : "bg-amber-50 border-amber-200"}`}>
+                    : intake.assessment.fit === "Weak" ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
                     <p className="font-bold text-slate-800">
                       {intake.provider} read {intake.source} · Fit: {intake.assessment.fit} · Suggested program: {intake.assessment.recommendedStream || "—"}
                     </p>

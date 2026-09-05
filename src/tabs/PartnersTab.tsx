@@ -177,7 +177,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {state.partnerAccounts.map(p => (
                   <div key={p.id} className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
-                    <h4 className="text-md font-bold text-slate-950 uppercase font-sans border-b border-rose-100 pb-2 flex items-center gap-1.5">
+                    <h4 className="text-md font-bold text-slate-950 uppercase font-sans border-b border-slate-200 pb-2 flex items-center gap-1.5">
                       <User className="h-4 w-4 text-red-650 text-red-600" />
                       {p.partnerName} Partner Equity Line
                     </h4>
@@ -188,7 +188,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                       </div>
                       <div className="flex justify-between border-b border-slate-50 py-1.5 text-slate-650">
                         <span>Outstanding draws account:</span>
-                        <span className="text-rose-600 font-bold">-{formatUSD(p.drawingsBalance)}</span>
+                        <span className="text-red-700 font-bold">-{formatUSD(p.drawingsBalance)}</span>
                       </div>
                       <div className="flex justify-between border-b border-slate-50 py-1.5 text-slate-650">
                         <span>Loan accounts back to platform:</span>

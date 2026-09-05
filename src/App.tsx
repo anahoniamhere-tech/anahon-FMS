@@ -1186,7 +1186,7 @@ export default function App() {
                       </span>
                     )}
                     {item.badge === "compliance" && overdueTasks > 0 && (
-                      <span className="ms-auto flex h-2 w-2 rounded-full bg-rose-500" title={`${overdueTasks} overdue`} />
+                      <span className="ms-auto flex h-2 w-2 rounded-full bg-red-500" title={`${overdueTasks} overdue`} />
                     )}
                   </button>
                 ))}

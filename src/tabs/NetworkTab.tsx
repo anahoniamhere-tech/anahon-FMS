@@ -16,7 +16,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 const KIND_STYLE: Record<string, string> = {
   Trainer: "bg-red-100 text-red-800",
-  Coach: "bg-rose-100 text-rose-800",
+  Coach: "bg-fuchsia-100 text-fuchsia-800",
   Partner: "bg-teal-100 text-teal-800",
   Organiser: "bg-purple-100 text-purple-800",
   Speaker: "bg-indigo-100 text-indigo-800",

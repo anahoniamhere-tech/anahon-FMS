@@ -162,7 +162,7 @@ export default function AccountsTab({ currentUser, setState, state, t, triggerTo
                               acc.type === "Liability" ? "bg-amber-50 text-amber-700" :
                                 acc.type === "Equity" ? "bg-indigo-50 text-indigo-700" :
                                   acc.type === "Revenue" ? "bg-emerald-50 text-emerald-700" :
-                                    "bg-rose-50 text-rose-700"
+                                    "bg-red-50 text-red-700"
                             }`}>
                             {acc.type}
                           </span>

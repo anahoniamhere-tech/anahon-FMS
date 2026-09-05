@@ -111,7 +111,7 @@ export const NAV: NavSection[] = [
     section: "Admin",
     roles: ["*full"],
     items: [
-      { navKey: "compliance", label: "Team, rates & audit log", icon: <ShieldAlert className="h-4 w-4 text-rose-400 shrink-0" />, badge: "compliance" },
+      { navKey: "compliance", label: "Team, rates & audit log", icon: ic(ShieldAlert), badge: "compliance" },
     ],
   },
 ];
