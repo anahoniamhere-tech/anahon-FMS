@@ -30,6 +30,7 @@ import {
   HelpCircle,
   Briefcase,
   Key,
+  Languages,
   Layers,
   Activity,
   CheckCircle,
@@ -1087,8 +1088,8 @@ export default function App() {
           <RoleSwitch currentUser={currentUser} onChange={(r) => { setActingAs(r); refreshState(); }} />
           {state?.siteUrl && (
             <a href={state.siteUrl} target="_blank" rel="noopener"
-              className="rounded-full border border-slate-600 px-3 py-1 text-xs font-bold text-slate-200 hover:bg-slate-800"
-              title={state.siteUrl}>🌐 {t("Website")}</a>
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-600 px-3 py-1 text-xs font-bold text-slate-200 hover:bg-slate-800"
+              title={state.siteUrl}><Globe className="w-3.5 h-3.5" /> {t("Website")}</a>
           )}
           <button
             onClick={() => setLang(lang === "ar" ? "en" : "ar")}
@@ -1096,7 +1097,7 @@ export default function App() {
             title={lang === "ar" ? "Switch to English" : "التبديل إلى العربية"}
             className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer"
           >
-            <Globe className="w-3.5 h-3.5 text-emerald-400" />
+            <Languages className="w-3.5 h-3.5 text-emerald-400" />
             <span>{lang === "ar" ? "English" : "العربية"}</span>
           </button>
           <button onClick={handleFirebaseSignOut} className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer">
