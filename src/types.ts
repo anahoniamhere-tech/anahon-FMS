@@ -132,6 +132,8 @@ export interface Vendor {
   engageable?: boolean;
   /** Login email, when this provider is also a system user. Empty for ordinary suppliers. */
   userEmail?: string;
+  /** WhatsApp number, full international form. Empty means no WhatsApp button — see waLink. */
+  phone?: string;
 }
 
 export interface Expense {
@@ -242,6 +244,12 @@ export interface Employee {
   userEmail?: string; // login email for self-service timesheets (Policy 8.5)
   /** Which BLOM sub-account pays this person. Null/absent means cash. */
   bankAccountId?: string;
+  /**
+   * WhatsApp number in full international form. Part of the personnel file, so the server
+   * sends "" to anyone who may not open this person's file — an empty string here means
+   * "not on file OR not yours to see", and the interface treats both the same way.
+   */
+  phone?: string;
 }
 
 export interface Timesheet {

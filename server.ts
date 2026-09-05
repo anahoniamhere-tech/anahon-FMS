@@ -145,6 +145,10 @@ const AUDITOR_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/assets/verify"]);
 // A self-service employee files their own timesheet and their own papers, nothing else.
 const SELF_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/timesheets/submit", "/api/document/upload", ...TASK_POSTS]);
 for (const list of [PO_ALLOWED_POSTS, CREW_ALLOWED_POSTS, PLO_ALLOWED_POSTS, DIGITAL_ALLOWED_POSTS, EDITOR_ALLOWED_POSTS]) TASK_POSTS.forEach(r => list.add(r));
+// Whoever may open a personnel file may correct the phone number on it, and your own file is
+// always one of them — so the restricted seats that reach the payroll door get the route too.
+// The route itself asks maySeePersonnelFile; this list only decides who may knock.
+for (const list of [PO_ALLOWED_POSTS, CREW_ALLOWED_POSTS, PLO_ALLOWED_POSTS, DIGITAL_ALLOWED_POSTS, EDITOR_ALLOWED_POSTS, SELF_ALLOWED_POSTS]) list.add("/api/employees/phone");
 const PLO_ROLE = PLO_SEAT;
 const DIGITAL_ROLE = DIGITAL_SEAT;
 
@@ -673,7 +677,11 @@ async function loadState(viewer?: any) {
     bankAccounts,
     bankTransactions,
     journalEntries: formattedJournalEntries,
-    employees,
+    // A phone number is a personnel-file field like the passport below it, and this is the
+    // one branch that hands out other people's rows — Finance, Project Lead and the auditor
+    // read it too. Blanked here rather than merely hidden in the browser, by the same rule
+    // the documents use, so there is one answer to "who may see this person's file".
+    employees: employees.map(e => maySeePersonnelFile(viewer, employees, e.id) ? e : { ...e, phone: "" }),
     timesheets: formattedTimesheets,
     fixedAssets,
     partnerAccounts,
@@ -832,6 +840,36 @@ app.post("/api/users/set-active", async (req, res) => {
     await createAuditLog(user.id, user.name, active ? "User Account Reactivated" : "User Account Deactivated",
       `${target.name} <${target.email}> (${target.role}) ${active ? "can sign in again" : "can no longer sign in; history retained"}.`);
     res.json({ success: true, user: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* The WhatsApp number on a personnel file.
+ *
+ * Same gate as the papers in that file — maySeePersonnelFile — so there is one rule and
+ * not a second one that can drift. Stored only in full international form: waLink()
+ * refuses to guess a country code, and a number saved without one would either produce
+ * no button or, worse, a chat with a stranger in another country. The audit line records
+ * that the number changed, never the digits, because the log is read by seats that are
+ * not on this person's file.
+ */
+app.post("/api/employees/phone", async (req, res) => {
+  try {
+    const { employeeId, phone, user } = req.body;
+    const target = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!target) return res.status(404).json({ error: "Employee not found." });
+    if (!maySeePersonnelFile(user, [target], employeeId)) {
+      return res.status(403).json({ error: "Only the personnel file holders, or the person themselves, may set this number." });
+    }
+    const next = String(phone ?? "").replace(/[\s()-]/g, "");
+    if (next && !/^\+[1-9]\d{7,14}$/.test(next)) {
+      return res.status(400).json({ error: "Write the number in full international form, starting with + and the country code — e.g. +9613123456." });
+    }
+    await prisma.employee.update({ where: { id: employeeId }, data: { phone: next } });
+    await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", next ? "Employee Phone Set" : "Employee Phone Cleared",
+      `WhatsApp number ${next ? (target.phone ? "changed" : "recorded") : "removed"} on the personnel file of ${target.name}.`);
+    res.json({ success: true, phone: next });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1518,7 +1556,7 @@ app.post("/api/fxRates/sync-inforeuro", async (req, res) => {
 // Create New Vendor
 app.post("/api/vendors/new", async (req, res) => {
   try {
-    const { name, category, taxId, bankInfo, contact, engageable, user } = req.body;
+    const { name, category, taxId, bankInfo, contact, phone, engageable, user } = req.body;
     if (!name || !category) {
       return res.status(400).json({ error: "Vendor name and category are required." });
     }
@@ -1535,6 +1573,10 @@ app.post("/api/vendors/new", async (req, res) => {
         taxId: taxId || "N/A",
         bankInfo: bankInfo || "N/A",
         contact: contact || "N/A",
+        // Blank rather than "N/A": empty means "no WhatsApp button", and "N/A" would be
+        // read as a number nobody can dial. waLink refuses it either way, but only one of
+        // the two is honest about being absent.
+        phone: String(phone || "").trim(),
         active: true,
         declarationSigned: true,
         blocked: false,
@@ -1559,7 +1601,7 @@ app.post("/api/vendors/new", async (req, res) => {
 // Create New Employee
 app.post("/api/employees/new", async (req, res) => {
   try {
-    const { name, position, salary, allowance, paymentMethod, bankAccountId, contractType, user } = req.body;
+    const { name, position, salary, allowance, paymentMethod, bankAccountId, contractType, phone, user } = req.body;
     if (!name || !position || salary === undefined) {
       return res.status(400).json({ error: "Employee name, position, and base salary are required." });
     }
@@ -1581,6 +1623,7 @@ app.post("/api/employees/new", async (req, res) => {
         id: empid,
         name,
         position,
+        phone: String(phone || "").trim(),
         salary: Number(salary) || 0,
         allowance: Number(allowance) || 0,
         paymentMethod: method,
