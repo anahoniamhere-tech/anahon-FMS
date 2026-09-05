@@ -82,6 +82,7 @@ import WebsiteTab from "./tabs/WebsiteTab";
 import LiveTab from "./tabs/LiveTab";
 import RoleSwitch, { ActingBanner } from "./RoleSwitch";
 import { NAV, visibleNav, LANDING } from "./nav";
+import { deskItems, localToday } from "./workflow";
 import { withTicket, refreshDocTicket } from "./docTicket";
 import { SharedProps } from "./tabs/shared";
 import { auth } from "./firebaseConfig";
@@ -449,6 +450,23 @@ export default function App() {
     // Auto-close only on mobile, where the sidebar overlays the content.
     if (typeof window !== "undefined" && window.innerWidth < 768) setIsOpen(false);
   };
+
+  // The number on the app icon, wherever the person is standing.
+  //
+  // This lived inside My Desk until 5 Sep 2026, which was wrong the moment the doors
+  // screen became the landing page: someone who never opens My Desk never had a badge
+  // set, and — worse — never had a stale one cleared. It belongs to the app.
+  useEffect(() => {
+    const nav: any = navigator;
+    // The signed-in person is resolved the same way the redirect effect below does it:
+    // `currentUser` is declared after the login early-return, and a hook cannot live there.
+    const u = state?.users?.find(x => x.id === activeUserId) || state?.users?.[0];
+    if (!nav.setAppBadge || !u) return;
+    const doors = new Set(visibleNav(u.role || "").flatMap(sec => sec.items.map(i => i.navKey)));
+    const n = deskItems({ id: u.id, email: u.email, role: u.role }, state as any, localToday())
+      .filter(i => doors.has(i.door) && i.group !== "week").length;
+    (n > 0 ? nav.setAppBadge(n) : nav.clearAppBadge?.())?.catch?.(() => { /* not permitted here */ });
+  }, [state, activeUserId]);
 
   // A notification opens the app at the door its item lives behind: /?door=expenses&
   // focus=expenses:e-12 (public/sw.js writes it). Read once, then scrubbed from the address

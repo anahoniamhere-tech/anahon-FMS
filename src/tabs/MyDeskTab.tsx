@@ -451,18 +451,24 @@ export default function MyDeskTab({
       if (supported) {
         const reg = await navigator.serviceWorker.getRegistration();
         on = !!(await reg?.pushManager.getSubscription());
+        // A subscription can lapse without the person doing anything — the push service
+        // rotates it, or the browser drops it. If they already said yes, that is not a
+        // decision to ask again: re-subscribe quietly. (Deleting the whole app resets the
+        // permission too, so that case still needs the tap, which is right.)
+        if (!on && ready && publicKey && Notification.permission === "granted" && reg) {
+          try {
+            const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) });
+            const r = await fetch("/api/push/subscribe", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ subscription: sub.toJSON() }),
+            });
+            on = r.ok;
+          } catch { /* leave the button showing; the person can tap it */ }
+        }
       }
       setPush({ ready, publicKey, supported, on });
     })();
   }, []);
-
-  // The count on the app icon. Free where it exists, absent where it does not.
-  useEffect(() => {
-    const n = mine.length + cover.length;
-    const nav: any = navigator;
-    if (!nav.setAppBadge) return;
-    (n > 0 ? nav.setAppBadge(n) : nav.clearAppBadge?.()).catch?.(() => { /* not permitted here */ });
-  }, [mine.length, cover.length]);
 
   /** VAPID keys travel as base64url; PushManager wants the bytes. */
   const keyBytes = (k: string) => {

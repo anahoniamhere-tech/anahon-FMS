@@ -61,6 +61,16 @@ ok("the ledger the phone reads is its own channel", /findMany\(\{ where: \{ user
 ok("and the calendar's is its own, or it would cancel work still owed",
   /findMany\(\{ where: \{ userId: viewer\.id, channel: "calendar" \} \}\)/.test(server));
 
+// 5 Sep 2026, from the first reinstall: the badge lived inside My Desk, so once the doors
+// screen became the landing page a person who never opened My Desk never had one set, and
+// a stale one was never cleared. It belongs to the app, not to a screen.
+const app = read("../src/App.tsx");
+ok("the badge is set app-wide, not inside one tab", /nav\.setAppBadge/.test(app) && !/setAppBadge/.test(read("../src/tabs/MyDeskTab.tsx")));
+ok("and it counts what is owed, not what is merely due this week", /i\.group !== "week"\)\.length/.test(app));
+// A subscription can lapse without the person revoking anything; asking again is noise.
+ok("a lapsed subscription is renewed silently when permission still stands",
+  /Notification\.permission === "granted"/.test(read("../src/tabs/MyDeskTab.tsx")));
+
 console.log("\nC. the worker still caches nothing");
 const sw = read("../public/sw.js");
 ok("exactly one file is ever cached", (sw.match(/c\.add\(|cache\.add|addAll/g) || []).length === 1 && sw.includes("c.add(PAGE)"));
