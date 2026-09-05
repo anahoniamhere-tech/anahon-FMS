@@ -26,3 +26,4 @@ exports/
 
 # Editor-made backups of scripts during changes
 *.bak-*
+.google-calendar.env
