@@ -74,7 +74,7 @@ export default function DoorsTab({ state, currentUser, t, lang, handleNavClick }
                         <b className={`${BADGE} bg-[#F88888] text-[#4A1010]`}>{c.week}</b>
                       ) : null}
                     </span>
-                    <span className="text-[12px] font-bold leading-tight text-slate-900">{t(d.label)}</span>
+                    <span className="min-h-[30px] text-[12px] font-bold leading-tight text-slate-900">{t(d.label)}</span>
                   </button>
                 );
               })}
