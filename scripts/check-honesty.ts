@@ -33,5 +33,17 @@ ok("held by the seats that own the money", /navKey: "subscriptions"[^}]*roles: \
 ok("one component, two entrances", /activeTab === "vendors" && <VendorsTab \{\.\.\.shared\} only="suppliers"/.test(app) && /activeTab === "subscriptions" && <VendorsTab \{\.\.\.shared\} only="subscriptions"/.test(app));
 ok("the label has Arabic", src("i18n.ts").includes('"Subscriptions & renewals":'));
 
+console.log("\na zero that is not a figure does not pretend to be one");
+// Every salary base is 0 until a project funds the role, so the payroll card was printing
+// "Base: $0.00 + $0.00 allowance" to the person whose card it is. Same failure as the
+// invented 98.5% above, inverted: a number that measures nothing, shown as if it did.
+const payroll = src("tabs/PayrollTab.tsx");
+ok("an unset base says so instead of showing $0.00",
+  /emp\.salary \|\| emp\.allowance \?/.test(payroll) && payroll.includes("No salary base set"));
+ok("and the figures come back the moment either one is set",
+  /Base: <span dir="ltr">\{formatUSD\(emp\.salary\)\}<\/span>/.test(payroll));
+ok("the sentence has Arabic, so it is not the English fallback",
+  /"No salary base set[^"]*":\s*"[^"]*[؀-ۿ]/.test(src("i18n.ts")));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

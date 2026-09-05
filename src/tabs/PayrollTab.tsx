@@ -264,7 +264,18 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-2">
                         <div>
                           <h4 className="text-sm font-bold text-slate-900">{emp.name}</h4>
-                          <p className="text-xs text-slate-500">{emp.position} • Base: {formatUSD(emp.salary)} + {formatUSD(emp.allowance)} allowance</p>
+                          {/* Every base is 0 until a project funds the role, so a bare "$0.00"
+                              is not a figure — it is the absence of one, and it reads as a bug
+                              to the person whose card it is. Say what is true instead. The
+                              figures are still shown the moment either one is set. */}
+                          <p className="text-xs text-slate-500">
+                            {emp.position} •{" "}
+                            {emp.salary || emp.allowance ? (
+                              <>Base: <span dir="ltr">{formatUSD(emp.salary)}</span> + <span dir="ltr">{formatUSD(emp.allowance)}</span> allowance</>
+                            ) : (
+                              <span className="italic">{t("No salary base set — this role is paid only while a project funds it.")}</span>
+                            )}
+                          </p>
                           {(() => {
                             const payAcct = state.bankAccounts.find(ba => ba.id === emp.bankAccountId);
                             if (!payAcct) return (
