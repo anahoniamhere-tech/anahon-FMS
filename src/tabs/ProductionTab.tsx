@@ -3,7 +3,7 @@ import { Trash2, Download } from "lucide-react";
 import { Client, Quotation, QuotationItem } from "../types";
 import { EXTRAS_DEFAULT, FINANCIAL_TERMS, PRODUCTION_NOTE, QUOTE_STATUSES, SERVICE_CATALOG, TECHNICAL_NOTE } from "../constants";
 import { tr } from "../i18n";
-import { SharedProps } from "./shared";
+import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import { FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
 import { outstandingOn, paidOn } from "../quoteTranches";
@@ -661,6 +661,34 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                         title={`Signed copy on file — ${d.refNo || d.filename}`}>✓signed</button>
                                     ))}
                                   </>
+                                );
+                              })()}
+                              {/* The client is told nothing until someone tells them. This sends
+                                  nothing: the link opens WhatsApp with the message written and a
+                                  person presses Send. Which sentence depends on where the money is
+                                  — an offer still out is a quotation to chase, anything invoiced or
+                                  part-paid is a balance, and the figure quoted is what is actually
+                                  still owed. Both sentences already existed in shared.ts. */}
+                              {["Sent", "Accepted", "Invoiced"].includes(q.status) && (() => {
+                                const paidSoFar = paidOn(q.paymentTxIds || [], state.bankTransactions);
+                                const stillOwed = outstandingOn(q.amount, paidSoFar);
+                                const first = (client?.name || "").split(/\s+/)[0];
+                                const money = (n: number) => `${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${q.currency}`;
+                                const text = paidSoFar > 0 || q.status === "Invoiced"
+                                  ? WA_TEMPLATES["client-balance"](t, { name: first, amount: money(stillOwed), date: q.date })
+                                  : WA_TEMPLATES["client-quotation"](t, { name: first, ref: q.quoteNo, amount: money(q.amount) });
+                                const link = client ? waLink(client.phone || "", text) : null;
+                                return link ? (
+                                  <a href={link} target="_blank" rel="noreferrer"
+                                    title={t("Opens WhatsApp with the message ready — you press Send.")}
+                                    className="inline-flex min-h-[44px] items-center justify-center rounded bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100 md:min-h-0">
+                                    💬 {t("Message the client")} — {first}
+                                  </a>
+                                ) : (
+                                  <button type="button" disabled
+                                    className="inline-flex min-h-[44px] cursor-not-allowed items-center justify-center rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500 md:min-h-0">
+                                    💬 {t("Message the client")} — {t("no WhatsApp number on file")}
+                                  </button>
                                 );
                               })()}
                               <button onClick={() => setQuoteForm({ ...q })} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="Edit" aria-label={`Edit ${q.quoteNo}`}>✏️</button>

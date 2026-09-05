@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { NetworkContact, Engagement } from "../types";
 import { STREAMS, ENGAGEMENT_KINDS, ENGAGEMENT_PARTS, CONTACT_KINDS } from "../constants";
-import { SharedProps } from "./shared";
+import { SharedProps, waLink } from "./shared";
 import { CONTACT_EDITORS } from "../roles";
 
 const KINDS = CONTACT_KINDS;   // Trainer, Coach, Partner, Participant, Organiser, Speaker, Other
@@ -43,7 +43,7 @@ const PART_STYLE: Record<string, string> = {
   Sponsored: "bg-amber-100 text-amber-800",
 };
 
-export default function NetworkTab({ state, currentUser, refreshState, triggerToast }: SharedProps) {
+export default function NetworkTab({ state, currentUser, refreshState, t, triggerToast }: SharedProps) {
   const [form, setForm] = useState<any>(BLANK);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -339,12 +339,34 @@ export default function NetworkTab({ state, currentUser, refreshState, triggerTo
         <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm">
           <div className="font-bold text-red-800 text-xs uppercase mb-1">Follow-up owed</div>
           <ul className="space-y-1 text-red-900">
-            {dueSoon.map(c => (
-              <li key={c.id}>
-                <strong>{c.name}</strong>{c.org ? ` — ${c.org}` : ""}: {c.followUp || "no note written"}
-                <span className="text-xs text-red-700"> (due {c.followUpBy})</span>
-              </li>
-            ))}
+            {dueSoon.map(c => {
+              // Nothing is sent from here: the link opens WhatsApp on this contact and a
+              // person writes and presses Send. Deliberately no pre-written sentence —
+              // the follow-up note is our own reminder ("propose AnaHon as trainer"), not
+              // something to put in front of the person it is about.
+              const link = waLink(c.phone || "", "");
+              const first = (c.name || "").split(/\s+/)[0];
+              return (
+                <li key={c.id} className="flex flex-wrap items-center gap-2">
+                  <span>
+                    <strong>{c.name}</strong>{c.org ? ` — ${c.org}` : ""}: {c.followUp || "no note written"}
+                    <span className="text-xs text-red-700"> (due {c.followUpBy})</span>
+                  </span>
+                  {link ? (
+                    <a href={link} target="_blank" rel="noreferrer"
+                      title={t("Opens WhatsApp — you write it and press Send.")}
+                      className="inline-flex min-h-[44px] items-center justify-center rounded bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100 md:min-h-0">
+                      💬 {t("Message")} — {first}
+                    </a>
+                  ) : (
+                    <button type="button" disabled
+                      className="inline-flex min-h-[44px] cursor-not-allowed items-center justify-center rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500 md:min-h-0">
+                      💬 {t("Message")} — {t("no WhatsApp number on file")}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}
