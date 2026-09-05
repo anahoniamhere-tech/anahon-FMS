@@ -79,6 +79,12 @@ ok("it is told not to guess", /Do not guess/.test(RULES_FOR_THE_BOT));
 ok("it is told to name a navKey only from the asker's own doors", /only a navKey from the list of doors they can open/.test(RULES_FOR_THE_BOT));
 ok("it is told never to state a title, vendor or amount", /Never state or invent a record's title, vendor, amount/.test(RULES_FOR_THE_BOT));
 ok("it is told to answer in the language it was asked in", /same language the question is written in/i.test(RULES_FOR_THE_BOT));
+// 5 Sep 2026, from the first real use: asked about a "Submitted" row when the desk held
+// none, it explained what Submitted would mean instead of saying nothing was there, and
+// offered mydesk as the destination — a door the asker was already standing in.
+ok("it is told to say when no such row is on the desk", /nothing on your desk is in that state right now/.test(RULES_FOR_THE_BOT));
+ok("and not to explain the status as though the row were there", /Do not explain what the status would have meant as though the row were there/.test(RULES_FOR_THE_BOT));
+ok("mydesk is not a destination for a question about one record", /"mydesk" is a destination only for a question about the desk as a whole/.test(RULES_FOR_THE_BOT));
 
 console.log("\nE. the route");
 const server = read("../server.ts");
