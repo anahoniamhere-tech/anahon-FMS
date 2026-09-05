@@ -5,6 +5,8 @@
 // port. This pins the guard and the three routes that are narrower still.
 // Run: npx tsx scripts/check-reads.ts
 import { readFileSync } from "node:fs";
+import { visibleNav } from "../src/nav.js";
+import { ALL_ROLES, FULL_VIEW } from "../src/roles.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -36,6 +38,15 @@ console.log("\nnarrower still");
 ok("the bank statement's suggestions are finance's and procurement's", /SUPPLIER_EDITORS\.includes\(\(req as any\)\.dbUser\?\.role\)/.test(server));
 ok("the seat log is the director's", /isDirector\(req\.dbUser\?\.role\)\) return res\.status\(403\)/.test(server));
 ok("the financial statements keep their own reader list", /REPORT_READERS\.includes\(reader\.role\)/.test(server));
+ok("a quotation needs a role, not just a sign-in", /if \(!viewer \|\| !FULL_VIEW\.includes\(viewer\.role\)\)/.test(server));
+ok("the quotation's role check comes before the record is looked up", (() => {
+  const body = (server.match(/app\.get\("\/api\/quotations\/:id\/pdf"[\s\S]*?\n\}\);/) || [""])[0];
+  return body.indexOf("FULL_VIEW.includes") > 0 && body.indexOf("FULL_VIEW.includes") < body.indexOf("prisma.quotation.findUnique");
+})());
+ok("and that list IS the Clients & quotations door, not a second opinion", (() => {
+  const door = ALL_ROLES.filter(r => visibleNav(r).some(sec => sec.items.some(i => i.navKey === "production"))).sort();
+  return door.length === FULL_VIEW.length && door.every((r, i) => r === [...FULL_VIEW].sort()[i]);
+})(), "nav says one set, roles.ts another");
 ok("a diary is personal — each person reads their own feeds only", /const feeds = feedsFor\(viewer\);/.test(server) && /f\.userId \? f\.userId === user\.id : isDirector\(user\.role\)/.test(server));
 
 console.log("\nwhat the browser can still show");

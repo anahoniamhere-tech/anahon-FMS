@@ -54,6 +54,20 @@ export const ALL_ROLES = [
   AUDITOR, SELF, "Production Manager", "Reporter", "Content Creator", "Podcaster",
   "Chief Editor", PLO, DIGITAL, "Graphic Designer",
 ];
+/**
+ * The restricted seats: one desk each. nav.tsx's "*full" means everyone who is NOT one
+ * of these, so the membership lives here and nav.tsx asks this list rather than keeping
+ * its own copy — two spellings of the same set is how a door and its route drift apart.
+ */
+export const RESTRICTED = [...CREW, ...EDITORS, "Project Officer", PLO, DIGITAL, SELF];
+/**
+ * The people who run the organisation's books and records — "*full", as a list a route
+ * can check. Wider than MANAGERS (adds Project Lead, HR and the auditor) and wider than
+ * REPORT_READERS, so neither could be reused: this is the set that opens the Clients &
+ * quotations door, and now the set that may download a quotation.
+ */
+export const FULL_VIEW = ALL_ROLES.filter(r => !RESTRICTED.includes(r));
+
 /** May read the financial statements. */
 export const REPORT_READERS = [...MANAGERS, AUDITOR];
 

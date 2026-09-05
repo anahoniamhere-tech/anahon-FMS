@@ -29,7 +29,7 @@ const ic = (I: React.ComponentType<{ className?: string }>) => <I className="h-4
 const glyph = (g: string) => <span className="h-4 w-4 shrink-0 text-center leading-4">{g}</span>;
 
 // Role groups, matching the checks the server makes.
-import { ALL_ROLES, CREW, EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, SELF as SELF_SEAT } from "./roles";
+import { ALL_ROLES, CREW, EDITORS, RESTRICTED, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, SELF as SELF_SEAT } from "./roles";
 export { CREW, EDITORS };
 export const OFFICER = ["Project Officer"];
 export const SELF = [SELF_SEAT];
@@ -38,7 +38,7 @@ export const DIGITAL = [DIGITAL_SEAT];
 // The people who run the organisation's books and records: everyone who is not in one
 // of the restricted groups above. Named by exclusion on purpose — a role that is not
 // yet placed lands here, never in the dark. The server trims what it sends anyway.
-export const isRestricted = (role: string) => [...CREW, ...OFFICER, ...SELF, ...EDITORS, ...PLO, ...DIGITAL].includes(role);
+export const isRestricted = (role: string) => RESTRICTED.includes(role);
 
 export const NAV: NavSection[] = [
   {

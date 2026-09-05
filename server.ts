@@ -11,7 +11,7 @@ import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml} from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
-import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS } from "./src/roles.js";
+import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
@@ -4990,19 +4990,26 @@ const OFFBANK_METHODS = ["OMT", "BOB Finance", "Whish", "Cash"];
 // report pipeline) rather than introducing a second PDF path.
 app.get("/api/quotations/:id/pdf", async (req, res) => {
   try {
+    // A quotation is the organisation's priced offer to a client. The sign-in guard above
+    // already turns strangers away, but until 5 Sep 2026 any signed-in account could
+    // download one — the viewer was resolved only to print "prepared by". The door itself
+    // (Clients & quotations) is "*full", so the paper follows the door.
+    const vid = await viewerIdFromReq(req);
+    const viewer = vid ? await prisma.user.findUnique({ where: { id: vid } }) : null;
+    if (!viewer || !FULL_VIEW.includes(viewer.role)) {
+      return res.status(403).json({ error: "Quotations belong to the people who keep the organisation's books and records." });
+    }
+
     const quote = await prisma.quotation.findUnique({ where: { id: req.params.id } });
     if (!quote) return res.status(404).json({ error: "Quotation not found." });
     const client = await prisma.client.findUnique({ where: { id: quote.clientId } });
     if (!client) return res.status(400).json({ error: "Quotation's client no longer exists." });
 
-    const uid = await viewerIdFromReq(req);
-    const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
-
     const html = quotationHtml({
       quoteNo: quote.quoteNo,
       date: quote.date,
       validUntil: quote.validUntil,
-      preparedBy: `${viewer?.name || "Saad Matar"} — ${viewer?.role === "Super Admin" ? "Executive Director" : viewer?.role || "Executive Director"}`,
+      preparedBy: `${viewer.name} — ${viewer.role === "Super Admin" ? "Executive Director" : viewer.role}`,
       clientName: client.name,
       clientContact: client.contact,
       clientPhone: client.phone,
