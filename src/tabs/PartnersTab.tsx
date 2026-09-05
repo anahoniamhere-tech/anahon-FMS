@@ -3,6 +3,7 @@ import { Calendar, Download, User } from "lucide-react";
 import { Account, Expense, Project } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
+import { FINANCE, MANAGERS } from "../roles";
 
 export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshState, state, t, triggerToast }: SharedProps) {
   // Physical cash count form (Banking tab).
@@ -132,7 +133,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
               </div>
 
               {/* Draw invest form */}
-              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+              {FINANCE.includes(currentUser.role) && (
                 <form className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">{t("Select Partner profile")}</label>
@@ -310,7 +311,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                         <h4 className="text-xs font-bold text-amber-900 uppercase font-mono">
                           ⏳ Pending eBLOM advices ({pendingTransactions.length})
                         </h4>
-                        {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                        {FINANCE.includes(currentUser.role) && (
                           <label className="text-[11px] font-bold text-amber-800 hover:text-amber-950 cursor-pointer inline-flex items-center gap-1 min-h-[44px] px-2 border border-amber-300 rounded bg-white">
                             📥 Import eBLOM advice PDF
                             <input
@@ -366,7 +367,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
 
                     {/* Physical cash count — turns "cash on hand" from an inferred book
                         figure into a counted fact, and sizes the undocumented gap. */}
-                    {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                    {FINANCE.includes(currentUser.role) && (
                       <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-2">
                           <h4 className="text-xs font-bold font-mono uppercase text-slate-800">💵 Count the cash drawer</h4>
@@ -420,7 +421,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                     {/* ⚡ Daily direct expense — the one form for day-to-day spending.
                         Posts the full chain in a single submit; nothing to approve later
                         because the money has already left (Policy: record same day). */}
-                    {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && (
+                    {MANAGERS.includes(currentUser.role) && (
                       <form
                         onSubmit={(e) => handleDailyDirectSubmit(e, selectedBankId)}
                         aria-label="Lodge a daily direct expense"
@@ -554,7 +555,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
 
                       {/* Right: Quick Direct Petty Cash Form */}
                       <div className="space-y-4">
-                        {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                        {FINANCE.includes(currentUser.role) && (
                           <div className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
                             <div>
                               <h4 className="text-xs font-bold font-mono uppercase text-slate-800 border-b border-slate-100 pb-2">

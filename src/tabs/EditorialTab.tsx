@@ -1,8 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Newspaper, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { ContentItem } from "../types";
 import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "../constants";
 import { SharedProps } from "./shared";
+import Info from "../Info";
+import { CONTENT_EDITORS, CREW } from "../roles";
+import { withTicket } from "../docTicket";
 
 // Editorial pipeline (Policies 002 & 005). The tab renders the register and the
 // buttons; every rule lives server-side — the same publishBlockers() the server
@@ -17,11 +20,13 @@ const STATUS_STYLE: Record<string, string> = {
   "Published": "bg-emerald-600 text-white"
 };
 
-const EDITOR_ROLES = ["Production Manager", "Executive Director", "Super Admin"];
+const EDITOR_ROLES = CONTENT_EDITORS;
 
-export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc }: SharedProps) {
+export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc, lang, focusId, setFocusId }: SharedProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [openId, setOpenId] = useState<string | null>(null);
+  // My Desk hands over the piece to open; consumed once so a later visit starts closed.
+  useEffect(() => { if (focusId) { setOpenId(focusId); setFocusId(null); } }, [focusId]);
   const [form, setForm] = useState<any | null>(null);
   const [mtgForm, setMtgForm] = useState<any | null>(null);
   const [srcForm, setSrcForm] = useState({ source: "", step: "" });
@@ -432,8 +437,8 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
   // Policy 002 participants per meeting kind, preticked on a fresh attendance sheet.
   const policyAttendeesFor = (kind: string) => activeUsers
     .filter(u => (kind === "Daily Production"
-      ? ["Production Manager", "Project Officer", "Reporter", "Content Creator", "Podcaster", "Super Admin"]
-      : ["Executive Director", "Production Manager", "Project Officer", "Super Admin"]).includes(u.role))
+      ? [...CREW, "Production Manager", "Project Officer", "Super Admin"]
+      : [...CONTENT_EDITORS, "Project Officer"]).includes(u.role))
     .map(u => u.id);
   const canRecordMeeting = isEditor || currentUser.role === "Project Officer";
 
@@ -1177,7 +1182,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                           )}
                           <div className="flex flex-wrap items-center gap-2 text-[11px]">
                             {item.coverPath
-                              ? <img src={`/api/cover/${item.id}?v=${encodeURIComponent(item.coverPath)}`} alt="" className="h-16 w-28 object-cover rounded border border-slate-200" title={item.coverProvider} />
+                              ? <img src={withTicket(`/api/cover/${item.id}?v=${encodeURIComponent(item.coverPath)}`)} alt="" className="h-16 w-28 object-cover rounded border border-slate-200" title={item.coverProvider} />
                               : <span className="text-slate-400">{t("No cover yet")}</span>}
                             {canProduce && !item.retractedAt && (<>
                               <button onClick={() => post("/api/content/cover", { id: item.id, provider: "higgsfield" }, "Cover generated with Higgsfield")}
@@ -1448,17 +1453,17 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                           className="bg-slate-100 hover:bg-slate-200 rounded px-3 py-1.5">{t("Return for Revision")}</button>
                       ) : null}
                       {item.status === "Editorial Review" && isEditor && !isAssignee && (
-                        <button onClick={() => post("/api/content/approve", { id: item.id }, "Approved")}
-                          className="bg-purple-600 hover:bg-purple-700 text-white rounded px-3 py-1.5">✓ {t("Approve")}</button>
+                        <><button onClick={() => post("/api/content/approve", { id: item.id }, "Approved")}
+                          className="bg-purple-600 hover:bg-purple-700 text-white rounded px-3 py-1.5">✓ {t("Approve")}</button><Info id="content-approve" lang={lang} /></>
                       )}
                       {item.status === "Approved" && isEditor && (
-                        <button
+                        <><button
                           onClick={() => post("/api/content/publish", { id: item.id }, "Published — fact-checked tag applied")}
                           disabled={blockers.length > 0}
                           title={blockers.join("\n")}
                           className="bg-red-600 hover:bg-red-700 text-white rounded px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
                           🚀 {t("Publish")}
-                        </button>
+                        </button><Info id="two-approvers" lang={lang} /></>
                       )}
                       {item.status !== "Published" && isEditor && (
                         <button onClick={() => { if (window.confirm(`Remove "${item.title}"?`)) post("/api/content/delete", { id: item.id }, "Removed"); }}

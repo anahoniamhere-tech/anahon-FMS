@@ -10,6 +10,11 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml} from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
+import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
+import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS } from "./src/roles.js";
+import { deskItems } from "./src/workflow.js";
+import { deskIcs } from "./src/deskIcs.js";
+import { canonEmail } from "./src/email.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs } from "./src/personnelDocs.js";
@@ -52,6 +57,7 @@ const PO_ALLOWED_POSTS = new Set([
   "/api/activities/generate",
   "/api/document/upload",
   "/api/materials/link",
+  "/api/documents/meta",
   "/api/expense/scan-invoice",
   // Policy 002: each Project Officer runs their programme's content operations.
   "/api/content/save",
@@ -72,7 +78,11 @@ const PO_ALLOWED_POSTS = new Set([
 // are content-only accounts: they act on the editorial pipeline and nothing else —
 // same containment idea as the Project Officer gate. loadState also gives these roles
 // no financial domain; this closes the write side.
-const CONTENT_CREW_ROLES = ["Reporter", "Content Creator", "Podcaster"];
+const CONTENT_CREW_ROLES = CREW;
+// The seats that may sign as director: the Programme Director seat and the master
+// account that stands in for every vacant seat. Spelled out once, here.
+const DIRECTOR_ROLES = DIRECTORS;
+const isDirector = (role?: string) => DIRECTOR_ROLES.includes(role || "");
 const CREW_ALLOWED_POSTS = new Set([
   "/api/content/cover",
   "/api/auth/sync",
@@ -88,6 +98,51 @@ const CREW_ALLOWED_POSTS = new Set([
   "/api/document/upload",          // reference material gathered while producing
   "/api/materials/link"
 ]);
+// Procurement and Logistics Officer: buys, onboards suppliers, raises the payment
+// request for what was bought, keeps the equipment register and the contacts. Never
+// approves, never pays, never touches the books.
+const PLO_ALLOWED_POSTS = new Set([
+  "/api/auth/sync",
+  "/api/procurement/new", "/api/procurement/waiver-inline",
+  "/api/vendors/new", "/api/vendors/payment-doc",
+  "/api/expense/new", "/api/expense/scan-invoice",
+  "/api/document/upload", "/api/materials/link",
+  "/api/assets/register",
+  "/api/contacts/save", "/api/contacts/delete",
+  "/api/activities/save", "/api/activities/generate", "/api/activities/delete", "/api/activities/import-timetable",
+  "/api/vendor/scan",
+  "/api/subscriptions/save", "/api/subscriptions/verify", "/api/subscriptions/roll", "/api/subscriptions/delete",
+  "/api/timesheets/submit"
+]);
+// Digital Officer: the website, the archive, the social accounts, the tools and
+// subscriptions. No money, no editorial approval.
+const DIGITAL_ALLOWED_POSTS = new Set([
+  "/api/auth/sync",
+  "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build",
+  "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
+  "/api/social/publish", "/api/social/edit", "/api/social/delete",
+  "/api/tools/save", "/api/tools/delete",
+  "/api/contacts/save", "/api/contacts/delete",
+  "/api/document/upload", "/api/materials/link",
+  "/api/timesheets/submit"
+]);
+// Chief Editor and Production Manager: the editorial pipeline and site work, nothing financial.
+const EDITOR_ALLOWED_POSTS = new Set([
+  "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
+  "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
+  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/delete", "/api/social/edit", "/api/social/publish", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
+]);
+// The auditor reads; the one write is confirming that a piece of equipment physically exists.
+// Anyone can be given a task, so every working seat may tick its own and put it back;
+// the routes themselves check that the task is theirs. The auditor is read-only.
+const TASK_POSTS = ["/api/compliance/complete", "/api/compliance/reopen", "/api/calendar/feed"];
+const AUDITOR_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/assets/verify"]);
+// A self-service employee files their own timesheet and their own papers, nothing else.
+const SELF_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/timesheets/submit", "/api/document/upload", ...TASK_POSTS]);
+for (const list of [PO_ALLOWED_POSTS, CREW_ALLOWED_POSTS, PLO_ALLOWED_POSTS, DIGITAL_ALLOWED_POSTS, EDITOR_ALLOWED_POSTS]) TASK_POSTS.forEach(r => list.add(r));
+const PLO_ROLE = PLO_SEAT;
+const DIGITAL_ROLE = DIGITAL_SEAT;
+
 // Money-moving/control endpoints where an anonymous request is not acceptable.
 const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/quotations/issue-receipt",   // a receipt names who took the money; it needs a real signer
@@ -124,10 +179,47 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/meetings/transcribe"
 ]);
 
+/**
+ * The account behind a verified sign-in. Exact match first; then, for Gmail, the
+ * canonical form — see src/email.ts for why one mailbox has many spellings.
+ */
+async function findUserByEmail(email: string) {
+  const addr = String(email || "").trim().toLowerCase();
+  const exact = await prisma.user.findUnique({ where: { email: addr } });
+  if (exact) return exact;
+  const canon = canonEmail(addr);
+  if (canon === addr && !/@(gmail|googlemail)\.com$/.test(addr)) return null;
+  const all = await prisma.user.findMany();
+  return all.find(u => canonEmail(u.email) === canon) || null;
+}
+
 // Sign-in is the only POST that may be made without already being signed in.
 const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
 
+/**
+ * Reading is not public either.
+ *
+ * Until 5 Sep 2026 this middleware guarded POST only, so every GET under /api answered
+ * anyone who could reach the port — including /api/subscriptions/detect, which reads the
+ * bank statement. Now a GET must carry the sign-in token, or the short-lived document
+ * ticket minted for it (an <img> or a download link cannot send a header).
+ *
+ * The three exceptions carry their own credential or cannot carry one at all:
+ *   /api/desk.ics        the person's own feed secret, plus the private-network guard
+ *   /api/calendar.ics    the shared editorial feed a calendar app subscribes to; private network only
+ *   /api/document/ticket answers 401 by itself when nobody is signed in
+ */
+const OPEN_GETS = new Set(["/api/desk.ics", "/api/calendar.ics", "/api/document/ticket"]);
+
 app.use(async (req: any, res, next) => {
+  if (req.method === "GET" && req.path.startsWith("/api/") && !OPEN_GETS.has(req.path)) {
+    const viewerId = await viewerIdFromReq(req);
+    if (!viewerId) return res.status(401).json({ error: "Sign in to read this." });
+    const viewer = await prisma.user.findUnique({ where: { id: viewerId } });
+    if (!viewer || !viewer.active) return res.status(403).json({ error: "This user account is deactivated." });
+    req.dbUser = viewer;
+    return next();
+  }
   if (req.method !== "POST" || !req.path.startsWith("/api/")) return next();
   if (UNAUTHENTICATED_POSTS.has(req.path)) return next();
   try {
@@ -139,7 +231,7 @@ app.use(async (req: any, res, next) => {
     if (token) {
       try {
         const verified = await verifyIdToken(token);
-        dbUser = await prisma.user.findUnique({ where: { email: verified.email } });
+        dbUser = await findUserByEmail(verified.email);
         if (!dbUser) {
           return res.status(403).json({ error: `${verified.email} authenticated, but has no account in this system. An administrator must create one first.` });
         }
@@ -153,10 +245,60 @@ app.use(async (req: any, res, next) => {
     {
       if (!dbUser.active) return res.status(403).json({ error: "This user account is deactivated." });
       // The database is the authority on what this verified person may do.
-      req.body.user = { id: dbUser.id, name: dbUser.name, role: dbUser.role };
+      req.body.user = { id: dbUser.id, name: dbUser.name, role: dbUser.role, email: dbUser.email };
       req.dbUser = dbUser;
+
+      // Standing in for a seat. Only a Super Admin may do it, only for a real role,
+      // and never silently: the seat is carried into every audit line this request
+      // writes, and the assumption itself is logged before the action runs.
+      const wanted = String(req.get("X-Acting-As") || "").trim();
+      if (wanted) {
+        if (dbUser.role !== "Super Admin") {
+          return res.status(403).json({ error: "Only a Super Admin may act in another role." });
+        }
+        if (!ASSIGNABLE_ROLES.includes(wanted)) {
+          return res.status(400).json({ error: `"${wanted}" is not a role in this system.` });
+        }
+        if (wanted === dbUser.role) {
+          return res.status(400).json({ error: "That is already your own role." });
+        }
+        const holder = await prisma.user.findFirst({ where: { role: wanted, active: true, NOT: { id: dbUser.id } } });
+        // The seat's limits come with the seat: standing in as Digital Officer does not
+        // let the master account pay a voucher through that hat.
+        const seatList = wanted === "Project Officer" ? PO_ALLOWED_POSTS : CONTENT_CREW_ROLES.includes(wanted) ? CREW_ALLOWED_POSTS
+          : wanted === PLO_ROLE ? PLO_ALLOWED_POSTS : wanted === DIGITAL_ROLE ? DIGITAL_ALLOWED_POSTS : EDITORS.includes(wanted) ? EDITOR_ALLOWED_POSTS
+          : wanted === AUDITOR ? AUDITOR_ALLOWED_POSTS : wanted === SELF ? SELF_ALLOWED_POSTS : null;
+        if (seatList && !seatList.has(req.path)) {
+          await createAuditLog(dbUser.id, dbUser.name, "Role Assumption Refused", `${dbUser.name} tried ${req.path} while standing in as ${wanted}; that seat may not.`);
+          return res.status(403).json({ error: `The ${wanted} seat cannot do this. Stop acting to use your own authority.` });
+        }
+        const ctx = { actingAs: wanted, ownRole: dbUser.role, vacant: !holder };
+        req.body.user.role = wanted;
+        req.body.user.actingAs = wanted;
+        return actingContext.run(ctx, async () => {
+          await createAuditLog(dbUser.id, dbUser.name, "Role Assumed",
+            `${dbUser.name} (${dbUser.role}) acted as ${wanted} on ${req.path}. ` +
+            (holder ? `Note: ${holder.name} also holds ${wanted} — this action bypassed them.` : `The ${wanted} seat is vacant.`));
+          next();
+        });
+      }
       if (dbUser.role === "Project Officer" && !PO_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "Project Officers can raise purchase requests and upload evidence only — this action needs the Finance Officer or master account." });
+      }
+      if (dbUser.role === PLO_ROLE && !PLO_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "The Procurement and Logistics seat buys and raises requests — it does not approve, pay, or post." });
+      }
+      if (dbUser.role === DIGITAL_ROLE && !DIGITAL_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "The Digital Officer seat runs the website, archive, social and tools — nothing financial or editorial." });
+      }
+      if (EDITORS.includes(dbUser.role) && !EDITOR_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "Editorial seats act on the pipeline and the site — nothing financial." });
+      }
+      if (dbUser.role === AUDITOR && !AUDITOR_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "The auditor's account is read-only." });
+      }
+      if (dbUser.role === SELF && !SELF_ALLOWED_POSTS.has(req.path)) {
+        return res.status(403).json({ error: "A self-service account files its own timesheet and papers only." });
       }
       if (CONTENT_CREW_ROLES.includes(dbUser.role) && !CREW_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "Content-team accounts act on the editorial pipeline only — this action needs an editor or finance role." });
@@ -189,12 +331,9 @@ const DEFAULT_DATABASE = {
     // Marwan El Cheikh is Secondary (Finance Officer). No account holds both authorities:
     // Policy 4.3 forbids one person initiating, approving, and executing the same transaction.
     { id: "u-1", name: "Saad Matar", email: "anahoniamhere@gmail.com", role: "Program Director", active: true },
-    { id: "u-2", name: "Marwan El Cheikh", email: "marwan@anahon.org", role: "Finance Officer", active: true },
-    // Capital partner (equity accounts 3200/3400, pt-2) — not an officer under Policy 4.2, so no approval authority.
-    { id: "u-3", name: "Samer Ghamrawi", email: "samer@anahon.org", role: "Auditor / Read-Only Reviewer", active: true },
-    { id: "u-4", name: "Tarek Rifai", email: "tarek@anahon.org", role: "Project Lead", active: true },
-    { id: "u-5", name: "Mona Merhabi", email: "mona@anahon.org", role: "HR / Payroll Officer", active: true },
-    { id: "u-6", name: "External Auditor", email: "auditor@deloitte.com", role: "Auditor / Read-Only Reviewer", active: true }
+    { id: "u-2", name: "Marwan El Cheikh", email: "marwan@anahon.org", role: "Finance Officer", active: true }
+    // Template people (Samer Ghamrawi, Tarek Rifai, Mona Merhabi, a Deloitte auditor) removed 4 Sep 2026: none was real.
+    // Template people (Samer Ghamrawi, Tarek Rifai, Mona Merhabi, a Deloitte auditor) removed 4 Sep 2026: none was real.
   ],
   orgSettings: {
     profileName: "AnaHon Media Platform",
@@ -348,15 +487,81 @@ async function loadState(viewer?: any) {
 
   // Content crew (Policy 002 production team) get the editorial register and the people
   // directory — no financial domain ever leaves the server for these roles.
-  if (viewer && CONTENT_CREW_ROLES.includes(viewer.role)) {
+  if (viewer && [...CONTENT_CREW_ROLES, "Chief Editor", "Production Manager", "Graphic Designer"].includes(viewer.role)) {
     return {
       users, accounts: [], donors: [], projects: [], budgetLines: [], vendors: [],
       expenses: [], procurements: [], bankAccounts: [], bankTransactions: [],
-      journalEntries: [], employees: [], timesheets: [], fixedAssets: [],
-      partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: [],
+      journalEntries: [],
+      employees: employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase()),
+      timesheets: formattedTimesheets.filter(t => employees.some(e => e.id === t.employeeId && e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase())),
+      fixedAssets: [],
+      partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [],
       opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], tools: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
+      editorialMeetings: formattedMeetings,
+      orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
+      fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
+    };
+  }
+
+  // A self-service employee (Policy 8.5): their own employee row, timesheets and papers.
+  if (viewer && viewer.role === SELF) {
+    const mine = employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase());
+    const mineIds = new Set(mine.map(e => e.id));
+    return {
+      users, accounts: [], donors: [], projects: [], budgetLines: [], vendors: [],
+      expenses: [], procurements: [], bankAccounts: [], bankTransactions: [], journalEntries: [],
+      employees: mine, timesheets: formattedTimesheets.filter(t => mineIds.has(t.employeeId)),
+      fixedAssets: [], partnerAccounts: [],
+      documents: filterPersonnelDocs(documents, viewer, employees).filter(d => d.partyId && mineIds.has(d.partyId)).map(d => ({
+        id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
+        base64: d.base64.startsWith("link://") ? d.base64 : "", category: d.category,
+        linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
+        created_at: d.created_at, contentHash: d.contentHash, note: d.note
+      })),
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
+      clients: [], quotations: [], networkContacts: [], tools: [],
+      siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: [], editorialMeetings: [],
+      orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
+      fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
+    };
+  }
+
+  // The two operational seats see the work, never the books. Procurement and Logistics
+  // gets projects, budgets, suppliers, requests, bids, equipment and contacts; the Digital
+  // Officer gets the site, archive, social, tools, subscriptions and contacts. Neither gets
+  // a bank line, a journal entry, another person's payslip, or the audit log.
+  if (viewer && [PLO_ROLE, DIGITAL_ROLE].includes(viewer.role)) {
+    const buys = viewer.role === PLO_ROLE;
+    const me = employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase());
+    const myIds = new Set(me.map(e => e.id));
+    const visibleIds = new Set(visibleProjects.map((p: any) => p.id));
+    const DOMAIN = buys ? new Set(["Expense", "Project", "Website"]) : new Set(["Website"]);
+    return {
+      users, accounts: [], donors: buys ? donors : [], projects: visibleProjects,
+      budgetLines: budgetLines.filter((b: any) => visibleIds.has(b.projectId)),
+      vendors: buys ? vendors : [],
+      expenses: buys ? formattedExpenses : [],
+      procurements: buys ? formattedProcurements : [],
+      bankAccounts: [], bankTransactions: [], journalEntries: [],
+      employees: me,
+      timesheets: formattedTimesheets.filter(t => myIds.has(t.employeeId)),
+      fixedAssets: buys ? fixedAssets : [],
+      partnerAccounts: [],
+      documents: filterPersonnelDocs(documents, viewer, employees).filter(d => DOMAIN.has(String(d.linkedRecordType || "")) || (d.partyId && myIds.has(d.partyId))).map(d => ({
+        id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
+        base64: d.base64.startsWith("link://") ? d.base64 : "", category: d.category,
+        linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
+        created_at: d.created_at, contentHash: d.contentHash, note: d.note
+      })),
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], opportunities: [], cashCounts: [],
+      subscriptions: buys ? subscriptions : [],
+      projectActivities: projectActivities.filter((a: any) => visibleIds.has(a.projectId)),
+      clients: [], quotations: [],
+      networkContacts, tools,
+      siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "",
+      contentItems: buys ? [] : formattedContent,
       editorialMeetings: formattedMeetings,
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
@@ -394,7 +599,7 @@ async function loadState(viewer?: any) {
           linkedRecordId: d.linkedRecordId, partyId: d.partyId, created_at: d.created_at,
           contentHash: d.contentHash, note: d.note
         })),
-      auditLogs: [], complianceTasks: [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [],
       opportunities: [], cashCounts: [], subscriptions: [],
       projectActivities: projectActivities.filter(a => myProjectIds.has(a.projectId)),
       clients: [], quotations: [], networkContacts: [], tools: [],
@@ -482,6 +687,7 @@ async function loadState(viewer?: any) {
 
 // Helper to append a structured audit log action
 async function createAuditLog(userId: string, userName: string, action: string, details: string) {
+  const acting = currentSeat();
   try {
     await prisma.auditLog.create({
       data: {
@@ -489,8 +695,9 @@ async function createAuditLog(userId: string, userName: string, action: string, 
         userId: userId || "u-1",
         userName: userName || "User",
         action,
-        details,
-        timestamp: new Date().toISOString()
+        details: stampDetails(details, acting),
+        timestamp: new Date().toISOString(),
+        actingAs: stampActingAs(acting)
       }
     });
   } catch (err) {
@@ -514,7 +721,7 @@ app.post("/api/auth/sync", async (req, res) => {
       return res.status(401).json({ error: `Sign-in could not be verified: ${err.message}` });
     }
 
-    const user = await prisma.user.findUnique({ where: { email: verified.email } });
+    const user = await findUserByEmail(verified.email);
     if (!user) {
       await createAuditLog(null, verified.email, "Sign-In Refused — No Account",
         `${verified.email} authenticated with Firebase but has no account in this system. No account was created. If this person should have access, a Super Admin must create it explicitly.`);
@@ -544,10 +751,7 @@ app.post("/api/users/create", async (req, res) => {
     // Gmail ignores dots in the local part and Google's ID token reports the address
     // WITHOUT them. Sign-in matches the token exactly, so store it the way Google will
     // say it — "anahon.leb@gmail.com" typed here would otherwise never be able to log in.
-    {
-      const [local, domain] = addr.split("@");
-      if (["gmail.com", "googlemail.com"].includes(domain)) addr = `${local.replace(/\./g, "")}@gmail.com`;
-    }
+    addr = canonEmail(addr);
     if (!ASSIGNABLE_ROLES.includes(role)) return res.status(400).json({ error: `Role must be one of: ${ASSIGNABLE_ROLES.join(", ")}` });
     const existing = await prisma.user.findUnique({ where: { email: addr } });
     if (existing) return res.status(400).json({ error: `${addr} already has an account (${existing.name}, ${existing.role}).` });
@@ -599,8 +803,61 @@ app.post("/api/employees/set-active", async (req, res) => {
   }
 });
 
+/* ── The private desk feed ──────────────────────────────────────────────────
+ * A phone cannot sign in with Google against a LAN address, so the feed carries its own
+ * secret in the URL. The secret IS the desk it shows, which is why: it is minted only on
+ * request, rotating it kills every subscription made with the old one, and the route
+ * refuses anything that did not come from the office network or Tailscale. Never expose
+ * this port to the internet — the guard is the second lock, not the first.
+ */
+const PRIVATE_IP = /^(::1|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|f[cd]|fe80:)/i;
+const fromPrivateNetwork = (req: any) => PRIVATE_IP.test(String(req.ip || "").replace(/^::ffff:/, ""));
+
+app.get("/api/desk.ics", async (req, res) => {
+  try {
+    if (!fromPrivateNetwork(req)) return res.status(403).send("This feed is served on the office network only.");
+    const token = String(req.query.t || "");
+    const user = token.length >= 32 ? await prisma.user.findUnique({ where: { calendarToken: token } }) : null;
+    if (!user || !user.active) return res.status(404).send("No such feed. Ask the system for a new address.");
+
+    const state = await loadState(user);
+    const mine = deskItems({ id: user.id, email: user.email, role: user.role }, state as any, localDate())
+      .filter(i => i.group !== "week");                    // my own turn and the seats I cover; not other people's dates
+    const stamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(deskIcs(user.name, mine, stamp));
+  } catch (err: any) {
+    res.status(500).send(String(err.message));
+  }
+});
+
+// Mint or rotate my own feed address. Always mine — a token for someone else's desk is
+// never handed out, whatever the role.
+app.post("/api/calendar/feed", async (req, res) => {
+  try {
+    const me = (req as any).dbUser;
+    const rotating = !!me.calendarToken;
+    const calendarToken = crypto.randomBytes(24).toString("base64url");
+    await prisma.user.update({ where: { id: me.id }, data: { calendarToken } });
+    await createAuditLog(me.id, me.name, rotating ? "Calendar Feed Rotated" : "Calendar Feed Created",
+      rotating ? "The old feed address stopped working; any device still subscribed to it must be re-added."
+               : "A private feed address was created for this account's own desk.");
+    const path = `/api/desk.ics?t=${calendarToken}`;
+    const base = String(process.env.FMS_PUBLIC_URL || "").replace(/\/$/, "");
+    const url = base ? base + path : path;
+    res.json({ success: true, path, url, qr: base ? await qrSvg(url) : null });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/calendar.ics", async (req, res) => {
   try {
+    // ponytail: legacy shared feed, superseded by the per-person /api/desk.ics. Kept for
+    // anyone already subscribed; retire it once nobody is. It carries editorial titles and
+    // deadlines and cannot send a header, so the office network is the only lock it has.
+    if (!fromPrivateNetwork(req)) return res.status(403).send("This feed is served on the office network only.");
     const [meetings, items, users] = await Promise.all([
       prisma.editorialMeeting.findMany(),
       prisma.contentItem.findMany({ where: { NOT: { status: "Published" } } }),
@@ -660,24 +917,28 @@ app.get("/api/network/access", async (req, res) => {
     }
     // In a container the interface list is the container's own network; the deployment sets the real address.
     if (process.env.FMS_PUBLIC_URL) urls.splice(0, urls.length, { iface: "public", url: process.env.FMS_PUBLIC_URL });
-    let qr: string | null = null;
-    if (urls.length) {
-      try {
-        const { execFile } = await import("child_process");
-        qr = await new Promise<string>((resolve, reject) => {
-          execFile("python3", ["-c",
-            "import sys,qrcode,qrcode.image.svg,io;i=qrcode.make(sys.argv[1],image_factory=qrcode.image.svg.SvgPathImage,box_size=10,border=2);b=io.BytesIO();i.save(b);print(b.getvalue().decode())",
-            urls[0].url],
-            { timeout: 8000 }, (err, stdout) => err ? reject(err) : resolve(stdout));
-        });
-        qr = qr.replace(/<\?xml[^>]*\?>\s*/, "").trim();
-      } catch { qr = null; } // QR is a convenience; the URL is the payload.
-    }
+    const qr = urls.length ? await qrSvg(urls[0].url) : null;
     res.json({ port: PORT, urls, qr });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
+
+/** A QR of any short string, as inline SVG. A convenience — the URL is the payload. */
+async function qrSvg(text: string): Promise<string | null> {
+  try {
+    const { execFile } = await import("child_process");
+    const svg: string = await new Promise((resolve, reject) => {
+      execFile("python3", ["-c",
+            "import sys,qrcode,qrcode.image.svg,io;i=qrcode.make(sys.argv[1],image_factory=qrcode.image.svg.SvgPathImage,box_size=10,border=2);b=io.BytesIO();i.save(b);print(b.getvalue().decode())",
+        text],
+        { timeout: 8000 }, (err, stdout) => err ? reject(err) : resolve(stdout));
+    });
+    return svg.replace(/<\?xml[^>]*\?>\s*/, "").trim();
+  } catch {
+    return null;
+  }
+}
 
 // Load whole database state
 app.get("/api/state", async (req, res) => {
@@ -690,7 +951,7 @@ app.get("/api/state", async (req, res) => {
     let viewer;
     try {
       const verified = await verifyIdToken(token);
-      viewer = await prisma.user.findUnique({ where: { email: verified.email } });
+      viewer = await findUserByEmail(verified.email);
     } catch (err: any) {
       return res.status(401).json({ error: `Sign-in could not be verified: ${err.message}` });
     }
@@ -707,6 +968,7 @@ app.get("/api/state", async (req, res) => {
 app.post("/api/state", async (req, res) => {
   try {
     const { accounts, user } = req.body;
+    if (!["Super Admin", "Finance Officer"].includes(user?.role)) return res.status(403).json({ error: "Only finance may change the chart of accounts." });
     if (!accounts || !Array.isArray(accounts)) {
       return res.status(400).json({ error: "Invalid accounts array parameter" });
     }
@@ -737,7 +999,7 @@ app.post("/api/state", async (req, res) => {
       );
     }
 
-    const state = await loadState();
+    const state = await loadState((req as any).dbUser);
     res.json(state);
   } catch (err: any) {
     res.status(500).json({ error: "Failed updating database: " + err.message });
@@ -1271,7 +1533,7 @@ app.post("/api/opportunities/proposal-doc", async (req, res) => {
       amount: opp.amount,
       deadline: opp.deadline,
       decisionDate: opp.decisionDate,
-      preparedBy: `${user?.name || "Saad Matar"} — Program Director`,
+      preparedBy: `${user?.name || "Saad Matar"} — Executive Director`,
       proposal: JSON.parse(opp.proposalJson || "{}")
     });
 
@@ -1768,9 +2030,27 @@ app.post("/api/opportunities/delete", async (req, res) => {
 
 // Assign a user's role (and, for Project Officers, their project scope).
 // MASTER ACCOUNT ONLY. Role authority is the database — see the middleware above.
-const ASSIGNABLE_ROLES = ["Super Admin", "Finance Officer", "Program Director", "Project Officer", "Project Lead", "HR / Payroll Officer", "Auditor / Read-Only Reviewer", "Employee (Self-Service)",
-  // Editorial roles named by Policy 002 ("Programs Director" is the existing Program Director).
-  "Production Manager", "Reporter", "Content Creator", "Podcaster"];
+const ASSIGNABLE_ROLES = ALL_ROLES;
+
+// The seats and who sits in them. A Super Admin uses this to see what is standing
+// empty before deciding to fill it themselves.
+app.get("/api/roles/seats", async (_req, res) => {
+  const users = await prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, role: true } });
+  res.json(ASSIGNABLE_ROLES.map(role => {
+    const holders = users.filter(u => u.role === role);
+    return { role, holders: holders.map(h => h.name), vacant: holders.length === 0 };
+  }));
+});
+
+// Every action taken while standing in someone else's seat, newest first.
+app.get("/api/audit/acting", async (req: any, res) => {
+  // Who stood in for which seat is the transparency record; the director reads it.
+  if (!isDirector(req.dbUser?.role)) return res.status(403).json({ error: "The seat log is the director's." });
+  const rows = await prisma.auditLog.findMany({
+    where: { NOT: { actingAs: null } }, orderBy: { timestamp: "desc" }, take: 200
+  });
+  res.json(rows);
+});
 
 app.post("/api/users/set-role", async (req, res) => {
   try {
@@ -1959,7 +2239,7 @@ app.post("/api/procurement/waiver-inline", async (req, res) => {
         return res.status(403).json({ error: "You can only raise waivers for projects in your programme." });
       }
     }
-    const canApprove = ["Super Admin", "Program Director", "Finance Officer"].includes(user?.role);
+    const canApprove = isDirector(user?.role) || user?.role === "Finance Officer";
     const justification = `${retrospective ? "RETROSPECTIVE (purchase already made, waiver recorded afterwards). " : ""}${written}`;
 
     const pr = await prisma.procurement.create({
@@ -2376,6 +2656,10 @@ app.post("/api/subscriptions/roll", async (req, res) => {
 // tracked yet. Suggestion only — nothing is created without the user.
 app.get("/api/subscriptions/detect", async (req, res) => {
   try {
+    // Merchant names, amounts and dates come straight off the bank statement.
+    if (!SUPPLIER_EDITORS.includes((req as any).dbUser?.role)) {
+      return res.status(403).json({ error: "What the bank statement suggests is for finance and procurement." });
+    }
     const [txs, subs] = await Promise.all([
       prisma.bankTransaction.findMany({ where: { type: "Withdrawal", pending: false } }),
       prisma.subscription.findMany()
@@ -2431,7 +2715,7 @@ app.get("/api/subscriptions/detect", async (req, res) => {
 // legal attestation when flagged, a publish gate, and dated public corrections.
 // One narrow route per transition; every route writes its own audit line.
 
-const CONTENT_EDITOR_ROLES = ["Production Manager", "Program Director", "Super Admin"];
+const CONTENT_EDITOR_ROLES = CONTENT_EDITORS;
 
 // After the desk's last gate, tell the website to render the piece. The site
 // re-reads this database and refuses anything not Published, so the call carries
@@ -2901,9 +3185,12 @@ app.post("/api/content/cover", async (req, res) => {
 // to the archive's override files (human decisions that survive every rebuild) and
 // are mirrored into the site's library JSON at once; "Publish to website" re-runs
 // build_library.py against the mounted site folders and tells the site to re-read.
-const ARCHIVE_DIR = process.env.ARCHIVE_DIR || "/Users/saadmatar/Claude/anahon-social-archive";
-const SITE_DIR = process.env.SITE_DIR || "/Users/saadmatar/Claude/anahon-astro";
-const ARCHIVE_EDIT_ROLES = [...CONTENT_EDITOR_ROLES, "Project Officer"];
+const ARCHIVE_DIR = process.env.ARCHIVE_DIR || "/Users/saadmatar/AnaHon/archive";
+const SITE_DIR = process.env.SITE_DIR || "/Users/saadmatar/AnaHon/website";
+// Site work — website copy, the live editor, the archive, social posting — belongs to the Digital
+// Officer as well as the editors. Editorial approval (content/approve, publish, retract) does not.
+const SITE_EDITOR_ROLES = SITE_EDITORS;
+const ARCHIVE_EDIT_ROLES = ARCHIVE_EDITORS;
 const readJsonFile = (p: string, fallback: any) => { try { return JSON.parse(fs.readFileSync(p, "utf-8")); } catch { return fallback; } };
 const libraryFile = (collection: string) => path.join(SITE_DIR, "src/data", collection === "icontent" ? "icontent-library.json" : "library.json");
 const cleanTag = (t: any) => String(t).trim().toLowerCase().replace(/\s+/g, "-");
@@ -2950,7 +3237,7 @@ async function siteRefresh() {
 app.post("/api/archive/schema", async (req, res) => {
   try {
     const { facets, order, suppressed, collection, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the tag schema needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the tag schema needs an editor role." });
     const fmtPath = path.join(SITE_DIR, "src/data/formats.json");
     const prev = readJsonFile(fmtPath, {});
     const isIC = collection === "icontent";
@@ -2998,7 +3285,7 @@ app.get("/api/archive/home", (_req, res) => {
 app.post("/api/archive/home", async (req, res) => {
   try {
     const { widgets, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website home needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website home needs an editor role." });
     const p = path.join(SITE_DIR, "src/data/home.json");
     const prev = readJsonFile(p, {});
     for (const [k, v] of Object.entries(widgets || {})) {
@@ -3019,7 +3306,7 @@ app.post("/api/archive/home", async (req, res) => {
 app.post("/api/archive/publish", async (req, res) => {
   try {
     const { user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing the archive to the website needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing the archive to the website needs an editor role." });
     const { spawnSync } = await import("node:child_process");
     const out = spawnSync("python3", [path.join(ARCHIVE_DIR, "scripts/build_library.py")], {
       encoding: "utf-8", timeout: 180000, env: { ...process.env, SITE_DIR, ARCHIVE_DIR }
@@ -3084,7 +3371,7 @@ app.get("/api/social/list", async (_req, res) => {
 app.post("/api/social/publish", async (req, res) => {
   try {
     const { target, message, link, imageUrl, unpublished, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Posting to social media needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Posting to social media needs an editor role." });
     needToken();
     if (target === "fb") {
       if (!String(message || "").trim() && !link) throw new Error("a post needs a message or a link");
@@ -3109,7 +3396,7 @@ app.post("/api/social/publish", async (req, res) => {
 app.post("/api/social/edit", async (req, res) => {
   try {
     const { target, postId, message, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing posts needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing posts needs an editor role." });
     needToken();
     if (target === "ig") throw new Error("Instagram captions cannot be edited through the API — Meta has never exposed it. Delete and repost, or edit in the app.");
     if (!postId) throw new Error("postId required");
@@ -3121,7 +3408,7 @@ app.post("/api/social/edit", async (req, res) => {
 app.post("/api/social/delete", async (req, res) => {
   try {
     const { target, postId, confirm, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Deleting posts needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Deleting posts needs an editor role." });
     needToken();
     if (confirm !== "yes") throw new Error('delete needs confirm:"yes"');
     if (!postId) throw new Error("postId required");
@@ -3144,7 +3431,7 @@ app.get("/api/website/content", (_req, res) => {
 app.post("/api/website/content", async (req, res) => {
   try {
     const { file, section, value, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
     const f = WEBSITE_FILES[String(file)]; if (!f) return res.status(400).json({ error: "unknown file" });
     if (typeof section !== "string" || !/^[\w-]+$/.test(section)) return res.status(400).json({ error: "section required" });
     if (value === undefined || value === null) return res.status(400).json({ error: "value required" });
@@ -3163,7 +3450,7 @@ app.post("/api/website/content", async (req, res) => {
 app.post("/api/website/image", async (req, res) => {
   try {
     const { filename, mimeType, base64, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Uploading website images needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Uploading website images needs an editor role." });
     const buffer = Buffer.from(String(base64 || ""), "base64");
     if (!buffer.length) return res.status(400).json({ error: "No image data." });
     if (buffer.length > 15 * 1024 * 1024) return res.status(400).json({ error: "Image larger than 15 MB." });
@@ -3195,7 +3482,7 @@ const langOfPath = (p: string) => /[._\[]en(?=[.\[]|$)/.test(p) ? "en" : /[._\[]
 app.post("/api/website/edit", async (req, res) => {
   try {
     const { kind, from, to, lang, url, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
     if (!["text", "image"].includes(kind) || typeof from !== "string" || typeof to !== "string") return res.status(400).json({ error: "kind, from, to required" });
     const norm = (x: string) => x.replace(/\s+/g, " ").trim();
     const want = kind === "text" ? norm(from) : from;
@@ -3243,7 +3530,7 @@ app.get("/api/website/library", (_req, res) => {
 app.post("/api/website/build", async (req, res) => {
   try {
     const { user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing the website needs an editor role." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing the website needs an editor role." });
     const r = await fetch(`${SITE_URL}/__build`, { method: "POST" });
     const j: any = await r.json().catch(() => ({ ok: false, error: `site answered ${r.status}` }));
     await createAuditLog(user?.id, user?.name, j.ok ? "Website Published" : "Website Publish Failed", `build ${j.built ? "ok" : "failed"}, deploy ${j.deployed === null ? "not configured" : j.deployed ? "ok" : "failed"}, ${j.seconds ?? "?"}s`);
@@ -4166,7 +4453,7 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
       quoteNo: quote.quoteNo,
       date: quote.date,
       validUntil: quote.validUntil,
-      preparedBy: `${user?.name || "Saad Matar"} — Program Director`,
+      preparedBy: `${user?.name || "Saad Matar"} — Executive Director`,
       clientName: client.name,
       clientContact: client.contact,
       clientPhone: client.phone,
@@ -4215,14 +4502,14 @@ app.get("/api/quotations/:id/pdf", async (req, res) => {
     const client = await prisma.client.findUnique({ where: { id: quote.clientId } });
     if (!client) return res.status(400).json({ error: "Quotation's client no longer exists." });
 
-    const uid = String(req.query.uid || "");
+    const uid = await viewerIdFromReq(req);
     const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
 
     const html = quotationHtml({
       quoteNo: quote.quoteNo,
       date: quote.date,
       validUntil: quote.validUntil,
-      preparedBy: `${viewer?.name || "Saad Matar"} — ${viewer?.role === "Super Admin" ? "Program Director" : viewer?.role || "Program Director"}`,
+      preparedBy: `${viewer?.name || "Saad Matar"} — ${viewer?.role === "Super Admin" ? "Executive Director" : viewer?.role || "Executive Director"}`,
       clientName: client.name,
       clientContact: client.contact,
       clientPhone: client.phone,
@@ -4249,7 +4536,7 @@ app.get("/api/quotations/:id/pdf", async (req, res) => {
 // evidence, and it has to be issued by whoever actually took the notes. The Finance
 // Officer runs this, which is what keeps raising the quote and receipting the money in
 // two different pairs of hands.
-const RECEIPT_ISSUERS = ["Finance Officer", "Super Admin", "Program Director"];
+const RECEIPT_ISSUERS = ["Finance Officer", ...DIRECTOR_ROLES];
 
 /** Amount in words. A cash receipt with only digits on it can be altered with a pen. */
 function amountInWords(n: number): string {
@@ -4946,7 +5233,7 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
     // POLICY 4.4.2 — Cash payments above USD 150 require Program Director approval; the direct
     // cash book skips the approval workflow, so it is capped for non-Director roles.
     const disbursalUSD = disbursalAmount * rate;
-    if (disbursalUSD > 150 && !["Program Director", "Super Admin"].includes(user?.role || "")) {
+    if (disbursalUSD > 150 && !isDirector(user?.role)) {
       return res.status(400).json({ error: "Policy 4.4.2 violation: direct cash payments above USD 150 equivalent require the Program Director. Lodge a standard disbursement voucher for approval instead." });
     }
 
@@ -5172,7 +5459,7 @@ app.post("/api/procurement/approve", async (req, res) => {
     if (!pr) return res.status(404).json({ error: "Procurement record not found." });
 
     // Approving a purchase authority is a control act — it had no role check at all.
-    if (!["Super Admin", "Program Director", "Finance Officer"].includes(user?.role)) {
+    if (!isDirector(user?.role) && user?.role !== "Finance Officer") {
       return res.status(403).json({ error: "Only the Program Director, Finance Officer or master account can approve a procurement." });
     }
 
@@ -5731,12 +6018,63 @@ app.post("/api/partners/draw", async (req, res) => {
 });
 
 // Compliance task completion
+/** A task is ticked by the person it was given to, or by a director when nobody holds it. */
+function mayTickTask(task: { assigneeUserId?: string | null }, user: any): boolean {
+  if (task.assigneeUserId) return task.assigneeUserId === user?.id || isDirector(user?.role);
+  return isDirector(user?.role);
+}
+
+// Phase 4: the checklist is writable. Until now rows only arrived by seeding or by hand
+// on the database, so nothing could be added, given to someone, or struck off.
+app.post("/api/compliance/save", async (req, res) => {
+  try {
+    const { id, title, category, dueDate, notes, assigneeUserId, user } = req.body;
+    if (!isDirector(user?.role)) return res.status(403).json({ error: "Tasks are set by the director." });
+    if (!String(title || "").trim()) return res.status(400).json({ error: "A task needs a title." });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dueDate || ""))) return res.status(400).json({ error: "A task needs a due date (YYYY-MM-DD)." });
+    const holder = assigneeUserId ? await prisma.user.findUnique({ where: { id: String(assigneeUserId) } }) : null;
+    if (assigneeUserId && (!holder || !holder.active)) return res.status(400).json({ error: "That person has no active account." });
+
+    const data = {
+      title: String(title).trim(), category: String(category || "Governance"), dueDate: String(dueDate),
+      notes: String(notes || ""), assigneeUserId: assigneeUserId ? String(assigneeUserId) : null,
+    };
+    const existing = id ? await prisma.complianceTask.findUnique({ where: { id: String(id) } }) : null;
+    const task = existing
+      ? await prisma.complianceTask.update({ where: { id: existing.id }, data })
+      : await prisma.complianceTask.create({ data: { ...data, id: `task-${Date.now()}`, status: "Pending", createdBy: user?.id || null } });
+
+    await createAuditLog(user?.id || "u-1", user?.name || "Director",
+      existing ? "Task Changed" : "Task Added",
+      `"${task.title}" due ${task.dueDate}${holder ? `, given to ${holder.name}` : ", held by the director"}.`);
+    res.json({ success: true, task });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/compliance/delete", async (req, res) => {
+  try {
+    const { taskId, user } = req.body;
+    if (!isDirector(user?.role)) return res.status(403).json({ error: "Tasks are removed by the director." });
+    const task = await prisma.complianceTask.findUnique({ where: { id: String(taskId) } });
+    if (!task) return res.status(404).json({ error: "Task not listed." });
+    await prisma.complianceTask.delete({ where: { id: task.id } });
+    await createAuditLog(user?.id || "u-1", user?.name || "Director", "Task Removed",
+      `"${task.title}" (due ${task.dueDate}, ${task.status}) taken off the list.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/compliance/complete", async (req, res) => {
   try {
     const { taskId, user } = req.body;
 
     const task = await prisma.complianceTask.findUnique({ where: { id: taskId } });
     if (!task) return res.status(404).json({ error: "Task not listed." });
+    if (!mayTickTask(task, user)) return res.status(403).json({ error: "This task is not yours to tick." });
 
     const updated = await prisma.complianceTask.update({
       where: { id: taskId },
@@ -5792,7 +6130,7 @@ function writeCalendarFeeds(feeds: CalFeed[]) {
 const calCache = new Map<string, { at: number; body: string }>();
 const CAL_TTL_MS = 10 * 60 * 1000;
 
-const CAL_ADMIN = ["Super Admin", "Program Director"];
+const CAL_ADMIN = DIRECTOR_ROLES;
 
 app.post("/api/calendar/connect", async (req, res) => {
   try {
@@ -5861,6 +6199,10 @@ app.post("/api/calendar/disconnect", async (req, res) => {
 // never a feed address. One unreachable feed degrades to a warning rather than emptying
 // the desk: a stale personal calendar must not hide today's AnaHon meetings.
 app.get("/api/calendar/events", async (req, res) => {
+  // The merged diary carries the director's own commitments. Only a director reads it.
+  const viewerId = await viewerIdFromReq(req);
+  const viewer = viewerId ? await prisma.user.findUnique({ where: { id: viewerId } }) : null;
+  if (!viewer || !DIRECTORS.includes(viewer.role)) return res.status(403).json({ error: "The diary is the director's." });
   try {
     const feeds = calendarFeeds();
     if (!feeds.length) return res.json({ connected: false, events: [], calendars: [] });
@@ -5911,6 +6253,7 @@ app.post("/api/compliance/reopen", async (req, res) => {
 
     const task = await prisma.complianceTask.findUnique({ where: { id: taskId } });
     if (!task) return res.status(404).json({ error: "Task not listed." });
+    if (!mayTickTask(task, req.body.user)) return res.status(403).json({ error: "This task is not yours to reopen." });
 
     const updated = await prisma.complianceTask.update({
       where: { id: taskId },
@@ -5935,17 +6278,46 @@ app.post("/api/compliance/reopen", async (req, res) => {
 // to PDF on demand. Generic on purpose: the alternative was a per-document-type route and
 // a matching button each time, which is how you end up with three of them and one that
 // nobody maintained.
+
+// ---- Who is asking for a file? --------------------------------------------------
+// fetch() carries the sign-in token; <img>, <iframe> and download links cannot. For those
+// the browser first asks for a ticket (GET /api/document/ticket, signed for the user for
+// 12 hours) and puts it in the URL. A uid in the URL is never trusted.
+const TICKET_SECRET = process.env.DOC_TICKET_SECRET || crypto.randomBytes(32).toString("hex");
+function mintTicket(userId: string): string {
+  const exp = Date.now() + 12 * 60 * 60 * 1000;
+  const sig = crypto.createHmac("sha256", TICKET_SECRET).update(`${userId}.${exp}`).digest("hex");
+  return `${userId}.${exp}.${sig}`;
+}
+function ticketUser(t: string): string {
+  const [userId, exp, sig] = String(t || "").split(".");
+  if (!userId || !exp || !sig || Number(exp) < Date.now()) return "";
+  const want = crypto.createHmac("sha256", TICKET_SECRET).update(`${userId}.${exp}`).digest("hex");
+  if (sig.length !== want.length) return "";
+  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want)) ? userId : "";
+}
+async function viewerIdFromReq(req: any): Promise<string> {
+  const tok = bearerToken(req);
+  if (tok) { try { const v = await verifyIdToken(tok); const u = await findUserByEmail(v.email); if (u && u.active) return u.id; } catch { /* fall through */ } }
+  return ticketUser(String(req.query.t || ""));
+}
+app.get("/api/document/ticket", async (req, res) => {
+  const id = await viewerIdFromReq(req);
+  if (!id) return res.status(401).json({ error: "Sign in to open documents." });
+  res.json({ t: mintTicket(id) });
+});
 app.get("/api/document/:id/pdf", async (req, res) => {
   try {
     const doc = await prisma.appDoc.findUnique({ where: { id: req.params.id } });
     if (!doc) return res.status(404).json({ error: "Document not found." });
-    if (await personnelBlocked(doc, String(req.query.uid || ""))) {
+    const viewerId = await viewerIdFromReq(req);
+    if (await personnelBlocked(doc, viewerId)) {
       return res.status(403).json({ error: "This document is part of a personnel file." });
     }
     if (!/\.html?$/i.test(doc.filename)) {
       return res.status(400).json({ error: "Only HTML documents can be rendered to PDF. Download this one as it is." });
     }
-    const { file, cleanup } = await docOnDisk(doc.id, String(req.query.uid || ""));
+    const { file, cleanup } = await docOnDisk(doc.id, await viewerIdFromReq(req));
     let pdf: Buffer;
     try { pdf = await htmlToPdf(fs.readFileSync(file, "utf8")); } finally { cleanup(); }
     res.setHeader("Content-Type", "application/pdf");
@@ -5960,7 +6332,7 @@ app.get("/api/document/content/:id", async (req, res) => {
   try {
     const doc = await prisma.appDoc.findUnique({ where: { id: req.params.id } });
     if (!doc) return res.status(404).json({ error: "Document not found." });
-    if (await personnelBlocked(doc, String(req.query.uid || ""))) {
+    if (await personnelBlocked(doc, await viewerIdFromReq(req))) {
       return res.status(403).json({ error: "This document is part of a personnel file." });
     }
 
@@ -5988,15 +6360,15 @@ async function personnelBlocked(doc: any, uid: string): Promise<boolean> {
   if (!isPersonnelDoc(doc)) return false;
   const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
   const employees = await prisma.employee.findMany({ select: { id: true, userEmail: true } });
-  return !maySeePersonnelFile(viewer, employees, doc.partyId);
+  return !maySeePersonnelFile(viewer, employees, doc.partyId, doc.category);
 }
 
 /** Locate a document on disk. Legacy inline-base64 rows are spilled to a temp file so
  *  PyMuPDF can read them; the caller gets back a cleanup to run when it's done. */
 async function docOnDisk(id: string, uid = ""): Promise<{ file: string; cleanup: () => void; doc: any }> {
   const doc = await prisma.appDoc.findUnique({ where: { id } });
-  if (!doc) throw new Error("Document not found.");
-  if (await personnelBlocked(doc, uid)) throw new Error("This document is part of a personnel file.");
+  if (!doc) throw Object.assign(new Error("Document not found."), { status: 404 });
+  if (await personnelBlocked(doc, uid)) throw Object.assign(new Error("This document is part of a personnel file."), { status: 403 });
   const vaultPath = vaultPathFromPointer(doc.base64 || "");
   if (vaultPath) {
     if (!fs.existsSync(vaultPath)) throw new Error(`File missing from vault: ${doc.filename}. Check the AnaHon_Document_Vault folder.`);
@@ -6020,12 +6392,12 @@ const py = async (script: string, args: string[], binary = false): Promise<any> 
 app.get("/api/document/pages/:id", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id, String(req.query.uid || ""));
+    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req));
     cleanup = d.cleanup;
     const out = await py("import sys,fitz;print(fitz.open(sys.argv[1]).page_count)", [d.file]);
     res.json({ pages: parseInt(String(out).trim(), 10) || 0 });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   } finally { cleanup(); }
 });
 
@@ -6034,7 +6406,7 @@ app.get("/api/document/pages/:id", async (req, res) => {
 app.get("/api/document/page/:id/:n", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id, String(req.query.uid || ""));
+    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req));
     cleanup = d.cleanup;
     const png: Buffer = await py(
       "import sys,fitz;d=fitz.open(sys.argv[1]);sys.stdout.buffer.write(" +
@@ -6044,7 +6416,7 @@ app.get("/api/document/page/:id/:n", async (req, res) => {
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.send(png);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   } finally { cleanup(); }
 });
 
@@ -6054,7 +6426,7 @@ app.get("/api/document/page/:id/:n", async (req, res) => {
 app.get("/api/document/docx-text/:id", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id, String(req.query.uid || ""));
+    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req));
     cleanup = d.cleanup;
     const text = await py(
       "import sys,zipfile,re,html\n" +
@@ -6067,7 +6439,7 @@ app.get("/api/document/docx-text/:id", async (req, res) => {
       [d.file]);
     res.type("text/plain; charset=utf-8").send(String(text));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status || 500).json({ error: err.message });
   } finally { cleanup(); }
 });
 
@@ -6241,7 +6613,7 @@ ${(r.internalMovements || []).length ? `<h3>4b. Internal Movements — excluded 
 <div class="note"><b>NOTES &amp; KNOWN LIMITATIONS</b><br>${r.caveats.map((c: string) => "• " + esc(c)).join("<br>")}</div>
 <div class="sig">
   <div>Prepared by — Finance Officer (Policy 11.7)<br><br>Name &amp; signature: ____________________</div>
-  <div>Approved by — Program Director (Policy 11.7)<br><br>Name &amp; signature: ____________________</div>
+  <div>Approved by — Executive Director (Policy 11.7)<br><br>Name &amp; signature: ____________________</div>
 </div>
 </body></html>`;
 }
@@ -6294,6 +6666,9 @@ async function htmlToPdf(html: string): Promise<Buffer> {
 
 app.get("/api/reports/pdf", async (req, res) => {
   try {
+    const rid = await viewerIdFromReq(req);
+    const reader = rid ? await prisma.user.findUnique({ where: { id: rid } }) : null;
+    if (!reader || !REPORT_READERS.includes(reader.role)) return res.status(403).json({ error: "The financial statements are for finance, the director and the auditor." });
     // Any timeframe: months=1..60, or start=YYYY-MM which overrides months (end stays inclusive).
     let months = Math.min(60, Math.max(1, Number(req.query.months) || 6));
     if (/^\d{4}-\d{2}$/.test(String(req.query.start || ""))) {
@@ -6320,6 +6695,9 @@ app.get("/api/reports/pdf", async (req, res) => {
 // Periodic financial report (Policy 11.2) — aggregates a 6- or 12-month window.
 app.get("/api/reports/period", async (req, res) => {
   try {
+    const rid = await viewerIdFromReq(req);
+    const reader = rid ? await prisma.user.findUnique({ where: { id: rid } }) : null;
+    if (!reader || !REPORT_READERS.includes(reader.role)) return res.status(403).json({ error: "The financial statements are for finance, the director and the auditor." });
     // Any timeframe: months=1..60, or start=YYYY-MM which overrides months (end stays inclusive).
     let months = Math.min(60, Math.max(1, Number(req.query.months) || 6));
     if (/^\d{4}-\d{2}$/.test(String(req.query.start || ""))) {

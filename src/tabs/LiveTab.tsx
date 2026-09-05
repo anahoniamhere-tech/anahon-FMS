@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { SharedProps } from "./shared";
+import Info from "../Info";
+import { SITE_EDITORS } from "../roles";
 
 /**
  * Live editor — the website itself, framed from its editing server, edited in place.
@@ -9,7 +11,7 @@ import { SharedProps } from "./shared";
  * files (site.json, i18n.json, programs.json, home.json) and written; the preview
  * reloads with the new content. Publish builds the public site and pushes it out.
  */
-const EDIT_ROLES = ["Production Manager", "Program Director", "Super Admin"];
+const EDIT_ROLES = SITE_EDITORS;
 const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then(r => r.json());
 
 const PAGES: { label: string; en: string; ar: string }[] = [
@@ -33,7 +35,7 @@ type ArchiveItem = { id: string; platform: string; kind: string; title: string; 
 type Article = { slug: string; lang: string; title: string; date: string };
 const WIDGET_LABEL: Record<string, string> = { hero: "Home hero slider", episodes: "Latest episodes", articles: "Latest articles" };
 
-export default function LiveTab({ state, currentUser, triggerToast }: SharedProps) {
+export default function LiveTab({ state, currentUser, triggerToast, lang }: SharedProps) {
   const canEdit = EDIT_ROLES.includes(currentUser?.role);
   const siteUrl = String(state.siteUrl || "").replace(/\/$/, "");
   const siteOrigin = siteUrl ? new URL(siteUrl).origin : "";
@@ -126,7 +128,10 @@ export default function LiveTab({ state, currentUser, triggerToast }: SharedProp
             {edit ? "✎ Editing — click text, drop pictures" : "Browse (turn on editing)"}
           </label>
         )}
-        {canEdit && <button onClick={publish} disabled={busy} className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">{busy ? "Publishing…" : "⬆ Publish"}</button>}
+        {canEdit && (
+          <Info id="live-editor" lang={lang} />
+        )}
+        {canEdit && <><button onClick={publish} disabled={busy} className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">{busy ? "Publishing…" : "⬆ Publish"}</button><Info id="publish-site" lang={lang} /></>}
         <a href={siteUrl + path} target="_blank" rel="noreferrer" className="text-xs text-slate-500 underline">open ↗</a>
       </div>
       <div className="flex min-h-0 flex-1 gap-2">

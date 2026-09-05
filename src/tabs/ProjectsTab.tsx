@@ -5,8 +5,13 @@ import { Account, AppDoc, Donor, Expense, Procurement, Project, Timesheet } from
 import { STREAMS } from "../constants";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
+import { ACTIVITY_EDITORS, DIRECTORS, FINANCE } from "../roles";
+import { withTicket } from "../docTicket";
 
 export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, workspaceRef }: SharedProps) {
+  // Whoever holds the Finance Officer seat signs the printed project sheet — never a name in code.
+  const financeOfficerName = state.users.find((u: any) => u.role === "Finance Officer" && u.active)?.name || "Finance Officer";
+
   // New Project form states
   const [newProjectName, setNewProjectName] = useState("");
 
@@ -93,7 +98,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
   const handleDeleteProject = async (e: React.MouseEvent, projectId: string) => {
     e.stopPropagation();
 
-    if (!["Super Admin", "Finance Officer"].includes(currentUser.role)) {
+    if (!FINANCE.includes(currentUser.role)) {
       triggerToast("You do not have permission to delete projects.", "error");
       return;
     }
@@ -731,7 +736,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
               <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
                   <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">🗓 Project Timelines</h3>
-                  {["Super Admin", "Finance Officer", "Executive Director", "Project Officer"].includes(currentUser.role) && (
+                  {ACTIVITY_EDITORS.includes(currentUser.role) && (
                     <button type="button" onClick={() => generateTimeline(null, true)}
                       className="text-xs font-medium bg-slate-800 text-white hover:bg-slate-700 rounded-lg px-3 py-2 transition-all"
                       title="Apply the standard 8-step template to every project, marking steps done where the evidence already exists">
@@ -787,7 +792,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
               </div>
 
               {/* Add Project Inline form */}
-              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+              {FINANCE.includes(currentUser.role) && (
                 <form onSubmit={handleCreateProject} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
                   <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">➕ Create New Project</h3>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -937,7 +942,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             <span className="text-[10px] bg-red-50 text-red-700 font-mono font-bold px-2 py-0.5 rounded uppercase">
                               {proj.code}
                             </span>
-                            {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                            {FINANCE.includes(currentUser.role) && (
                               <button
                                 onClick={(e) => handleDeleteProject(e, proj.id)}
                                 className="text-slate-400 hover:text-red-650 p-1 transition-colors rounded hover:bg-slate-100"
@@ -1092,14 +1097,14 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                   <div key={sl.key} className={`p-2 rounded border text-xs ${sl.doc || sl.extra ? "bg-emerald-50/50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
                                     <p className="text-[10px] font-bold uppercase text-slate-600">{sl.label}</p>
                                     {sl.doc ? (
-                                      <a href={`/api/document/content/${sl.doc.id}`} target="_blank" onClick={e => { e.preventDefault(); openDoc(sl.doc); }} rel="noreferrer"
+                                      <a href={withTicket(`/api/document/content/${sl.doc.id}`)} target="_blank" onClick={e => { e.preventDefault(); openDoc(sl.doc); }} rel="noreferrer"
                                         className="text-[11px] text-red-650 hover:underline break-all">📄 {sl.doc.filename}</a>
                                     ) : sl.extra ? (
                                       <span className="text-[11px] text-emerald-800">✓ {sl.extra}</span>
                                     ) : (
                                       <span className="text-[11px] text-amber-800 font-bold">missing</span>
                                     )}
-                                    {["Super Admin", "Finance Officer", "Executive Director", "Project Officer"].includes(currentUser.role) && (
+                                    {ACTIVITY_EDITORS.includes(currentUser.role) && (
                                       <label className="block mt-1 text-[10px] font-bold text-slate-500 hover:text-red-650 cursor-pointer">
                                         {sl.doc ? "replace / add" : "＋ upload"}
                                         <input type="file" className="hidden" accept=".pdf,.docx,.xlsx,.xlsm,image/*"
@@ -1124,7 +1129,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                         <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
                             <h4 className="text-xs font-bold text-slate-700 uppercase font-mono">🗓 Project Timeline & Assignments</h4>
-                            {["Super Admin", "Finance Officer", "Executive Director", "Project Officer"].includes(currentUser.role) && (
+                            {ACTIVITY_EDITORS.includes(currentUser.role) && (
                               <div className="flex items-center gap-2">
                                 <button type="button" onClick={() => generateTimeline(selectedProjectId!)}
                                   className="text-[11px] font-medium bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5 transition-all"
@@ -1274,7 +1279,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         </span>
                                       )}
                                       <span className="text-[10px] text-slate-500 shrink-0">{who ? `👤 ${who.name}` : "unassigned"}</span>
-                                      {["Super Admin", "Finance Officer", "Executive Director", "Project Officer"].includes(currentUser.role) && (
+                                      {ACTIVITY_EDITORS.includes(currentUser.role) && (
                                         <span className="flex items-center gap-1 shrink-0">
                                           <select value={a.status} onChange={e => saveActivity({ ...a, status: e.target.value })}
                                             aria-label={`Status for ${a.title}`} className="finance-input text-[10px] py-0.5">
@@ -1300,7 +1305,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                               <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
                                 📂 1. Contracts, MoUs & Co-funding splits
                               </h4>
-                              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                              {FINANCE.includes(currentUser.role) && (
                                 <label className="text-[10px] text-red-650 hover:text-red-700 font-bold cursor-pointer inline-flex items-center min-h-[44px] px-2">
                                   ➕ Upload MoU
                                   <input
@@ -1335,7 +1340,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                       <span className="text-slate-700 truncate">📄 {doc.filename} ({doc.sizeStr})</span>
                                     </span>
                                     <a
-                                      href={`/api/document/content/${doc.id}`}
+                                      href={withTicket(`/api/document/content/${doc.id}`)}
                                       target="_blank" onClick={e => { e.preventDefault(); openDoc(doc); }}
                                       rel="noreferrer"
                                       className="text-red-650 hover:underline font-mono text-[10px] font-bold inline-flex items-center min-h-[44px] px-2"
@@ -1411,7 +1416,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         <span>Status: {exp.status}</span>
                                         {docAttached ? (
                                           <a
-                                            href={`/api/document/content/${docAttached.id}`}
+                                            href={withTicket(`/api/document/content/${docAttached.id}`)}
                                             target="_blank" onClick={e => { e.preventDefault(); openDoc(docAttached); }}
                                             rel="noreferrer"
                                             className="text-red-650 hover:underline font-bold inline-flex items-center min-h-[44px] px-2"
@@ -1811,11 +1816,11 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                     <div className="grid grid-cols-2 gap-12 pt-6">
                                       <div className="text-center space-y-12">
                                         <div className="font-mono text-xs border-b border-slate-350 pb-2 mx-6 italic text-slate-600">
-                                          Layale Ghorayeb
+                                          {financeOfficerName}
                                         </div>
                                         <div>
                                           <span className="block text-xs font-bold text-slate-800 uppercase font-sans">Prepared By</span>
-                                          <span className="block text-[10px] text-slate-500 uppercase font-mono">Layale Ghorayeb (Finance Officer)</span>
+                                          <span className="block text-[10px] text-slate-500 uppercase font-mono">{financeOfficerName} (Finance Officer)</span>
                                         </div>
                                       </div>
 
@@ -1865,7 +1870,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             <span className="text-[10px] block text-slate-500 uppercase">Allocated Target</span>
                             <span className="text-sm font-bold font-mono text-slate-900">{formatUSD(bl.allocatedUSD)}</span>
                           </div>
-                          {["Super Admin", "Executive Director"].includes(currentUser.role) ? (
+                          {DIRECTORS.includes(currentUser.role) ? (
                             <input
                               type="number"
                               defaultValue={bl.allocatedUSD}

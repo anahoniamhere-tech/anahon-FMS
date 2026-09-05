@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { SharedProps } from "./shared";
+import { SITE_EDITORS } from "../roles";
 
 /**
  * Social desk — publish, edit and remove posts on the AnaHon Facebook Page and the
@@ -9,7 +10,7 @@ import { SharedProps } from "./shared";
  * What Meta allows (v25):  Facebook publish · edit text · delete
  *                          Instagram publish (public HTTPS image) · delete — no caption edits
  */
-const PUBLISH_ROLES = ["Production Manager", "Program Director", "Super Admin"];
+const PUBLISH_ROLES = SITE_EDITORS;
 const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then(r => r.json());
 
 export default function SocialTab({ state, currentUser, triggerToast }: SharedProps) {

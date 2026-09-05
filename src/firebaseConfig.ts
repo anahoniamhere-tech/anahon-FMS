@@ -38,6 +38,11 @@ window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const token = await current.getIdToken();
         const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
         headers.set("Authorization", `Bearer ${token}`);
+        // Standing in for a vacant seat: carried on every write so the server can log
+        // which hat was worn. Set by the role switch in the header; the server refuses
+        // it for anyone who is not a Super Admin.
+        const actingAs = (window as any).__actingAs;
+        if (actingAs) headers.set("X-Acting-As", actingAs);
         init = { ...init, headers };
       } catch { /* fall through unauthenticated; the server will say so plainly */ }
     }

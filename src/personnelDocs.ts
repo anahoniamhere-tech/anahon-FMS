@@ -1,3 +1,4 @@
+import { PERSONNEL_FILE, PAYROLL_VIEWERS } from "./roles";
 /**
  * Personnel documents — the HR side of the vault.
  *
@@ -20,10 +21,11 @@ export const PERSONNEL_CATEGORIES = [
   "Diploma / Certificate",
   "Personal Photo",
   "Personnel",
+  "Payslip",
 ] as const;
 
 /** Roles that hold the personnel file for the whole organisation. */
-export const PERSONNEL_ROLES = ["Super Admin", "HR / Payroll Officer", "Executive Director"];
+export const PERSONNEL_ROLES = PERSONNEL_FILE;
 
 export function isPersonnelDoc(doc: { category?: string }): boolean {
   return PERSONNEL_CATEGORIES.includes(String(doc?.category || "") as any);
@@ -39,10 +41,14 @@ export function isPersonnelDoc(doc: { category?: string }): boolean {
 export function maySeePersonnelFile(
   viewer: { role?: string; email?: string } | null | undefined,
   employees: { id: string; userEmail?: string | null }[],
-  partyId?: string | null
+  partyId?: string | null,
+  category?: string | null
 ): boolean {
   if (!viewer) return false;
   if (PERSONNEL_ROLES.includes(String(viewer.role))) return true;
+  // A payslip is a personnel paper, but the people who run payroll must be able to open
+  // the one they just generated and pay from.
+  if (String(category || "") === "Payslip" && PAYROLL_VIEWERS.includes(String(viewer.role))) return true;
   if (!partyId || !viewer.email) return false;
   const email = viewer.email.trim().toLowerCase();
   return employees.some(e => e.id === partyId && (e.userEmail || "").trim().toLowerCase() === email);
@@ -55,5 +61,5 @@ export function filterPersonnelDocs<T extends { category?: string; partyId?: str
   employees: { id: string; userEmail?: string | null }[]
 ): T[] {
   if (viewer && PERSONNEL_ROLES.includes(String(viewer.role))) return docs;
-  return docs.filter(d => !isPersonnelDoc(d) || maySeePersonnelFile(viewer, employees, d.partyId));
+  return docs.filter(d => !isPersonnelDoc(d) || maySeePersonnelFile(viewer, employees, d.partyId, d.category));
 }

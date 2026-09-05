@@ -4,6 +4,8 @@ import { Client, Quotation, QuotationItem } from "../types";
 import { EXTRAS_DEFAULT, FINANCIAL_TERMS, PRODUCTION_NOTE, QUOTE_STATUSES, SERVICE_CATALOG, TECHNICAL_NOTE } from "../constants";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
+import { FINANCE, MANAGERS } from "../roles";
+import { withTicket } from "../docTicket";
 
 export default function ProductionTab({ currentUser, formatIn, formatUSD, openDoc, refreshState, state, t, triggerToast }: SharedProps) {
   // Production stream: client / quotation being added-edited (null = form closed)
@@ -229,7 +231,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-md font-bold text-slate-800 uppercase font-mono">👥 Client Log</h3>
-                  {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && !clientForm && (
+                  {MANAGERS.includes(currentUser.role) && !clientForm && (
                     <button onClick={() => setClientForm({})} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all">
                       ➕ Register Client
                     </button>
@@ -304,7 +306,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-md font-bold text-slate-800 uppercase font-mono">📄 Quotations</h3>
-                  {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && !quoteForm && (
+                  {MANAGERS.includes(currentUser.role) && !quoteForm && (
                     <button onClick={() => setQuoteForm({
                       status: "Draft",
                       currency: "USD",
@@ -475,7 +477,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                         return (
                           <div key={`${q.id}-${tx.id}`} className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
                             <span><strong>{q.quoteNo}</strong> ({q.currency} {q.amount.toLocaleString()}) ↔ deposit {tx.date} · {formatIn(tx.amount, acct?.currency || "USD")} · "{tx.description.slice(0, 50)}"</span>
-                            {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && (
+                            {MANAGERS.includes(currentUser.role) && (
                               <button onClick={() => linkQuotePayment(q, tx.id)} className="bg-emerald-600 text-white text-[10px] font-bold rounded px-2 py-1 hover:bg-emerald-700 transition-all">
                                 ✓ Confirm settlement
                               </button>
@@ -584,7 +586,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                             <td className="p-3 text-right font-mono font-bold text-slate-800">{q.currency} {q.amount.toLocaleString()}</td>
                             <td className="p-3 font-mono text-slate-500">{q.validUntil || "—"}</td>
                             <td className="p-3">
-                              {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) ? (
+                              {MANAGERS.includes(currentUser.role) ? (
                                 <select value={q.status} onChange={e => moveQuotation(q, e.target.value)} className="finance-input text-[10px] py-1" aria-label={`Status for ${q.quoteNo}`}>
                                   {QUOTE_STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
                                 </select>
@@ -598,7 +600,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                 return (
                                   <span className="text-[10px] font-bold text-emerald-700">
                                     🏦 settled {tx?.date || ""}
-                                    {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+                                    {FINANCE.includes(currentUser.role) && (
                                       <button onClick={() => linkQuotePayment(q, "")} className="ml-1 text-slate-400 hover:text-red-600" title="Unlink payment" aria-label={`Unlink payment for ${q.quoteNo}`}>✕</button>
                                     )}
                                   </span>
@@ -606,7 +608,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                               })() : (
                                 <span className="inline-flex items-center gap-1">
                                   <span className="text-[10px] text-slate-400">—</span>
-                                  {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && !["Rejected", "Expired"].includes(q.status) && (
+                                  {MANAGERS.includes(currentUser.role) && !["Rejected", "Expired"].includes(q.status) && (
                                     <>
                                     <button onClick={() => setSettleForm({ q, method: "OMT", reference: "", date: new Date().toLocaleDateString("en-CA"), amount: q.amount })} className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100" title="Record off-bank payment (OMT / BOB / Whish / cash)" aria-label={`Record off-bank payment for ${q.quoteNo}`}>💵</button>
                                     <button onClick={() => setReceiptForm({ q, date: new Date().toLocaleDateString("en-CA"), amount: q.amount, method: "Cash", receivedBy: "" })} className="text-slate-400 hover:text-amber-700 p-1 transition-colors rounded hover:bg-slate-100" title="Issue AnaHon's receipt for this payment" aria-label={`Issue receipt for ${q.quoteNo}`}>🧾</button>
@@ -617,7 +619,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                             </td>
                             <td className="p-3 whitespace-nowrap">
                               <button onClick={() => generateQuoteDoc(q)} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="View client document" aria-label={`View document for ${q.quoteNo}`}>📄</button>
-                              <a href={`/api/quotations/${q.id}/pdf?uid=${encodeURIComponent(currentUser?.id || "")}`} download
+                              <a href={withTicket(`/api/quotations/${q.id}/pdf`)} download
                                 className="text-slate-400 hover:text-red-700 p-1 transition-colors rounded hover:bg-slate-100 inline-block" title="Download PDF" aria-label={`Download PDF for ${q.quoteNo}`}>
                                 <Download className="h-3.5 w-3.5 inline" />
                               </a>

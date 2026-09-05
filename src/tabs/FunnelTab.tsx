@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { Donor, Opportunity, Proposal } from "../types";
 import { OPP_STAGES, PROPOSAL_SECTIONS, STREAMS } from "../constants";
 import { SharedProps } from "./shared";
+import { MANAGERS } from "../roles";
 
 export default function FunnelTab({ currentUser, formatUSD, handleNavClick, openDoc, refreshState, setSelectedProjectId, state, t, triggerToast }: SharedProps) {
   // Funding funnel: the opportunity being added/edited (null = form closed)
@@ -332,7 +333,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-md font-bold text-slate-800 uppercase font-mono">🎯 Donor Pipeline</h3>
-                  {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && !oppForm && (
+                  {MANAGERS.includes(currentUser.role) && !oppForm && (
                     <div className="flex items-center gap-2">
                       <button onClick={() => { setIntakeOpen(!intakeOpen); setIntake(null); }} className="bg-indigo-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-indigo-700 transition-all">
                         🤖 {intakeOpen ? "Close call reader" : "Start from a call"}
@@ -686,7 +687,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                               <span className="text-[10px] opacity-70 hidden md:inline whitespace-nowrap">{o.stream || "—"}</span>
                               <span className="font-mono text-[10px] whitespace-nowrap">{o.amount > 0 ? `${o.currency} ${o.amount.toLocaleString()}` : "—"}</span>
                               <span className="text-[10px] font-bold uppercase opacity-70 whitespace-nowrap hidden sm:inline">{o.stage}</span>
-                              {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && (
+                              {MANAGERS.includes(currentUser.role) && (
                                 <button onClick={() => { setPropForm({ ...o, proposal: o.proposal || {} }); setAiAssess(null); setAiCall(""); }}
                                   className="opacity-60 hover:opacity-100 shrink-0" title="Open proposal workspace" aria-label={`Open proposal for ${o.title}`}>📝</button>
                               )}
@@ -751,7 +752,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                                     ✓ Awarded — once the deposit is on an imported statement, register the project in Donors & Projects with that deposit as proof.
                                   </p>
                                 )}
-                                {["Super Admin", "Finance Officer", "Executive Director"].includes(currentUser.role) && (
+                                {MANAGERS.includes(currentUser.role) && (
                                   <div className="flex items-center gap-1 mt-2">
                                     <select value={o.stage} onChange={e => moveOpportunity(o, e.target.value)} className="finance-input text-[10px] flex-1 py-1" aria-label={`Stage for ${o.title}`}>
                                       {OPP_STAGES.map(sg => <option key={sg} value={sg}>{sg}</option>)}

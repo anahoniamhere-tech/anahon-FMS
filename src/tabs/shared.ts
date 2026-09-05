@@ -54,5 +54,8 @@ export interface SharedProps {
   // Project selection — set by the gaps drawer jump; App effect scrolls workspaceRef into view
   selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
+  // A record another screen asked to open (My Desk → Editorial desk). The tab clears it once used.
+  focusId: string | null;
+  setFocusId: (id: string | null) => void;
   workspaceRef: any;
 }

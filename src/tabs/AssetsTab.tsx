@@ -1,5 +1,6 @@
 import React, { useState, FormEvent } from "react";
 import { SharedProps } from "./shared";
+import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS } from "../roles";
 
 export default function AssetsTab({ currentUser, formatUSD, refreshState, state, t, triggerToast }: SharedProps) {
   // Asset creation form
@@ -61,7 +62,7 @@ export default function AssetsTab({ currentUser, formatUSD, refreshState, state,
               </div>
 
               {/* Capitalize Asset Form */}
-              {["Super Admin", "Finance Officer"].includes(currentUser.role) && (
+              {SUPPLIER_EDITORS.includes(currentUser.role) && (
                 <form onSubmit={handleCapitalizeAsset} className="p-4 bg-white border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Asset Name / Model")}</label>
@@ -142,7 +143,7 @@ export default function AssetsTab({ currentUser, formatUSD, refreshState, state,
                       </div>
                     </div>
 
-                    {["Super Admin", "Auditor / Read-Only Reviewer"].includes(currentUser.role) && (
+                    {EQUIPMENT_VERIFIERS.includes(currentUser.role) && (
                       <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
                         <select
                           id={`cond-${asset.id}`}
