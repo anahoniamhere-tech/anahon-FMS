@@ -1180,8 +1180,14 @@ async function pushTurnsFor(viewer: any) {
   const subs = await prisma.pushSubscription.findMany({ where: { userId: viewer.id } });
   if (!subs.length) return { sent: 0, closed: 0, dead: 0, seeded: 0 };
   const state = await loadState(viewer);
+  // Only rows on doors this person can actually open — the same reading My Desk and the
+  // doors screen make. The server ships some records to a role that has no screen for them
+  // (the Digital Officer receives the content board, the crew their own timesheets), and a
+  // notification about one of those is worse than silence: tapping it lands on the door,
+  // the redirect finds the role cannot see it, and they are bounced to the landing page.
+  const canOpen = new Set(doorsFor(viewer.role).map(String));
   const mine = deskItems({ id: viewer.id, email: viewer.email, role: viewer.role }, state as any, localDate())
-    .filter(i => i.group === "mine" || i.group === "cover");
+    .filter(i => (i.group === "mine" || i.group === "cover") && canOpen.has(i.door));
   const ledger = await prisma.reminder.findMany({ where: { userId: viewer.id, channel: "push" } });
   // The first run for a person is a seeding run, not fifty-nine buzzes. Everything already
   // sitting on their desk is what the desk screen is for; push is for the moment something

@@ -52,11 +52,15 @@ ok("and it counts every state, so a cleared desk is not a second first run",
 console.log("\nB. a phone is never buzzed about someone else's week");
 const server = read("../server.ts");
 ok("the sender keeps only what is this person's turn",
-  /\.filter\(i => i\.group === "mine" \|\| i\.group === "cover"\)/.test(server));
+  /i\.group === "mine" \|\| i\.group === "cover"/.test(server));
 // group "week" is "due this week on someone else's desk" — information, not a summons.
 const weekOnly = [item({ id: "expenses:e-9", recordId: "e-9", when: "2026-09-09", group: "week" })];
 const kept = weekOnly.filter(i => i.group === "mine" || (i.group as string) === "cover");
 ok("so a week row reaches the planner not at all", kept.length === 0);
+// A notification about a door the person cannot open is worse than silence: the tap lands
+// on it, the redirect finds the role cannot see it, and they are bounced to the landing page.
+ok("only rows on doors this person can open are sent", /canOpen\.has\(i\.door\)/.test(server)
+  && /doorsFor\(viewer\.role\)/.test(server));
 ok("the ledger the phone reads is its own channel", /findMany\(\{ where: \{ userId: viewer\.id, channel: "push" \} \}\)/.test(server));
 ok("and the calendar's is its own, or it would cancel work still owed",
   /findMany\(\{ where: \{ userId: viewer\.id, channel: "calendar" \} \}\)/.test(server));
