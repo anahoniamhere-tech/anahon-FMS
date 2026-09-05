@@ -92,6 +92,8 @@ const server = readFileSync(new URL("../server.ts", import.meta.url), "utf8");
 ok("the plan route writes nothing", /app\.post\("\/api\/reminders\/plan"[\s\S]{0,900}?res\.json/.test(server)
   && !/app\.post\("\/api\/reminders\/plan"[\s\S]{0,900}?prisma\.reminder\.(create|update|delete)/.test(server));
 ok("the push refuses until a calendar is actually connected", /reminders\/push[\s\S]{0,600}?not connected|GOOGLE_REFRESH_TOKEN/.test(server));
+ok("one consent writes into one person's calendar only", /calendarConfiguredFor = \(viewer: any\) =>[\s\S]{0,200}canonEmail\(viewer\?\.email \|\| ""\) === calendarOwner\(\)/.test(server)
+  && /if \(!calendarConfiguredFor\(viewer\)\) \{\s*\n\s*return res\.status\(403\)/.test(server));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

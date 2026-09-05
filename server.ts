@@ -874,6 +874,15 @@ app.get("/api/desk.ics", async (req, res) => {
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const calendarConfigured = () =>
   !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN);
+/**
+ * One consent is one person's calendar. The refresh token on the server was granted by a
+ * single Google account, so it may write only into that account's calendar — never into
+ * it on someone else's behalf, which would put Marwan's desk in Saad's diary. Until each
+ * person has consented for themselves, the push is that one person's alone.
+ */
+const calendarOwner = () => canonEmail(process.env.GOOGLE_CALENDAR_OWNER || "");
+const calendarConfiguredFor = (viewer: any) =>
+  calendarConfigured() && !!calendarOwner() && canonEmail(viewer?.email || "") === calendarOwner();
 
 /** A short-lived access token from the long-lived refresh token. Nothing is stored. */
 async function googleAccessToken(): Promise<string> {
@@ -927,7 +936,7 @@ app.post("/api/reminders/plan", async (req, res) => {
   try {
     const viewer = (req as any).dbUser;
     const plan = await reminderPlanFor(viewer);
-    res.json({ configured: calendarConfigured(), summary: describePlan(plan), empty: planIsEmpty(plan), plan });
+    res.json({ configured: calendarConfiguredFor(viewer), summary: describePlan(plan), empty: planIsEmpty(plan), plan });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -938,6 +947,9 @@ app.post("/api/reminders/push", async (req, res) => {
     const viewer = (req as any).dbUser;
     if (!calendarConfigured()) {
       return res.status(400).json({ error: "No Google Calendar is connected to this system yet, so there is nowhere to write. Run the consent step first." });
+    }
+    if (!calendarConfiguredFor(viewer)) {
+      return res.status(403).json({ error: "The connected Google Calendar belongs to another account. Yours is not connected yet, so nothing is written." });
     }
     const plan = await reminderPlanFor(viewer);
     if (planIsEmpty(plan)) return res.json({ success: true, summary: describePlan(plan), created: 0, updated: 0, cancelled: 0 });
