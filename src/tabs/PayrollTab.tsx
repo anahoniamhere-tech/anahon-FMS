@@ -145,7 +145,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
               {HR.includes(currentUser.role) && (
                 <form onSubmit={handleEmployeeRegister} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                   <div>
-                    <label htmlFor="emp-name" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Full Name")}</label>
+                    <label htmlFor="emp-name" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Full Name")}</label>
                     <input
                       type="text"
                       placeholder="e.g. Farah Shami"
@@ -157,7 +157,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                     />
                   </div>
                   <div>
-                    <label htmlFor="emp-position" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Position / Title")}</label>
+                    <label htmlFor="emp-position" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Position / Title")}</label>
                     <input
                       type="text"
                       placeholder="e.g. Community Coordinator"
@@ -169,7 +169,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                     />
                   </div>
                   <div>
-                    <label htmlFor="emp-salary" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Base Salary (USD)")}</label>
+                    <label htmlFor="emp-salary" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Base Salary (USD)")}</label>
                     <input
                       type="number"
                       placeholder="Monthly Base"
@@ -181,7 +181,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                     />
                   </div>
                   <div>
-                    <label htmlFor="emp-allowance" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Allowance (USD)")}</label>
+                    <label htmlFor="emp-allowance" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Allowance (USD)")}</label>
                     <input
                       type="number"
                       placeholder="Monthly Allowance"
@@ -192,7 +192,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                     />
                   </div>
                   <div>
-                    <label htmlFor="emp-bank-account" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Funds Drawn From")}</label>
+                    <label htmlFor="emp-bank-account" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Funds Drawn From")}</label>
                     {/* Options come from the real bank accounts, so this list cannot drift away
                         from the accounts AnaHon actually holds. Required even for cash — cash
                         salaries are withdrawn from one of these accounts first. */}
@@ -210,7 +210,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="emp-delivery" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Delivered By")}</label>
+                    <label htmlFor="emp-delivery" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Delivered By")}</label>
                     <select
                       id="emp-delivery"
                       value={newEmpPaymentMethod}
@@ -222,7 +222,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                       <option value="Cash">💵 Cash withdrawn from that account</option>
                     </select>
                   </div>
-                  <button type="submit" className="bg-slate-900 hover:bg-slate-955 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
+                  <button type="submit" className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
                     Register Employee
                   </button>
                 </form>
@@ -303,7 +303,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                           className="p-4 bg-slate-50 border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-4 gap-3 items-end"
                         >
                           <div>
-                            <label htmlFor={`ct-project-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Project")}</label>
+                            <label htmlFor={`ct-project-${emp.id}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Project")}</label>
                             <select id={`ct-project-${emp.id}`} required value={contractForm.projectId}
                               onChange={(e) => setContractForm({ ...contractForm, projectId: e.target.value })}
                               className="finance-input w-full text-xs">
@@ -314,7 +314,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                             </select>
                           </div>
                           <div>
-                            <label htmlFor={`ct-kind-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Type")}</label>
+                            <label htmlFor={`ct-kind-${emp.id}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Type")}</label>
                             <select id={`ct-kind-${emp.id}`} value={contractForm.kind}
                               onChange={(e) => setContractForm({ ...contractForm, kind: e.target.value })}
                               className="finance-input w-full text-xs">
@@ -323,38 +323,38 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                             </select>
                           </div>
                           <div>
-                            <label htmlFor={`ct-start-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Start")}</label>
+                            <label htmlFor={`ct-start-${emp.id}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Start")}</label>
                             <input id={`ct-start-${emp.id}`} type="date" required value={contractForm.startDate}
                               onChange={(e) => setContractForm({ ...contractForm, startDate: e.target.value })}
                               className="finance-input w-full text-xs" />
                           </div>
                           <div>
-                            <label htmlFor={`ct-end-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("End")}</label>
+                            <label htmlFor={`ct-end-${emp.id}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("End")}</label>
                             <input id={`ct-end-${emp.id}`} type="date" required value={contractForm.endDate}
                               onChange={(e) => setContractForm({ ...contractForm, endDate: e.target.value })}
                               className="finance-input w-full text-xs" />
                           </div>
                           <div>
-                            <label htmlFor={`ct-loe-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Level of Effort %")}</label>
+                            <label htmlFor={`ct-loe-${emp.id}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Level of Effort %")}</label>
                             <input id={`ct-loe-${emp.id}`} type="number" min="0" max="100" placeholder="optional"
                               value={contractForm.loePct}
                               onChange={(e) => setContractForm({ ...contractForm, loePct: e.target.value })}
                               className="finance-input w-full font-mono text-xs" />
                           </div>
                           <div>
-                            <label htmlFor={`ct-fee-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Monthly Fee (USD)")}</label>
+                            <label htmlFor={`ct-fee-${emp.id}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Monthly Fee (USD)")}</label>
                             <input id={`ct-fee-${emp.id}`} type="number" step="0.01" required value={contractForm.monthlyFee}
                               onChange={(e) => setContractForm({ ...contractForm, monthlyFee: e.target.value })}
                               className="finance-input w-full font-mono text-xs" />
                           </div>
                           <div>
-                            <label htmlFor={`ct-total-${emp.id}`} className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Contract Total (USD)")}</label>
+                            <label htmlFor={`ct-total-${emp.id}`} className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Contract Total (USD)")}</label>
                             <input id={`ct-total-${emp.id}`} type="number" step="0.01" required value={contractForm.contractTotal}
                               onChange={(e) => setContractForm({ ...contractForm, contractTotal: e.target.value })}
                               className="finance-input w-full font-mono text-xs" />
                           </div>
                           <button type="submit" disabled={contractBusy}
-                            className="bg-slate-900 hover:bg-slate-955 disabled:opacity-50 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all min-h-[44px]">
+                            className="bg-slate-900 hover:bg-slate-950 disabled:opacity-50 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all min-h-[44px]">
                             {contractBusy ? "Generating…" : "Generate contract"}
                           </button>
                           <p className="md:col-span-4 text-[10px] text-slate-500 italic">

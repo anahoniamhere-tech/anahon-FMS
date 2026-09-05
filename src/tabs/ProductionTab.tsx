@@ -268,7 +268,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">💾 Save Client</button>
+                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">💾 Save Client</button>
                       <button type="button" onClick={() => setClientForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
                     </div>
                   </form>
@@ -289,7 +289,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                         )}
                         {c.taxId && <p className="text-[10px] text-slate-400 font-mono">Tax ID: {c.taxId}</p>}
                         {c.notes && (
-                          <div className="mt-2 p-2 bg-slate-50 border border-slate-105 rounded text-[11px] text-slate-600 leading-relaxed italic">ℹ️ {c.notes}</div>
+                          <div className="mt-2 p-2 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 leading-relaxed italic">ℹ️ {c.notes}</div>
                         )}
                         <div className="border-t border-slate-100 mt-3 pt-2 flex justify-between text-[10px]">
                           <span className="text-slate-400 uppercase">{cQuotes.length} quotation{cQuotes.length === 1 ? "" : "s"}</span>
@@ -448,7 +448,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">💾 Save Quotation</button>
+                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">💾 Save Quotation</button>
                       <button type="button" onClick={() => setQuoteForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
                     </div>
                   </form>
@@ -521,7 +521,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                     </div>
                     <p className="text-[10px] text-slate-400">Numbered RC-nnn/year from the receipts already on file, filed against this quotation, and printed with the amount in words. Print it and have both sides sign.</p>
                     <div className="flex gap-2">
-                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">🧾 Issue receipt</button>
+                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">🧾 Issue receipt</button>
                       <button type="button" onClick={() => setReceiptForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
                     </div>
                   </form>
@@ -553,7 +553,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                     </div>
                     <p className="text-[10px] text-slate-400">Recorded as a deposit on the off-bank evidence account (like the FPU BOB Finance tranches). No evidence reference, no booking.</p>
                     <div className="flex gap-2">
-                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">💾 Record settlement</button>
+                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">💾 Record settlement</button>
                       <button type="button" onClick={() => setSettleForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
                     </div>
                   </form>

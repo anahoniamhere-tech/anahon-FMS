@@ -173,7 +173,7 @@ export default function IcontentInvPage() {
           </div>
           
           {/* Quick Stats */}
-          <div className="flex flex-wrap items-center gap-3 bg-slate-900/50 backdrop-blur border border-slate-850 rounded-xl p-3">
+          <div className="flex flex-wrap items-center gap-3 bg-slate-900/50 backdrop-blur border border-slate-800 rounded-xl p-3">
             <div className="text-center px-4 border-e border-slate-800">
               <span className="block text-xs text-slate-500 font-mono uppercase">Total Files</span>
               <span className="text-xl font-bold text-white">5</span>
@@ -207,7 +207,7 @@ export default function IcontentInvPage() {
           <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-1">
             <button
               onClick={() => setViewMode("grid")}
-              className={`p-1.5 rounded-md transition-all ${viewMode === "grid" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-350"}`}
+              className={`p-1.5 rounded-md transition-all ${viewMode === "grid" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-300"}`}
               title="Grid View"
               style={{ minWidth: '44px', minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
@@ -215,7 +215,7 @@ export default function IcontentInvPage() {
             </button>
             <button
               onClick={() => setViewMode("list")}
-              className={`p-1.5 rounded-md transition-all ${viewMode === "list" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-350"}`}
+              className={`p-1.5 rounded-md transition-all ${viewMode === "list" ? "bg-slate-800 text-white" : "text-slate-500 hover:text-slate-300"}`}
               title="List View"
               style={{ minWidth: '44px', minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
@@ -235,7 +235,7 @@ export default function IcontentInvPage() {
         {viewMode === "grid" && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredImages.map((img) => (
-              <div key={img.id} className="group bg-slate-900/40 backdrop-blur border border-slate-850 hover:border-slate-700/60 rounded-2xl overflow-hidden transition-all duration-300 flex flex-col shadow-lg shadow-slate-950/20">
+              <div key={img.id} className="group bg-slate-900/40 backdrop-blur border border-slate-800 hover:border-slate-700/60 rounded-2xl overflow-hidden transition-all duration-300 flex flex-col shadow-lg shadow-slate-950/20">
                 {/* Image display */}
                 <div className="relative aspect-video overflow-hidden bg-slate-950 cursor-pointer" onClick={() => setActiveModalImage(img)}>
                   <img
@@ -298,7 +298,7 @@ export default function IcontentInvPage() {
                         className={`flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
                           copiedId === img.id
                             ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
-                            : "bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-350 hover:text-white"
+                            : "bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 hover:text-white"
                         }`}
                         style={{ minHeight: '44px' }}
                       >
@@ -325,7 +325,7 @@ export default function IcontentInvPage() {
         {viewMode === "list" && (
           <div className="space-y-4">
             {filteredImages.map((img) => (
-              <div key={img.id} className="group bg-slate-900/30 backdrop-blur border border-slate-850 hover:border-slate-800 rounded-xl overflow-hidden transition-all flex flex-col md:flex-row md:items-center p-4 gap-6">
+              <div key={img.id} className="group bg-slate-900/30 backdrop-blur border border-slate-800 hover:border-slate-800 rounded-xl overflow-hidden transition-all flex flex-col md:flex-row md:items-center p-4 gap-6">
                 {/* Small preview image */}
                 <div className="w-full md:w-44 aspect-video md:aspect-square rounded-lg overflow-hidden bg-slate-950 shrink-0 cursor-pointer" onClick={() => setActiveModalImage(img)}>
                   <img src={img.url} alt={img.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -344,8 +344,8 @@ export default function IcontentInvPage() {
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-3 pt-3 border-t border-slate-800/60 text-xs font-mono text-slate-500">
-                    <span className="flex items-center gap-1">Dimensions: <strong className="text-slate-350">{img.dimensions}</strong></span>
-                    <span className="flex items-center gap-1">Size: <strong className="text-slate-350">{img.size}</strong></span>
+                    <span className="flex items-center gap-1">Dimensions: <strong className="text-slate-300">{img.dimensions}</strong></span>
+                    <span className="flex items-center gap-1">Size: <strong className="text-slate-300">{img.size}</strong></span>
                     <span className="flex items-center gap-1">Path: <strong className="text-red-400/80">{img.url}</strong></span>
                   </div>
                 </div>
@@ -365,7 +365,7 @@ export default function IcontentInvPage() {
                     className={`flex-1 md:flex-none flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
                       copiedId === img.id
                         ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
-                        : "bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-350 hover:text-white"
+                        : "bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 hover:text-white"
                     }`}
                     style={{ minHeight: '44px' }}
                   >
@@ -414,7 +414,7 @@ export default function IcontentInvPage() {
               </div>
 
               {/* Sidebar specifications */}
-              <div className="w-full md:w-80 p-6 border-t md:border-t-0 md:border-s border-slate-850 flex flex-col justify-between bg-slate-900">
+              <div className="w-full md:w-80 p-6 border-t md:border-t-0 md:border-s border-slate-800 flex flex-col justify-between bg-slate-900">
                 <div className="space-y-4">
                   <div className="flex justify-between items-start gap-4">
                     <h3 className="font-bold text-lg text-white leading-tight">{activeModalImage.title}</h3>
@@ -430,7 +430,7 @@ export default function IcontentInvPage() {
                   <p className="text-xs text-slate-400 leading-relaxed">{activeModalImage.description}</p>
                   
                   {/* Detailed Specs list */}
-                  <div className="border-t border-slate-850 pt-4 space-y-2 text-xs font-mono">
+                  <div className="border-t border-slate-800 pt-4 space-y-2 text-xs font-mono">
                     <span className="block text-slate-500 uppercase tracking-widest text-[9px] mb-3">Specifications</span>
                     <div className="flex justify-between">
                       <span className="text-slate-500">Resource URL</span>
@@ -454,7 +454,7 @@ export default function IcontentInvPage() {
                   </div>
                 </div>
 
-                <div className="mt-8 pt-4 border-t border-slate-850 grid grid-cols-2 gap-2">
+                <div className="mt-8 pt-4 border-t border-slate-800 grid grid-cols-2 gap-2">
                   <button
                     onClick={() => handleDownload(activeModalImage.url, `${activeModalImage.id}${activeModalImage.url.substring(activeModalImage.url.lastIndexOf("."))}`)}
                     className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold bg-red-650 hover:bg-red-500 text-white rounded-lg transition-colors cursor-pointer"
@@ -468,7 +468,7 @@ export default function IcontentInvPage() {
                     className={`flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
                       copiedId === activeModalImage.id
                         ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
-                        : "bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-350 hover:text-white"
+                        : "bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-300 hover:text-white"
                     }`}
                     style={{ minHeight: '44px' }}
                   >

@@ -128,7 +128,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                   </div>
 
                   {/* Sourced Option A */}
-                  <div className="border border-slate-105 p-3 rounded bg-slate-50 space-y-2">
+                  <div className="border border-slate-200 p-3 rounded bg-slate-50 space-y-2">
                     <span className="text-[10px] font-bold text-slate-500 block">PRIMARY BID (Selected preference)</span>
                     <input
                       type="text"
@@ -156,7 +156,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                   </div>
 
                   {/* Sourced Option B */}
-                  <div className="border border-slate-105 p-3 rounded bg-slate-50 space-y-2">
+                  <div className="border border-slate-200 p-3 rounded bg-slate-50 space-y-2">
                     <span className="text-[10px] font-bold text-slate-500 block">SECONDARY COMPETING BID</span>
                     <input
                       type="text"
@@ -184,7 +184,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                   </div>
 
                   {/* Sourced Option C — Policy 7.2 needs three compared bids */}
-                  <div className="border border-slate-105 p-3 rounded bg-slate-50 space-y-2">
+                  <div className="border border-slate-200 p-3 rounded bg-slate-50 space-y-2">
                     <span className="text-[10px] font-bold text-slate-500 block">THIRD COMPETING BID</span>
                     <input
                       type="text"
@@ -229,7 +229,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                     </p>
                   </div>
 
-                  <div className="border border-slate-105 p-3 rounded bg-slate-50 space-y-2">
+                  <div className="border border-slate-200 p-3 rounded bg-slate-50 space-y-2">
                     <label className="block text-xs font-bold text-slate-700">{t("Audit Justification Memo")}</label>
                     <textarea
                       placeholder="Memo rationale..."
@@ -278,11 +278,11 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                             <span>{q.vendorName}</span>
                             {q.selected && <span className="text-emerald-700 text-[10px]">✓ Selected Candidate</span>}
                           </div>
-                          <div className="mt-2 flex justify-between tracking-tight text-slate-650 text-xs font-mono font-medium">
+                          <div className="mt-2 flex justify-between tracking-tight text-slate-600 text-xs font-mono font-medium">
                             <span>Quote Value:</span>
                             <span dir="ltr" className="text-slate-950 font-bold">{q.amount.toLocaleString()} {q.currency}</span>
                           </div>
-                          <div className="mt-1 flex justify-between text-xs font-mono font-medium text-slate-650">
+                          <div className="mt-1 flex justify-between text-xs font-mono font-medium text-slate-600">
                             <span>Rating Compliance:</span>
                             <span>{q.score}%</span>
                           </div>

@@ -157,7 +157,7 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                   <form onSubmit={handleAdjustmentSubmit} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Adjustment Date")}</label>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Adjustment Date")}</label>
                         <input
                           type="date"
                           required
@@ -167,7 +167,7 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Journal Reference No")}</label>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Journal Reference No")}</label>
                         <input
                           type="text"
                           placeholder="e.g. ADJ-2026-05"
@@ -177,7 +177,7 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Description / Memo")}</label>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Description / Memo")}</label>
                         <input
                           type="text"
                           required
@@ -344,7 +344,7 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                     </div>
                     <div className="space-y-1 font-mono text-xs">
                       {je.items.map((it, idx) => (
-                        <div key={idx} className="flex justify-between text-slate-650">
+                        <div key={idx} className="flex justify-between text-slate-600">
                           <span>Account {it.accountCode} • Project: {it.projectId || "Unrestricted"}</span>
                           <span>
                             {it.debit > 0 ? `DR: ${formatUSD(it.debit)}` : ""}

@@ -166,7 +166,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                   </button>
                   <button
                     onClick={(e) => handlePartnerDrawSubmit(e, "withdraw")}
-                    className="bg-red-600 text-white text-xs font-semibold rounded px-4 py-2.5 hover:bg-red-750 shadow"
+                    className="bg-red-600 text-white text-xs font-semibold rounded px-4 py-2.5 hover:bg-red-700 shadow"
                   >
                     Lodge Partner Drawings
                   </button>
@@ -182,15 +182,15 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                       {p.partnerName} Partner Equity Line
                     </h4>
                     <div className="space-y-2 text-xs font-mono font-medium">
-                      <div className="flex justify-between border-b border-slate-50 py-1.5 text-slate-650">
+                      <div className="flex justify-between border-b border-slate-50 py-1.5 text-slate-600">
                         <span>Capital balance account:</span>
                         <span className="text-slate-950 font-bold">{formatUSD(p.capitalBalance)}</span>
                       </div>
-                      <div className="flex justify-between border-b border-slate-50 py-1.5 text-slate-650">
+                      <div className="flex justify-between border-b border-slate-50 py-1.5 text-slate-600">
                         <span>Outstanding draws account:</span>
                         <span className="text-red-700 font-bold">-{formatUSD(p.drawingsBalance)}</span>
                       </div>
-                      <div className="flex justify-between border-b border-slate-50 py-1.5 text-slate-650">
+                      <div className="flex justify-between border-b border-slate-50 py-1.5 text-slate-600">
                         <span>Loan accounts back to platform:</span>
                         <span className="text-slate-950 font-bold">{formatUSD(p.loansToCompany)}</span>
                       </div>
@@ -296,7 +296,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                         </span>
                         <p className="text-[10px] text-slate-400">Settled vouchers / petty cash out</p>
                       </div>
-                      <div className="bg-slate-900 border border-slate-850 rounded-xl p-5 shadow-sm space-y-1 text-white">
+                      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-1 text-white">
                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Closing Balance</span>
                         <span className="text-xl font-bold font-mono text-white">
                           {closingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
@@ -397,7 +397,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                               className="finance-input w-full text-xs" />
                           </div>
                           <button type="button" onClick={submitCashCount}
-                            className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">
+                            className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">
                             💾 Record count
                           </button>
                         </div>
@@ -435,13 +435,13 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                           <div className="md:col-span-2">
-                            <label htmlFor="daily-title" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("What was bought")}</label>
+                            <label htmlFor="daily-title" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("What was bought")}</label>
                             <input id="daily-title" type="text" required placeholder="e.g. Fuel for distribution run"
                               value={dailyTitle} onChange={(e) => setDailyTitle(e.target.value)}
                               className="finance-input w-full text-xs" />
                           </div>
                           <div>
-                            <label htmlFor="daily-vendor" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Vendor")}</label>
+                            <label htmlFor="daily-vendor" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Vendor")}</label>
                             <select id="daily-vendor" required value={dailyVendor}
                               onChange={(e) => setDailyVendor(e.target.value)} className="finance-input w-full text-xs">
                               <option value="">— Select —</option>
@@ -451,7 +451,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                             </select>
                           </div>
                           <div>
-                            <label htmlFor="daily-project" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Project")}</label>
+                            <label htmlFor="daily-project" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Project")}</label>
                             <select id="daily-project" required value={dailyProject}
                               onChange={(e) => { setDailyProject(e.target.value); setDailyBudgetLine(""); }}
                               className="finance-input w-full text-xs">
@@ -462,7 +462,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                             </select>
                           </div>
                           <div>
-                            <label htmlFor="daily-bl" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Budget Line")}</label>
+                            <label htmlFor="daily-bl" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Budget Line")}</label>
                             <select id="daily-bl" required value={dailyBudgetLine}
                               onChange={(e) => setDailyBudgetLine(e.target.value)} className="finance-input w-full text-xs">
                               <option value="">— Select —</option>
@@ -472,13 +472,13 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                             </select>
                           </div>
                           <div>
-                            <label htmlFor="daily-amount" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">Amount ({selectedAccount?.currency})</label>
+                            <label htmlFor="daily-amount" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Amount ({selectedAccount?.currency})</label>
                             <input id="daily-amount" type="number" step="0.01" min="0.01" required
                               value={dailyAmount} onChange={(e) => setDailyAmount(e.target.value)}
                               className="finance-input w-full font-mono text-xs" />
                           </div>
                           <button type="submit" disabled={dailyBusy}
-                            className="bg-slate-900 hover:bg-slate-955 disabled:opacity-50 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all min-h-[44px]">
+                            className="bg-slate-900 hover:bg-slate-950 disabled:opacity-50 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all min-h-[44px]">
                             {dailyBusy ? "Posting…" : "Post expense"}
                           </button>
                         </div>
@@ -568,7 +568,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
 
                             <form onSubmit={handleDailyDirectSubmit} className="space-y-3">
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Expense Title")}</label>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">{t("Expense Title")}</label>
                                 <input
                                   type="text"
                                   placeholder="e.g. Taxi to ministry"
@@ -579,7 +579,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                                 />
                               </div>
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("justification / rationale")}</label>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">{t("justification / rationale")}</label>
                                 <input
                                   type="text"
                                   placeholder="e.g. Urgent transport"
@@ -589,7 +589,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                                 />
                               </div>
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Target Project mapping")}</label>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">{t("Target Project mapping")}</label>
                                 <select
                                   required
                                   value={dailyProject}
@@ -603,7 +603,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Budget line mapping")}</label>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">{t("Budget line mapping")}</label>
                                 <select
                                   value={dailyBudgetLine}
                                   onChange={(e) => setDailyBudgetLine(e.target.value)}
@@ -616,7 +616,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                                 </select>
                               </div>
                               <div>
-                                <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Contractor / Vendor")}</label>
+                                <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">{t("Contractor / Vendor")}</label>
                                 <select
                                   value={dailyVendor}
                                   onChange={(e) => setDailyVendor(e.target.value)}
@@ -630,7 +630,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                               </div>
                               <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                  <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Currency")}</label>
+                                  <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">{t("Currency")}</label>
                                   <select
                                     value={dailyCurrency}
                                     onChange={(e) => setDailyCurrency(e.target.value as any)}
@@ -642,7 +642,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                                   </select>
                                 </div>
                                 <div>
-                                  <label className="block text-[9px] font-bold text-slate-550 uppercase mb-1">{t("Amount")}</label>
+                                  <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">{t("Amount")}</label>
                                   <input
                                     type="number"
                                     required

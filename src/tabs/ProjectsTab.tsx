@@ -722,7 +722,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                     </div>
                     <p className="text-xs text-slate-500">Region Origin: {d.country}</p>
                     <p className="text-xs text-slate-500">{d.contactEmail}</p>
-                    <div className="mt-3 p-2 bg-slate-50 border border-slate-105 rounded text-[11px] text-slate-600 leading-relaxed italic">
+                    <div className="mt-3 p-2 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 leading-relaxed italic">
                       ℹ️ {d.notes}
                     </div>
                   </div>
@@ -761,7 +761,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                     <div className="space-y-1.5">
                       {rows.sort((a, b) => (b.overdue - a.overdue) || ((a.next?.dueDate || "9999").localeCompare(b.next?.dueDate || "9999"))).map(r => (
                         <button key={r.p.id} type="button" onClick={() => { setSelectedProjectId(r.p.id); setProjectWorkspaceTab("folder"); }}
-                          className={`w-full text-start flex flex-wrap items-center gap-3 p-2 rounded border text-xs transition-all hover:border-slate-350 ${r.overdue ? "bg-red-50 border-red-200" : "bg-white border-slate-200"}`}>
+                          className={`w-full text-start flex flex-wrap items-center gap-3 p-2 rounded border text-xs transition-all hover:border-slate-300 ${r.overdue ? "bg-red-50 border-red-200" : "bg-white border-slate-200"}`}>
                           <span className="font-mono font-bold text-[10px] bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{r.p.code}</span>
                           <span className="text-slate-600 shrink-0">{r.done}/{r.total} done</span>
                           {r.overdue > 0 && <span className="text-red-700 font-bold shrink-0">{r.overdue} overdue</span>}
@@ -908,7 +908,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                       </select>
                     </div>
                     <div className="flex items-end">
-                      <button type="submit" className="w-full bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">
+                      <button type="submit" className="w-full bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">
                         Register Project Grant
                       </button>
                     </div>
@@ -934,7 +934,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                       <div
                         key={proj.id}
                         onClick={() => setSelectedProjectId(selectedProjectId === proj.id ? null : proj.id)}
-                        className={`p-5 bg-white border rounded-xl shadow-sm cursor-pointer transition-all duration-200 ${isSelected ? "ring-2 ring-red-600 border-transparent bg-red-50/10" : "border-slate-200 hover:border-slate-350 hover:shadow-md"
+                        className={`p-5 bg-white border rounded-xl shadow-sm cursor-pointer transition-all duration-200 ${isSelected ? "ring-2 ring-red-600 border-transparent bg-red-50/10" : "border-slate-200 hover:border-slate-300 hover:shadow-md"
                           }`}
                       >
                         <div className="flex justify-between items-start mb-2">
@@ -1411,7 +1411,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                           {isShared && <span className="text-[9px] text-amber-600 font-normal ms-1">({alloc.percentage}%)</span>}
                                         </span>
                                       </div>
-                                      <p className="text-[10px] text-slate-650">{exp.title}</p>
+                                      <p className="text-[10px] text-slate-600">{exp.title}</p>
                                       <div className="flex justify-between items-center text-[9px] text-slate-400">
                                         <span>Status: {exp.status}</span>
                                         {docAttached ? (
@@ -1564,7 +1564,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           {/* Report configuration filters */}
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col md:flex-row items-center justify-between gap-4 print:hidden">
                             <div className="flex items-center gap-3">
-                              <label className="text-xs font-bold text-slate-650 uppercase">{t("Select Reporting Month:")}</label>
+                              <label className="text-xs font-bold text-slate-600 uppercase">{t("Select Reporting Month:")}</label>
                               <input
                                 type="month"
                                 value={reconMonth}
@@ -1602,7 +1602,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           <div id="reconciliation-print-report" className="bg-white border-2 border-slate-200 p-8 rounded-xl space-y-6 shadow-inner print-report print:border-0 print:p-0 print:exact-colors">
 
                             {/* Standardized professional header */}
-                            <div className="text-center border-b-2 border-slate-350 pb-4 space-y-1">
+                            <div className="text-center border-b-2 border-slate-300 pb-4 space-y-1">
                               <h1 className="text-lg font-bold uppercase tracking-wider text-slate-900">AnaHon Media Platform</h1>
                               <p className="text-[11px] font-mono text-slate-500 uppercase tracking-widest">Tripoli, Lebanon • Financial Control & Sinking Fund Division</p>
                               <h2 className="text-sm font-bold text-red-650 uppercase bg-red-50 inline-block px-3 py-1 rounded-full mt-2 font-mono">
@@ -1669,7 +1669,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                     <div className="overflow-hidden border border-slate-200 rounded-lg">
                                       <table className="w-full text-start text-xs border-collapse">
                                         <thead className="bg-slate-100">
-                                          <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
+                                          <tr className="border-b border-slate-200 font-mono text-slate-600 uppercase font-bold text-[10px]">
                                             <th className="px-4 py-2">Account Line</th>
                                             <th className="px-4 py-2">Category Description</th>
                                             <th className="px-4 py-2 text-end hidden md:table-cell">Allocated Pool (USD)</th>
@@ -1725,7 +1725,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                     <div className="overflow-hidden border border-slate-200 rounded-lg">
                                       <table className="w-full text-start text-xs border-collapse">
                                         <thead className="bg-slate-100">
-                                          <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
+                                          <tr className="border-b border-slate-200 font-mono text-slate-600 uppercase font-bold text-[10px]">
                                             <th className="px-4 py-2 hidden md:table-cell">Statement Date</th>
                                             <th className="px-4 py-2">Voucher / Ref</th>
                                             <th className="px-4 py-2">Transaction Memo</th>
@@ -1808,14 +1808,14 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                     </p>
 
                                     {hasPersonnelLines && (
-                                      <p className="text-[10px] text-red-750 bg-red-50 border border-red-150 rounded px-3 py-1.5 text-center font-mono font-bold">
+                                      <p className="text-[10px] text-red-700 bg-red-50 border border-red-200 rounded px-3 py-1.5 text-center font-mono font-bold">
                                         📋 DYNAMIC AUDIT DISCLOSURE: Timesheet evidence strictly attached for all payroll allocations.
                                       </p>
                                     )}
 
                                     <div className="grid grid-cols-2 gap-12 pt-6">
                                       <div className="text-center space-y-12">
-                                        <div className="font-mono text-xs border-b border-slate-350 pb-2 mx-6 italic text-slate-600">
+                                        <div className="font-mono text-xs border-b border-slate-300 pb-2 mx-6 italic text-slate-600">
                                           {financeOfficerName}
                                         </div>
                                         <div>
@@ -1825,7 +1825,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                       </div>
 
                                       <div className="text-center space-y-12">
-                                        <div className="font-mono text-xs border-b border-slate-350 pb-2 mx-6 italic text-slate-400">
+                                        <div className="font-mono text-xs border-b border-slate-300 pb-2 mx-6 italic text-slate-400">
                                           [Signature Box]
                                         </div>
                                         <div>

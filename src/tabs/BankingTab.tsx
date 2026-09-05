@@ -58,7 +58,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
               {FINANCE.includes(currentUser.role) && (
                 <form onSubmit={handleBankReconcile} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                   <div className="md:col-span-2">
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Target Account Vault Drawer")}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Target Account Vault Drawer")}</label>
                     <select
                       value={recBank}
                       onChange={(e) => setRecBank(e.target.value)}
@@ -71,7 +71,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Transaction Type")}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Transaction Type")}</label>
                     <select
                       value={recType}
                       onChange={(e) => setRecType(e.target.value as "Deposit" | "Withdrawal")}
@@ -82,7 +82,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Statement Entry Memo")}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Statement Entry Memo")}</label>
                     <input
                       type="text"
                       placeholder="e.g. Bank charge ref 3381"
@@ -92,7 +92,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Statement Amount")}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Statement Amount")}</label>
                     <input
                       type="number"
                       placeholder="Raw Currency value"
@@ -101,7 +101,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                       className="finance-input w-full font-mono"
                     />
                   </div>
-                  <button type="submit" className="bg-slate-900 hover:bg-slate-955 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
+                  <button type="submit" className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
                     Acknowledge Statement Item
                   </button>
                 </form>

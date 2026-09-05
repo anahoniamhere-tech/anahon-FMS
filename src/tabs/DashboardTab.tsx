@@ -218,14 +218,14 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                     const percentageSpent = p.budgetUSD > 0 ? Math.min(100, ((spent + committed) / p.budgetUSD) * 100) : 0;
 
                     return (
-                      <div key={p.id} className="p-4 rounded-lg bg-slate-50 border border-slate-105">
+                      <div key={p.id} className="p-4 rounded-lg bg-slate-50 border border-slate-200">
                         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 mb-2">
                           <div>
                             <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold font-mono me-2">{p.code}</span>
                             <span className="text-sm font-bold text-slate-900">{p.name}</span>
                           </div>
                           <div className="text-xs font-mono text-slate-500">
-                            Total Limit: {formatUSD(p.budgetUSD)} | Burn rate (actual + committed): <span className="font-bold text-slate-850">{percentageSpent.toFixed(1)}%</span>
+                            Total Limit: {formatUSD(p.budgetUSD)} | Burn rate (actual + committed): <span className="font-bold text-slate-800">{percentageSpent.toFixed(1)}%</span>
                           </div>
                         </div>
 

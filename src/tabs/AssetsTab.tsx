@@ -65,7 +65,7 @@ export default function AssetsTab({ currentUser, formatUSD, refreshState, state,
               {SUPPLIER_EDITORS.includes(currentUser.role) && (
                 <form onSubmit={handleCapitalizeAsset} className="p-4 bg-white border border-slate-200 rounded-lg grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Asset Name / Model")}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Asset Name / Model")}</label>
                     <input
                       type="text"
                       placeholder="e.g. Sony FX6 camera"
@@ -75,7 +75,7 @@ export default function AssetsTab({ currentUser, formatUSD, refreshState, state,
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Acquisition Cost USD")}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Acquisition Cost USD")}</label>
                     <input
                       type="number"
                       placeholder="Amount"
@@ -85,7 +85,7 @@ export default function AssetsTab({ currentUser, formatUSD, refreshState, state,
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Vessel Project funding")}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Vessel Project funding")}</label>
                     <select
                       value={assetProject}
                       onChange={(e) => setAssetProject(e.target.value)}
@@ -98,7 +98,7 @@ export default function AssetsTab({ currentUser, formatUSD, refreshState, state,
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Useful Life (Years)")}</label>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Useful Life (Years)")}</label>
                     <select
                       value={assetLife}
                       onChange={(e) => setAssetLife(e.target.value)}

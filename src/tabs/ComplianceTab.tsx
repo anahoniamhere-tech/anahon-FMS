@@ -198,7 +198,7 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
                   <select
                     value={auditType}
                     onChange={(e) => setAuditType(e.target.value)}
-                    className="bg-slate-950 text-xs px-3 py-2 rounded text-white border border-slate-800 outline-none flex-1 font-mono hover:bg-slate-1000"
+                    className="bg-slate-950 text-xs px-3 py-2 rounded text-white border border-slate-800 outline-none flex-1 font-mono hover:bg-slate-900"
                   >
                     <option value="Donor Guidelines check (EU commitment checks)">EU co-funding & restricted lines audit</option>
                     <option value="Statutory Lebanese Civil Co. Tax compliance">Lebanese MoF Chapter 3 payroll tax checks</option>
@@ -232,14 +232,14 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
 
               {/* Audit actions logs list registry */}
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-850 font-mono">Audit Log Traceability Archive</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 font-mono">Audit Log Traceability Archive</h4>
                 <div className="divide-y divide-slate-100 text-xs font-mono max-h-60 overflow-y-auto">
                   {state.auditLogs.map(log => (
                     <div key={log.id} className="py-2.5 flex justify-between items-start gap-3 hover:bg-slate-50">
                       <div>
                         <span className="font-bold text-slate-900">[{log.userName}]</span>
                         <span className="text-slate-800 ps-2">{log.action}:</span>
-                        <span className="text-slate-650 ps-1">"{log.details}"</span>
+                        <span className="text-slate-600 ps-1">"{log.details}"</span>
                       </div>
                       <span className="text-slate-400 font-normal shrink-0">{(log.timestamp.split("T")[1] || log.timestamp).replace("Z", "")}</span>
                     </div>

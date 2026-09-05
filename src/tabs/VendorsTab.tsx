@@ -500,7 +500,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                 <table className="w-full text-start">
                   <thead className="bg-slate-100">
-                    <tr className="border-b border-sub-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
+                    <tr className="border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
                       <th className="px-6 py-3">Vendor Account</th>
                       <th className="px-6 py-3">Primary Category</th>
                       <th className="px-6 py-3 hidden md:table-cell">Tax Registry ID</th>
@@ -515,7 +515,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                       <tr className="hover:bg-slate-50">
                         <td className="px-6 py-4">
                           <p className="font-bold text-slate-900">{v.name}</p>
-                          <span className="text-[11px] text-slate-550 font-mono">{v.contact}</span>
+                          <span className="text-[11px] text-slate-500 font-mono">{v.contact}</span>
                           <button
                             type="button"
                             onClick={() => setPartyFileFor(partyFileFor === v.id ? null : v.id)}
@@ -618,14 +618,14 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                       <div className="md:col-span-2">
-                        <label htmlFor="sa-role" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Role / scope of services")}</label>
+                        <label htmlFor="sa-role" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Role / scope of services")}</label>
                         <input id="sa-role" type="text" placeholder={`e.g. Field logistics & volunteer coordination (blank = "${v.category}")`}
                           value={contractForm.role}
                           onChange={(e) => setContractForm({ ...contractForm, role: e.target.value })}
                           className="finance-input w-full text-xs" />
                       </div>
                       <div>
-                        <label htmlFor="sa-project" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Project")}</label>
+                        <label htmlFor="sa-project" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Project")}</label>
                         <select id="sa-project" required value={contractForm.projectId}
                           onChange={(e) => setContractForm({ ...contractForm, projectId: e.target.value })}
                           className="finance-input w-full text-xs">
@@ -636,31 +636,31 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                         </select>
                       </div>
                       <div>
-                        <label htmlFor="sa-start" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Start")}</label>
+                        <label htmlFor="sa-start" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Start")}</label>
                         <input id="sa-start" type="date" required value={contractForm.startDate}
                           onChange={(e) => setContractForm({ ...contractForm, startDate: e.target.value })}
                           className="finance-input w-full text-xs" />
                       </div>
                       <div>
-                        <label htmlFor="sa-end" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("End")}</label>
+                        <label htmlFor="sa-end" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("End")}</label>
                         <input id="sa-end" type="date" required value={contractForm.endDate}
                           onChange={(e) => setContractForm({ ...contractForm, endDate: e.target.value })}
                           className="finance-input w-full text-xs" />
                       </div>
                       <div>
-                        <label htmlFor="sa-fee" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Fee per period (USD)")}</label>
+                        <label htmlFor="sa-fee" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Fee per period (USD)")}</label>
                         <input id="sa-fee" type="number" step="0.01" required value={contractForm.monthlyFee}
                           onChange={(e) => setContractForm({ ...contractForm, monthlyFee: e.target.value })}
                           className="finance-input w-full font-mono text-xs" />
                       </div>
                       <div>
-                        <label htmlFor="sa-total" className="block text-[10px] font-bold text-slate-650 uppercase mb-1">{t("Agreement Total (USD)")}</label>
+                        <label htmlFor="sa-total" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Agreement Total (USD)")}</label>
                         <input id="sa-total" type="number" step="0.01" required value={contractForm.contractTotal}
                           onChange={(e) => setContractForm({ ...contractForm, contractTotal: e.target.value })}
                           className="finance-input w-full font-mono text-xs" />
                       </div>
                       <button type="submit" disabled={contractBusy}
-                        className="bg-slate-900 hover:bg-slate-955 disabled:opacity-50 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all min-h-[44px]">
+                        className="bg-slate-900 hover:bg-slate-950 disabled:opacity-50 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all min-h-[44px]">
                         {contractBusy ? "Generating…" : "Generate agreement"}
                       </button>
                     </div>

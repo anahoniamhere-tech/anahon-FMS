@@ -1001,7 +1001,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
 
                         {/* Audit Trail Timeline and Internal conversations */}
                         {expComments.length > 0 && (
-                          <div className="p-3 bg-slate-50 border border-slate-105 rounded-lg space-y-1">
+                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
                             <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Ledger Internal Auditor audit trails</span>
                             {expComments.map((c) => (
                               <div key={c.id} className="text-[11px] leading-relaxed">
