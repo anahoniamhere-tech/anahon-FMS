@@ -410,6 +410,8 @@ export const AR: Record<string, string> = {
   "no WhatsApp number on file": "لا يوجد رقم واتساب في الملف",
   "Employment started": "بدأ العمل في",
   "When this person joined. The agreement's own period is set on the agreement.": "تاريخ التحاق الشخص بالعمل. أمّا مدة الاتفاق فتُحدَّد على الاتفاق نفسه.",
+  "Signs in as": "يسجّل الدخول بـ",
+  "The account that may open this person's own file, payslips and timesheets.": "الحساب الذي يمكنه فتح ملف هذا الشخص وقسائم راتبه وكشوف دوامه.",
   "Full salary": "الراتب الكامل",
   "allowance": "بدل",
   "The rate set by the yearly agreement — paid only through a subcontract, at the level of effort that project funds.": "المعدّل الذي يحدّده الاتفاق السنوي — لا يُدفع إلا عبر عقد فرعي، وبنسبة الجهد التي يموّلها ذلك المشروع.",

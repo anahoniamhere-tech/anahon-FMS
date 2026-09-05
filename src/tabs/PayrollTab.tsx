@@ -32,6 +32,30 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
   // falls back to what is on file and the Save button only appears once it differs.
   const [phoneDraft, setPhoneDraft] = useState<{ [empId: string]: string }>({});
   const [startDraft, setStartDraft] = useState<{ [empId: string]: string }>({});
+  const [loginDraft, setLoginDraft] = useState<{ [empId: string]: string }>({});
+
+  const saveLogin = async (empId: string) => {
+    try {
+      const res = await fetch("/api/employees/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: empId, userEmail: loginDraft[empId] ?? "", user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to save the login.");
+      // Say whether the address actually reaches an account: recording one before the person
+      // has signed in is allowed, and silence about it is how a mismatch survives unnoticed.
+      triggerToast(
+        !d.userEmail ? "Self-service login removed."
+          : d.account ? `Linked to ${d.account.name} (${d.account.role})${d.account.active ? "" : " — that account is deactivated"}.`
+            : "Saved — but no account signs in with that address yet.",
+        d.userEmail && !d.account ? "error" : undefined as any);
+      setLoginDraft(prev => { const next = { ...prev }; delete next[empId]; return next; });
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
 
   const saveStartDate = async (empId: string) => {
     try {
@@ -356,6 +380,32 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                                 </button>
                               )}
                               <span className="text-[10px] text-slate-500">{t("When this person joined. The agreement's own period is set on the agreement.")}</span>
+                              <div className="flex w-full flex-wrap items-center gap-2">
+                                <label htmlFor={`emp-login-${emp.id}`} className="text-[10px] font-bold uppercase text-slate-500">
+                                  {t("Signs in as")}
+                                </label>
+                                <input
+                                  id={`emp-login-${emp.id}`}
+                                  type="email"
+                                  dir="ltr"
+                                  placeholder="name@example.com"
+                                  value={loginDraft[emp.id] ?? emp.userEmail ?? ""}
+                                  onChange={e => setLoginDraft({ ...loginDraft, [emp.id]: e.target.value })}
+                                  className="finance-input w-64 font-mono text-xs"
+                                />
+                                {(loginDraft[emp.id] ?? emp.userEmail ?? "") !== (emp.userEmail ?? "") && (
+                                  <button
+                                    type="button"
+                                    onClick={() => saveLogin(emp.id)}
+                                    className="rounded bg-slate-900 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-slate-950"
+                                  >
+                                    {t("Save")}
+                                  </button>
+                                )}
+                                <span className="text-[10px] text-slate-500">
+                                  {t("The account that may open this person's own file, payslips and timesheets.")}
+                                </span>
+                              </div>
                             </div>
                           ) : emp.startDate ? (
                             <p className="mt-1.5 text-[11px] text-slate-500">

@@ -956,6 +956,53 @@ app.post("/api/employees/phone", async (req, res) => {
   }
 });
 
+/* Which login is this person's, for self-service.
+ *
+ * This is a privilege grant, not a contact detail: the address written here is what lets
+ * someone open that employee's personnel file, payslips and timesheets as their own. Two
+ * of these have been wrong so far (Ahmad, then Marwan) for the same reason — the register
+ * form never captured a login, so every employee is created with none and somebody has to
+ * remember afterwards. HR sets it on the card now, and the audit line names both addresses.
+ */
+app.post("/api/employees/login", async (req, res) => {
+  try {
+    const { employeeId, userEmail, user } = req.body;
+    if (!HR.includes(user?.role || "")) {
+      return res.status(403).json({ error: "Needs the master account or the HR / Payroll Officer." });
+    }
+    const target = await prisma.employee.findUnique({ where: { id: employeeId } });
+    if (!target) return res.status(404).json({ error: "Employee not found." });
+    const raw = String(userEmail ?? "").trim();
+    if (raw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
+      return res.status(400).json({ error: "That is not an e-mail address." });
+    }
+    // Stored canonically, the same way accounts are, so Gmail's many spellings of one
+    // mailbox cannot make the record and the sign-in disagree again.
+    const next = raw ? canonEmail(raw) : "";
+    if (next) {
+      // Two employees sharing one address would each hand the other their payslips.
+      const clash = (await prisma.employee.findMany()).find(
+        e => e.id !== employeeId && e.userEmail && canonEmail(e.userEmail) === next);
+      if (clash) {
+        return res.status(400).json({ error: `${clash.name} already signs in with that address. Clear it there first — one address is one person.` });
+      }
+    }
+    await prisma.employee.update({ where: { id: employeeId }, data: { userEmail: next } });
+    await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", "Sign-In Address Changed",
+      `${target.name}: self-service login ${next ? `set to ${next}` : "removed"}` +
+      `${target.userEmail ? ` (was ${target.userEmail})` : ""}. This is what lets that person open their own personnel file, payslips and timesheets.`);
+    // Recording an address before the account exists is legitimate — a new hire is often
+    // registered before their first sign-in — so this reports, it does not refuse.
+    const account = next ? await findUserByEmail(next) : null;
+    res.json({
+      success: true, userEmail: next,
+      account: account ? { name: account.name, role: account.role, active: account.active } : null
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* When employment began.
  *
  * Its own route rather than a field on the phone one: the phone is personnel-file data

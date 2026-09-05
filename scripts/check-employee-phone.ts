@@ -133,5 +133,29 @@ ok("the route checks the calendar, not just the shape", server.includes('asDate.
 ok("and guards the throw, so a wrong month is a 400 and not a 500", server.includes("!Number.isNaN(asDate.getTime())"));
 ok("clearing it is allowed, and audit-logged as such", /Employment Start Date (Set|Cleared)/.test(server));
 
+console.log("\nH. which login belongs to which employee");
+// Twice now the employee record and the sign-in have disagreed (Ahmad, then Marwan), because
+// the register form never captured a login: every employee is created with none. This is not a
+// contact detail — the address written here is what lets someone open that employee's personnel
+// file, payslips and timesheets as their own.
+ok("HR sets it, and gates.ts says so", gates.includes('"/api/employees/login": HR'));
+ok("the route enforces that itself",
+  /app\.post\("\/api\/employees\/login"[\s\S]{0,400}HR\.includes\(user\?\.role \|\| ""\)/.test(server));
+ok("it is stored canonically, so Gmail's spellings cannot split one person again",
+  /const next = raw \? canonEmail\(raw\) : "";/.test(server));
+ok("two employees may not share one address", server.includes("already signs in with that address"));
+ok("clearing it is allowed", server.includes('"removed"') || server.includes(': "removed"'));
+ok("the audit line names the old address as well as the new",
+  server.includes("Sign-In Address Changed") && server.includes("(was ${target.userEmail})"));
+ok("and says what the address grants, not just that it changed",
+  server.includes("open their own personnel file, payslips and timesheets"));
+// Recording an address before the person's first sign-in is legitimate; saying nothing about it
+// is how a mismatch survives unnoticed, so the answer reports whether an account exists.
+ok("the reply says whether any account actually signs in with it",
+  /const account = next \? await findUserByEmail\(next\) : null;/.test(server));
+ok("the card warns when it reaches no account",
+  payroll.includes("no account signs in with that address yet"));
+ok("and names the account when it does", payroll.includes("d.account.name"));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
