@@ -8,7 +8,7 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
-import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml} from "./docgen.js";
+import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS } from "./src/roles.js";
@@ -1823,7 +1823,23 @@ app.post("/api/contracts/generate", async (req, res) => {
       (await prisma.user.findFirst({ where: { role: "Finance Officer", active: true } }));
 
     const kindVal = forcedKind || (kind === "Service" ? "Service" : "Employment");
-    const reference = `${project?.code || "ANH"}-${kindVal === "Service" ? "SA" : "EC"}-${party.name.split(/\s+/).map((n: string) => n[0]).join("").toUpperCase()}-${startDate.slice(0, 7)}`;
+    // Employment + a project is a subcontract: the yearly framework contract names no project
+    // and carries no money, and each project that funds the role is contracted separately.
+    // Derived, never stored — a flag could disagree with the project field beside it.
+    const isSub = kindVal === "Employment" && !!project;
+    const reference = `${project?.code || "ANH"}-${kindVal === "Service" ? "SA" : isSub ? "SC" : "EC"}-${party.name.split(/\s+/).map((n: string) => n[0]).join("").toUpperCase()}-${startDate.slice(0, 7)}`;
+
+    // The framework contract this subcontract sits under: the same person's most recent
+    // project-less employment contract. `undefined` would mean "not looked for"; we always
+    // look, so the value is a reference or null, and the document says which.
+    let parentReference: string | null = null;
+    if (isSub) {
+      const parent = await prisma.appDoc.findFirst({
+        where: { category: "Contracts", partyId: partyKey, linkedRecordId: "GENERAL" },
+        orderBy: { created_at: "desc" }
+      });
+      parentReference = parent ? referenceOfContractDoc(parent.id, partyKey) : null;
+    }
 
     const html = contractHtml({
       party, project, account, role, kind: kindVal as "Employment" | "Service",
@@ -1831,7 +1847,7 @@ app.post("/api/contracts/generate", async (req, res) => {
       startDate, endDate,
       loePct: loePct === undefined || loePct === null || loePct === "" ? undefined : Number(loePct),
       monthlyFee: Number(monthlyFee), contractTotal: Number(contractTotal),
-      budgetLine, reference
+      budgetLine, reference, parentReference
     });
 
     const filename = `${reference}_${party.name.replace(/\s+/g, "_")}.html`;
@@ -1850,13 +1866,13 @@ app.post("/api/contracts/generate", async (req, res) => {
       user?.id || "u-1",
       user?.name || "Super Admin",
       "Contract Generated",
-      `Generated ${kindVal === "Service" ? "service agreement" : "employment contract"} ${reference} for ` +
+      `Generated ${kindVal === "Service" ? "service agreement" : isSub ? "subcontract" : "yearly framework employment contract"} ${reference} for ` +
       `${party.name} (${party.position})${employeeId ? " [employee]" : " [service provider]"}` +
-      `${project ? ` on ${project.code}` : ""}: ${monthlyFee} USD, total ${contractTotal} USD, ` +
+      `${project ? ` on ${project.code}` : ""}${isSub ? ` under framework contract ${parentReference || "NONE ON FILE"}` : ""}: ${monthlyFee} USD, total ${contractTotal} USD, ` +
       `${startDate} to ${endDate}. Unsigned — requires countersignature before it has effect.`
     );
 
-    res.json({ success: true, reference, filename, pointer, kind: kindVal, docId: `doc-contract-${reference}-${partyKey}` });
+    res.json({ success: true, reference, filename, pointer, kind: kindVal, isSub, parentReference, docId: `doc-contract-${reference}-${partyKey}` });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

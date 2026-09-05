@@ -428,7 +428,9 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                             from the authorised signatories on record. Never backdate — issue a dated addendum instead (Policy §6.8).
                             {" "}Leave the project as “None” and the fee and total at 0 for the <b>yearly framework contract</b>: it
                             establishes the engagement and reads “no fixed value; each engagement is contracted separately per
-                            project”. Name a project and put the money in for the subcontract that actually pays.
+                            project”. Name a project and enter the money and you get a <b>Subcontract</b> instead — its own title,
+                            an <span dir="ltr">-SC-</span> reference, and a clause citing the framework contract it sits under.
+                            If that person has no framework contract yet, the subcontract says so on its face.
                           </p>
                         </form>
                       )}

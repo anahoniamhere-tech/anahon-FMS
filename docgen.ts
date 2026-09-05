@@ -138,6 +138,19 @@ function expenseMethod(e: any) {
  * a contract is a signed instrument and an invented number in one is a real liability.
  * Signatory names come from the database, never hardcoded.
  */
+/**
+ * Recover a contract's own reference from the document id the contract route writes:
+ * `doc-contract-<reference>-<partyId>`. Read back rather than stored a second time, and
+ * read from the id rather than the filename — a filename is editable and a reference is
+ * not something to guess at on an instrument that cites it.
+ */
+export const referenceOfContractDoc = (docId: string, partyId: string): string | null => {
+  const head = "doc-contract-", tail = `-${partyId}`;
+  if (!docId.startsWith(head) || !docId.endsWith(tail)) return null;
+  const ref = docId.slice(head.length, docId.length - tail.length);
+  return ref || null;
+};
+
 export function contractHtml(o: {
   /** The counterparty: an Employee (employment) or a Vendor (service agreement). */
   party: { name: string; position: string; paymentMethod?: string; bankInfo?: string; taxId?: string };
@@ -147,9 +160,24 @@ export function contractHtml(o: {
   kind: "Employment" | "Service";
   startDate: string; endDate: string; loePct?: number; monthlyFee: number; contractTotal: number;
   budgetLine?: any; reference: string;
+  /**
+   * The yearly framework contract this subcontract sits under, when one exists. Undefined
+   * means the caller did not look; null means it looked and there is none on file — the
+   * document says which, because "we could not find one" and "there is none" are different
+   * things to sign. Ignored unless this is a subcontract.
+   */
+  parentReference?: string | null;
 }) {
-  const { party: emp, project: p, account, countersignatory, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLine, reference } = o;
+  const { party: emp, project: p, account, countersignatory, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLine, reference, parentReference } = o;
   const isService = kind === "Service";
+  /**
+   * A subcontract is an employment engagement that names a project. Nothing new is stored
+   * to say so: under the model Saad set on 5 Sep 2026 the yearly contract names no project
+   * and carries no money, and every project that funds the role is contracted separately —
+   * so "employment + a project" IS the subcontract, and a flag would only be a second
+   * version of that fact, free to disagree with it.
+   */
+  const isSub = !isService && !!p;
   /**
    * A yearly framework contract carries no money of its own: it establishes the engagement,
    * and each project that funds the role is contracted separately. Printing "$0.00" as the
@@ -163,7 +191,7 @@ export function contractHtml(o: {
   // instrument rather than hiding the row, so the deduction is never a surprise.
   const taxId = String(emp.taxId ?? "").trim();
   const registered = !!taxId && !/^n\/a$/i.test(taxId);
-  const title = isService ? "SERVICE AGREEMENT" : "EMPLOYMENT CONTRACT";
+  const title = isService ? "SERVICE AGREEMENT" : isSub ? "SUBCONTRACT" : "EMPLOYMENT CONTRACT";
 
   const row = (k: string, v: string) => `<tr><th scope="row">${esc(k)}</th><td>${v}</td></tr>`;
 
@@ -175,7 +203,10 @@ export function contractHtml(o: {
 ${row("Reference", esc(reference))}
 ${row(isService ? "Service Provider" : "Employee", esc(emp.name))}
 ${row(isService ? "Role / Scope of Services" : "Position / Role", esc(roleText))}
-${row("Contract Type", esc(kind))}
+${row("Contract Type", esc(isSub ? "Subcontract — employment, for one project" : kind))}
+${isSub ? row("Under framework contract", parentReference
+      ? esc(parentReference)
+      : "<strong>None on file</strong> — no yearly framework contract has been issued to this person yet") : ""}
 ${row("Period", `${esc(longDate(startDate))} to ${esc(longDate(endDate))}`)}
 ${loePct ? row("Level of Effort", `${esc(loePct)}%`) : ""}
 ${monthlyFee ? row(isService ? "Fee per period" : "Monthly Fee", esc(money(monthlyFee))) : ""}
@@ -197,7 +228,11 @@ ${row("Paid From", account
 
 <h2 style="margin-top:22px;color:#1a1a1a;font-size:13px"><strong>1. Engagement</strong></h2>
 <p>AnaHon Media Platform engages ${esc(emp.name)} as <b>${esc(roleText)}</b>${p ? ` on project ${esc(p.code)} — ${esc(p.name)}` : ""}
-for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.</p>
+for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.${isSub
+      ? parentReference
+        ? ` This subcontract is made under the yearly framework contract <b>${esc(parentReference)}</b> between AnaHon Media Platform and ${esc(emp.name)}, which establishes the engagement but carries no remuneration of its own. This subcontract carries the remuneration for this project only, and governs for this project where the two differ. It ends with the period above; the framework contract continues.`
+        : ` <b>No yearly framework contract is on file for ${esc(emp.name)}.</b> Under AnaHon's engagement model this subcontract should sit under one; until it is issued, this document stands alone and is the whole of the engagement it describes.`
+      : ""}</p>
 
 <h2 style="color:#1a1a1a;font-size:13px"><strong>2. ${isService ? "Fees" : "Remuneration"}</strong></h2>
 <p>${loePct ? `The engagement is at a <b>${esc(loePct)}% level of effort</b>. ` : ""}${monthlyFee
