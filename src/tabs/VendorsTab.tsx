@@ -29,6 +29,30 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
 
   const [newVendorContact, setNewVendorContact] = useState("");
 
+  // The WhatsApp number, separate from `contact` — that field is free text and holds
+  // "N/A" on most rows, so nothing can be dialled from it without guessing.
+  const [newVendorPhone, setNewVendorPhone] = useState("");
+
+  // Edits in progress, per supplier row. Nothing is sent until the number actually changes.
+  const [phoneDraft, setPhoneDraft] = useState<Record<string, string>>({});
+
+  const saveVendorPhone = async (vendorId: string, vendorName: string) => {
+    try {
+      const res = await fetch("/api/vendors/phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vendorId, phone: phoneDraft[vendorId] ?? "", user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      triggerToast(data.phone ? `WhatsApp number saved for ${vendorName}.` : `WhatsApp number removed from ${vendorName}.`);
+      setPhoneDraft(d => { const { [vendorId]: _drop, ...rest } = d; return rest; });
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
   // Marking a vendor engageable permits a signed agreement in their name, so it asks for
   // a reason and is audit-logged. Turning it off needs no reason.
   const handleSetEngageable = async (vendorId: string, vendorName: string, engageable: boolean) => {
@@ -111,6 +135,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
           taxId: newVendorTaxId,
           bankInfo: newVendorBankInfo,
           contact: newVendorContact,
+          phone: newVendorPhone,
           engageable: newVendorEngageable,
           user: currentUser
         })
@@ -122,6 +147,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
         setNewVendorTaxId("");
         setNewVendorBankInfo("");
         setNewVendorContact("");
+        setNewVendorPhone("");
         setNewVendorEngageable(false);
         refreshState();
       } else {
@@ -471,6 +497,21 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                       />
                     </div>
                     <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("WhatsApp")}</label>
+                      <input
+                        type="tel"
+                        dir="ltr"
+                        inputMode="tel"
+                        placeholder="+9613123456"
+                        value={newVendorPhone}
+                        onChange={(e) => setNewVendorPhone(e.target.value)}
+                        className="finance-input w-full font-mono text-xs"
+                      />
+                      <span className="text-[10px] text-slate-500">
+                        {t("Full international form, starting with + and the country code.")}
+                      </span>
+                    </div>
+                    <div>
                       <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Bank Account / Payment Details")}</label>
                       <input
                         type="text"
@@ -516,6 +557,39 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                         <td className="px-6 py-4">
                           <p className="font-bold text-slate-900">{v.name}</p>
                           <span className="text-[11px] text-slate-500 font-mono">{v.contact}</span>
+                          {/* The WhatsApp number sits on the supplier record itself, where the
+                              rest of the supplier's details already are — a vendor is ordinary
+                              organisational data, so whoever can read this row can read the
+                              number, and gates.ts already says who may change it. No second
+                              role list: that is how a rule drifts away from the one it copied. */}
+                          {SUPPLIER_EDITORS.includes(currentUser.role) ? (
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <label htmlFor={`ven-phone-${v.id}`} className="text-[9px] font-bold uppercase text-slate-400">
+                                {t("WhatsApp")}
+                              </label>
+                              <input
+                                id={`ven-phone-${v.id}`}
+                                type="tel"
+                                dir="ltr"
+                                inputMode="tel"
+                                placeholder="+9613123456"
+                                value={phoneDraft[v.id] ?? v.phone ?? ""}
+                                onChange={e => setPhoneDraft({ ...phoneDraft, [v.id]: e.target.value })}
+                                className="finance-input w-40 font-mono text-[11px] py-0.5"
+                              />
+                              {(phoneDraft[v.id] ?? v.phone ?? "") !== (v.phone ?? "") && (
+                                <button
+                                  type="button"
+                                  onClick={() => saveVendorPhone(v.id, v.name)}
+                                  className="rounded bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-slate-950"
+                                >
+                                  {t("Save")}
+                                </button>
+                              )}
+                            </div>
+                          ) : v.phone ? (
+                            <span dir="ltr" className="mt-1 block text-[11px] font-mono text-slate-500">💬 {v.phone}</span>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => setPartyFileFor(partyFileFor === v.id ? null : v.id)}

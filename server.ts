@@ -109,7 +109,7 @@ const CREW_ALLOWED_POSTS = new Set([
 const PLO_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
   "/api/procurement/new", "/api/procurement/waiver-inline",
-  "/api/vendors/new", "/api/vendors/payment-doc",
+  "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone",
   "/api/expense/new", "/api/expense/scan-invoice",
   "/api/document/upload", "/api/materials/link",
   "/api/assets/register",
@@ -1873,6 +1873,33 @@ app.post("/api/vendors/engageable", async (req, res) => {
       `${reason ? `. Reason: ${reason}` : ""}.`
     );
     res.json({ success: true, vendorId, engageable: next });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The WhatsApp number on a supplier record. Deliberately NOT the shape of
+// /api/employees/phone: a supplier is ordinary organisational data, so there is no
+// record-level rule to ask — whoever may edit the supplier register may correct the
+// number, and gates.ts says who that is (SUPPLIER_EDITORS), exactly as it does for
+// every other field on this record. The same format rule as the personnel one, because
+// waLink() is the same function on the other side: a number the route accepts but the
+// link refuses is a button that is permanently dead.
+app.post("/api/vendors/phone", async (req, res) => {
+  try {
+    const { vendorId, phone, user } = req.body;
+    const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
+    if (!vendor) return res.status(404).json({ error: "Vendor not found." });
+    const next = String(phone ?? "").replace(/[\s()-]/g, "");
+    if (next && !/^\+[1-9]\d{7,14}$/.test(next)) {
+      return res.status(400).json({ error: "Write the number in full international form, starting with + and the country code — e.g. +9613123456." });
+    }
+    await prisma.vendor.update({ where: { id: vendorId }, data: { phone: next } });
+    // The digits stay out of the log, the same way the personnel one keeps them out:
+    // the audit log is read by seats that have no business collecting contact details.
+    await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", next ? "Vendor Phone Set" : "Vendor Phone Cleared",
+      `WhatsApp number ${next ? (vendor.phone ? "changed" : "recorded") : "removed"} on the supplier record of ${vendor.name}.`);
+    res.json({ success: true, phone: next });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

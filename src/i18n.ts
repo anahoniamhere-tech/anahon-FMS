@@ -407,6 +407,7 @@ export const AR: Record<string, string> = {
   "Full international form, starting with + and the country code.": "بالصيغة الدولية الكاملة، تبدأ بـ + ورمز الدولة.",
   "timesheet": "كشف الدوام",
   "Nudge": "تذكير",
+  "Tell the supplier": "أبلغ المورّد",
   "no WhatsApp number on file": "لا يوجد رقم واتساب في الملف",
   "Employment started": "بدأ العمل في",
   "When this person joined. The agreement's own period is set on the agreement.": "تاريخ التحاق الشخص بالعمل. أمّا مدة الاتفاق فتُحدَّد على الاتفاق نفسه.",

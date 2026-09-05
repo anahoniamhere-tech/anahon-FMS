@@ -69,6 +69,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // ---- Suppliers and things we own -----------------------------------------
   "/api/vendors/new": SUPPLIER_EDITORS,
   "/api/vendors/engageable": SUPPLIER_EDITORS,
+  "/api/vendors/phone": SUPPLIER_EDITORS,
   "/api/vendors/payment-doc": SUPPLIER_EDITORS,
   "/api/vendor/scan": SUPPLIER_EDITORS,
   "/api/subscriptions/save": SUPPLIER_EDITORS,

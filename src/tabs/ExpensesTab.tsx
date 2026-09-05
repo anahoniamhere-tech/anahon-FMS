@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { selfDealingRequester } from "../selfDealing";
 import { Search } from "lucide-react";
 import { Procurement, Project, Vendor } from "../types";
-import { SharedProps } from "./shared";
+import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import Info from "../Info";
 import { DIRECTORS, FINANCE, REQUESTERS } from "../roles";
 import { withTicket } from "../docTicket";
@@ -939,6 +939,43 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                               🖨️ Post to double-entry general ledger
                             </button><Info id="expense-post" lang={lang} /></>
                           )}
+
+                          {/* The money has left; the supplier does not know it. Nothing here
+                              sends anything — the link opens WhatsApp with the message written
+                              and a person presses Send. No role of its own: whoever the screen
+                              already lets see this paid voucher may tell the payee about it.
+                              A direct reimbursement has no supplier row, so no button. */}
+                          {["Paid", "Posted"].includes(exp.status) && vendor && (() => {
+                            const first = vendor.name.split(/\s+/)[0];
+                            // What actually left the account, in the currency it left in —
+                            // the gross would overstate it wherever WHT was withheld.
+                            const net = exp.netAmount || ((exp.amount || 0) - (exp.whtAmount || 0));
+                            const link = waLink(vendor.phone || "", WA_TEMPLATES["supplier-paid"](t, {
+                              name: first,
+                              voucherNo: exp.voucherNo || "",
+                              amount: `${net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${exp.currency}`,
+                              date: exp.paid_at || exp.created_at || "",
+                            }));
+                            return link ? (
+                              <a
+                                href={link}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={t("Opens WhatsApp with the message ready — you press Send.")}
+                                className="inline-flex min-h-[44px] items-center justify-center rounded bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100 md:min-h-0"
+                              >
+                                💬 {t("Tell the supplier")} — {first}
+                              </a>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled
+                                className="inline-flex min-h-[44px] cursor-not-allowed items-center justify-center rounded bg-slate-100 px-3 py-1.5 text-[11px] font-semibold text-slate-500 md:min-h-0"
+                              >
+                                💬 {t("Tell the supplier")} — {t("no WhatsApp number on file")}
+                              </button>
+                            );
+                          })()}
 
                           {/* Render voucher PDF details */}
                           <div className="ms-auto text-xs text-slate-500 font-mono flex items-center gap-1 flex-wrap justify-end">
