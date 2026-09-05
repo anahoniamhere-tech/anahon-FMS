@@ -116,6 +116,21 @@ export default function MyDeskTab({
     } catch (e: any) { triggerToast(e.message); } finally { setBusy(null); }
   };
 
+  /** Take one of my calendars off my desk. Mine only — the server refuses anyone else's. */
+  const disconnectCalendar = async (label: string) => {
+    setBusy("cal");
+    try {
+      const r = await fetch("/api/calendar/disconnect", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label, user: currentUser }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || t("Could not remove the calendar."));
+      triggerToast(`${t("Removed")}: ${label}`);
+      await loadCalendar();
+    } catch (e: any) { triggerToast(e.message); } finally { setBusy(null); }
+  };
+
   /** Mint or replace my own calendar address. Always mine, whatever the role. */
   const makeFeed = async () => {
     setBusy("feed");
@@ -568,6 +583,12 @@ export default function MyDeskTab({
               {(cal.calendars || []).map(name => (
                 <span key={name} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">
                   <span className={`h-1.5 w-1.5 rounded-full ${calColour(name)}`} /> {name}
+                  <button
+                    onClick={() => disconnectCalendar(name)}
+                    disabled={busy === "cal"}
+                    title={t("Take this calendar off my desk")}
+                    className="ml-0.5 rounded-full px-1 text-slate-400 hover:bg-red-50 hover:text-[#E23B3B] disabled:opacity-40"
+                  >×</button>
                 </span>
               ))}
               {(
