@@ -471,7 +471,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
               {m.attendees.map(id => (
                 <span key={id} className="bg-slate-200 text-slate-700 rounded-full px-2 py-0.5 text-[10px]">{nameOf(id)}</span>
               ))}
-              <span className="ml-auto flex gap-1.5">
+              <span className="ms-auto flex gap-1.5">
                 <button
                   title={t("Add to Google Calendar")}
                   onClick={() => window.open(gcalUrl(
@@ -650,7 +650,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
           <div className="mt-3 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
             <span className="font-bold uppercase text-[10px]">{t("Previous meetings")}:</span>{" "}
             {pastMtgs.map(m => (
-              <span key={m.id} className="mr-3 font-mono">{m.date} ({t(m.kind)}){m.direction ? ` — ${m.direction.slice(0, 60)}${m.direction.length > 60 ? "…" : ""}` : ""}</span>
+              <span key={m.id} className="me-3 font-mono">{m.date} ({t(m.kind)}){m.direction ? ` — ${m.direction.slice(0, 60)}${m.direction.length > 60 ? "…" : ""}` : ""}</span>
             ))}
           </div>
         )}
@@ -695,7 +695,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
               <p className="text-slate-400 italic">Describe the idea — angle, who it serves, and paste any reference links, photos or videos. The desk will sharpen it and draft the assignment.</p>
             )}
             {chat.messages.map((m, i) => (
-              <div key={i} className={`p-2.5 rounded-lg whitespace-pre-wrap ${m.role === "user" ? "bg-red-600/20 border border-red-600/30 ml-8" : "bg-slate-800 border border-slate-700 mr-8"}`}>
+              <div key={i} className={`p-2.5 rounded-lg whitespace-pre-wrap ${m.role === "user" ? "bg-red-600/20 border border-red-600/30 ms-8" : "bg-slate-800 border border-slate-700 me-8"}`}>
                 {m.text}
               </div>
             ))}
@@ -815,7 +815,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                     const attached = chat.materials.some(x => x.url === m.url);
                     return (
                       <button key={i} onClick={() => useInIdeaDesk(m)} disabled={attached} title={`${m.label}${m.note ? ` — ${m.note}` : ""}`}
-                        className={`border rounded overflow-hidden text-left ${attached ? "border-emerald-600 opacity-60" : "border-slate-700 hover:border-slate-500"}`}>
+                        className={`border rounded overflow-hidden text-start ${attached ? "border-emerald-600 opacity-60" : "border-slate-700 hover:border-slate-500"}`}>
                         {m.kind === "photo" ? (
                           <img src={m.url} alt={m.label} className="h-12 w-full object-cover bg-slate-800"
                             onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
@@ -840,7 +840,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                 className="flex-1 min-w-[140px] bg-slate-950 text-xs px-3 py-1.5 rounded text-white border border-slate-800 outline-none" />
               <input type="file" aria-label={t("Upload material")}
                 onChange={e => { const f = e.target.files?.[0]; if (f) uploadChatFile(f); e.target.value = ""; }}
-                className="text-[10px] text-slate-400 file:bg-slate-800 file:text-white file:border-0 file:rounded file:px-3 file:py-1.5 file:text-xs file:mr-2 file:cursor-pointer" />
+                className="text-[10px] text-slate-400 file:bg-slate-800 file:text-white file:border-0 file:rounded file:px-3 file:py-1.5 file:text-xs file:me-2 file:cursor-pointer" />
               <span className="text-[9px] text-slate-500">{t("or drag files anywhere onto this panel")} → vault · Reference Material{chat.pendingFile ? ` · 👁 ${chat.pendingFile.filename} will be shown to the model` : ""}</span>
             </div>
           </div>
@@ -973,7 +973,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {libVisible.map((m, i) => (
                 <div key={i} className="border border-slate-200 rounded-lg overflow-hidden hover:border-slate-400 hover:shadow-sm transition-all flex flex-col">
-                  <button onClick={() => openMaterial(m)} className="text-left" title={t("Open")}>
+                  <button onClick={() => openMaterial(m)} className="text-start" title={t("Open")}>
                     {m.kind === "photo" ? (
                       <img src={m.url} alt={m.label} className="h-24 w-full object-cover bg-slate-100"
                         onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
@@ -1074,12 +1074,12 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                       className="text-sky-700 text-[10px] font-bold underline" title={item.websiteUrl}>🔗 {t("View on website")}</a>
                   )}
                   {item.retractedAt && <span className="text-red-700 text-[10px] font-bold" title={item.retractReason}>⛔ {t("Retracted from website")} {item.retractedAt.slice(0, 10)}</span>}
-                  <span className="ml-auto text-slate-500 font-mono">{nameOf(item.assigneeUserId)}{item.dueDate ? ` · ${item.dueDate}` : ""}</span>
+                  <span className="ms-auto text-slate-500 font-mono">{nameOf(item.assigneeUserId)}{item.dueDate ? ` · ${item.dueDate}` : ""}</span>
                 </div>
 
                 {open && (
                   <div
-                    className="mt-3 ml-1 pl-3 border-l-2 border-slate-200 space-y-3"
+                    className="mt-3 ms-1 ps-3 border-s-2 border-slate-200 space-y-3"
                     onDragOver={e => e.preventDefault()}
                     onDrop={e => {
                       e.preventDefault();
@@ -1242,7 +1242,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                               </div>
                               <div className="space-y-1.5 max-h-64 overflow-y-auto text-[11px]">
                                 {studio.messages.map((m, i) => (
-                                  <div key={i} className={`p-2 rounded whitespace-pre-wrap ${m.role === "user" ? "bg-red-600/20 border border-red-600/30 ml-6" : "bg-slate-800 border border-slate-700 mr-6"}`}>{m.text}</div>
+                                  <div key={i} className={`p-2 rounded whitespace-pre-wrap ${m.role === "user" ? "bg-red-600/20 border border-red-600/30 ms-6" : "bg-slate-800 border border-slate-700 me-6"}`}>{m.text}</div>
                                 ))}
                                 {studio.busy && <p className="text-slate-400 animate-pulse text-[10px]">Producing…</p>}
                               </div>
@@ -1315,7 +1315,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                           <h5 className="font-bold text-amber-700 uppercase text-[10px] mb-1">
                             ⓘ {t("Facts still to verify")} ({facts.length})
                           </h5>
-                          <ul className="text-[11px] text-slate-600 list-disc ml-4">
+                          <ul className="text-[11px] text-slate-600 list-disc ms-4">
                             {facts.map((f, i) => <li key={i}>{f}</li>)}
                           </ul>
                           <p className="text-[9px] text-slate-400 mt-0.5">{t("Each becomes a source entry below once confirmed (Policy 005).")}</p>
@@ -1421,7 +1421,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                               <button onClick={async () => {
                                 const reason = window.prompt(t("Why is this piece being retracted from the website? (public record)"));
                                 if (reason) await post("/api/content/retract", { id: item.id, reason }, "Retracted from the website");
-                              }} className="ml-2 border border-red-300 text-red-700 rounded px-3 py-1.5 hover:bg-red-50">⛔ {t("Retract from website")}</button>
+                              }} className="ms-2 border border-red-300 text-red-700 rounded px-3 py-1.5 hover:bg-red-50">⛔ {t("Retract from website")}</button>
                             )}
                           </div>
                         )}
@@ -1471,7 +1471,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                       )}
                     </div>
                     {item.status === "Approved" && blockers.length > 0 && (
-                      <ul className="text-[10px] text-red-600 list-disc ml-4">
+                      <ul className="text-[10px] text-red-600 list-disc ms-4">
                         {blockers.map((b, i) => <li key={i}>{b}</li>)}
                       </ul>
                     )}

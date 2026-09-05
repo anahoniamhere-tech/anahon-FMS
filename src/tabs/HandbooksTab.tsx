@@ -36,7 +36,7 @@ export default function HandbooksTab({ openDoc, state }: SharedProps) {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {books.map(({ d, no }) => (
                     <button key={d.id} onClick={() => openDoc(d)}
-                      className="text-left p-4 bg-white border border-slate-200 rounded-xl hover:border-red-300 hover:shadow-md transition flex items-start gap-3">
+                      className="text-start p-4 bg-white border border-slate-200 rounded-xl hover:border-red-300 hover:shadow-md transition flex items-start gap-3">
                       <span className="text-lg leading-none pt-0.5">📘</span>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-slate-900 truncate">{pretty(d.filename)}</p>

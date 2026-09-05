@@ -58,7 +58,7 @@ export default function RoleSwitch({ currentUser, onChange }: { currentUser: any
       <Info id="acting-as" />
 
       {open && (
-        <div className="absolute right-0 z-50 mt-2 w-96 rounded-lg border border-slate-200 bg-white p-3 text-slate-800 shadow-xl">
+        <div className="absolute end-0 z-50 mt-2 w-96 rounded-lg border border-slate-200 bg-white p-3 text-slate-800 shadow-xl">
           <p className="mb-2 text-xs text-slate-500">
             Pick a seat to stand in. Every action you take is recorded against your own name
             <em> and</em> the seat, so the record never suggests two people were involved.
@@ -74,7 +74,7 @@ export default function RoleSwitch({ currentUser, onChange }: { currentUser: any
           {vacant.length === 0 && <div className="px-1 pb-2 text-xs text-slate-400">Every role has someone in it.</div>}
           {vacant.map(s => (
             <button key={s.role} onClick={() => pick(s.role)}
-              className={`mb-1 flex w-full items-center justify-between rounded border px-2 py-1.5 text-left text-xs hover:border-red-400 ${acting === s.role ? "border-red-500 bg-red-50" : "border-slate-200"}`}>
+              className={`mb-1 flex w-full items-center justify-between rounded border px-2 py-1.5 text-start text-xs hover:border-red-400 ${acting === s.role ? "border-red-500 bg-red-50" : "border-slate-200"}`}>
               <span className="font-semibold">{seatName(s.role)}</span>
               <span className="text-[10px] text-emerald-700">nobody in this seat</span>
             </button>
@@ -85,7 +85,7 @@ export default function RoleSwitch({ currentUser, onChange }: { currentUser: any
               <div className="mb-1 mt-3 text-[10px] font-bold uppercase tracking-wider text-slate-400">Seats someone else holds</div>
               {filled.map(s => (
                 <button key={s.role} onClick={() => pick(s.role)}
-                  className={`mb-1 flex w-full items-center justify-between rounded border px-2 py-1.5 text-left text-xs hover:border-amber-400 ${acting === s.role ? "border-amber-500 bg-amber-50" : "border-slate-200"}`}>
+                  className={`mb-1 flex w-full items-center justify-between rounded border px-2 py-1.5 text-start text-xs hover:border-amber-400 ${acting === s.role ? "border-amber-500 bg-amber-50" : "border-slate-200"}`}>
                   <span className="font-semibold">{seatName(s.role)}</span>
                   <span className="text-[10px] text-amber-700">bypasses {s.holders.join(", ")}</span>
                 </button>

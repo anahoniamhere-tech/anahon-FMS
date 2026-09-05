@@ -338,7 +338,7 @@ export default function MyDeskTab({
           <p className="text-[13px] leading-snug text-slate-900">
             {i.verb && <span className="font-semibold">{t(i.verb)} · </span>}
             {i.title}
-            {long && <ChevronRight className={`ml-1 inline h-3 w-3 shrink-0 text-slate-400 transition-transform ${isOpen ? "rotate-90" : ""}`} />}
+            {long && <ChevronRight className={`ms-1 inline h-3 w-3 shrink-0 text-slate-400 transition-transform ${isOpen ? "rotate-90" : "rtl:rotate-180"}`} />}
           </p>
           <p className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-slate-500">
             {door && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{t(door.label)}</span>}
@@ -447,8 +447,8 @@ export default function MyDeskTab({
   return (
     <div className="space-y-5">
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#4A1010] via-[#6D1A1A] to-[#4A1010] px-5 py-4 text-white shadow-md">
-        <div className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full bg-[#E23B3B]/20 blur-2xl" />
-        <div className="pointer-events-none absolute -bottom-16 -left-8 h-40 w-40 rounded-full bg-[#F88888]/20 blur-2xl" />
+        <div className="pointer-events-none absolute -end-10 -top-14 h-40 w-40 rounded-full bg-[#E23B3B]/20 blur-2xl" />
+        <div className="pointer-events-none absolute -bottom-16 -start-8 h-40 w-40 rounded-full bg-[#F88888]/20 blur-2xl" />
         <div className="relative flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <img src="/assets/images/anahon_logo.png" alt="" className="h-10 w-auto drop-shadow" />
@@ -470,7 +470,7 @@ export default function MyDeskTab({
       {justDone && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5">
           <p className="min-w-0 text-[12px] text-emerald-900">
-            <CheckCircle2 className="mr-1.5 inline h-3.5 w-3.5" />
+            <CheckCircle2 className="me-1.5 inline h-3.5 w-3.5" />
             {t("Marked done")}: <span className="font-semibold">{justDone.title}</span>
           </p>
           <button
@@ -478,7 +478,7 @@ export default function MyDeskTab({
             disabled={busy === justDone.id}
             className="shrink-0 rounded-lg border border-emerald-300 bg-white px-3 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
           >
-            <Undo2 className="mr-1 inline h-3 w-3" /> {t("Undo")}
+            <Undo2 className="me-1 inline h-3 w-3" /> {t("Undo")}
           </button>
         </div>
       )}
@@ -504,7 +504,7 @@ export default function MyDeskTab({
                     <button
                       key={d.navKey}
                       onClick={() => handleNavClick(d.navKey)}
-                      className="flex min-h-[84px] flex-col items-start justify-between rounded-xl border border-[#E6D3CA] bg-white p-3 text-left shadow-sm transition-colors hover:border-[#6D1A1A] hover:bg-[#E23B3B]/[0.04]"
+                      className="flex min-h-[84px] flex-col items-start justify-between rounded-xl border border-[#E6D3CA] bg-white p-3 text-start shadow-sm transition-colors hover:border-[#6D1A1A] hover:bg-[#E23B3B]/[0.04]"
                     >
                       <span className="flex w-full items-center justify-between">
                         <span className="text-[#6D1A1A]">{d.icon}</span>
@@ -617,7 +617,7 @@ export default function MyDeskTab({
                     onClick={() => disconnectCalendar(name)}
                     disabled={busy === "cal"}
                     title={t("Take this calendar off my desk")}
-                    className="ml-0.5 rounded-full px-1 text-slate-400 hover:bg-red-50 hover:text-[#E23B3B] disabled:opacity-40"
+                    className="ms-0.5 rounded-full px-1 text-slate-400 hover:bg-red-50 hover:text-[#E23B3B] disabled:opacity-40"
                   >×</button>
                 </span>
               ))}
@@ -681,7 +681,7 @@ export default function MyDeskTab({
                   <button
                     key={key}
                     onClick={() => setPickedDay(isPicked ? null : key)}
-                    className={`min-h-[62px] bg-white p-1 text-left align-top transition-colors hover:bg-slate-50 ${isPicked ? "ring-2 ring-inset ring-[#6D1A1A]" : ""}`}
+                    className={`min-h-[62px] bg-white p-1 text-start align-top transition-colors hover:bg-slate-50 ${isPicked ? "ring-2 ring-inset ring-[#6D1A1A]" : ""}`}
                   >
                     <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${isToday ? "bg-[#6D1A1A] text-white" : "text-slate-600"}`}>
                       {d.getDate()}
@@ -923,7 +923,7 @@ export default function MyDeskTab({
                 <button
                   key={d.id}
                   onClick={() => openDoc(d)}
-                  className="flex w-full items-center gap-3 border-b border-slate-100 py-2 text-left last:border-0 hover:bg-white/70"
+                  className="flex w-full items-center gap-3 border-b border-slate-100 py-2 text-start last:border-0 hover:bg-white/70"
                 >
                   <span className="w-36 shrink-0 text-[10px] font-bold uppercase tracking-wide text-[#8f2020]">{d.category}</span>
                   <span className="flex-1 truncate text-[13px] text-slate-800">{d.filename}</span>
@@ -967,13 +967,13 @@ export default function MyDeskTab({
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <button
             onClick={() => setShowDone(v => !v)}
-            className="flex w-full items-center justify-between gap-2 text-left"
+            className="flex w-full items-center justify-between gap-2 text-start"
           >
             <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" /> {t("Done")}
               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{done.length}</span>
             </h3>
-            <ChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${showDone ? "rotate-90" : ""}`} />
+            <ChevronRight className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${showDone ? "rotate-90" : "rtl:rotate-180"}`} />
           </button>
 
           {showDone && (
@@ -988,7 +988,7 @@ export default function MyDeskTab({
                     disabled={busy === x.id || !(x.assigneeUserId ? x.assigneeUserId === currentUser?.id || isDirector : isDirector)}
                     className="shrink-0 rounded-lg border border-slate-300 px-2 py-0.5 text-[10px] font-bold text-slate-600 hover:border-[#6D1A1A] hover:text-[#6D1A1A] disabled:opacity-50"
                   >
-                    <Undo2 className="mr-1 inline h-3 w-3" /> {t("Reopen")}
+                    <Undo2 className="me-1 inline h-3 w-3" /> {t("Reopen")}
                   </button>
                 </div>
               ))}

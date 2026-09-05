@@ -462,6 +462,23 @@ export interface EditorialMeeting {
   created_at: string;
 }
 
+/** An event or engagement — attended or delivered. `projectId` is empty for the many that belong to none. */
+export interface Engagement {
+  id: string;
+  title: string;
+  kind: string;
+  ourPart: string;
+  org: string;
+  place: string;
+  startDate: string;
+  endDate: string;
+  stream: string;
+  projectId?: string;
+  outcome: string;
+  notes: string;
+  created_at: string;
+}
+
 export interface NetworkContact {
   id: string;
   name: string;
@@ -474,6 +491,8 @@ export interface NetworkContact {
   links: string;
   kind: string;
   metAt: string;
+  /** The engagement record, when the meeting has one; metAt stays as the label otherwise. */
+  engagementId?: string;
   metOn: string;
   stream: string;
   followUp: string;
@@ -530,6 +549,7 @@ export interface DatabaseState {
   clients: Client[];
   quotations: Quotation[];
   networkContacts: NetworkContact[];
+  engagements: Engagement[];
   tools: Tool[];
   orgSettings: OrgSettings;
   fxRates: { EUR: number; LBP: number };

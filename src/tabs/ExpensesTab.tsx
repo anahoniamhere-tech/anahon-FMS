@@ -721,10 +721,10 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                         )}
                         <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-100 pb-3 gap-2">
                           <div>
-                            <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold font-mono mr-2">{exp.voucherNo || "PV-N/A"}</span>
+                            <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold font-mono me-2">{exp.voucherNo || "PV-N/A"}</span>
                             <span className="text-md font-bold text-slate-900">{exp.title || "Untitled Disbursement"}</span>
                           </div>
-                          <div className="text-right">
+                          <div className="text-end">
                             <span className="text-[10px] block text-slate-500 uppercase">Val USD Equivalent</span>
                             <span className="text-lg font-bold font-mono text-slate-950">{formatUSD(exp.convertedAmount || 0)}</span>
                           </div>
@@ -744,7 +744,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             <p className="font-semibold text-slate-800">
                               {vendor ? vendor.name : "Direct Reimbursement"}
                               {vendor && vendor.category && (
-                                <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-mono border ${(vendor.category || "").toLowerCase().includes("consultant") || (vendor.category || "").toLowerCase().includes("freelance") ? "bg-amber-100 text-amber-800 border-amber-200" :
+                                <span className={`ms-2 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider font-mono border ${(vendor.category || "").toLowerCase().includes("consultant") || (vendor.category || "").toLowerCase().includes("freelance") ? "bg-amber-100 text-amber-800 border-amber-200" :
                                     (vendor.category || "").toLowerCase().includes("service") ? "bg-indigo-100 text-indigo-800 border-indigo-200" :
                                       "bg-slate-100 text-slate-700 border-slate-200"
                                   }`}>
@@ -796,7 +796,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                         <span className="text-[10px] text-slate-400 block">Budget Line Mapping</span>
                                         <span className="font-bold text-slate-700">{allocBl ? allocBl.code : "Unrestricted Line"}</span>
                                       </div>
-                                      <div className="text-right">
+                                      <div className="text-end">
                                         <span className="text-[10px] text-slate-400 block">Split Amount</span>
                                         <span className="font-bold text-slate-900">{(alloc.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
                                       </div>
@@ -941,7 +941,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                           )}
 
                           {/* Render voucher PDF details */}
-                          <div className="ml-auto text-xs text-slate-500 font-mono flex items-center gap-1 flex-wrap justify-end">
+                          <div className="ms-auto text-xs text-slate-500 font-mono flex items-center gap-1 flex-wrap justify-end">
                             {expInvoices.length
                               ? `📄 Invoice secured${expInvoices.length > 1 ? ` (${expInvoices.length})` : ""}`
                               : "⚠️ Invoice required to close"}
@@ -1006,7 +1006,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             {expComments.map((c) => (
                               <div key={c.id} className="text-[11px] leading-relaxed">
                                 <span className="font-bold text-slate-800">{c.author}:</span>
-                                <span className="text-slate-600 pl-1">"{c.text}"</span>
+                                <span className="text-slate-600 ps-1">"{c.text}"</span>
                               </div>
                             ))}
                           </div>

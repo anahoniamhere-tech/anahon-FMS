@@ -121,7 +121,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                         {state.bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name} ({b.currency})</option>)}
                       </select>
                       <input value={bankSearch} onChange={e => { setBankSearch(e.target.value); setBankShown(50); }} placeholder="Search description / voucher…" className="finance-input text-xs flex-1 min-w-40" />
-                      <span className="text-[11px] text-slate-500 ml-auto">{filtered.length} entries · statement-verified</span>
+                      <span className="text-[11px] text-slate-500 ms-auto">{filtered.length} entries · statement-verified</span>
                     </div>
                     <div className="max-h-[560px] overflow-y-auto">
                       {/* Mobile: stacked cards instead of a squeezed table */}
@@ -143,14 +143,14 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                           );
                         })}
                       </div>
-                      <table className="w-full text-left hidden md:table">
+                      <table className="w-full text-start hidden md:table">
                         <thead className="bg-slate-100 sticky top-0 z-10">
                           <tr className="border-b border-slate-200 text-[10px] font-bold text-slate-600 uppercase tracking-wider font-mono">
                             <th className="px-4 py-2.5 w-28">Date</th>
                             <th className="px-4 py-2.5 w-32">Voucher</th>
                             <th className="px-4 py-2.5 w-40 hidden md:table-cell">Account</th>
                             <th className="px-4 py-2.5 hidden md:table-cell">Description</th>
-                            <th className="px-4 py-2.5 text-right w-40">Amount</th>
+                            <th className="px-4 py-2.5 text-end w-40">Amount</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs font-sans">
@@ -165,7 +165,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                                   : <span className="text-slate-400">bank stmt</span>}</td>
                                 <td className="px-4 py-2 text-slate-600 hidden md:table-cell whitespace-nowrap">{ba?.name.replace("BLOM Business Plus ", "BLOM ")}</td>
                                 <td className="px-4 py-2 text-slate-700 hidden md:table-cell">{tx.description}</td>
-                                <td className={`px-4 py-2 text-right font-mono font-bold whitespace-nowrap ${isOut ? "text-red-600" : "text-emerald-700"}`}>
+                                <td className={`px-4 py-2 text-end font-mono font-bold whitespace-nowrap ${isOut ? "text-red-600" : "text-emerald-700"}`}>
                                   {isOut ? "−" : "+"}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {ba?.currency}
                                 </td>
                               </tr>

@@ -508,13 +508,13 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                               <span>No financial logs recorded for this day on {selectedAccount?.name}.</span>
                             </div>
                           ) : (
-                            <table className="w-full text-left">
+                            <table className="w-full text-start">
                               <thead className="bg-slate-100 font-mono text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-200">
                                 <tr>
                                   <th className="px-4 py-3">Reference No</th>
                                   <th className="px-4 py-3">Description / Purpose</th>
                                   <th className="px-4 py-3 hidden md:table-cell">Type</th>
-                                  <th className="px-4 py-3 text-right">Amount</th>
+                                  <th className="px-4 py-3 text-end">Amount</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-100 text-xs font-sans">
@@ -540,7 +540,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                                           {t.type}
                                         </span>
                                       </td>
-                                      <td className={`px-4 py-4 text-right font-mono font-bold ${t.type === "Deposit" ? "text-emerald-600" : "text-slate-900"
+                                      <td className={`px-4 py-4 text-end font-mono font-bold ${t.type === "Deposit" ? "text-emerald-600" : "text-slate-900"
                                         }`}>
                                         {t.type === "Deposit" ? "+" : "-"} {t.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
                                       </td>

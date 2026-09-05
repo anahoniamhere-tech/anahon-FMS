@@ -134,8 +134,8 @@ export default function IcontentInvPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col relative overflow-hidden font-sans">
       {/* Background ambient lighting */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-red-900/10 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-900/10 blur-[120px] pointer-events-none" />
+      <div className="absolute top-[-10%] start-[-10%] w-[50%] h-[50%] rounded-full bg-red-900/10 blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] end-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-900/10 blur-[120px] pointer-events-none" />
 
       {/* Elegant Header */}
       <header className="sticky top-0 z-40 bg-slate-900/75 backdrop-blur-md border-b border-slate-800">
@@ -154,7 +154,7 @@ export default function IcontentInvPage() {
           </div>
           
           <a href="/" className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg transition-all shadow-sm">
-            <ArrowLeft size={14} />
+            <ArrowLeft size={14} className="rtl:rotate-180" />
             Back to Portal
           </a>
         </div>
@@ -174,11 +174,11 @@ export default function IcontentInvPage() {
           
           {/* Quick Stats */}
           <div className="flex flex-wrap items-center gap-3 bg-slate-900/50 backdrop-blur border border-slate-850 rounded-xl p-3">
-            <div className="text-center px-4 border-r border-slate-800">
+            <div className="text-center px-4 border-e border-slate-800">
               <span className="block text-xs text-slate-500 font-mono uppercase">Total Files</span>
               <span className="text-xl font-bold text-white">5</span>
             </div>
-            <div className="text-center px-4 border-r border-slate-800">
+            <div className="text-center px-4 border-e border-slate-800">
               <span className="block text-xs text-slate-500 font-mono uppercase">Archive Size</span>
               <span className="text-xl font-bold text-red-500">1.08 MB</span>
             </div>
@@ -193,13 +193,13 @@ export default function IcontentInvPage() {
         <div className="mb-8 flex flex-col sm:flex-row gap-4 items-center justify-between">
           {/* Search */}
           <div className="relative w-full sm:max-w-md">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+            <Search className="absolute start-3.5 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
             <input
               type="text"
               placeholder="Search images or descriptions..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-900/80 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-650 transition-all font-sans"
+              className="w-full ps-10 pe-4 py-2.5 bg-slate-900/80 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-650 transition-all font-sans"
             />
           </div>
 
@@ -264,7 +264,7 @@ export default function IcontentInvPage() {
                   </div>
                   
                   {/* Image Type Badge */}
-                  <span className="absolute bottom-3 left-3 text-[10px] font-semibold font-mono tracking-wider text-slate-300 bg-slate-900/80 px-2 py-0.5 rounded backdrop-blur">
+                  <span className="absolute bottom-3 start-3 text-[10px] font-semibold font-mono tracking-wider text-slate-300 bg-slate-900/80 px-2 py-0.5 rounded backdrop-blur">
                     {img.type.split(" ")[0]}
                   </span>
                 </div>
@@ -386,7 +386,7 @@ export default function IcontentInvPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-6 right-6 z-55 flex items-center gap-2 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 shadow-2xl text-white text-xs font-mono font-medium"
+            className="fixed bottom-6 end-6 z-55 flex items-center gap-2 rounded-lg bg-slate-900 border border-slate-800 px-4 py-3 shadow-2xl text-white text-xs font-mono font-medium"
           >
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
             <span>{shareToast}</span>
@@ -414,7 +414,7 @@ export default function IcontentInvPage() {
               </div>
 
               {/* Sidebar specifications */}
-              <div className="w-full md:w-80 p-6 border-t md:border-t-0 md:border-l border-slate-850 flex flex-col justify-between bg-slate-900">
+              <div className="w-full md:w-80 p-6 border-t md:border-t-0 md:border-s border-slate-850 flex flex-col justify-between bg-slate-900">
                 <div className="space-y-4">
                   <div className="flex justify-between items-start gap-4">
                     <h3 className="font-bold text-lg text-white leading-tight">{activeModalImage.title}</h3>

@@ -56,7 +56,7 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
       <h2 className="text-xl font-bold text-slate-900">📣 Social desk</h2>
 
       {/* connection */}
-      <div className={`rounded-lg border-l-4 bg-white p-3 text-xs ${!status ? "border-slate-300" : status.ok ? (t?.canPublishFB && t?.canPublishIG ? "border-emerald-500" : "border-amber-500") : "border-red-500"}`}>
+      <div className={`rounded-lg border-s-4 bg-white p-3 text-xs ${!status ? "border-slate-300" : status.ok ? (t?.canPublishFB && t?.canPublishIG ? "border-emerald-500" : "border-amber-500") : "border-red-500"}`}>
         {!status ? "Checking the connection…" : !status.ok ? (
           <>Not connected: {status.error}<br /><span className="text-slate-500">On the Mac: <code>node scripts/meta-token.mjs &lt;explorer-token&gt;</code> → copy META_PAGE_TOKEN + META_PAGE_ID into the NAS <code>.env</code> → restart the FMS.</span></>
         ) : (
@@ -111,13 +111,13 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
                 <div key={p.id} className="flex gap-3 rounded-lg border border-slate-200 bg-white p-2 text-xs">
                   {img ? <img src={img} alt="" className="h-20 w-28 flex-none rounded object-cover" loading="lazy" /> : <div className="h-20 w-28 flex-none rounded bg-slate-100" />}
                   <div className="min-w-0 flex-1 space-y-1">
-                    <p><span className={`rounded px-1.5 py-0.5 font-bold ${p.kind === "fb" ? "bg-blue-50 text-blue-700" : "bg-pink-50 text-pink-700"}`}>{p.kind === "fb" ? "Facebook" : "Instagram"}</span> <span className="text-slate-500">{(p.created_time || p.timestamp || "").slice(0, 10)}</span>{p.kind === "fb" && p.is_published === false && <span className="ml-1 text-amber-700">· unpublished</span>}</p>
+                    <p><span className={`rounded px-1.5 py-0.5 font-bold ${p.kind === "fb" ? "bg-blue-50 text-blue-700" : "bg-pink-50 text-pink-700"}`}>{p.kind === "fb" ? "Facebook" : "Instagram"}</span> <span className="text-slate-500">{(p.created_time || p.timestamp || "").slice(0, 10)}</span>{p.kind === "fb" && p.is_published === false && <span className="ms-1 text-amber-700">· unpublished</span>}</p>
                     <p className="line-clamp-3" dir="auto">{text}</p>
                     <div className="flex gap-3">
                       {canPost && p.kind === "fb" && <button onClick={() => edit("fb", p.id, p.message || "")} className="text-red-700 underline">edit text</button>}
                       {p.kind === "ig" && <span className="text-slate-400" title="Meta has never exposed caption editing">captions not editable</span>}
                       {canPost && <button onClick={() => remove(p.kind, p.id)} className="text-red-700 underline">delete</button>}
-                      <a href={p.permalink_url || p.permalink} target="_blank" rel="noopener" className="ml-auto text-slate-500 underline">open ↗</a>
+                      <a href={p.permalink_url || p.permalink} target="_blank" rel="noopener" className="ms-auto text-slate-500 underline">open ↗</a>
                     </div>
                   </div>
                 </div>

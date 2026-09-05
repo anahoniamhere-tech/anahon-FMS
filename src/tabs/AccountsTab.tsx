@@ -141,15 +141,15 @@ export default function AccountsTab({ currentUser, setState, state, t, triggerTo
                     </div>
                   ))}
                 </div>
-                <table className="w-full text-left border-collapse hidden md:table">
+                <table className="w-full text-start border-collapse hidden md:table">
                   <thead className="bg-slate-100">
                     <tr className="border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
                       <th className="px-6 py-3">Code / ID</th>
                       <th className="px-6 py-3">Reporting Classification Name</th>
                       <th className="px-6 py-3 hidden md:table-cell">Account Type</th>
                       <th className="px-6 py-3 hidden md:table-cell">Original Currency</th>
-                      <th className="px-6 py-3 text-right">Raw Ledger Balance</th>
-                      <th className="px-6 py-3 text-right hidden md:table-cell">Status</th>
+                      <th className="px-6 py-3 text-end">Raw Ledger Balance</th>
+                      <th className="px-6 py-3 text-end hidden md:table-cell">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm font-sans">
@@ -168,10 +168,10 @@ export default function AccountsTab({ currentUser, setState, state, t, triggerTo
                           </span>
                         </td>
                         <td className="px-6 py-3 font-mono text-slate-600 hidden md:table-cell">{acc.currency}</td>
-                        <td className="px-6 py-3 text-right font-mono font-bold text-slate-900">
+                        <td className="px-6 py-3 text-end font-mono font-bold text-slate-900">
                           {acc.balance.toLocaleString()}
                         </td>
-                        <td className="px-6 py-3 text-right hidden md:table-cell">
+                        <td className="px-6 py-3 text-end hidden md:table-cell">
                           <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                         </td>
                       </tr>

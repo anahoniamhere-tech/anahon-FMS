@@ -29,13 +29,13 @@ export default function Info({ id, lang = "en", className = "" }: { id: string; 
         aria-expanded={open}
         title={entry.q[L]}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(o => !o); }}
-        className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-400 text-[10px] font-bold leading-none text-slate-500 hover:border-red-500 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-300"
+        className="ms-1 inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-400 text-[10px] font-bold leading-none text-slate-500 hover:border-red-500 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-300"
       >i</button>
       {open && (
         <span
           role="dialog"
           dir={L === "ar" ? "rtl" : "ltr"}
-          className="absolute left-0 top-6 z-50 block w-72 rounded-md border border-slate-200 bg-white p-3 text-left text-xs font-normal normal-case leading-relaxed text-slate-700 shadow-xl"
+          className="absolute start-0 top-6 z-50 block w-72 rounded-md border border-slate-200 bg-white p-3 text-start text-xs font-normal normal-case leading-relaxed text-slate-700 shadow-xl"
         >
           <span className="mb-1 block font-semibold text-slate-900">{entry.q[L]}</span>
           <span className="block">{entry.a[L]}</span>

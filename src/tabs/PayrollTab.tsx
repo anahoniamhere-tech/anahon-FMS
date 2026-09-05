@@ -444,15 +444,15 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                         return (
                           <div className="border-t border-slate-100 pt-3">
                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Employment history & financial statement</p>
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="w-full text-start text-xs border-collapse">
                               <thead>
                                 <tr className="text-[10px] text-slate-500 uppercase">
-                                  <th className="py-1 pr-2">Project</th>
-                                  <th className="py-1 pr-2">LOE</th>
-                                  <th className="py-1 pr-2">Period</th>
-                                  <th className="py-1 pr-2 text-right">Months</th>
-                                  <th className="py-1 pr-2 text-right">Payments</th>
-                                  <th className="py-1 text-right">Total paid (USD)</th>
+                                  <th className="py-1 pe-2">Project</th>
+                                  <th className="py-1 pe-2">LOE</th>
+                                  <th className="py-1 pe-2">Period</th>
+                                  <th className="py-1 pe-2 text-end">Months</th>
+                                  <th className="py-1 pe-2 text-end">Payments</th>
+                                  <th className="py-1 text-end">Total paid (USD)</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -462,18 +462,18 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                                   const contractor = !eng[pid] && (paid[pid]?.n || 0) > 0;
                                   return (
                                     <tr key={pid} className="border-t border-slate-100">
-                                      <td className="py-1.5 pr-2 font-semibold">{projName(pid)}</td>
-                                      <td className="py-1.5 pr-2">{eng[pid] ? `${eng[pid].pct}% (payroll)` : contractor ? <span className="text-indigo-700 font-semibold">Contractor · per deliverable</span> : "—"}</td>
-                                      <td className="py-1.5 pr-2 font-mono text-[11px]">{eng[pid] ? `${eng[pid].first} → ${eng[pid].last}` : "—"}</td>
-                                      <td className="py-1.5 pr-2 text-right">{eng[pid]?.months ?? "—"}</td>
-                                      <td className="py-1.5 pr-2 text-right">{paid[pid]?.n ?? 0}</td>
-                                      <td className="py-1.5 text-right font-mono">{formatUSD(paid[pid]?.usd || 0)}</td>
+                                      <td className="py-1.5 pe-2 font-semibold">{projName(pid)}</td>
+                                      <td className="py-1.5 pe-2">{eng[pid] ? `${eng[pid].pct}% (payroll)` : contractor ? <span className="text-indigo-700 font-semibold">Contractor · per deliverable</span> : "—"}</td>
+                                      <td className="py-1.5 pe-2 font-mono text-[11px]">{eng[pid] ? `${eng[pid].first} → ${eng[pid].last}` : "—"}</td>
+                                      <td className="py-1.5 pe-2 text-end">{eng[pid]?.months ?? "—"}</td>
+                                      <td className="py-1.5 pe-2 text-end">{paid[pid]?.n ?? 0}</td>
+                                      <td className="py-1.5 text-end font-mono">{formatUSD(paid[pid]?.usd || 0)}</td>
                                     </tr>
                                   );
                                 })}
                                 <tr className="border-t-2 border-slate-300 font-bold">
-                                  <td className="py-1.5 pr-2" colSpan={5}>Career total (all recorded vouchers)</td>
-                                  <td className="py-1.5 text-right font-mono">{formatUSD(grand)}</td>
+                                  <td className="py-1.5 pe-2" colSpan={5}>Career total (all recorded vouchers)</td>
+                                  <td className="py-1.5 text-end font-mono">{formatUSD(grand)}</td>
                                 </tr>
                               </tbody>
                             </table>

@@ -488,7 +488,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
             padding: 5pt 8pt;
             vertical-align: middle;
           }
-          .text-right {
+          .text-end {
             text-align: right;
           }
           .font-mono {
@@ -761,7 +761,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                     <div className="space-y-1.5">
                       {rows.sort((a, b) => (b.overdue - a.overdue) || ((a.next?.dueDate || "9999").localeCompare(b.next?.dueDate || "9999"))).map(r => (
                         <button key={r.p.id} type="button" onClick={() => { setSelectedProjectId(r.p.id); setProjectWorkspaceTab("folder"); }}
-                          className={`w-full text-left flex flex-wrap items-center gap-3 p-2 rounded border text-xs transition-all hover:border-slate-350 ${r.overdue ? "bg-red-50 border-red-200" : "bg-white border-slate-200"}`}>
+                          className={`w-full text-start flex flex-wrap items-center gap-3 p-2 rounded border text-xs transition-all hover:border-slate-350 ${r.overdue ? "bg-red-50 border-red-200" : "bg-white border-slate-200"}`}>
                           <span className="font-mono font-bold text-[10px] bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{r.p.code}</span>
                           <span className="text-slate-600 shrink-0">{r.done}/{r.total} done</span>
                           {r.overdue > 0 && <span className="text-red-700 font-bold shrink-0">{r.overdue} overdue</span>}
@@ -1201,15 +1201,15 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             return (
                               <div className="border border-slate-200 rounded-lg overflow-x-auto">
                                 <table className="w-full text-[11px]">
-                                  <caption className="text-left text-[10px] text-slate-500 p-2">
+                                  <caption className="text-start text-[10px] text-slate-500 p-2">
                                     Donor activity timetable — imported. Shaded cells are the periods each activity runs in.
                                   </caption>
                                   <thead>
                                     <tr className="bg-slate-50 border-b border-slate-200">
-                                      <th scope="col" className="p-2 text-left w-8">#</th>
-                                      <th scope="col" className="p-2 text-left min-w-[220px]">Activity</th>
+                                      <th scope="col" className="p-2 text-start w-8">#</th>
+                                      <th scope="col" className="p-2 text-start min-w-[220px]">Activity</th>
                                       {cols.map(c => <th key={c} scope="col" className="p-1 text-center font-mono text-[9px] whitespace-nowrap">{c.replace(/\\/g, "/")}</th>)}
-                                      <th scope="col" className="p-2 text-left">Status</th>
+                                      <th scope="col" className="p-2 text-start">Status</th>
                                     </tr>
                                   </thead>
                                   <tbody>
@@ -1408,7 +1408,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         <span className="font-mono font-bold text-slate-700">{exp.voucherNo}</span>
                                         <span className="font-mono font-bold text-slate-900">
                                           {formatUSD(displayedVal * exp.rate)}
-                                          {isShared && <span className="text-[9px] text-amber-600 font-normal ml-1">({alloc.percentage}%)</span>}
+                                          {isShared && <span className="text-[9px] text-amber-600 font-normal ms-1">({alloc.percentage}%)</span>}
                                         </span>
                                       </div>
                                       <p className="text-[10px] text-slate-650">{exp.title}</p>
@@ -1662,20 +1662,20 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                               return (
                                 <>
                                   <div className="space-y-2">
-                                    <h4 className="text-xs font-bold text-slate-900 uppercase font-mono border-l-2 border-red-600 pl-2">
+                                    <h4 className="text-xs font-bold text-slate-900 uppercase font-mono border-s-2 border-red-600 ps-2">
                                       I. Restricted Budget vs. Actual Expenditure Burn
                                     </h4>
 
                                     <div className="overflow-hidden border border-slate-200 rounded-lg">
-                                      <table className="w-full text-left text-xs border-collapse">
+                                      <table className="w-full text-start text-xs border-collapse">
                                         <thead className="bg-slate-100">
                                           <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
                                             <th className="px-4 py-2">Account Line</th>
                                             <th className="px-4 py-2">Category Description</th>
-                                            <th className="px-4 py-2 text-right hidden md:table-cell">Allocated Pool (USD)</th>
-                                            <th className="px-4 py-2 text-right hidden md:table-cell">Spent This Month (USD)</th>
-                                            <th className="px-4 py-2 text-right hidden md:table-cell">Cumulative Spent to Date</th>
-                                            <th className="px-4 py-2 text-right">Remaining Balance / Burn %</th>
+                                            <th className="px-4 py-2 text-end hidden md:table-cell">Allocated Pool (USD)</th>
+                                            <th className="px-4 py-2 text-end hidden md:table-cell">Spent This Month (USD)</th>
+                                            <th className="px-4 py-2 text-end hidden md:table-cell">Cumulative Spent to Date</th>
+                                            <th className="px-4 py-2 text-end">Remaining Balance / Burn %</th>
                                           </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 font-mono">
@@ -1692,10 +1692,10 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                               <tr key={bl.id} className="hover:bg-slate-50 font-medium break-inside-avoid">
                                                 <td className="px-4 py-2 text-slate-800 font-bold">{bl.code}</td>
                                                 <td className="px-4 py-2 text-slate-950 font-sans">{bl.category}</td>
-                                                <td className="px-4 py-2 text-right text-slate-700 hidden md:table-cell">{formatUSD(bl.allocatedUSD)}</td>
-                                                <td className="px-4 py-2 text-right text-red-650 font-bold hidden md:table-cell">{formatUSD(monthSpent)}</td>
-                                                <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(bl.actualUSD)}</td>
-                                                <td className="px-4 py-2 text-right text-slate-900 font-bold">
+                                                <td className="px-4 py-2 text-end text-slate-700 hidden md:table-cell">{formatUSD(bl.allocatedUSD)}</td>
+                                                <td className="px-4 py-2 text-end text-red-650 font-bold hidden md:table-cell">{formatUSD(monthSpent)}</td>
+                                                <td className="px-4 py-2 text-end text-slate-900 hidden md:table-cell">{formatUSD(bl.actualUSD)}</td>
+                                                <td className="px-4 py-2 text-end text-slate-900 font-bold">
                                                   {formatUSD(remaining)} <span className="text-[10px] text-slate-500 font-normal">({burnPercent}%)</span>
                                                 </td>
                                               </tr>
@@ -1703,11 +1703,11 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                           })}
                                           {/* Section I totals row */}
                                           <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid">
-                                            <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-right">TOTAL BUDGET BURN SUMMARY:</td>
-                                            <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(totalAllocated)}</td>
-                                            <td className="px-4 py-2 text-right text-red-600 hidden md:table-cell">{formatUSD(totalSpentThisMonth)}</td>
-                                            <td className="px-4 py-2 text-right text-slate-900 hidden md:table-cell">{formatUSD(totalCumulativeSpent)}</td>
-                                            <td className="px-4 py-2 text-right text-slate-900">
+                                            <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-end">TOTAL BUDGET BURN SUMMARY:</td>
+                                            <td className="px-4 py-2 text-end text-slate-900 hidden md:table-cell">{formatUSD(totalAllocated)}</td>
+                                            <td className="px-4 py-2 text-end text-red-600 hidden md:table-cell">{formatUSD(totalSpentThisMonth)}</td>
+                                            <td className="px-4 py-2 text-end text-slate-900 hidden md:table-cell">{formatUSD(totalCumulativeSpent)}</td>
+                                            <td className="px-4 py-2 text-end text-slate-900">
                                               {formatUSD(totalRemainingBalance)} <span className="text-[10px] text-slate-500 font-normal">({overallBurnRate}%)</span>
                                             </td>
                                           </tr>
@@ -1718,19 +1718,19 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
                                   {/* Section 2: Reconciled Transactions Matched (Section 2.5 verification) */}
                                   <div className="space-y-2">
-                                    <h4 className="text-xs font-bold text-slate-900 uppercase font-mono border-l-2 border-red-600 pl-2">
+                                    <h4 className="text-xs font-bold text-slate-900 uppercase font-mono border-s-2 border-red-600 ps-2">
                                       II. Reconciled Statement Matchings & Cash Flows
                                     </h4>
 
                                     <div className="overflow-hidden border border-slate-200 rounded-lg">
-                                      <table className="w-full text-left text-xs border-collapse">
+                                      <table className="w-full text-start text-xs border-collapse">
                                         <thead className="bg-slate-100">
                                           <tr className="border-b border-slate-200 font-mono text-slate-650 uppercase font-bold text-[10px]">
                                             <th className="px-4 py-2 hidden md:table-cell">Statement Date</th>
                                             <th className="px-4 py-2">Voucher / Ref</th>
                                             <th className="px-4 py-2">Transaction Memo</th>
-                                            <th className="px-4 py-2 text-right hidden md:table-cell">Withholding Tax (WHT)</th>
-                                            <th className="px-4 py-2 text-right">Reconciled Net</th>
+                                            <th className="px-4 py-2 text-end hidden md:table-cell">Withholding Tax (WHT)</th>
+                                            <th className="px-4 py-2 text-end">Reconciled Net</th>
                                           </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 font-mono">
@@ -1749,8 +1749,8 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                                   <td className="px-4 py-2 text-slate-500 hidden md:table-cell">{exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0]}</td>
                                                   <td className="px-4 py-2 text-slate-800 font-bold">{exp.voucherNo}</td>
                                                   <td className="px-4 py-2 text-slate-950 font-sans">{exp.title}</td>
-                                                  <td className="px-4 py-2 text-right text-amber-600 hidden md:table-cell">{formatUSD(whtVal * exp.rate)}</td>
-                                                  <td className="px-4 py-2 text-right text-slate-900 font-bold">{formatUSD(calculatedNet * exp.rate)}</td>
+                                                  <td className="px-4 py-2 text-end text-amber-600 hidden md:table-cell">{formatUSD(whtVal * exp.rate)}</td>
+                                                  <td className="px-4 py-2 text-end text-slate-900 font-bold">{formatUSD(calculatedNet * exp.rate)}</td>
                                                 </tr>
                                               );
                                             })
@@ -1758,16 +1758,16 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                           {/* Section II totals row (Desktop-only) */}
                                           {monthExpenses.length > 0 && (
                                             <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid hidden md:table-row">
-                                              <td colSpan={3} className="px-4 py-2 text-slate-900 font-sans text-right">RECONCILED MATCHINGS TOTAL:</td>
-                                              <td className="px-4 py-2 text-right text-amber-600">{formatUSD(totalWhtReconciled)}</td>
-                                              <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalNetReconciled)}</td>
+                                              <td colSpan={3} className="px-4 py-2 text-slate-900 font-sans text-end">RECONCILED MATCHINGS TOTAL:</td>
+                                              <td className="px-4 py-2 text-end text-amber-600">{formatUSD(totalWhtReconciled)}</td>
+                                              <td className="px-4 py-2 text-end text-slate-900">{formatUSD(totalNetReconciled)}</td>
                                             </tr>
                                           )}
                                           {/* Section II totals row (Mobile-only) */}
                                           {monthExpenses.length > 0 && (
                                             <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold break-inside-avoid md:hidden">
-                                              <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-right">TOTAL NET:</td>
-                                              <td className="px-4 py-2 text-right text-slate-900">{formatUSD(totalNetReconciled)}</td>
+                                              <td colSpan={2} className="px-4 py-2 text-slate-900 font-sans text-end">TOTAL NET:</td>
+                                              <td className="px-4 py-2 text-end text-slate-900">{formatUSD(totalNetReconciled)}</td>
                                             </tr>
                                           )}
                                         </tbody>
@@ -1866,7 +1866,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
                         {/* Interactive adjustment slider setup for Executive Directors */}
                         <div className="flex items-center gap-3">
-                          <div className="text-right">
+                          <div className="text-end">
                             <span className="text-[10px] block text-slate-500 uppercase">Allocated Target</span>
                             <span className="text-sm font-bold font-mono text-slate-900">{formatUSD(bl.allocatedUSD)}</span>
                           </div>

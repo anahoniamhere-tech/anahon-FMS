@@ -484,6 +484,27 @@ model EditorialMeeting {
 // Deliberately NOT Client/Vendor/Donor: those are billing and funding parties in the
 // books, and a roster of forty boot-camp participants does not belong in production
 // revenue. Nothing here ever touches a ledger.
+/// An event or engagement: one we attended, or one we ran. `projectId` is null for the
+/// many that belong to no project. See migration 20260905190000_engagement_register.
+model Engagement {
+  id         String  @id
+  title      String
+  kind       String  @default("Conference")   // Conference | Bootcamp | Training | Coaching | Workshop | Meeting | Other
+  ourPart    String  @default("Attended")     // Attended | Delivered | Co-hosted | Sponsored
+  org        String  @default("")             // who ran it
+  place      String  @default("")
+  startDate  String  @default("")             // YYYY-MM-DD
+  endDate    String  @default("")
+  stream     String  @default("")             // STREAMS — which programme it serves
+  projectId  String?
+  outcome    String  @default("")             // what came of it
+  notes      String  @default("")
+  created_at String
+
+  @@index([startDate])
+  @@index([projectId])
+}
+
 model NetworkContact {
   id         String  @id
   name       String
@@ -495,7 +516,8 @@ model NetworkContact {
   phone      String  @default("")
   links      String  @default("")                // profile URLs, one per line
   kind       String  @default("Participant")     // Trainer | Participant | Organiser | Speaker | Other
-  metAt      String  @default("")                // the event
+  metAt      String  @default("")                // the event, as text — the label for anything with no record of its own
+  engagementId String?                              // …or the engagement record itself
   metOn      String  @default("")                // YYYY-MM-DD
   stream     String  @default("")                // STREAMS — which programme this contact serves
   followUp   String  @default("")                // what we actually want from them
@@ -505,6 +527,7 @@ model NetworkContact {
   created_at String
 
   @@index([metAt])
+  @@index([engagementId])
 }
 
 // Software the newsroom evaluates and uses. Separate from Subscription on purpose:

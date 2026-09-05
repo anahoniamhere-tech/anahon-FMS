@@ -92,8 +92,8 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                   <header className="grid grid-cols-4 gap-4 text-xs font-bold uppercase font-mono py-2 text-slate-600">
                     <span>Account code</span>
                     <span>Class description</span>
-                    <span className="text-right">Debit Balance (USD)</span>
-                    <span className="text-right">Credit Balance (USD)</span>
+                    <span className="text-end">Debit Balance (USD)</span>
+                    <span className="text-end">Credit Balance (USD)</span>
                   </header>
                   {(() => {
                     let totalDeb = 0;
@@ -121,8 +121,8 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                         <div key={acc.code} className="grid grid-cols-4 gap-4 text-xs font-mono py-2 hover:bg-slate-50">
                           <span>{acc.code}</span>
                           <span>{acc.name}{acc.currency !== "USD" ? <span className="text-[9px] text-slate-400"> ({acc.balance.toLocaleString()} {acc.currency})</span> : null}</span>
-                          <span className="text-right font-bold text-slate-900">{debVal > 0 ? formatUSD(debVal) : "-"}</span>
-                          <span className="text-right font-bold text-slate-900">{credVal > 0 ? formatUSD(credVal) : "-"}</span>
+                          <span className="text-end font-bold text-slate-900">{debVal > 0 ? formatUSD(debVal) : "-"}</span>
+                          <span className="text-end font-bold text-slate-900">{credVal > 0 ? formatUSD(credVal) : "-"}</span>
                         </div>
                       );
                     });
@@ -135,8 +135,8 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                           <span className={balanced ? "text-emerald-700" : "text-red-700"}>
                             {balanced ? "✓ TOTALS — LEDGER IN BALANCE" : `⚠️ TOTALS — OUT OF BALANCE BY ${formatUSD(Math.abs(totalDeb - totalCred))}`}
                           </span>
-                          <span className="text-right text-slate-900">{formatUSD(totalDeb)}</span>
-                          <span className="text-right text-slate-900">{formatUSD(totalCred)}</span>
+                          <span className="text-end text-slate-900">{formatUSD(totalDeb)}</span>
+                          <span className="text-end text-slate-900">{formatUSD(totalCred)}</span>
                         </div>
                       </>
                     );
@@ -279,7 +279,7 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                               </select>
                             </div>
 
-                            <div className="md:col-span-1 text-right">
+                            <div className="md:col-span-1 text-end">
                               <button
                                 type="button"
                                 disabled={adjItems.length <= 2}
@@ -300,8 +300,8 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
 
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between border-t border-slate-100 pt-4 gap-4">
                       <div className="text-xs font-mono">
-                        <span className="mr-4">Debits: <strong className="text-slate-900">{formatUSD(adjItems.reduce((s, i) => s + Number(i.debit || 0), 0))}</strong></span>
-                        <span className="mr-4">Credits: <strong className="text-slate-900">{formatUSD(adjItems.reduce((s, i) => s + Number(i.credit || 0), 0))}</strong></span>
+                        <span className="me-4">Debits: <strong className="text-slate-900">{formatUSD(adjItems.reduce((s, i) => s + Number(i.debit || 0), 0))}</strong></span>
+                        <span className="me-4">Credits: <strong className="text-slate-900">{formatUSD(adjItems.reduce((s, i) => s + Number(i.credit || 0), 0))}</strong></span>
 
                         {Math.abs(
                           adjItems.reduce((s, i) => s + Number(i.debit || 0), 0) -

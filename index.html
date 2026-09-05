@@ -3,11 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#6D1A1A" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <title>AnaHon Media Platform — Management System</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // navigator.serviceWorker is undefined on an insecure origin, so this is simply
+      // skipped on http://anahon.local:3100 — the app still works, it just cannot be
+      // installed. Android needs an HTTPS origin (tailscale serve) before it can be.
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () =>
+          navigator.serviceWorker.register("/sw.js").catch((e) =>
+            console.warn("Service worker not registered:", e.message)));
+      }
+    </script>
   </body>
 </html>
 

@@ -310,9 +310,9 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                 ) : (
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-slate-200 text-left text-[10px] uppercase text-slate-500">
+                      <tr className="border-b border-slate-200 text-start text-[10px] uppercase text-slate-500">
                         <th scope="col" className="p-2">Subscription</th>
-                        <th scope="col" className="p-2 text-right">Amount</th>
+                        <th scope="col" className="p-2 text-end">Amount</th>
                         <th scope="col" className="p-2">Cycle</th>
                         <th scope="col" className="p-2">Next renewal</th>
                         <th scope="col" className="p-2">Paid from</th>
@@ -329,7 +329,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                         return (
                           <tr key={sub.id} className={`border-b border-slate-100 ${overdue ? "bg-red-50" : soon ? "bg-amber-50" : ""}`}>
                             <td className="p-2 font-bold text-slate-800">{sub.name}{sub.notes && <span className="block text-[10px] font-normal text-slate-400">{sub.notes}</span>}</td>
-                            <td className="p-2 text-right font-mono">{sub.currency} {sub.amount.toLocaleString()}</td>
+                            <td className="p-2 text-end font-mono">{sub.currency} {sub.amount.toLocaleString()}</td>
                             <td className="p-2 text-slate-600">{sub.cycle}</td>
                             <td className="p-2 font-mono">
                               {sub.nextRenewal || "—"}
@@ -498,7 +498,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
               )}
 
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                <table className="w-full text-left">
+                <table className="w-full text-start">
                   <thead className="bg-slate-100">
                     <tr className="border-b border-sub-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
                       <th className="px-6 py-3">Vendor Account</th>

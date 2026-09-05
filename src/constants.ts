@@ -14,6 +14,15 @@ export const PROPOSAL_SECTIONS: [keyof Proposal, string, string][] = [
 // AnaHon's five programs (user-defined, 31 Jul 2026) + the org-wide bucket for
 // core/backbone funding like the SKF FSTP. AnaHon itself is always the applicant.
 export const STREAMS = ["AnaHon Platform", "iContent Academy", "Ahali Al Madina", "Roots & Reach", "Production", "Core / Org-wide"];
+// An event or engagement — one we attended, or one we ran. Kept beside STREAMS because
+// the two are always chosen together on the same form.
+export const ENGAGEMENT_KINDS = ["Conference", "Bootcamp", "Training", "Coaching", "Workshop", "Meeting", "Other"];
+// Which side of it we were on. One field covers both directions.
+export const ENGAGEMENT_PARTS = ["Attended", "Delivered", "Co-hosted", "Sponsored"];
+// Who a contact is to us. Coach and Partner added 5 Sep 2026 — the people who help run
+// a training or a coaching session were not describable before.
+export const CONTACT_KINDS = ["Trainer", "Coach", "Partner", "Participant", "Organiser", "Speaker", "Other"];
+
 export const OPP_STAGES = ["Prospect", "Drafting", "Submitted", "Awarded", "Declined"] as const;
 // Editorial vocabulary lives in editorialGates.ts (shared with the server's enforcement).
 export { CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./editorialGates";

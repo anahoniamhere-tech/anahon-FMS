@@ -79,7 +79,7 @@ export default function ArchiveTab({ currentUser, triggerToast, lang }: SharedPr
           </div>
         )}
         {canPublish && (
-          <><button onClick={publish} disabled={publishing} className="ml-auto rounded bg-red-700 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-800 disabled:opacity-50">
+          <><button onClick={publish} disabled={publishing} className="ms-auto rounded bg-red-700 px-4 py-1.5 text-sm font-bold text-white hover:bg-red-800 disabled:opacity-50">
             {publishing ? "Publishing…" : "⬆ Publish to website"}
           </button><Info id="archive-rebuild" lang={lang} /></>
         )}
@@ -155,7 +155,7 @@ function ItemsView({ items, setItems, collection, facetOf, knownTags, canEdit, t
                 <p className="text-slate-500">{i.platform} · {i.kind} · {i.date}{i.series ? ` · ${i.series}` : ""} {un && <span className="font-bold text-amber-700">· unpublished</span>}</p>
                 <div className="flex flex-wrap gap-1">
                   {(isEditing ? draftTags : i.tags).filter(t => t !== UNPUBLISHED).map(t => (
-                    <span key={t} className="rounded-full bg-slate-100 px-2 py-0.5" title={facetOf(t)}>{t}{isEditing && <button onClick={() => setDraftTags(d => d.filter(x => x !== t))} className="ml-1 text-red-600">×</button>}</span>
+                    <span key={t} className="rounded-full bg-slate-100 px-2 py-0.5" title={facetOf(t)}>{t}{isEditing && <button onClick={() => setDraftTags(d => d.filter(x => x !== t))} className="ms-1 text-red-600">×</button>}</span>
                   ))}
                   {isEditing && <input list="archive-tags" value={newTag} onChange={e => setNewTag(e.target.value)} placeholder="+ tag"
                     onKeyDown={e => { if (e.key === "Enter" && newTag.trim()) { setDraftTags(d => [...new Set([...d, newTag.trim().toLowerCase().replace(/\s+/g, "-")])]); setNewTag(""); } }}
@@ -169,7 +169,7 @@ function ItemsView({ items, setItems, collection, facetOf, knownTags, canEdit, t
                     </>) : (<>
                       <button onClick={() => { setEditing(i.id); setDraftTags(i.tags); setDraftTitle(i.title); setNewTag(""); }} className="rounded border px-2 py-0.5">✎ Edit</button>
                       <button onClick={() => togglePublished(i)} className={`rounded border px-2 py-0.5 ${un ? "text-emerald-700" : "text-amber-700"}`}>{un ? "Publish" : "Unpublish"}</button>
-                      <a href={i.url} target="_blank" rel="noopener" className="ml-auto text-slate-500 underline">original ↗</a>
+                      <a href={i.url} target="_blank" rel="noopener" className="ms-auto text-slate-500 underline">original ↗</a>
                     </>)}
                   </div>
                 )}
@@ -210,7 +210,7 @@ function SchemaView({ schema, setSchema, items, collection, canEdit, triggerToas
         {tags.map(t => (
           <span key={t} className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${lane === "removed" ? "bg-red-50 text-red-700 line-through" : "bg-slate-100"}`} title={`${counts[t] || 0} items`}>
             {t}<small className="text-slate-400">{counts[t] || 0}</small>
-            {canEdit && <select value={lane} onChange={e => move(t, e.target.value)} className="ml-1 rounded border border-slate-200 bg-white text-[10px]">
+            {canEdit && <select value={lane} onChange={e => move(t, e.target.value)} className="ms-1 rounded border border-slate-200 bg-white text-[10px]">
               {[...LANES, "removed"].map(l => <option key={l} value={l}>{l}</option>)}</select>}
           </span>
         ))}
@@ -228,7 +228,7 @@ function SchemaView({ schema, setSchema, items, collection, canEdit, triggerToas
           <input value={newTag} onChange={e => setNewTag(e.target.value)} placeholder="new tag" className="rounded border border-slate-300 px-2 py-1" />
           <select value={newLane} onChange={e => setNewLane(e.target.value)} className="rounded border border-slate-300 px-2 py-1">{LANES.map(l => <option key={l} value={l}>{l}</option>)}</select>
           <button onClick={() => { const t = newTag.trim().toLowerCase().replace(/\s+/g, "-"); if (t) { move(t, newLane); setNewTag(""); } }} className="rounded border px-2 py-1">+ Add</button>
-          <button onClick={save} className="ml-auto rounded bg-slate-900 px-4 py-1.5 font-bold text-white">Save schema</button>
+          <button onClick={save} className="ms-auto rounded bg-slate-900 px-4 py-1.5 font-bold text-white">Save schema</button>
         </div>
       )}
     </div>
@@ -274,7 +274,7 @@ function HomeView({ items, canEdit, triggerToast }: any) {
         <p className="text-slate-500">Removed from this widget:</p>
         <div className="flex flex-wrap gap-1">
           {(w.removed || []).map(id => { const it = byId.get(id); const art = articles.find(a => a.slug === id); return (
-            <span key={id} className="rounded-full bg-red-50 px-2 py-0.5 text-red-700" title={id}>{it?.title?.slice(0, 40) || art?.title?.slice(0, 40) || id}{canEdit && <button onClick={() => setW(k, { removed: (w.removed || []).filter(x => x !== id) })} className="ml-1">×</button>}</span>); })}
+            <span key={id} className="rounded-full bg-red-50 px-2 py-0.5 text-red-700" title={id}>{it?.title?.slice(0, 40) || art?.title?.slice(0, 40) || id}{canEdit && <button onClick={() => setW(k, { removed: (w.removed || []).filter(x => x !== id) })} className="ms-1">×</button>}</span>); })}
           {!(w.removed || []).length && <span className="text-slate-400">—</span>}
         </div>
         {k === "articles" && canEdit && (
@@ -295,11 +295,11 @@ function HomeView({ items, canEdit, triggerToast }: any) {
       {canEdit && <button onClick={save} className="rounded bg-slate-900 px-4 py-1.5 text-xs font-bold text-white">Save home page</button>}
       {pickFor && (
         <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-xs">
-          <div className="mb-2 flex items-center gap-2"><b>Pin to {pickFor}</b><input autoFocus value={pickQ} onChange={e => setPickQ(e.target.value)} placeholder="search the archive…" className="w-64 rounded border border-slate-300 px-2 py-1" dir="auto" /><button onClick={() => setPickFor(null)} className="ml-auto rounded border px-2 py-1">close</button></div>
+          <div className="mb-2 flex items-center gap-2"><b>Pin to {pickFor}</b><input autoFocus value={pickQ} onChange={e => setPickQ(e.target.value)} placeholder="search the archive…" className="w-64 rounded border border-slate-300 px-2 py-1" dir="auto" /><button onClick={() => setPickFor(null)} className="ms-auto rounded border px-2 py-1">close</button></div>
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
             {pool.map(i => { const on = (home[pickFor]?.pinned || []).includes(i.id); return (
               <button key={i.id} onClick={() => setW(pickFor, { pinned: on ? (home[pickFor]?.pinned || []).filter(x => x !== i.id) : [...(home[pickFor]?.pinned || []), i.id] })}
-                className={`rounded border p-1 text-left ${on ? "border-red-600" : "border-slate-200"}`}>
+                className={`rounded border p-1 text-start ${on ? "border-red-600" : "border-slate-200"}`}>
                 {i.thumb && <img src={i.thumb} alt="" className="mb-1 h-16 w-full rounded object-cover" />}<span className="line-clamp-2" dir="auto">{i.title}</span><small className="text-slate-400">{i.date}</small>
               </button>); })}
           </div>

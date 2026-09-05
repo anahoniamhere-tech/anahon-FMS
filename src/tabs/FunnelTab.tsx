@@ -261,7 +261,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                               {/* Click-through: open this project in the Projects register. */}
                               <button
                                 onClick={() => { setSelectedProjectId(p.id); handleNavClick("projects"); }}
-                                className="w-full flex justify-between items-center gap-2 text-[11px] rounded px-1.5 py-1 -mx-1.5 hover:bg-slate-50 text-left"
+                                className="w-full flex justify-between items-center gap-2 text-[11px] rounded px-1.5 py-1 -mx-1.5 hover:bg-slate-50 text-start"
                                 title={`${p.name} — open in Donors & Projects`}
                               >
                                 <span className="font-mono text-slate-600 shrink-0">{p.code}</span>
@@ -408,7 +408,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                     </p>
                     <p className="text-slate-700">{intake.assessment.rationale}</p>
                     {intake.assessment.risks?.length > 0 && (
-                      <ul className="list-disc ml-4 text-amber-900">{intake.assessment.risks.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>
+                      <ul className="list-disc ms-4 text-amber-900">{intake.assessment.risks.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>
                     )}
                     {intake.assessment.suggestedAngle && <p className="text-emerald-900"><strong>Angle:</strong> {intake.assessment.suggestedAngle}</p>}
                     {intake.draft.donorIsNew && (
@@ -591,7 +591,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                           <p><strong>Fit: {aiAssess.fit}</strong> · Recommended program: <strong>{aiAssess.recommendedStream || "—"}</strong></p>
                           <p className="text-slate-600">{aiAssess.rationale}</p>
                           {aiAssess.risks?.length > 0 && (
-                            <ul className="list-disc ml-4 text-amber-800">{aiAssess.risks.map((r, i) => <li key={i}>{r}</li>)}</ul>
+                            <ul className="list-disc ms-4 text-amber-800">{aiAssess.risks.map((r, i) => <li key={i}>{r}</li>)}</ul>
                           )}
                           {aiAssess.suggestedAngle && <p className="text-emerald-800"><strong>Angle:</strong> {aiAssess.suggestedAngle}</p>}
                         </div>
@@ -640,7 +640,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                         </div>
                       ))}
                       {propBudget.length > 0 && (
-                        <p className="text-right text-xs font-mono font-bold text-slate-800">
+                        <p className="text-end text-xs font-mono font-bold text-slate-800">
                           ASK: {propForm.currency} {propBudget.reduce((s, r) => s + (Number(r.amount) || 0), 0).toLocaleString()}
                           <span className="text-slate-400 font-sans font-normal"> — becomes the opportunity's requested amount on save</span>
                         </p>

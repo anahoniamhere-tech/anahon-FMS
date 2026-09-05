@@ -40,7 +40,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                 <button
                   type="button"
                   onClick={() => handleNavClick("mydesk")}
-                  className="flex items-center gap-3 rounded-lg border border-red-100 bg-red-50 p-3 text-left hover:border-red-300"
+                  className="flex items-center gap-3 rounded-lg border border-red-100 bg-red-50 p-3 text-start hover:border-red-300"
                 >
                   <Activity className="h-8 w-8 text-red-600" />
                   <div>
@@ -59,7 +59,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
               {/* Financial Summary KPIs — hidden from Project Officers (requester role sees only their projects' burn) */}
               {!isProjectOfficer && (
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                <button type="button" onClick={() => handleNavClick("banking")} className="text-left rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
+                <button type="button" onClick={() => handleNavClick("banking")} className="text-start rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
                   <div className="flex items-center justify-between text-slate-500">
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Total Available Treasury Pool</span>
                     <DollarSign className="h-5 w-5 text-emerald-500" />
@@ -76,7 +76,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                       const rate = b.currency === "EUR" ? state.fxRates.EUR : b.currency === "LBP" ? state.fxRates.LBP : 1;
                       return (
                         <div key={b.id} className="flex justify-between text-[10px] font-mono text-slate-500">
-                          <span className="truncate pr-2">{b.name}</span>
+                          <span className="truncate pe-2">{b.name}</span>
                           <span className="shrink-0">
                             {formatIn(b.balance, b.currency)}
                             {b.currency !== "USD" && <span className="text-slate-400"> → {formatUSD(b.balance * rate)}</span>}
@@ -130,7 +130,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                   })()}
                 </button>
 
-                <button type="button" onClick={() => handleNavClick("projects")} className="text-left rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
+                <button type="button" onClick={() => handleNavClick("projects")} className="text-start rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
                   <div className="flex items-center justify-between text-slate-500">
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Active Donor Projects</span>
                     <FolderGit2 className="h-5 w-5 text-blue-500" />
@@ -139,7 +139,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                   <p className="mt-1 text-xs text-slate-500">With restriction covenants · click to open Projects</p>
                 </button>
 
-                <button type="button" onClick={() => handleNavClick("expenses")} className="text-left rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
+                <button type="button" onClick={() => handleNavClick("expenses")} className="text-start rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
                   <div className="flex items-center justify-between text-slate-500">
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Outstanding Approvals</span>
                     <Sliders className="h-5 w-5 text-amber-500" />
@@ -150,7 +150,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                   <p className="mt-1 text-xs text-slate-500">Pending signatures · click to open Vouchers</p>
                 </button>
 
-                <button type="button" onClick={() => handleNavClick("compliance")} className="text-left rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
+                <button type="button" onClick={() => handleNavClick("compliance")} className="text-start rounded-xl border border-slate-200 bg-white p-6 shadow-sm hover:border-red-300 hover:shadow-md transition cursor-pointer">
                   <div className="flex items-center justify-between text-slate-500">
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Vat rate / Tax settings</span>
                     <Percent className="h-5 w-5 text-slate-600" />
@@ -221,7 +221,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                       <div key={p.id} className="p-4 rounded-lg bg-slate-50 border border-slate-105">
                         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-2 mb-2">
                           <div>
-                            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold font-mono mr-2">{p.code}</span>
+                            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-bold font-mono me-2">{p.code}</span>
                             <span className="text-sm font-bold text-slate-900">{p.name}</span>
                           </div>
                           <div className="text-xs font-mono text-slate-500">
@@ -286,7 +286,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                           <p className="text-xs font-bold text-slate-700">{b.name}</p>
                           <span className="text-[10px] text-slate-500 font-mono">{b.accountNo}</span>
                         </div>
-                        <div className="text-right">
+                        <div className="text-end">
                           <p className="text-sm font-mono font-bold text-slate-900">
                             {b.balance.toLocaleString()} {b.currency}
                           </p>

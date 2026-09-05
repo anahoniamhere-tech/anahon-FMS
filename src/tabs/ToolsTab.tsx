@@ -225,13 +225,13 @@ export default function ToolsTab({ state, currentUser, refreshState, triggerToas
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[10px] uppercase text-slate-600">
             <tr>
-              <th className="text-left p-2">Tool</th>
-              <th className="text-left p-2">Category</th>
-              <th className="text-left p-2">What we use it for</th>
-              <th className="text-left p-2">Status</th>
-              <th className="text-left p-2">Pricing</th>
-              <th className="text-left p-2">Owner</th>
-              <th className="text-left p-2">Review</th>
+              <th className="text-start p-2">Tool</th>
+              <th className="text-start p-2">Category</th>
+              <th className="text-start p-2">What we use it for</th>
+              <th className="text-start p-2">Status</th>
+              <th className="text-start p-2">Pricing</th>
+              <th className="text-start p-2">Owner</th>
+              <th className="text-start p-2">Review</th>
               {canEdit && <th className="p-2"></th>}
             </tr>
           </thead>

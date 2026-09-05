@@ -138,6 +138,8 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/tools/delete": TOOL_EDITORS,
   "/api/contacts/save": CONTACT_EDITORS,
   "/api/contacts/delete": CONTACT_EDITORS,
+  "/api/engagements/save": CONTACT_EDITORS,     // the events behind the contacts
+  "/api/engagements/delete": CONTACT_EDITORS,
 
   // ---- People ---------------------------------------------------------------
   "/api/employees/new": HR,

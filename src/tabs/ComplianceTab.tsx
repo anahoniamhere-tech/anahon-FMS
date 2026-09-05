@@ -238,8 +238,8 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
                     <div key={log.id} className="py-2.5 flex justify-between items-start gap-3 hover:bg-slate-50">
                       <div>
                         <span className="font-bold text-slate-900">[{log.userName}]</span>
-                        <span className="text-slate-800 pl-2">{log.action}:</span>
-                        <span className="text-slate-650 pl-1">"{log.details}"</span>
+                        <span className="text-slate-800 ps-2">{log.action}:</span>
+                        <span className="text-slate-650 ps-1">"{log.details}"</span>
                       </div>
                       <span className="text-slate-400 font-normal shrink-0">{(log.timestamp.split("T")[1] || log.timestamp).replace("Z", "")}</span>
                     </div>

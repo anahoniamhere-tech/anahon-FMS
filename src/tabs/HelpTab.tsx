@@ -51,7 +51,7 @@ export default function HelpTab({ lang, t }: SharedProps) {
                   <button
                     onClick={() => setOpen(open === h.id ? null : h.id)}
                     aria-expanded={open === h.id}
-                    className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left text-sm font-semibold text-slate-800 hover:bg-slate-50"
+                    className="flex w-full items-center justify-between gap-4 px-4 py-3 text-start text-sm font-semibold text-slate-800 hover:bg-slate-50"
                   >
                     <span>{h.q[L]}</span>
                     <span className="text-slate-400">{open === h.id ? "−" : "+"}</span>

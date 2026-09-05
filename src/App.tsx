@@ -276,12 +276,12 @@ export default function App() {
     const total = vouchers.reduce((s, e) => s + e.convertedAmount, 0);
     const docLink = (d: any) => (
       <a key={d.id} href={docUrl(`/api/document/content/${d.id}`)} target="_blank" onClick={e => { e.preventDefault(); openDoc(d); }} rel="noreferrer"
-        className="inline-flex items-center gap-1 text-[11px] text-red-650 hover:text-red-700 hover:underline mr-3">
+        className="inline-flex items-center gap-1 text-[11px] text-red-650 hover:text-red-700 hover:underline me-3">
         📄 {d.filename}
       </a>
     );
     return (
-      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3 text-left">
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3 text-start">
         <h5 className="text-xs font-bold text-slate-800 font-mono uppercase">📂 File — {partyName}</h5>
         {maySeePersonnelFile(currentUser, state.employees, partyId) && (
           <div className="rounded-lg border border-[#E23B3B]/30 bg-[#E23B3B]/[0.04] p-2.5">
@@ -645,7 +645,7 @@ export default function App() {
             >
               Sign In
               {authTab === "signin" && (
-                <motion.div layoutId="auth-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600" />
+                <motion.div layoutId="auth-tab" className="absolute bottom-0 start-0 end-0 h-0.5 bg-red-600" />
               )}
             </button>
             <button
@@ -655,7 +655,7 @@ export default function App() {
             >
               Create Account
               {authTab === "signup" && (
-                <motion.div layoutId="auth-tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-red-600" />
+                <motion.div layoutId="auth-tab" className="absolute bottom-0 start-0 end-0 h-0.5 bg-red-600" />
               )}
             </button>
           </div>
@@ -669,7 +669,7 @@ export default function App() {
           )}
 
           {/* Forms */}
-          <form onSubmit={authTab === "signin" ? handleFirebaseSignIn : handleFirebaseSignUp} className="space-y-4 text-left">
+          <form onSubmit={authTab === "signin" ? handleFirebaseSignIn : handleFirebaseSignUp} className="space-y-4 text-start">
             {authTab === "signup" && (
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("Full Name")}</label>
@@ -679,10 +679,10 @@ export default function App() {
                     required
                     value={authName}
                     onChange={(e) => setAuthName(e.target.value)}
-                    className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 pl-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-sans"
+                    className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 ps-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-sans"
                     placeholder="Enter your name"
                   />
-                  <User className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+                  <User className="absolute start-3 top-3 w-4 h-4 text-slate-500" />
                 </div>
               </div>
             )}
@@ -695,10 +695,10 @@ export default function App() {
                   required
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 pl-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
+                  className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 ps-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
                   placeholder="name@anahon.org"
                 />
-                <Globe className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+                <Globe className="absolute start-3 top-3 w-4 h-4 text-slate-500" />
               </div>
             </div>
 
@@ -710,10 +710,10 @@ export default function App() {
                   required
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 pl-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
+                  className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 ps-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
                   placeholder="••••••••"
                 />
-                <Key className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+                <Key className="absolute start-3 top-3 w-4 h-4 text-slate-500" />
               </div>
             </div>
 
@@ -1016,7 +1016,7 @@ export default function App() {
             // user gets no confirmation that a voucher saved or a payment posted.
             role={toast.type === "error" ? "alert" : "status"}
             aria-live={toast.type === "error" ? "assertive" : "polite"}
-            className={`fixed top-16 md:top-4 right-4 z-[60] flex items-center gap-2 rounded-lg px-4 py-3 shadow-lg text-white ${toast.type === "error" ? "bg-red-600" : "bg-emerald-600"
+            className={`fixed top-16 md:top-4 end-4 z-[60] flex items-center gap-2 rounded-lg px-4 py-3 shadow-lg text-white ${toast.type === "error" ? "bg-red-600" : "bg-emerald-600"
               }`}
           >
             <AlertCircle className="h-5 w-5" aria-hidden="true" />
@@ -1045,7 +1045,7 @@ export default function App() {
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500"
             />
             {globalQuery.trim().length >= 2 && (
-              <div className="absolute top-full mt-1 left-0 right-0 bg-white text-slate-900 rounded-lg shadow-xl border border-slate-200 z-[70] max-h-80 overflow-y-auto">
+              <div className="absolute top-full mt-1 start-0 end-0 bg-white text-slate-900 rounded-lg shadow-xl border border-slate-200 z-[70] max-h-80 overflow-y-auto">
                 {(() => {
                   const q = globalQuery.toLowerCase();
                   type Hit = { k: string; label: string; sub: string; go: () => void };
@@ -1064,7 +1064,7 @@ export default function App() {
                     .forEach(emp => hits.push({ k: "Employee", label: emp.name, sub: emp.position, go: () => handleNavClick("payroll") }));
                   if (!hits.length) return <p className="px-3 py-2.5 text-xs text-slate-500">No matches for “{globalQuery}”.</p>;
                   return hits.map((h, i) => (
-                    <button key={i} onClick={() => { h.go(); setGlobalQuery(""); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0 flex items-center gap-2">
+                    <button key={i} onClick={() => { h.go(); setGlobalQuery(""); }} className="w-full text-start px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0 flex items-center gap-2">
                       <span className="text-[9px] font-bold uppercase w-16 shrink-0 text-slate-400">{h.k}</span>
                       <span className="text-xs font-medium flex-1 truncate">{h.label}</span>
                       <span className="text-[10px] text-slate-400 shrink-0">{h.sub}</span>
@@ -1148,10 +1148,10 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden relative">
         {isOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={() => setIsOpen(false)} />}
         
-        <aside className={`fixed top-16 bottom-0 ${rtl ? "right-0" : "left-0"} z-50 bg-slate-900 border-slate-800 shrink-0 transition-all duration-300 ease-in-out md:relative md:top-0 md:flex md:flex-col overflow-y-auto ${
+        <aside className={`fixed top-16 bottom-0 start-0 z-50 bg-slate-900 border-slate-800 shrink-0 transition-all duration-300 ease-in-out md:relative md:top-0 md:flex md:flex-col overflow-y-auto ${
           isOpen
-            ? 'translate-x-0 w-64 p-4 border-r'
-            : `${rtl ? "translate-x-full" : "-translate-x-full"} md:translate-x-0 md:w-0 md:p-0 md:border-r-0 overflow-hidden`
+            ? 'translate-x-0 w-64 p-4 border-e'
+            : `${rtl ? "translate-x-full" : "-translate-x-full"} md:translate-x-0 md:w-0 md:p-0 md:border-e-0 overflow-hidden`
         }`}>
           <nav className="space-y-1 font-sans">
             {/* The sidebar is data: src/nav.tsx. Eight doors by job; scripts/check-nav.ts proves every screen is listed once. */}
@@ -1160,16 +1160,16 @@ export default function App() {
                 <p className={`px-3 ${si === 0 ? "pt-1" : "pt-3"} pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none`}>{t(sec.section)}</p>
                 {sec.items.map(item => (
                   <button key={item.navKey} onClick={() => handleNavClick(item.navKey)}
-                    className={`flex w-full items-center text-left gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === item.navKey ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+                    className={`flex w-full items-center text-start gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === item.navKey ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
                     {item.icon}
-                    <span className="text-left flex-1">{t(item.label)}</span>
+                    <span className="text-start flex-1">{t(item.label)}</span>
                     {item.badge === "expenses" && (
-                      <span className="ml-auto bg-slate-800 text-[10px] text-slate-300 px-1.5 py-0.5 rounded-full font-mono shrink-0">
+                      <span className="ms-auto bg-slate-800 text-[10px] text-slate-300 px-1.5 py-0.5 rounded-full font-mono shrink-0">
                         {state.expenses.filter(e => ["Submitted", "Under Finance Review", "Approved"].includes(e.status)).length}
                       </span>
                     )}
                     {item.badge === "compliance" && overdueTasks > 0 && (
-                      <span className="ml-auto flex h-2 w-2 rounded-full bg-rose-500" title={`${overdueTasks} overdue`} />
+                      <span className="ms-auto flex h-2 w-2 rounded-full bg-rose-500" title={`${overdueTasks} overdue`} />
                     )}
                   </button>
                 ))}
@@ -1279,7 +1279,7 @@ export default function App() {
         <button
           onClick={() => setGapsOpen(true)}
           title="Documents missing against posted spend"
-          className="fixed bottom-5 right-5 z-[95] flex items-center gap-2 px-4 py-3 rounded-full shadow-lg
+          className="fixed bottom-5 end-5 z-[95] flex items-center gap-2 px-4 py-3 rounded-full shadow-lg
                      bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-colors"
         >
           <span className="text-base leading-none">📄</span>
@@ -1290,7 +1290,7 @@ export default function App() {
       {gapsOpen && (
         <>
           <div className="fixed inset-0 bg-black/50 z-[96]" onClick={() => setGapsOpen(false)} />
-          <div className="fixed inset-y-0 right-0 w-full max-w-2xl z-[97] bg-slate-50 shadow-2xl flex flex-col">
+          <div className="fixed inset-y-0 end-0 w-full max-w-2xl z-[97] bg-slate-50 shadow-2xl flex flex-col">
             <div className="flex items-center gap-3 px-5 py-4 bg-slate-900 text-white shrink-0">
               <span className="text-lg">📄</span>
               <div className="flex-1">
@@ -1344,7 +1344,7 @@ export default function App() {
                     {group.rows.map(e => (
                       <button key={e.id}
                         onClick={() => { setGapsOpen(false); handleNavClick("expenses"); setDrawerExpenseId(e.id); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2">
+                        className="w-full text-start px-3 py-2 hover:bg-slate-50 flex items-center gap-2">
                         <span className="text-[10px] font-mono font-bold text-slate-500 w-28 shrink-0">{e.voucherNo}</span>
                         <span className="text-[11px] flex-1 truncate text-slate-800">{e.title}</span>
                         <span className="text-[10px] text-slate-400 shrink-0">{evidenceGaps.proj(e.projectId)?.code || "—"}</span>
@@ -1365,7 +1365,7 @@ export default function App() {
                     {evidenceGaps.unspent.map(({ p, amount }) => (
                       <button key={p.id}
                         onClick={() => { setGapsOpen(false); setSelectedProjectId(p.id); handleNavClick("projects"); }}
-                        className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2">
+                        className="w-full text-start px-3 py-2 hover:bg-slate-50 flex items-center gap-2">
                         <span className="text-[10px] font-mono font-bold text-slate-500 w-28 shrink-0">{p.code}</span>
                         <span className="text-[11px] flex-1 truncate text-slate-800">{p.name}</span>
                         <span className="text-[11px] font-mono font-bold text-slate-900 shrink-0">{evidenceGaps.money(amount)} received</span>
@@ -1511,7 +1511,7 @@ export default function App() {
         return (
           <>
             <div className="fixed inset-0 bg-black/40 z-[80]" onClick={() => setDrawerExpenseId(null)} />
-            <aside className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-white z-[90] shadow-2xl overflow-y-auto">
+            <aside className="fixed top-0 end-0 bottom-0 w-full max-w-md bg-white z-[90] shadow-2xl overflow-y-auto">
               <div className="sticky top-0 bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
                 <div>
                   <p className="font-mono font-bold">{exp.voucherNo}</p>
@@ -1528,13 +1528,13 @@ export default function App() {
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Amounts</p>
                   <table className="w-full text-xs">
                     <tbody>
-                      <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Gross</td><td className="py-1 text-right font-mono font-bold">{exp.amount.toLocaleString()} {exp.currency}{exp.rate !== 1 ? ` @ ${exp.rate}` : ""}</td></tr>
-                      <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Converted (USD base)</td><td className="py-1 text-right font-mono">{formatUSD(exp.convertedAmount)}</td></tr>
+                      <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Gross</td><td className="py-1 text-end font-mono font-bold">{exp.amount.toLocaleString()} {exp.currency}{exp.rate !== 1 ? ` @ ${exp.rate}` : ""}</td></tr>
+                      <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Converted (USD base)</td><td className="py-1 text-end font-mono">{formatUSD(exp.convertedAmount)}</td></tr>
                       {exp.whtAmount > 0 && (<>
-                        <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">WHT withheld</td><td className="py-1 text-right font-mono text-red-600">−{exp.whtAmount.toLocaleString()} {exp.currency}</td></tr>
-                        <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Net paid</td><td className="py-1 text-right font-mono font-bold">{exp.netAmount.toLocaleString()} {exp.currency}</td></tr>
+                        <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">WHT withheld</td><td className="py-1 text-end font-mono text-red-600">−{exp.whtAmount.toLocaleString()} {exp.currency}</td></tr>
+                        <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Net paid</td><td className="py-1 text-end font-mono font-bold">{exp.netAmount.toLocaleString()} {exp.currency}</td></tr>
                       </>)}
-                      {exp.paymentMethod && <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Method / Ref</td><td className="py-1 text-right">{exp.paymentMethod}{exp.paymentRef ? ` · ${exp.paymentRef}` : ""}</td></tr>}
+                      {exp.paymentMethod && <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Method / Ref</td><td className="py-1 text-end">{exp.paymentMethod}{exp.paymentRef ? ` · ${exp.paymentRef}` : ""}</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -1594,11 +1594,7 @@ export default function App() {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`hidden md:flex fixed top-1/2 -translate-y-1/2 z-[60] h-11 w-8 items-center justify-center ${rtl ? "rounded-l-xl border-l" : "rounded-r-xl border-r"} bg-slate-800 border-y border-slate-700 hover:bg-slate-700 text-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer text-xs font-mono font-bold ${
-          rtl
-            ? (isOpen ? 'right-64' : 'right-0')
-            : (isOpen ? 'left-64' : 'left-0')
-        }`}
+        className={`hidden md:flex fixed top-1/2 -translate-y-1/2 z-[60] h-11 w-8 items-center justify-center rounded-e-xl border-e bg-slate-800 border-y border-slate-700 hover:bg-slate-700 text-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer text-xs font-mono font-bold ${isOpen ? 'start-64' : 'start-0'}`}
         style={{ minWidth: '32px', minHeight: '44px' }}
         title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
       >

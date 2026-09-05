@@ -18,7 +18,7 @@ import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody }
 import { canonEmail } from "./src/email.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
-import { STREAMS } from "./src/constants.js";
+import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs } from "./src/personnelDocs.js";
 import { parseIcs } from "./src/ics.js";
 
@@ -110,7 +110,7 @@ const PLO_ALLOWED_POSTS = new Set([
   "/api/expense/new", "/api/expense/scan-invoice",
   "/api/document/upload", "/api/materials/link",
   "/api/assets/register",
-  "/api/contacts/save", "/api/contacts/delete",
+  "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/activities/save", "/api/activities/generate", "/api/activities/delete", "/api/activities/import-timetable",
   "/api/vendor/scan",
   "/api/subscriptions/save", "/api/subscriptions/verify", "/api/subscriptions/roll", "/api/subscriptions/delete",
@@ -124,7 +124,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
   "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
   "/api/social/publish", "/api/social/edit", "/api/social/delete",
   "/api/tools/save", "/api/tools/delete",
-  "/api/contacts/save", "/api/contacts/delete",
+  "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/document/upload", "/api/materials/link",
   "/api/timesheets/submit"
 ]);
@@ -436,6 +436,7 @@ async function loadState(viewer?: any) {
     contentItems,
     editorialMeetings,
     networkContacts,
+    engagements,
     tools,
     orgSettingsRaw,
     fxRatesRaw
@@ -467,6 +468,7 @@ async function loadState(viewer?: any) {
     prisma.contentItem.findMany({ orderBy: { created_at: "desc" } }),
     prisma.editorialMeeting.findMany({ orderBy: { date: "desc" } }),
     prisma.networkContact.findMany({ orderBy: { metOn: "desc" } }),
+    prisma.engagement.findMany({ orderBy: { startDate: "desc" } }),
     prisma.tool.findMany({ orderBy: { name: "asc" } }),
     prisma.orgSettings.findFirst(),
     prisma.fxRates.findFirst()
@@ -524,7 +526,7 @@ async function loadState(viewer?: any) {
       fixedAssets: [],
       partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [],
       opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
-      clients: [], quotations: [], networkContacts: [], tools: [],
+      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
       editorialMeetings: formattedMeetings,
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
@@ -548,7 +550,7 @@ async function loadState(viewer?: any) {
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
       auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
-      clients: [], quotations: [], networkContacts: [], tools: [],
+      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: [], editorialMeetings: [],
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
@@ -586,7 +588,7 @@ async function loadState(viewer?: any) {
       subscriptions: buys ? subscriptions : [],
       projectActivities: projectActivities.filter((a: any) => visibleIds.has(a.projectId)),
       clients: [], quotations: [],
-      networkContacts, tools,
+      networkContacts, engagements, tools,
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "",
       contentItems: buys ? [] : formattedContent,
       editorialMeetings: formattedMeetings,
@@ -629,7 +631,7 @@ async function loadState(viewer?: any) {
       auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [],
       opportunities: [], cashCounts: [], subscriptions: [],
       projectActivities: projectActivities.filter(a => myProjectIds.has(a.projectId)),
-      clients: [], quotations: [], networkContacts: [], tools: [],
+      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
       // Policy 002: POs run their programme's content — plus anything they personally
       // author or fact-check in another programme.
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent.filter(c =>
@@ -704,6 +706,9 @@ async function loadState(viewer?: any) {
     })),
     // Networking register — people met at trainings and events. No financial data.
     networkContacts,
+    // The events and trainings themselves — attended and delivered. Many belong to no
+    // project, which is why they are their own register and not a corner of one.
+    engagements,
     // Tool register — software evaluated and in use. A tool becomes a Subscription
     // only when it starts costing; until then it is not a money record.
     tools,
@@ -4517,6 +4522,63 @@ app.post("/api/tools/delete", async (req, res) => {
 const CONTACT_KINDS = ["Trainer", "Participant", "Organiser", "Speaker", "Other"];
 const CONTACT_STATUSES = ["New", "Contacted", "Warm", "Dormant"];
 
+/* ── Events and engagements ─────────────────────────────────────────────────
+ * One record for a thing that happened: a conference attended, a training delivered, a
+ * coaching session run. `ourPart` carries the direction so both live in one register,
+ * and `projectId` is null for the many that belong to no project — which is the normal
+ * case and the reason this is not a corner of the projects screen.
+ */
+app.post("/api/engagements/save", async (req, res) => {
+  try {
+    const b = req.body || {};
+    const user = b.user;
+    if (!String(b.title || "").trim()) return res.status(400).json({ error: "The engagement needs a name." });
+    if (b.kind && !ENGAGEMENT_KINDS.includes(b.kind)) return res.status(400).json({ error: `Unknown kind: ${b.kind}` });
+    if (b.ourPart && !ENGAGEMENT_PARTS.includes(b.ourPart)) return res.status(400).json({ error: `Unknown part: ${b.ourPart}` });
+    for (const f of ["startDate", "endDate"]) {
+      if (b[f] && !/^\d{4}-\d{2}-\d{2}$/.test(String(b[f]))) return res.status(400).json({ error: "Dates are YYYY-MM-DD." });
+    }
+    if (b.startDate && b.endDate && String(b.endDate) < String(b.startDate)) {
+      return res.status(400).json({ error: "It cannot end before it starts." });
+    }
+    if (b.projectId) {
+      const proj = await prisma.project.findUnique({ where: { id: String(b.projectId) } });
+      if (!proj) return res.status(400).json({ error: "That project does not exist." });
+    }
+    const data = {
+      title: String(b.title).trim(), kind: b.kind || "Conference", ourPart: b.ourPart || "Attended",
+      org: b.org || "", place: b.place || "", startDate: b.startDate || "", endDate: b.endDate || "",
+      stream: b.stream || "", projectId: b.projectId || null, outcome: b.outcome || "", notes: b.notes || "",
+    };
+    const existing = b.id ? await prisma.engagement.findUnique({ where: { id: String(b.id) } }) : null;
+    const eng = existing
+      ? await prisma.engagement.update({ where: { id: existing.id }, data })
+      : await prisma.engagement.create({ data: { id: `eng-${Date.now()}`, ...data, created_at: new Date().toISOString() } });
+    await createAuditLog(user?.id, user?.name, existing ? "Engagement Updated" : "Engagement Added",
+      `${existing ? "Updated" : "Added"} ${eng.ourPart.toLowerCase()} ${eng.kind.toLowerCase()}: "${eng.title}"${eng.place ? ` in ${eng.place}` : ""}${eng.startDate ? `, ${eng.startDate}` : ""}${eng.projectId ? "" : " — not tied to a project"}.`);
+    res.json({ success: true, engagement: eng });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/engagements/delete", async (req, res) => {
+  try {
+    const { id, user } = req.body || {};
+    const eng = await prisma.engagement.findUnique({ where: { id: String(id) } });
+    if (!eng) return res.status(404).json({ error: "No such engagement." });
+    // The people met there outlive the record of the meeting; they keep metAt as the label.
+    const met = await prisma.networkContact.count({ where: { engagementId: eng.id } });
+    await prisma.networkContact.updateMany({ where: { engagementId: eng.id }, data: { engagementId: null } });
+    await prisma.engagement.delete({ where: { id: eng.id } });
+    await createAuditLog(user?.id, user?.name, "Engagement Removed",
+      `"${eng.title}" removed from the register${met ? `; ${met} contact(s) kept, their link cleared` : ""}.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/contacts/save", async (req, res) => {
   try {
     const b = req.body || {};
@@ -4535,6 +4597,7 @@ app.post("/api/contacts/save", async (req, res) => {
       links: b.links || "",
       kind: b.kind || "Participant",
       metAt: b.metAt || "",
+      engagementId: b.engagementId || null,
       metOn: b.metOn || "",
       stream: b.stream || "",
       followUp: b.followUp || "",

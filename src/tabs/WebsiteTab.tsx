@@ -136,14 +136,14 @@ export default function WebsiteTab({ state, currentUser, triggerToast }: SharedP
         <div className="flex rounded-full bg-slate-100 p-0.5 text-xs font-bold">
           {files.map(f => <button key={f} onClick={() => setFile(f)} className={`rounded-full px-3 py-1 ${file === f ? "bg-slate-900 text-white" : "text-slate-600"}`}>{FILE_LABEL[f] || f}</button>)}
         </div>
-        {canEdit && <button onClick={save} disabled={!dirty || saving} className="ml-auto rounded bg-red-700 px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40">{saving ? "Saving…" : dirty ? "Save & refresh site" : "Saved"}</button>}
+        {canEdit && <button onClick={save} disabled={!dirty || saving} className="ms-auto rounded bg-red-700 px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40">{saving ? "Saving…" : dirty ? "Save & refresh site" : "Saved"}</button>}
       </div>
       <p className="text-xs text-slate-500">What you save here is what the website renders — no editing on the site itself. Structure (which sections exist, which fields) is set in the site's code; the words, links and lists are yours.</p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[14rem_1fr]">
         <nav className="space-y-1">
           {sections.map(s => (
             <button key={s} onClick={() => { if (dirty && !window.confirm("Discard unsaved changes in this section?")) return; setSection(s); }}
-              className={`block w-full rounded px-3 py-1.5 text-left text-xs ${section === s ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`}>{humanize(s)}</button>
+              className={`block w-full rounded px-3 py-1.5 text-start text-xs ${section === s ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`}>{humanize(s)}</button>
           ))}
         </nav>
         <div className="rounded-lg border border-slate-200 bg-white p-3">

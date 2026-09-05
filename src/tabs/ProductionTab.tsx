@@ -415,7 +415,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                           </div>
                         ))}
                         {quoteItems.length > 0 && (
-                          <p className="text-right text-xs font-mono font-bold text-slate-800">TOTAL: {quoteForm.currency || "USD"} {quoteTotal.toLocaleString()}</p>
+                          <p className="text-end text-xs font-mono font-bold text-slate-800">TOTAL: {quoteForm.currency || "USD"} {quoteTotal.toLocaleString()}</p>
                         )}
                       </div>
 
@@ -562,12 +562,12 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-slate-200 text-left text-[10px] uppercase text-slate-500">
+                      <tr className="border-b border-slate-200 text-start text-[10px] uppercase text-slate-500">
                         <th scope="col" className="p-3">Quote №</th>
                         <th scope="col" className="p-3">Date</th>
                         <th scope="col" className="p-3">Client</th>
                         <th scope="col" className="p-3">Service</th>
-                        <th scope="col" className="p-3 text-right">Amount</th>
+                        <th scope="col" className="p-3 text-end">Amount</th>
                         <th scope="col" className="p-3">Valid Until</th>
                         <th scope="col" className="p-3">Status</th>
                         <th scope="col" className="p-3">Payment</th>
@@ -583,7 +583,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                             <td className="p-3 font-mono text-slate-500">{q.date}</td>
                             <td className="p-3 text-slate-700">{client?.name || q.clientId}</td>
                             <td className="p-3 text-slate-700">{q.title}</td>
-                            <td className="p-3 text-right font-mono font-bold text-slate-800">{q.currency} {q.amount.toLocaleString()}</td>
+                            <td className="p-3 text-end font-mono font-bold text-slate-800">{q.currency} {q.amount.toLocaleString()}</td>
                             <td className="p-3 font-mono text-slate-500">{q.validUntil || "—"}</td>
                             <td className="p-3">
                               {MANAGERS.includes(currentUser.role) ? (
@@ -601,7 +601,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                   <span className="text-[10px] font-bold text-emerald-700">
                                     🏦 settled {tx?.date || ""}
                                     {FINANCE.includes(currentUser.role) && (
-                                      <button onClick={() => linkQuotePayment(q, "")} className="ml-1 text-slate-400 hover:text-red-600" title="Unlink payment" aria-label={`Unlink payment for ${q.quoteNo}`}>✕</button>
+                                      <button onClick={() => linkQuotePayment(q, "")} className="ms-1 text-slate-400 hover:text-red-600" title="Unlink payment" aria-label={`Unlink payment for ${q.quoteNo}`}>✕</button>
                                     )}
                                   </span>
                                 );
