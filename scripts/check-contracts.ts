@@ -133,9 +133,21 @@ ok("a first agreement claims to replace nothing",
 ok("a subcontract never gets the clause, even when one is passed",
   !text({ ...SUB, parentReference: "ANH-EC-SK-2027-01", supersedesReference: "ANH-EC-SK-2026-09" }).includes("replaces the yearly agreement"));
 ok("the server reuses one lookup for parent and predecessor — they are the same fact",
-  /if \(isSub \|\| isFramework\) \{/.test(server) && /if \(isSub\) parentReference = priorRef;/.test(server));
+  /if \(isSub \|\| isFramework\) \{/.test(server) && /if \(isSub\) \{ parentReference = supersedesReference;/.test(server));
 ok("and refuses to let a reissued agreement supersede itself",
-  /priorRef && priorRef !== reference/.test(server));
+  /r !== reference/.test(server));
+// Backfilling is ordinary here — the FPU-2025 engagements are being papered a year after they
+// ended — and filing order is not chronology. The newest document on file may have started
+// AFTER the engagement it would be cited on, which is false on the face of an instrument.
+const pick = (server.match(/let parentReference: string \| null = null;[\s\S]*?\n    \}/) || [""])[0];
+ok("it picks by the agreement's own start month, not by when the file was written",
+  pick.includes('const startMonth = String(startDate).slice(0, 7);')
+  && pick.includes("r.slice(-7) <= startMonth"));
+ok("candidates are ordered by that month, so the latest one already in force wins",
+  /\.sort\(\(a, b\) => b\.slice\(-7\)\.localeCompare\(a\.slice\(-7\)\)\)/.test(pick));
+ok("nothing that began later can be cited — a 2025 subcontract cannot name a 2026 agreement",
+  !/orderBy: \{ created_at: "desc" \}[\s\S]{0,80}linkedRecordId: "GENERAL"/.test(pick)
+  && !pick.includes("findFirst"));
 ok("the audit line records the replacement", server.includes('replacing ${supersedesReference}'));
 
 console.log("\nH. who countersigns, and what the page calls them");

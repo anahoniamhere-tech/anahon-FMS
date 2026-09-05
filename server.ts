@@ -1948,21 +1948,29 @@ app.post("/api/contracts/generate", async (req, res) => {
     // The framework contract this subcontract sits under: the same person's most recent
     // project-less employment contract. `undefined` would mean "not looked for"; we always
     // look, so the value is a reference or null, and the document says which.
-    // The same lookup answers two questions, because it is the same fact: the person's most
-    // recent yearly agreement. For a subcontract that is the parent it sits under; for a new
-    // yearly agreement it is the one being replaced.
+    // The same lookup answers two questions, because it is the same fact: the yearly agreement
+    // in force when this engagement began. For a subcontract that is the parent it sits under;
+    // for a new yearly agreement it is the one being replaced.
+    //
+    // "In force when it began" — not "most recently filed". Papering an old engagement is
+    // ordinary here (the FPU-2025 work was contracted a year after it ended), and filing order
+    // is not chronology: taking the newest document on file would make a 2025 subcontract cite
+    // an agreement signed in 2026, which is false on the face of an instrument. A reference
+    // ends in its own start month by construction, so the months can be compared.
     let parentReference: string | null = null;
     let supersedesReference: string | null = null;
     if (isSub || isFramework) {
-      const prior = await prisma.appDoc.findFirst({
-        where: { category: "Contracts", partyId: partyKey, linkedRecordId: "GENERAL" },
-        orderBy: { created_at: "desc" }
-      });
-      const priorRef = prior ? referenceOfContractDoc(prior.id, partyKey) : null;
-      // Reissuing the same agreement writes the same document id, so without this a contract
-      // would announce that it supersedes itself.
-      if (isSub) parentReference = priorRef;
-      else if (priorRef && priorRef !== reference) supersedesReference = priorRef;
+      const startMonth = String(startDate).slice(0, 7);
+      const priors = (await prisma.appDoc.findMany({
+        where: { category: "Contracts", partyId: partyKey, linkedRecordId: "GENERAL" }
+      }))
+        .map(d => referenceOfContractDoc(d.id, partyKey))
+        // Reissuing writes the same document id, so without this a contract would announce
+        // that it supersedes itself.
+        .filter((r): r is string => !!r && r !== reference)
+        .sort((a, b) => b.slice(-7).localeCompare(a.slice(-7)));
+      supersedesReference = priors.find(r => r.slice(-7) <= startMonth) || null;
+      if (isSub) { parentReference = supersedesReference; supersedesReference = null; }
     }
 
     const html = contractHtml({
