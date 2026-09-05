@@ -547,6 +547,8 @@ export interface DatabaseState {
   partnerAccounts: PartnerAccount[];
   documents: AppDoc[];
   auditLogs: AuditLog[];
+  /** How many rows the archive really holds — auditLogs carries only the newest 500. */
+  auditLogTotal?: number;
   complianceTasks: ComplianceTask[];
   opportunities: Opportunity[];
   cashCounts: CashCount[];

@@ -13,6 +13,22 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
 
   const [auditType, setAuditType] = useState("Donor Compliance check");
 
+  // The archive got long enough to need finding rather than scrolling — and since 5 Sep
+  // it carries reads as well as changes, which are the two questions people ask of it
+  // separately ("who altered this?" / "who looked at it?"). Refusals cut across both.
+  const [auditFind, setAuditFind] = useState("");
+  const [auditKind, setAuditKind] = useState<"all" | "reads" | "changes" | "refused">("all");
+  const READS = ["Record Read", "Read Refused"];
+  const shownLogs = state.auditLogs.filter(log => {
+    const kindOk = auditKind === "all"
+      || (auditKind === "reads" && READS.includes(log.action))
+      || (auditKind === "changes" && !READS.includes(log.action))
+      || (auditKind === "refused" && log.action.includes("Refused"));
+    if (!kindOk) return false;
+    const q = auditFind.trim().toLowerCase();
+    return !q || `${log.userName} ${log.action} ${log.details}`.toLowerCase().includes(q);
+  });
+
   const runGeminiScan = async () => {
     setGeminiLoading(true);
     setGeminiReport("");
@@ -232,9 +248,41 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
 
               {/* Audit actions logs list registry */}
               <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 font-mono">Audit Log Traceability Archive</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 font-mono">{t("Audit Log Traceability Archive")}</h4>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    value={auditFind}
+                    onChange={e => setAuditFind(e.target.value)}
+                    placeholder={t("Find a person, an action or a record")}
+                    className="flex-1 border border-slate-200 rounded px-2 py-1.5 text-xs font-mono outline-none focus:border-slate-400 text-start"
+                  />
+                  <select
+                    value={auditKind}
+                    onChange={e => setAuditKind(e.target.value as typeof auditKind)}
+                    className="border border-slate-200 rounded px-2 py-1.5 text-xs font-mono outline-none hover:bg-slate-50 shrink-0"
+                  >
+                    <option value="all">{t("Everything")}</option>
+                    <option value="changes">{t("Changes only")}</option>
+                    <option value="reads">{t("Reads only")}</option>
+                    <option value="refused">{t("Refusals only")}</option>
+                  </select>
+                </div>
+
+                <p className="text-[11px] text-slate-500">
+                  {shownLogs.length === state.auditLogs.length
+                    ? t("Showing the most recent") + " " + state.auditLogs.length
+                    : shownLogs.length + " " + t("of the most recent") + " " + state.auditLogs.length}
+                  {typeof state.auditLogTotal === "number" && state.auditLogTotal > state.auditLogs.length
+                    ? ` — ${t("the archive holds")} ${state.auditLogTotal} ${t("lines in all; the rest stay in the database")}`
+                    : ""}
+                </p>
+
                 <div className="divide-y divide-slate-100 text-xs font-mono max-h-60 overflow-y-auto">
-                  {state.auditLogs.map(log => (
+                  {shownLogs.length === 0 && (
+                    <p className="py-3 text-slate-400">{t("Nothing here matches.")}</p>
+                  )}
+                  {shownLogs.map(log => (
                     <div key={log.id} className="py-2.5 flex justify-between items-start gap-3 hover:bg-slate-50">
                       <div>
                         <span className="font-bold text-slate-900">[{log.userName}]</span>

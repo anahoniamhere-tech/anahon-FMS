@@ -62,6 +62,12 @@ ok("the whole-state read is NOT watched — it would bury the log", !/api\\\/sta
 ok("nor the per-page raster — one document opened is one line, not twenty", !watched.includes("page\\/[^/]+\\/") && watched.includes("pages"));
 ok("a document line names the paper, not just its id", /doc\.refNo/.test(server) && /doc\.filename/.test(server));
 ok("a quotation line names the offer and the client", /q\.quoteNo/.test(server) && /client\.name/.test(server));
+ok("the archive ships capped, not whole", /prisma\.auditLog\.findMany\(\{ orderBy: \{ timestamp: "desc" \}, take: 500 \}\)/.test(server));
+ok("and the screen is told what it is not showing", /auditLogTotal: auditTotal/.test(server) && src("tabs/ComplianceTab.tsx").includes("state.auditLogTotal"));
+ok("reads and changes can be told apart on the screen", (() => {
+  const tab = src("tabs/ComplianceTab.tsx");
+  return tab.includes('READS = ["Record Read", "Read Refused"]') && tab.includes("shownLogs");
+})());
 
 console.log("\nwhat the browser can still show");
 const files = ["App.tsx", "tabs/EditorialTab.tsx", "tabs/ExpensesTab.tsx", "tabs/ProjectsTab.tsx", "tabs/ProductionTab.tsx"];
