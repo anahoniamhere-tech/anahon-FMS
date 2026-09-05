@@ -6,6 +6,7 @@ import { STREAMS } from "../constants";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { ACTIVITY_EDITORS, DIRECTORS, FINANCE } from "../roles";
+import { withTicket } from "../docTicket";
 
 export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, workspaceRef }: SharedProps) {
   // Whoever holds the Finance Officer seat signs the printed project sheet — never a name in code.
@@ -1096,7 +1097,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                   <div key={sl.key} className={`p-2 rounded border text-xs ${sl.doc || sl.extra ? "bg-emerald-50/50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
                                     <p className="text-[10px] font-bold uppercase text-slate-600">{sl.label}</p>
                                     {sl.doc ? (
-                                      <a href={`/api/document/content/${sl.doc.id}`} target="_blank" onClick={e => { e.preventDefault(); openDoc(sl.doc); }} rel="noreferrer"
+                                      <a href={withTicket(`/api/document/content/${sl.doc.id}`)} target="_blank" onClick={e => { e.preventDefault(); openDoc(sl.doc); }} rel="noreferrer"
                                         className="text-[11px] text-red-650 hover:underline break-all">📄 {sl.doc.filename}</a>
                                     ) : sl.extra ? (
                                       <span className="text-[11px] text-emerald-800">✓ {sl.extra}</span>
@@ -1339,7 +1340,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                       <span className="text-slate-700 truncate">📄 {doc.filename} ({doc.sizeStr})</span>
                                     </span>
                                     <a
-                                      href={`/api/document/content/${doc.id}`}
+                                      href={withTicket(`/api/document/content/${doc.id}`)}
                                       target="_blank" onClick={e => { e.preventDefault(); openDoc(doc); }}
                                       rel="noreferrer"
                                       className="text-red-650 hover:underline font-mono text-[10px] font-bold inline-flex items-center min-h-[44px] px-2"
@@ -1415,7 +1416,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         <span>Status: {exp.status}</span>
                                         {docAttached ? (
                                           <a
-                                            href={`/api/document/content/${docAttached.id}`}
+                                            href={withTicket(`/api/document/content/${docAttached.id}`)}
                                             target="_blank" onClick={e => { e.preventDefault(); openDoc(docAttached); }}
                                             rel="noreferrer"
                                             className="text-red-650 hover:underline font-bold inline-flex items-center min-h-[44px] px-2"

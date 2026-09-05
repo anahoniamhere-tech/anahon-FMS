@@ -11,7 +11,7 @@ import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml} from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
-import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS } from "./src/roles.js";
+import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
 import { deskIcs } from "./src/deskIcs.js";
 import { canonEmail } from "./src/email.js";
@@ -196,7 +196,30 @@ async function findUserByEmail(email: string) {
 // Sign-in is the only POST that may be made without already being signed in.
 const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
 
+/**
+ * Reading is not public either.
+ *
+ * Until 5 Sep 2026 this middleware guarded POST only, so every GET under /api answered
+ * anyone who could reach the port — including /api/subscriptions/detect, which reads the
+ * bank statement. Now a GET must carry the sign-in token, or the short-lived document
+ * ticket minted for it (an <img> or a download link cannot send a header).
+ *
+ * The three exceptions carry their own credential or cannot carry one at all:
+ *   /api/desk.ics        the person's own feed secret, plus the private-network guard
+ *   /api/calendar.ics    the shared editorial feed a calendar app subscribes to; private network only
+ *   /api/document/ticket answers 401 by itself when nobody is signed in
+ */
+const OPEN_GETS = new Set(["/api/desk.ics", "/api/calendar.ics", "/api/document/ticket"]);
+
 app.use(async (req: any, res, next) => {
+  if (req.method === "GET" && req.path.startsWith("/api/") && !OPEN_GETS.has(req.path)) {
+    const viewerId = await viewerIdFromReq(req);
+    if (!viewerId) return res.status(401).json({ error: "Sign in to read this." });
+    const viewer = await prisma.user.findUnique({ where: { id: viewerId } });
+    if (!viewer || !viewer.active) return res.status(403).json({ error: "This user account is deactivated." });
+    req.dbUser = viewer;
+    return next();
+  }
   if (req.method !== "POST" || !req.path.startsWith("/api/")) return next();
   if (UNAUTHENTICATED_POSTS.has(req.path)) return next();
   try {
@@ -831,6 +854,10 @@ app.post("/api/calendar/feed", async (req, res) => {
 
 app.get("/api/calendar.ics", async (req, res) => {
   try {
+    // ponytail: legacy shared feed, superseded by the per-person /api/desk.ics. Kept for
+    // anyone already subscribed; retire it once nobody is. It carries editorial titles and
+    // deadlines and cannot send a header, so the office network is the only lock it has.
+    if (!fromPrivateNetwork(req)) return res.status(403).send("This feed is served on the office network only.");
     const [meetings, items, users] = await Promise.all([
       prisma.editorialMeeting.findMany(),
       prisma.contentItem.findMany({ where: { NOT: { status: "Published" } } }),
@@ -2016,7 +2043,9 @@ app.get("/api/roles/seats", async (_req, res) => {
 });
 
 // Every action taken while standing in someone else's seat, newest first.
-app.get("/api/audit/acting", async (_req, res) => {
+app.get("/api/audit/acting", async (req: any, res) => {
+  // Who stood in for which seat is the transparency record; the director reads it.
+  if (!isDirector(req.dbUser?.role)) return res.status(403).json({ error: "The seat log is the director's." });
   const rows = await prisma.auditLog.findMany({
     where: { NOT: { actingAs: null } }, orderBy: { timestamp: "desc" }, take: 200
   });
@@ -2627,6 +2656,10 @@ app.post("/api/subscriptions/roll", async (req, res) => {
 // tracked yet. Suggestion only — nothing is created without the user.
 app.get("/api/subscriptions/detect", async (req, res) => {
   try {
+    // Merchant names, amounts and dates come straight off the bank statement.
+    if (!SUPPLIER_EDITORS.includes((req as any).dbUser?.role)) {
+      return res.status(403).json({ error: "What the bank statement suggests is for finance and procurement." });
+    }
     const [txs, subs] = await Promise.all([
       prisma.bankTransaction.findMany({ where: { type: "Withdrawal", pending: false } }),
       prisma.subscription.findMany()

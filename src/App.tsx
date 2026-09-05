@@ -1541,7 +1541,7 @@ export default function App() {
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Documents ({docs.length})</p>
                   {docs.length === 0 && <p className="text-xs text-slate-400">No documents linked to this voucher.</p>}
                   {docs.map(d => (
-                    <a key={d.id} href={`/api/document/content/${d.id}`} target="_blank" onClick={e => { e.preventDefault(); openDoc(d); }} rel="noreferrer"
+                    <a key={d.id} href={withTicket(`/api/document/content/${d.id}`)} target="_blank" onClick={e => { e.preventDefault(); openDoc(d); }} rel="noreferrer"
                       className="flex items-center gap-2 py-1.5 border-t border-slate-100 text-xs hover:bg-slate-50 px-1 rounded">
                       <span className="text-[9px] font-bold uppercase text-slate-400 w-24 shrink-0">{d.category}</span>
                       <span className="flex-1 truncate text-blue-700 underline decoration-dotted">{d.filename}</span>

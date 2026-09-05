@@ -5,6 +5,7 @@ import { Procurement, Project, Vendor } from "../types";
 import { SharedProps } from "./shared";
 import Info from "../Info";
 import { DIRECTORS, FINANCE, REQUESTERS } from "../roles";
+import { withTicket } from "../docTicket";
 
 export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUpload, openDoc, refreshState, requestableProjects, searchTerm, setDrawerExpenseId, setSearchTerm, state, t, triggerToast, lang }: SharedProps) {
   const [vFilter, setVFilter] = useState({ from: "", to: "", type: "", status: "" });
@@ -985,7 +986,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             {expDocs.map(d => (
                               <a
                                 key={d.id}
-                                href={`/api/document/content/${d.id}`}
+                                href={withTicket(`/api/document/content/${d.id}`)}
                                 target="_blank" onClick={e => { e.preventDefault(); openDoc(d); }}
                                 rel="noreferrer"
                                 className="text-slate-500 hover:text-red-650 hover:underline inline-flex items-center gap-1"

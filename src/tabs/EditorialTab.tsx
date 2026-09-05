@@ -5,6 +5,7 @@ import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHE
 import { SharedProps } from "./shared";
 import Info from "../Info";
 import { CONTENT_EDITORS, CREW } from "../roles";
+import { withTicket } from "../docTicket";
 
 // Editorial pipeline (Policies 002 & 005). The tab renders the register and the
 // buttons; every rule lives server-side — the same publishBlockers() the server
@@ -1181,7 +1182,7 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
                           )}
                           <div className="flex flex-wrap items-center gap-2 text-[11px]">
                             {item.coverPath
-                              ? <img src={`/api/cover/${item.id}?v=${encodeURIComponent(item.coverPath)}`} alt="" className="h-16 w-28 object-cover rounded border border-slate-200" title={item.coverProvider} />
+                              ? <img src={withTicket(`/api/cover/${item.id}?v=${encodeURIComponent(item.coverPath)}`)} alt="" className="h-16 w-28 object-cover rounded border border-slate-200" title={item.coverProvider} />
                               : <span className="text-slate-400">{t("No cover yet")}</span>}
                             {canProduce && !item.retractedAt && (<>
                               <button onClick={() => post("/api/content/cover", { id: item.id, provider: "higgsfield" }, "Cover generated with Higgsfield")}
