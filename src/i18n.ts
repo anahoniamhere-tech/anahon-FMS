@@ -339,6 +339,16 @@ export const AR: Record<string, string> = {
   "Timesheets & payroll": "الجداول الزمنية والرواتب",
   "Team, rates & audit log": "الفريق والأسعار وسجل التدقيق",
   // my desk (phase 3)
+  // my desk on my phone (phase 5)
+  "My desk on my phone": "مكتبي على هاتفي",
+  "Get my calendar address": "احصل على عنوان تقويمي",
+  "Subscribe to it in the phone's calendar. It shows only what is your turn, and works on the office network or Tailscale.": "اشترك به في تقويم الهاتف. يعرض ما هو دورك فقط، ويعمل على شبكة المكتب أو Tailscale.",
+  "The old address stopped working. Any device still subscribed must be added again.": "توقّف العنوان القديم عن العمل. أي جهاز ما زال مشتركاً يجب إضافته من جديد.",
+  "Replace it": "استبدله",
+  "Working…": "جارٍ العمل…",
+  "Address copied. It is not shown again.": "نُسخ العنوان. لن يُعرض مرة أخرى.",
+  "Anyone with this address can read your desk. Replace it if it is ever shared by mistake.": "كل من يملك هذا العنوان يستطيع قراءة مكتبك. استبدله إن شورك بالخطأ.",
+  "Could not make the feed address.": "تعذّر إنشاء عنوان التغذية.",
   // tasks (phase 4)
   "New task": "مهمة جديدة",
   "What has to be done": "ما الذي يجب إنجازه",

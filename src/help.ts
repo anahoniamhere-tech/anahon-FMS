@@ -206,6 +206,14 @@ export const HELP: HelpEntry[] = [
       ar: "المهمة هي الشيء الوحيد على المكتب بلا سجل خاص خلفه — تقديم ورقة، اتصال، خطوة على أحدهم أن ينفّذها ببساطة — لذلك يكتبها المدير في «مكتبي» بتاريخ استحقاق، وباسم صاحبها إن كانت تخصّ أحداً. عندها تظهر على مكتب ذلك الشخص تحت «بانتظارك»، ولا يستطيع تعليمها كمنجزة سواه (أو المدير). والمهمة بلا اسم تبقى مهمة المدير نفسه. كل ما عدا ذلك يصل إلى المكتب من العمل على شاشته الخاصة؛ المهام هي الاستثناء لا القاعدة.",
     },
   },
+  {
+    id: "desk-feed", area: "Seats & approvals",
+    q: { en: "How do I see my desk on my phone?", ar: "كيف أرى مكتبي على هاتفي؟" },
+    a: {
+      en: "Ask for a calendar address on My Desk and subscribe to it in the phone's calendar app (iPhone: Settings → Calendar → Accounts → Add Account → Other → Add Subscribed Calendar). It carries one all-day entry for every dated thing that is your turn, refreshed about every hour, and nothing that belongs to anyone else. The address is the whole key — anyone holding it can read your desk — so it is shown once, never looked up again, and works only from inside the office network or over Tailscale. If it is ever shared by mistake, press Replace it: the old address stops working immediately and every device subscribed to it must be added again.",
+      ar: "اطلب عنوان تقويم من «مكتبي» واشترك به في تطبيق التقويم على الهاتف (آيفون: الإعدادات ← التقويم ← الحسابات ← إضافة حساب ← أخرى ← إضافة تقويم مشترك). يحمل بنداً ليوم كامل لكل أمر مؤرّخ هو دورك، ويُحدَّث كل ساعة تقريباً، ولا يحمل شيئاً يخصّ غيرك. العنوان هو المفتاح كله — من يملكه يقرأ مكتبك — لذلك يُعرض مرة واحدة، ولا يُسترجع، ولا يعمل إلا من داخل شبكة المكتب أو عبر Tailscale. وإن شورك بالخطأ فاضغط «استبدله»: يتوقف القديم فوراً وعلى كل جهاز مشترك أن يُضاف من جديد.",
+    },
+  },
 ];
 
 export const helpById = (id: string) => HELP.find(h => h.id === id);

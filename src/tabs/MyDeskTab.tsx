@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock, LayoutGrid, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock, LayoutGrid, Plus, Trash2, Smartphone } from "lucide-react";
 import { SharedProps } from "./shared";
 import { PERSONNEL_CATEGORIES, isPersonnelDoc } from "../personnelDocs";
 import { deskItems, localToday, DeskItem } from "../workflow";
@@ -44,6 +44,9 @@ export default function MyDeskTab({
   const [pickedDay, setPickedDay] = useState<string | null>(null);
   // The task being written or edited (directors only). null = the form is closed.
   const [taskForm, setTaskForm] = useState<null | { id?: string; title: string; category: string; dueDate: string; notes: string; assigneeUserId: string }>(null);
+  // The private feed address, held only for as long as this screen is open: the server
+  // never hands the same secret back, so a lost address is replaced, not looked up.
+  const [feed, setFeed] = useState<null | { url: string; qr: string | null; rotated: boolean }>(null);
   const toggle = (set: (f: (p: Set<string>) => Set<string>) => void, id: string) =>
     set(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
@@ -110,6 +113,20 @@ export default function MyDeskTab({
       if (!r.ok) throw new Error(d.error || t("Could not remove the task."));
       triggerToast(`${t("Removed")}: ${title.slice(0, 44)}`);
       await refreshState();
+    } catch (e: any) { triggerToast(e.message); } finally { setBusy(null); }
+  };
+
+  /** Mint or replace my own calendar address. Always mine, whatever the role. */
+  const makeFeed = async () => {
+    setBusy("feed");
+    try {
+      const r = await fetch("/api/calendar/feed", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: currentUser }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || t("Could not make the feed address."));
+      setFeed({ url: d.url || `${window.location.origin}${d.path}`, qr: d.qr || null, rotated: !!feed });
     } catch (e: any) { triggerToast(e.message); } finally { setBusy(null); }
   };
 
@@ -735,6 +752,44 @@ export default function MyDeskTab({
           );
         })}
       </div>}
+
+      {/* Your desk on your phone. The address is the whole key, so it is shown once and
+          replaced rather than looked up, and the server serves it on the office network
+          and Tailscale only. */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+          <Smartphone className="h-4 w-4 text-[#6D1A1A]" /> {t("My desk on my phone")}
+          <Info id="desk-feed" lang={lang} />
+        </h3>
+        {!feed ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              onClick={makeFeed}
+              disabled={busy === "feed"}
+              className="rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#4A1010] disabled:opacity-40"
+            >{busy === "feed" ? t("Working…") : t("Get my calendar address")}</button>
+            <p className="text-[11px] text-slate-500">{t("Subscribe to it in the phone's calendar. It shows only what is your turn, and works on the office network or Tailscale.")}</p>
+          </div>
+        ) : (
+          <div className="mt-2 space-y-2">
+            {feed.rotated && <p className="text-[11px] font-bold text-[#8f2020]">{t("The old address stopped working. Any device still subscribed must be added again.")}</p>}
+            <div className="flex flex-wrap items-center gap-2">
+              <input readOnly value={feed.url} onFocus={e => e.currentTarget.select()} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 font-mono text-[11px]" />
+              <button
+                onClick={() => { navigator.clipboard?.writeText(feed.url); triggerToast(t("Address copied. It is not shown again.")); }}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+              >{t("Copy")}</button>
+              <button
+                onClick={makeFeed}
+                disabled={busy === "feed"}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:border-[#E23B3B] hover:text-[#E23B3B] disabled:opacity-40"
+              >{t("Replace it")}</button>
+            </div>
+            {feed.qr && <div className="w-40" dangerouslySetInnerHTML={{ __html: feed.qr }} />}
+            <p className="text-[11px] text-slate-500">{t("Anyone with this address can read your desk. Replace it if it is ever shared by mistake.")}</p>
+          </div>
+        )}
+      </div>
 
       {me && (
         <div className="rounded-xl border border-[#E23B3B]/25 bg-gradient-to-br from-[#E23B3B]/[0.04] to-white p-4">

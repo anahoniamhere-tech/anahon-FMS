@@ -17,6 +17,8 @@ model User {
   projectIdsJson String  @default("[]")
   // Programme-level scope: every project in this stream, present and future.
   streamScope    String  @default("")
+  /// Secret for this person's private calendar feed. Null until they ask for one.
+  calendarToken  String? @unique
 }
 
 model Account {

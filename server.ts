@@ -12,6 +12,8 @@ import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, provid
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS } from "./src/roles.js";
+import { deskItems } from "./src/workflow.js";
+import { deskIcs } from "./src/deskIcs.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs } from "./src/personnelDocs.js";
@@ -132,7 +134,7 @@ const EDITOR_ALLOWED_POSTS = new Set([
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
 // Anyone can be given a task, so every working seat may tick its own and put it back;
 // the routes themselves check that the task is theirs. The auditor is read-only.
-const TASK_POSTS = ["/api/compliance/complete", "/api/compliance/reopen"];
+const TASK_POSTS = ["/api/compliance/complete", "/api/compliance/reopen", "/api/calendar/feed"];
 const AUDITOR_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/assets/verify"]);
 // A self-service employee files their own timesheet and their own papers, nothing else.
 const SELF_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/timesheets/submit", "/api/document/upload", ...TASK_POSTS]);
@@ -766,6 +768,55 @@ app.post("/api/employees/set-active", async (req, res) => {
   }
 });
 
+/* ── The private desk feed ──────────────────────────────────────────────────
+ * A phone cannot sign in with Google against a LAN address, so the feed carries its own
+ * secret in the URL. The secret IS the desk it shows, which is why: it is minted only on
+ * request, rotating it kills every subscription made with the old one, and the route
+ * refuses anything that did not come from the office network or Tailscale. Never expose
+ * this port to the internet — the guard is the second lock, not the first.
+ */
+const PRIVATE_IP = /^(::1|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.|f[cd]|fe80:)/i;
+const fromPrivateNetwork = (req: any) => PRIVATE_IP.test(String(req.ip || "").replace(/^::ffff:/, ""));
+
+app.get("/api/desk.ics", async (req, res) => {
+  try {
+    if (!fromPrivateNetwork(req)) return res.status(403).send("This feed is served on the office network only.");
+    const token = String(req.query.t || "");
+    const user = token.length >= 32 ? await prisma.user.findUnique({ where: { calendarToken: token } }) : null;
+    if (!user || !user.active) return res.status(404).send("No such feed. Ask the system for a new address.");
+
+    const state = await loadState(user);
+    const mine = deskItems({ id: user.id, email: user.email, role: user.role }, state as any, localDate())
+      .filter(i => i.group !== "week");                    // my own turn and the seats I cover; not other people's dates
+    const stamp = new Date().toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.send(deskIcs(user.name, mine, stamp));
+  } catch (err: any) {
+    res.status(500).send(String(err.message));
+  }
+});
+
+// Mint or rotate my own feed address. Always mine — a token for someone else's desk is
+// never handed out, whatever the role.
+app.post("/api/calendar/feed", async (req, res) => {
+  try {
+    const me = (req as any).dbUser;
+    const rotating = !!me.calendarToken;
+    const calendarToken = crypto.randomBytes(24).toString("base64url");
+    await prisma.user.update({ where: { id: me.id }, data: { calendarToken } });
+    await createAuditLog(me.id, me.name, rotating ? "Calendar Feed Rotated" : "Calendar Feed Created",
+      rotating ? "The old feed address stopped working; any device still subscribed to it must be re-added."
+               : "A private feed address was created for this account's own desk.");
+    const path = `/api/desk.ics?t=${calendarToken}`;
+    const base = String(process.env.FMS_PUBLIC_URL || "").replace(/\/$/, "");
+    const url = base ? base + path : path;
+    res.json({ success: true, path, url, qr: base ? await qrSvg(url) : null });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/calendar.ics", async (req, res) => {
   try {
     const [meetings, items, users] = await Promise.all([
@@ -827,24 +878,28 @@ app.get("/api/network/access", async (req, res) => {
     }
     // In a container the interface list is the container's own network; the deployment sets the real address.
     if (process.env.FMS_PUBLIC_URL) urls.splice(0, urls.length, { iface: "public", url: process.env.FMS_PUBLIC_URL });
-    let qr: string | null = null;
-    if (urls.length) {
-      try {
-        const { execFile } = await import("child_process");
-        qr = await new Promise<string>((resolve, reject) => {
-          execFile("python3", ["-c",
-            "import sys,qrcode,qrcode.image.svg,io;i=qrcode.make(sys.argv[1],image_factory=qrcode.image.svg.SvgPathImage,box_size=10,border=2);b=io.BytesIO();i.save(b);print(b.getvalue().decode())",
-            urls[0].url],
-            { timeout: 8000 }, (err, stdout) => err ? reject(err) : resolve(stdout));
-        });
-        qr = qr.replace(/<\?xml[^>]*\?>\s*/, "").trim();
-      } catch { qr = null; } // QR is a convenience; the URL is the payload.
-    }
+    const qr = urls.length ? await qrSvg(urls[0].url) : null;
     res.json({ port: PORT, urls, qr });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
+
+/** A QR of any short string, as inline SVG. A convenience — the URL is the payload. */
+async function qrSvg(text: string): Promise<string | null> {
+  try {
+    const { execFile } = await import("child_process");
+    const svg: string = await new Promise((resolve, reject) => {
+      execFile("python3", ["-c",
+            "import sys,qrcode,qrcode.image.svg,io;i=qrcode.make(sys.argv[1],image_factory=qrcode.image.svg.SvgPathImage,box_size=10,border=2);b=io.BytesIO();i.save(b);print(b.getvalue().decode())",
+        text],
+        { timeout: 8000 }, (err, stdout) => err ? reject(err) : resolve(stdout));
+    });
+    return svg.replace(/<\?xml[^>]*\?>\s*/, "").trim();
+  } catch {
+    return null;
+  }
+}
 
 // Load whole database state
 app.get("/api/state", async (req, res) => {
