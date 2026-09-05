@@ -54,5 +54,20 @@ ok("and the sheet says once why the amounts are missing, not on every row",
 ok("that sentence has Arabic too",
   /"A share shown without an amount[^"]*":\s*"[^"]*[؀-ۿ]/.test(src("i18n.ts")));
 
+console.log("\none number, three places");
+// A staff cost share is computed on the co-funding screen, on the payslip, and again when a
+// timesheet is approved and the budget line is charged. The screen took salary alone while
+// both server paths took salary + allowance: three implementations, two answers, and they
+// agreed only because every base is 0. A donor reads the screen and the payslip.
+const server = readFileSync(new URL("../server.ts", import.meta.url), "utf8");
+ok("the co-funding screen apportions salary + allowance",
+  /const allocatedSalary = \(\(emp\?\.salary \|\| 0\) \+ \(emp\?\.allowance \|\| 0\)\)/.test(projects));
+ok("the payslip apportions the same gross",
+  /const gross = \(employee\.salary \|\| 0\) \+ \(employee\.allowance \|\| 0\);/.test(server));
+ok("and so does the posting that charges the budget line",
+  /const baseCompensation = emp\.salary \+ emp\.allowance;/.test(server));
+ok("no one of the three has quietly gone back to salary alone",
+  !/allocatedSalary = \(emp\?\.salary \|\| 0\) \*/.test(projects));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

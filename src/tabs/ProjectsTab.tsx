@@ -1523,7 +1523,13 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                   // money is not, so the share is shown without a figure rather
                                   // than as "$0.00", which reads as a measured nil.
                                   const hasBase = !!(emp?.salary || emp?.allowance);
-                                  const allocatedSalary = (emp?.salary || 0) * ((alloc?.percentage || 0) / 100);
+                                  // Salary PLUS allowance, because that is the number this share
+                                  // is actually posted at: /api/timesheets/approve charges the
+                                  // budget line with `baseCompensation = salary + allowance`, and
+                                  // the payslip apportions the same `gross`. This screen used to
+                                  // take salary alone, so the first role funded with an allowance
+                                  // would have shown less here than the ledger and the payslip.
+                                  const allocatedSalary = ((emp?.salary || 0) + (emp?.allowance || 0)) * ((alloc?.percentage || 0) / 100);
 
                                   return (
                                     <div key={ts.id} className="text-xs p-2 bg-white border border-slate-100 rounded space-y-1">
