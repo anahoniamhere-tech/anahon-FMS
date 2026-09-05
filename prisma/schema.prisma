@@ -140,6 +140,13 @@ model Expense {
   created_at      String
   approved_at     String?
   paid_at         String?
+  /// Who took each step, and the seat they wore at the time (phase 7).
+  approvedById    String?
+  approvedAs      String?
+  paidById        String?
+  paidAs          String?
+  postedById      String?
+  postedAs        String?
   // The approved procurement (RFQ or single-source waiver) authorising a >USD 300 purchase.
   procurementId   String  @default("")
   commentsJson    String  // Serialized Comments Array [Comment]
@@ -159,6 +166,8 @@ model Procurement {
   // Waiver: fewer than 3 quotations, allowed only with a written justification.
   singleSource     Boolean @default(false)
   approvedBy       String  @default("")
+  approvedById     String?
+  approvedAs       String?
 }
 
 model BankAccount {
@@ -223,6 +232,8 @@ model Timesheet {
   allocationsJson String  // Serialized Allocations Array
   status          String
   approvedBy      String?
+  approvedById    String?
+  approvedAs      String?
 }
 
 model FixedAsset {
@@ -431,8 +442,10 @@ model ContentItem {
   legalRecordedAt     String  @default("")
   pmApprovedBy        String  @default("")       // userId — Production Manager approval slot
   pmApprovedAt        String  @default("")
+  pmApprovedAs        String?
   pdApprovedBy        String  @default("")       // userId — Programs Director approval slot, distinct user
   pdApprovedAt        String  @default("")
+  pdApprovedAs        String?
   factCheckTag        Boolean @default(false)    // Policy 005 "tags or labels" — set at publish
   publishedAt         String  @default("")
   websiteUrl          String  @default("")       // where the site put it — written back by the publish hook

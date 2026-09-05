@@ -155,6 +155,10 @@ export interface Expense {
   created_at: string;
   approved_at?: string;
   paid_at?: string;
+  /** Who took each step and the seat they wore (phase 7). */
+  approvedById?: string; approvedAs?: string;
+  paidById?: string;     paidAs?: string;
+  postedById?: string;   postedAs?: string;
   comments: Comment[];
   allocations: ProjectAllocation[];
   hasAttachment: boolean;
@@ -179,6 +183,7 @@ export interface Procurement {
   /** Waiver: fewer than 3 quotations, allowed only with a written justification. */
   singleSource?: boolean;
   approvedBy?: string;
+  approvedById?: string; approvedAs?: string;
 }
 
 export interface BankAccount {
@@ -250,6 +255,7 @@ export interface Timesheet {
   }[];
   status: "Draft" | "Submitted" | "Approved" | "Locked";
   approvedBy?: string;
+  approvedById?: string; approvedAs?: string;
 }
 
 export interface FixedAsset {
@@ -423,8 +429,10 @@ export interface ContentItem {
   legalRecordedAt: string;
   pmApprovedBy: string;
   pmApprovedAt: string;
+  pmApprovedAs?: string;
   pdApprovedBy: string;
   pdApprovedAt: string;
+  pdApprovedAs?: string;
   factCheckTag: boolean;
   publishedAt: string;
   websiteUrl?: string;         // live page on the website, set by the publish hook

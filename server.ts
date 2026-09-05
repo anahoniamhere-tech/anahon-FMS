@@ -3009,7 +3009,7 @@ app.post("/api/content/return", async (req, res) => {
     // Changed content voids prior sign-offs — one rule, no matrix.
     const updated = await prisma.contentItem.update({ where: { id }, data: {
       status: "In Production", factCheckPassedAt: "",
-      pmApprovedBy: "", pmApprovedAt: "", pdApprovedBy: "", pdApprovedAt: ""
+      pmApprovedBy: "", pmApprovedAt: "", pmApprovedAs: null, pdApprovedBy: "", pdApprovedAt: "", pdApprovedAs: null
     } });
     await createAuditLog(user?.id, user?.name, "Content Returned for Revision",
       `"${item.title}" sent back from ${item.status}: ${reason}. Prior fact-check and approvals voided.`);
@@ -3046,8 +3046,8 @@ app.post("/api/content/approve", async (req, res) => {
     }
     const now = new Date().toISOString();
     const data: any = target === "pm"
-      ? { pmApprovedBy: user.id, pmApprovedAt: now }
-      : { pdApprovedBy: user.id, pdApprovedAt: now };
+      ? { pmApprovedBy: user.id, pmApprovedAt: now, pmApprovedAs: actor(user).as }
+      : { pdApprovedBy: user.id, pdApprovedAt: now, pdApprovedAs: actor(user).as };
     const both = target === "pm" ? !!item.pdApprovedBy : !!item.pmApprovedBy;
     if (both) data.status = "Approved";
     const updated = await prisma.contentItem.update({ where: { id }, data });
@@ -4884,6 +4884,9 @@ app.post("/api/expense/action", async (req, res) => {
     let updatedStatus = exp.status;
     let approvedAt = exp.approved_at;
     let paidAt = exp.paid_at;
+    // Phase 7: each step signs itself with the account and the seat it wore.
+    const me = actor(user);
+    let signed: any = {};
     let updatedPaymentMethod = exp.paymentMethod;
     let updatedPaymentRef = exp.paymentRef;
     let updatedWhtAmount = exp.whtAmount;
@@ -4909,6 +4912,7 @@ app.post("/api/expense/action", async (req, res) => {
     } else if (action === "approve") {
       updatedStatus = "Approved";
       approvedAt = new Date().toISOString();
+      signed = { ...signed, approvedById: me.id, approvedAs: me.as };
 
       // Accrual basis accounting entry
       const expenseCostAccount = "6100";
@@ -5021,6 +5025,7 @@ app.post("/api/expense/action", async (req, res) => {
       );
     } else if (action === "cashbook-pay") {
       if (!bankAccountId) return res.status(400).json({ error: "Cash vault or bank account required to disburse funds." });
+      signed = { ...signed, paidById: me.id, paidAs: me.as };
 
       const account = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
       if (!account) return res.status(404).json({ error: "Cash/Bank vault not configured." });
@@ -5083,6 +5088,7 @@ app.post("/api/expense/action", async (req, res) => {
       );
     } else if (action === "general-ledger-post") {
       updatedStatus = "Posted";
+      signed = { ...signed, postedById: me.id, postedAs: me.as };
 
       // Deduct commitment, add to actual spent budget (supporting allocations)
       const allocations = JSON.parse(exp.allocationsJson || "[]");
@@ -5198,6 +5204,7 @@ app.post("/api/expense/action", async (req, res) => {
         status: updatedStatus,
         approved_at: approvedAt,
         paid_at: paidAt,
+        ...signed,
         paymentMethod: updatedPaymentMethod,
         paymentRef: updatedPaymentRef,
         whtAmount: updatedWhtAmount,
@@ -5309,6 +5316,10 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
         created_at: nowStr,
         approved_at: nowStr,
         paid_at: nowStr,
+        // A direct petty-cash entry is raised, approved and paid in one act, by one person.
+        approvedById: actor(user).id, approvedAs: actor(user).as,
+        paidById: actor(user).id,     paidAs: actor(user).as,
+        postedById: actor(user).id,   postedAs: actor(user).as,
         commentsJson: "[]",
         hasAttachment: false
       }
@@ -5500,7 +5511,7 @@ app.post("/api/procurement/approve", async (req, res) => {
 
     const updated = await prisma.procurement.update({
       where: { id },
-      data: { status: "Approved", approvedBy: user?.name || "" }
+      data: { status: "Approved", approvedBy: user?.name || "", approvedById: actor(user).id, approvedAs: actor(user).as }
     });
 
     await createAuditLog(
@@ -5888,7 +5899,9 @@ app.post("/api/timesheets/approve", async (req, res) => {
       where: { id },
       data: {
         status: "Approved",
-        approvedBy: user?.name || "Supervisor"
+        approvedBy: user?.name || "Supervisor",
+        approvedById: actor(user).id,
+        approvedAs: actor(user).as
       }
     });
 
@@ -6059,6 +6072,17 @@ app.post("/api/partners/draw", async (req, res) => {
 
 // Compliance task completion
 /** A task is ticked by the person it was given to, or by a director when nobody holds it. */
+/**
+ * Phase 7: the approver on the record.
+ *
+ * `id` is the account that acted; `as` is the seat it wore — null when the person was
+ * simply themselves, the seat's name when a Super Admin was standing in for a vacant
+ * one. Together they answer "who approved this" without a trip to the audit log.
+ */
+function actor(user: any) {
+  return { id: String(user?.id || ""), as: stampActingAs() };
+}
+
 function mayTickTask(task: { assigneeUserId?: string | null }, user: any): boolean {
   if (task.assigneeUserId) return task.assigneeUserId === user?.id || isDirector(user?.role);
   return isDirector(user?.role);

@@ -1486,7 +1486,19 @@ export default function App() {
         const docs = state.documents.filter(d => d.linkedRecordType === "Expense" && d.linkedRecordId === exp.id);
         const bankHits = state.bankTransactions.filter(t => t.voucherNo === exp.voucherNo);
         const fmtTs = (s?: string | null) => s ? s.slice(0, 10) : null;
-        const steps: [string, string | null][] = [["Created", fmtTs(exp.created_at)], ["Approved", fmtTs(exp.approved_at)], ["Paid", fmtTs(exp.paid_at)]];
+        // Phase 7: each step says who took it, and the seat they wore if they were standing in.
+        const nameOf = (id?: string) => state.users.find(u => u.id === id)?.name
+          || state.employees.find(e => e.id === id)?.name || (id ? "—" : "");
+        const signature = (id?: string, as?: string) => {
+          const who = nameOf(id);
+          if (!who) return null;
+          return as ? `${who}, as ${as}` : who;
+        };
+        const steps: [string, string | null, string | null][] = [
+          ["Created", fmtTs(exp.created_at), signature(exp.requestorId)],
+          ["Approved", fmtTs(exp.approved_at), signature(exp.approvedById, exp.approvedAs)],
+          ["Paid", fmtTs(exp.paid_at), signature(exp.paidById, exp.paidAs)],
+        ];
         return (
           <>
             <div className="fixed inset-0 bg-black/40 z-[80]" onClick={() => setDrawerExpenseId(null)} />
@@ -1528,10 +1540,11 @@ export default function App() {
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Timeline</p>
                   <div className="flex gap-2">
-                    {steps.map(([label, ts]) => (
+                    {steps.map(([label, ts, who]) => (
                       <div key={label} className={`flex-1 rounded border px-2 py-1.5 text-center ${ts ? "border-emerald-300 bg-emerald-50" : "border-slate-200 bg-slate-50 opacity-60"}`}>
                         <p className="text-[10px] font-bold">{ts ? "✓" : "…"} {label}</p>
                         <p className="text-[10px] font-mono text-slate-500">{ts || "pending"}</p>
+                        {ts && <p className="mt-0.5 text-[9px] leading-tight text-slate-500">{who || "not recorded"}</p>}
                       </div>
                     ))}
                   </div>
