@@ -345,7 +345,7 @@ model Quotation {
   notes       String @default("")
   itemsJson   String @default("[]") // [{service, description, output, unitPrice, qty}]
   termsJson   String @default("{}") // {financial, production, technical, extras}
-  paymentTxId String @default("") // statement deposit that settled this quote (bank evidence)
+  paymentTxIdsJson String @default("[]") // statement deposits that settled this quote, in linking order (bank evidence); a client may pay in tranches
 }
 
 model OrgSettings {

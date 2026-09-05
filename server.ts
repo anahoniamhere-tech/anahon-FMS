@@ -19,6 +19,7 @@ import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
 import { canonEmail } from "./src/email.js";
+import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
@@ -792,7 +793,9 @@ async function loadState(viewer?: any) {
     quotations: quotations.map(q => ({
       ...q,
       items: JSON.parse(q.itemsJson || "[]"),
-      terms: JSON.parse(q.termsJson || "{}")
+      terms: JSON.parse(q.termsJson || "{}"),
+      // The deposits that settled it, in linking order. Amounts stay on the bank lines.
+      paymentTxIds: JSON.parse(q.paymentTxIdsJson || "[]")
     })),
     // Networking register — people met at trainings and events. No financial data.
     networkContacts,
@@ -5420,12 +5423,27 @@ app.post("/api/quotations/issue-receipt", async (req, res) => {
   }
 });
 
+/**
+ * Record the deposits that settle a quotation, and let them decide its status.
+ *
+ * Every settlement path — an off-bank payment, a linked statement deposit, an unlinked
+ * one — ends here, so "how much has this client actually paid?" is answered in exactly
+ * one place, by re-reading the bank lines rather than by adding to a running total that
+ * could drift. The status follows the money (src/quoteTranches.ts), never the button.
+ */
+async function settleQuotation(id: string, current: string, amount: number, tranches: string[]) {
+  const txs = await prisma.bankTransaction.findMany({ where: { id: { in: tranches } }, select: { id: true, amount: true } });
+  const paid = paidOn(tranches, txs);
+  const status = tranchedStatus(current, amount, paid);
+  await prisma.quotation.update({ where: { id }, data: { paymentTxIdsJson: JSON.stringify(tranches), status } });
+  return { paid, status };
+}
+
 app.post("/api/quotations/settle-offbank", async (req, res) => {
   try {
     const { id, method, reference, date, amount, user } = req.body;
     const quote = await prisma.quotation.findUnique({ where: { id } });
     if (!quote) return res.status(404).json({ error: "Quotation not found." });
-    if (quote.paymentTxId) return res.status(400).json({ error: "This quotation is already settled — unlink the existing payment first." });
     if (!OFFBANK_METHODS.includes(method)) return res.status(400).json({ error: `Method must be one of: ${OFFBANK_METHODS.join(", ")}` });
     const ref = String(reference || "").trim();
     if (!ref) return res.status(400).json({ error: "Evidence required: the transfer reference (OMT/BOB/Whish) or the signed receipt number for cash." });
@@ -5444,12 +5462,13 @@ app.post("/api/quotations/settle-offbank", async (req, res) => {
         reconciled: true
       }
     });
-    await prisma.quotation.update({ where: { id }, data: { paymentTxId: tx.id, status: "Paid" } });
+    const tranches = [...(JSON.parse(quote.paymentTxIdsJson || "[]") as string[]), tx.id];
+    const { paid, status } = await settleQuotation(id, quote.status, quote.amount, tranches);
     await createAuditLog(
       user?.id,
       user?.name,
       "Quotation Settled Off-Bank",
-      `Quotation ${quote.quoteNo} (${client?.name || ""}) settled via ${method}, ${quote.currency} ${amt}, evidence ref "${ref}", recorded on ba-prod-offbank as ${tx.id} (${tx.date}). Re-run rebuild-ledger.ts to post the income entry.`
+      `Quotation ${quote.quoteNo} (${client?.name || ""}) part-settled via ${method}, ${quote.currency} ${amt}, evidence ref "${ref}", recorded on ba-prod-offbank as ${tx.id} (${tx.date}). Tranche ${tranches.length}: ${quote.currency} ${paid} of ${quote.amount} now settled, status ${status}. Re-run rebuild-ledger.ts to post the income entry.`
     );
     res.json({ success: true, txId: tx.id });
   } catch (err: any) {
@@ -5457,45 +5476,56 @@ app.post("/api/quotations/settle-offbank", async (req, res) => {
   }
 });
 
-// Link (or unlink, txId = "") the statement deposit that settled a quotation.
-// Same evidence discipline as project funding: only a real, non-pending statement
-// deposit counts, and one deposit can settle only one quotation.
+// Add a deposit to the list that settles a quotation, or take one back off it
+// (`unlink: true`). Same evidence discipline as project funding: only a real,
+// non-pending statement deposit counts, and one deposit settles one quotation.
+// A client may pay in tranches, so this is one bank line at a time — the status
+// is never asserted here, it is derived from what the deposits add up to.
 app.post("/api/quotations/link-payment", async (req, res) => {
   try {
-    const { id, txId, user } = req.body;
+    const { id, txId, unlink, user } = req.body;
     const quote = await prisma.quotation.findUnique({ where: { id } });
     if (!quote) return res.status(404).json({ error: "Quotation not found." });
+    const tranches: string[] = JSON.parse(quote.paymentTxIdsJson || "[]");
+    if (!txId) return res.status(400).json({ error: "Name the deposit — a settlement is recorded one bank line at a time." });
 
-    if (!txId) {
-      // Without bank evidence "Paid" is an unsupported claim — drop back to Invoiced.
-      await prisma.quotation.update({ where: { id }, data: { paymentTxId: "", ...(quote.status === "Paid" ? { status: "Invoiced" } : {}) } });
-      // An off-bank evidence line exists solely as this settlement's record — remove
-      // it with the link, or the rebuild would book income with nothing behind it.
+    if (unlink) {
+      if (!tranches.includes(txId)) return res.status(400).json({ error: "That deposit does not settle this quotation." });
+      // An off-bank evidence line exists solely as this tranche's record — remove it with
+      // the link, or the rebuild would book income with nothing behind it.
       let removed = "";
-      if (quote.paymentTxId) {
-        const oldTx = await prisma.bankTransaction.findUnique({ where: { id: quote.paymentTxId } });
-        if (oldTx && oldTx.bankAccountId === "ba-prod-offbank") {
-          await prisma.bankTransaction.delete({ where: { id: oldTx.id } });
-          removed = ` Off-bank evidence line ${oldTx.id} ("${oldTx.description}") deleted with it.`;
-        }
+      const oldTx = await prisma.bankTransaction.findUnique({ where: { id: txId } });
+      if (oldTx && oldTx.bankAccountId === "ba-prod-offbank") {
+        await prisma.bankTransaction.delete({ where: { id: oldTx.id } });
+        removed = ` Off-bank evidence line ${oldTx.id} ("${oldTx.description}") deleted with it.`;
       }
-      await createAuditLog(user?.id, user?.name, "Quotation Payment Unlinked", `Removed settlement link from quotation ${quote.quoteNo}.${removed}`);
+      const rest = tranches.filter(t => t !== txId);
+      const { paid, status } = await settleQuotation(id, quote.status, quote.amount, rest);
+      await createAuditLog(user?.id, user?.name, "Quotation Payment Unlinked",
+        `Deposit ${txId} removed from quotation ${quote.quoteNo}. ${rest.length} tranche(s) left: ${quote.currency} ${paid} of ${quote.amount}, status ${status}.${removed}`);
       return res.json({ success: true });
     }
 
+    if (tranches.includes(txId)) return res.status(400).json({ error: "That deposit is already one of this quotation's tranches." });
     const tx = await prisma.bankTransaction.findUnique({ where: { id: txId } });
     if (!tx || tx.type !== "Deposit") return res.status(400).json({ error: "Settlement reference must be an incoming deposit on the bank statement." });
     if (tx.pending) return res.status(400).json({ error: "That deposit is only an eBLOM advice, not yet on an imported statement — pending lines are not proof." });
-    const other = await prisma.quotation.findFirst({ where: { paymentTxId: txId, NOT: { id } } });
+    const other = await prisma.quotation.findFirst({ where: { paymentTxIdsJson: { contains: `"${txId}"` }, NOT: { id } } });
     if (other) return res.status(400).json({ error: `That deposit already settles quotation ${other.quoteNo}.` });
 
     const acct = await prisma.bankAccount.findUnique({ where: { id: tx.bankAccountId } });
-    await prisma.quotation.update({ where: { id }, data: { paymentTxId: txId, status: "Paid" } });
+    // Tranches are added up. A deposit in another currency would make that total a number
+    // in no currency at all, and the balance owed would be fiction.
+    if (acct && acct.currency && acct.currency !== quote.currency) {
+      return res.status(400).json({ error: `That deposit is in ${acct.currency}; quotation ${quote.quoteNo} is priced in ${quote.currency}. Record it as an off-bank settlement instead.` });
+    }
+
+    const { paid, status } = await settleQuotation(id, quote.status, quote.amount, [...tranches, txId]);
     await createAuditLog(
       user?.id,
       user?.name,
       "Quotation Payment Linked",
-      `Quotation ${quote.quoteNo} (${quote.currency} ${quote.amount}) settled by deposit ${tx.date} ${tx.amount} ${acct?.currency || ""} ("${tx.description}") on ${acct?.name || tx.bankAccountId} (${acct?.accountNo || ""}). Status → Paid.`
+      `Quotation ${quote.quoteNo} (${quote.currency} ${quote.amount}) — deposit ${tx.date} ${tx.amount} ${acct?.currency || ""} ("${tx.description}") on ${acct?.name || tx.bankAccountId} (${acct?.accountNo || ""}) linked as tranche ${tranches.length + 1}. ${quote.currency} ${paid} of ${quote.amount} settled, status → ${status}.`
     );
     res.json({ success: true });
   } catch (err: any) {

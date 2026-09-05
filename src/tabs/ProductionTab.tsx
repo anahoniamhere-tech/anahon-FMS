@@ -6,6 +6,7 @@ import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
+import { outstandingOn, paidOn } from "../quoteTranches";
 
 export default function ProductionTab({ currentUser, formatIn, formatUSD, openDoc, refreshState, state, t, triggerToast }: SharedProps) {
   // Production stream: client / quotation being added-edited (null = form closed)
@@ -162,15 +163,17 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
     }
   };
 
-  const linkQuotePayment = async (q: Quotation, txId: string) => {
+  /** Add a deposit to what settles this quote, or (unlink) take one back off it. The
+   *  status is the server's to derive from the tranches — never announced from here. */
+  const linkQuotePayment = async (q: Quotation, txId: string, unlink = false) => {
     try {
       const res = await fetch("/api/quotations/link-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: q.id, txId, user: currentUser })
+        body: JSON.stringify({ id: q.id, txId, unlink, user: currentUser })
       });
       if (!res.ok) throw new Error((await res.json()).error || "Failed to link payment");
-      triggerToast(txId ? `${q.quoteNo} settled by bank deposit — status Paid.` : `${q.quoteNo} payment link removed.`);
+      triggerToast(unlink ? `${q.quoteNo}: deposit removed.` : `${q.quoteNo}: deposit recorded against the quotation.`);
       refreshState();
     } catch (err: any) {
       triggerToast(err.message, "error");
@@ -457,26 +460,30 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                 {/* Payment-match suggestions: unclaimed statement deposits whose account
                     currency + amount (±1%) fit an open quote. Human confirms — never auto-linked. */}
                 {(() => {
-                  const claimedTx = new Set(state.quotations.map(q => q.paymentTxId).filter(Boolean));
+                  const claimedTx = new Set(state.quotations.flatMap(q => q.paymentTxIds || []));
                   const suggestions = state.quotations
-                    .filter(q => !q.paymentTxId && ["Sent", "Accepted", "Invoiced"].includes(q.status))
-                    .map(q => ({
-                      q,
+                    .filter(q => ["Sent", "Accepted", "Invoiced"].includes(q.status))
+                    // Against the balance still owed, not the whole quote — that is what
+                    // makes the second half of a 50/50 job match a deposit at all.
+                    .map(q => ({ q, left: outstandingOn(q.amount, paidOn(q.paymentTxIds || [], state.bankTransactions)) }))
+                    .filter(s => s.left > 0)
+                    .map(({ q, left }) => ({
+                      q, left,
                       txs: state.bankTransactions.filter(bt =>
                         bt.type === "Deposit" && !bt.pending && !bt.projectId && !claimedTx.has(bt.id) &&
                         (state.bankAccounts.find(ba => ba.id === bt.bankAccountId)?.currency || "USD") === q.currency &&
-                        Math.abs(bt.amount - q.amount) <= Math.max(1, q.amount * 0.01))
+                        Math.abs(bt.amount - left) <= Math.max(1, left * 0.01))
                     }))
                     .filter(s => s.txs.length > 0);
                   if (!suggestions.length) return null;
                   return (
                     <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                       <p className="text-[11px] font-bold text-amber-800 uppercase">🏦 Possible payment matches on the bank statement</p>
-                      {suggestions.map(({ q, txs }) => txs.map(tx => {
+                      {suggestions.map(({ q, left, txs }) => txs.map(tx => {
                         const acct = state.bankAccounts.find(ba => ba.id === tx.bankAccountId);
                         return (
                           <div key={`${q.id}-${tx.id}`} className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
-                            <span><strong>{q.quoteNo}</strong> ({q.currency} {q.amount.toLocaleString()}) ↔ deposit {tx.date} · {formatIn(tx.amount, acct?.currency || "USD")} · "{tx.description.slice(0, 50)}"</span>
+                            <span><strong>{q.quoteNo}</strong> (<span dir="ltr">{q.currency} {left.toLocaleString()}</span> still owed of <span dir="ltr">{q.currency} {q.amount.toLocaleString()}</span>) ↔ deposit {tx.date} · <span dir="ltr">{formatIn(tx.amount, acct?.currency || "USD")}</span> · "{tx.description.slice(0, 50)}"</span>
                             {MANAGERS.includes(currentUser.role) && (
                               <button onClick={() => linkQuotePayment(q, tx.id)} className="bg-emerald-600 text-white text-[10px] font-bold rounded px-2 py-1 hover:bg-emerald-700 transition-all">
                                 ✓ Confirm settlement
@@ -595,27 +602,44 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                               )}
                             </td>
                             <td className="p-3 whitespace-nowrap">
-                              {q.paymentTxId ? (() => {
-                                const tx = state.bankTransactions.find(bt => bt.id === q.paymentTxId);
+                              {(() => {
+                                // A quote can be settled in tranches: the deposits are listed,
+                                // and what is still owed is derived from them — the balance is
+                                // never a number anyone typed.
+                                const tranches = (q.paymentTxIds || [])
+                                  .map(txId => state.bankTransactions.find(bt => bt.id === txId))
+                                  .filter((bt): bt is NonNullable<typeof bt> => !!bt);
+                                const paid = paidOn(q.paymentTxIds || [], state.bankTransactions);
+                                const left = outstandingOn(q.amount, paid);
+                                const canSettle = MANAGERS.includes(currentUser.role) && !["Rejected", "Expired"].includes(q.status);
                                 return (
-                                  <span className="text-[10px] font-bold text-emerald-700">
-                                    🏦 settled {tx?.date || ""}
-                                    {FINANCE.includes(currentUser.role) && (
-                                      <button onClick={() => linkQuotePayment(q, "")} className="ms-1 text-slate-400 hover:text-red-600" title="Unlink payment" aria-label={`Unlink payment for ${q.quoteNo}`}>✕</button>
+                                  <div className="space-y-1">
+                                    {tranches.map(tx => (
+                                      <div key={tx.id} className="text-[10px] font-bold text-emerald-700">
+                                        🏦 <span dir="ltr">{tx.date} · {formatIn(tx.amount, state.bankAccounts.find(ba => ba.id === tx.bankAccountId)?.currency || q.currency)}</span>
+                                        {FINANCE.includes(currentUser.role) && (
+                                          <button onClick={() => linkQuotePayment(q, tx.id, true)} className="ms-1 text-slate-400 hover:text-red-600" title="Remove this deposit" aria-label={`Remove deposit of ${tx.date} from ${q.quoteNo}`}>✕</button>
+                                        )}
+                                      </div>
+                                    ))}
+                                    {left > 0 ? (
+                                      <span className="inline-flex items-center gap-1">
+                                        <span className={`text-[10px] ${paid > 0 ? "font-bold text-amber-700" : "text-slate-400"}`}>
+                                          {paid > 0 ? <span dir="ltr">{q.currency} {left.toLocaleString()} outstanding</span> : "—"}
+                                        </span>
+                                        {canSettle && (
+                                          <>
+                                          <button onClick={() => setSettleForm({ q, method: "OMT", reference: "", date: new Date().toLocaleDateString("en-CA"), amount: left })} className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100" title="Record off-bank payment (OMT / BOB / Whish / cash)" aria-label={`Record off-bank payment for ${q.quoteNo}`}>💵</button>
+                                          <button onClick={() => setReceiptForm({ q, date: new Date().toLocaleDateString("en-CA"), amount: left, method: "Cash", receivedBy: "" })} className="text-slate-400 hover:text-amber-700 p-1 transition-colors rounded hover:bg-slate-100" title="Issue AnaHon's receipt for this payment" aria-label={`Issue receipt for ${q.quoteNo}`}>🧾</button>
+                                          </>
+                                        )}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-emerald-700">{tranches.length ? "settled in full" : "—"}</span>
                                     )}
-                                  </span>
+                                  </div>
                                 );
-                              })() : (
-                                <span className="inline-flex items-center gap-1">
-                                  <span className="text-[10px] text-slate-400">—</span>
-                                  {MANAGERS.includes(currentUser.role) && !["Rejected", "Expired"].includes(q.status) && (
-                                    <>
-                                    <button onClick={() => setSettleForm({ q, method: "OMT", reference: "", date: new Date().toLocaleDateString("en-CA"), amount: q.amount })} className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100" title="Record off-bank payment (OMT / BOB / Whish / cash)" aria-label={`Record off-bank payment for ${q.quoteNo}`}>💵</button>
-                                    <button onClick={() => setReceiptForm({ q, date: new Date().toLocaleDateString("en-CA"), amount: q.amount, method: "Cash", receivedBy: "" })} className="text-slate-400 hover:text-amber-700 p-1 transition-colors rounded hover:bg-slate-100" title="Issue AnaHon's receipt for this payment" aria-label={`Issue receipt for ${q.quoteNo}`}>🧾</button>
-                                    </>
-                                  )}
-                                </span>
-                              )}
+                              })()}
                             </td>
                             <td className="p-3 whitespace-nowrap">
                               <button onClick={() => generateQuoteDoc(q)} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="View client document" aria-label={`View document for ${q.quoteNo}`}>📄</button>

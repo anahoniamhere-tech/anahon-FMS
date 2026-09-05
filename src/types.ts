@@ -114,8 +114,10 @@ export interface Quotation {
   notes: string;
   items: QuotationItem[];
   terms: { financial?: string; production?: string; technical?: string; extras?: string };
-  /** Statement deposit that settled this quote — bank evidence, set via link-payment. */
-  paymentTxId: string;
+  /** Statement deposits that settled this quote, in linking order — bank evidence, set
+   *  via link-payment. A list because a client may pay in tranches (half up front, half
+   *  on delivery); the amounts live on the bank lines, never here. */
+  paymentTxIds: string[];
 }
 
 export interface Vendor {
