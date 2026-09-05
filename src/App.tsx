@@ -1127,6 +1127,21 @@ export default function App() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {/* The way out to the public site. It lived only in the desktop header, so on a
+              phone — where the app is installed and has no address bar — there was no way
+              to reach the website at all. Same guard and same target as the desktop one. */}
+          {state?.siteUrl && (
+            <a
+              href={state.siteUrl}
+              target="_blank"
+              rel="noopener"
+              title={state.siteUrl}
+              aria-label={t("Website")}
+              className="flex items-center justify-center bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px]"
+            >
+              <Globe className="w-4 h-4 text-slate-300" />
+            </a>
+          )}
           <button
             onClick={() => setLang(lang === "ar" ? "en" : "ar")}
             className="flex items-center justify-center px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px] text-[11px] font-bold text-slate-300"
