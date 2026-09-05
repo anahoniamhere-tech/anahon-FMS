@@ -134,7 +134,7 @@ export default function AccountsTab({ currentUser, setState, state, t, triggerTo
                     <div key={acc.code} className="px-4 py-2.5">
                       <div className="flex items-center justify-between gap-2">
                         <span className="font-mono font-bold text-xs text-slate-800">{acc.code}</span>
-                        <span className="font-mono font-bold text-sm text-slate-900">{acc.balance.toLocaleString()} {acc.currency}</span>
+                        <span dir="ltr" className="font-mono font-bold text-sm text-slate-900">{acc.balance.toLocaleString()} {acc.currency}</span>
                       </div>
                       <p className="text-xs text-slate-700 mt-0.5">{acc.name}</p>
                       <p className="text-[10px] text-slate-400 mt-0.5">{acc.type} · {acc.reportingGroup}{acc.active ? "" : " · inactive"}</p>

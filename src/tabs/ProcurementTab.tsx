@@ -280,7 +280,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                           </div>
                           <div className="mt-2 flex justify-between tracking-tight text-slate-650 text-xs font-mono font-medium">
                             <span>Quote Value:</span>
-                            <span className="text-slate-950 font-bold">{q.amount.toLocaleString()} {q.currency}</span>
+                            <span dir="ltr" className="text-slate-950 font-bold">{q.amount.toLocaleString()} {q.currency}</span>
                           </div>
                           <div className="mt-1 flex justify-between text-xs font-mono font-medium text-slate-650">
                             <span>Rating Compliance:</span>

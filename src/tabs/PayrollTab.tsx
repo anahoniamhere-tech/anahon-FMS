@@ -463,8 +463,8 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                                   return (
                                     <tr key={pid} className="border-t border-slate-100">
                                       <td className="py-1.5 pe-2 font-semibold">{projName(pid)}</td>
-                                      <td className="py-1.5 pe-2">{eng[pid] ? `${eng[pid].pct}% (payroll)` : contractor ? <span className="text-indigo-700 font-semibold">Contractor · per deliverable</span> : "—"}</td>
-                                      <td className="py-1.5 pe-2 font-mono text-[11px]">{eng[pid] ? `${eng[pid].first} → ${eng[pid].last}` : "—"}</td>
+                                      <td className="py-1.5 pe-2">{eng[pid] ? <span dir="ltr">{eng[pid].pct}% (payroll)</span> : contractor ? <span className="text-indigo-700 font-semibold">Contractor · per deliverable</span> : "—"}</td>
+                                      <td className="py-1.5 pe-2 font-mono text-[11px]">{eng[pid] ? <span dir="ltr">{eng[pid].first} → {eng[pid].last}</span> : "—"}</td>
                                       <td className="py-1.5 pe-2 text-end">{eng[pid]?.months ?? "—"}</td>
                                       <td className="py-1.5 pe-2 text-end">{paid[pid]?.n ?? 0}</td>
                                       <td className="py-1.5 text-end font-mono">{formatUSD(paid[pid]?.usd || 0)}</td>

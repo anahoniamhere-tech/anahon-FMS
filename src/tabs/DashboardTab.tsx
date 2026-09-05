@@ -79,7 +79,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                           <span className="truncate pe-2">{b.name}</span>
                           <span className="shrink-0">
                             {formatIn(b.balance, b.currency)}
-                            {b.currency !== "USD" && <span className="text-slate-400"> → {formatUSD(b.balance * rate)}</span>}
+                            {b.currency !== "USD" && <span dir="ltr" className="text-slate-400"> → {formatUSD(b.balance * rate)}</span>}
                           </span>
                         </div>
                       );
@@ -287,7 +287,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                           <span className="text-[10px] text-slate-500 font-mono">{b.accountNo}</span>
                         </div>
                         <div className="text-end">
-                          <p className="text-sm font-mono font-bold text-slate-900">
+                          <p dir="ltr" className="text-sm font-mono font-bold text-slate-900">
                             {b.balance.toLocaleString()} {b.currency}
                           </p>
                         </div>

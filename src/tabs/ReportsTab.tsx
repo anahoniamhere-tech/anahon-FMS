@@ -270,7 +270,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                     <div>
                       <h3 className="font-bold text-xs uppercase tracking-wider mb-2">3. Cash & Bank Position (current)</h3>
                       <table className="w-full text-xs">{reportData.bankPosition.map((b: any) => (
-                        <tbody key={b.name}><tr className="border-t border-slate-100"><td className="py-1">{b.name} ({b.currency})</td><td className="text-end font-mono">{b.balance.toLocaleString()} {b.currency}</td><td className="text-end font-mono">{formatUSD(b.usd)}</td></tr></tbody>))}
+                        <tbody key={b.name}><tr className="border-t border-slate-100"><td className="py-1">{b.name} ({b.currency})</td><td className="text-end font-mono"><span dir="ltr">{b.balance.toLocaleString()} {b.currency}</span></td><td className="text-end font-mono">{formatUSD(b.usd)}</td></tr></tbody>))}
                       </table>
                     </div>
                   </div>
@@ -280,7 +280,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                     <table className="w-full text-xs">
                       <thead><tr className="text-[10px] text-slate-500 uppercase text-start"><th className="py-0.5">Date</th><th>Description</th><th>Account</th><th className="text-end">Amount</th><th className="text-end">USD</th></tr></thead>
                       <tbody>{reportData.deposits.map((d: any, i: number) => (
-                        <tr key={i} className="border-t border-slate-100"><td className="py-0.5 font-mono">{d.date}</td><td className="pe-2">{d.description.slice(0, 60)}</td><td>{d.account}</td><td className="text-end font-mono">{d.amount.toLocaleString()} {d.currency}</td><td className="text-end font-mono">{formatUSD(d.usd)}</td></tr>
+                        <tr key={i} className="border-t border-slate-100"><td className="py-0.5 font-mono">{d.date}</td><td className="pe-2">{d.description.slice(0, 60)}</td><td>{d.account}</td><td className="text-end font-mono"><span dir="ltr">{d.amount.toLocaleString()} {d.currency}</span></td><td className="text-end font-mono">{formatUSD(d.usd)}</td></tr>
                       ))}</tbody>
                     </table>
                   </div>
@@ -293,7 +293,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                       <p className="text-[10px] text-slate-500 mb-1">Currency conversions and reversals between our own balances. Listed for completeness; counting them as income would double-count money already received.</p>
                       <table className="w-full text-xs">
                         <tbody>{reportData.internalMovements.map((d: any, i: number) => (
-                          <tr key={i} className="border-t border-slate-100"><td className="py-0.5 font-mono">{d.date}</td><td className="pe-2">{d.description.slice(0, 60)}</td><td className="text-end font-mono">{d.amount.toLocaleString()} {d.currency}</td><td className="text-end font-mono text-slate-500">{formatUSD(d.usd)}</td></tr>
+                          <tr key={i} className="border-t border-slate-100"><td className="py-0.5 font-mono">{d.date}</td><td className="pe-2">{d.description.slice(0, 60)}</td><td className="text-end font-mono"><span dir="ltr">{d.amount.toLocaleString()} {d.currency}</span></td><td className="text-end font-mono text-slate-500">{formatUSD(d.usd)}</td></tr>
                         ))}</tbody>
                       </table>
                     </div>

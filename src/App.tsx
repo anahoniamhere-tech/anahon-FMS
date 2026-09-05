@@ -1107,8 +1107,8 @@ export default function App() {
       <ActingBanner acting={actingAs} onStop={() => { (window as any).__actingAs = undefined; setActingAs(null); refreshState(); }} />
 
       {/* Mobile Header */}
-      <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between text-white relative z-50 h-16">
-        <div className="flex items-center gap-3">
+      <div className="md:hidden bg-slate-900 border-b border-slate-800 ps-4 pe-5 py-3 flex items-center justify-between text-white relative z-50 h-16">
+        <div className="flex min-w-0 items-center gap-3">
           {/* Phones get the conventional menu button; the desktop edge-handle is hidden here. */}
           <button
             onClick={() => setIsOpen(!isOpen)}
@@ -1119,17 +1119,17 @@ export default function App() {
             <span className="text-lg leading-none">{isOpen ? "✕" : "☰"}</span>
           </button>
           <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="h-9 w-auto drop-shadow" />
-          <div className="flex flex-col">
-            <h1 className="text-xs font-bold tracking-tight font-sans">AnaHon MS</h1>
-            <span className="text-[9px] font-bold font-mono text-red-400 bg-red-950/40 px-1.5 py-0.5 rounded border border-red-900/40 uppercase w-fit leading-none mt-0.5">
+          <div className="flex min-w-0 flex-col">
+            <h1 className="truncate text-xs font-bold tracking-tight font-sans">AnaHon MS</h1>
+            <span className="text-[9px] font-bold font-mono text-red-400 bg-red-950/40 px-1.5 py-0.5 rounded border border-red-900/40 uppercase w-fit max-w-[7.5rem] truncate leading-none mt-0.5">
               {activeTab}
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             onClick={() => setLang(lang === "ar" ? "en" : "ar")}
-            className="flex items-center justify-center px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer min-h-[44px] text-[11px] font-bold text-slate-300"
+            className="flex items-center justify-center px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px] text-[11px] font-bold text-slate-300"
             title={lang === "ar" ? "Switch to English" : "التبديل إلى العربية"}
             aria-label={lang === "ar" ? "Switch interface to English" : "تحويل الواجهة إلى العربية"}
           >
@@ -1203,7 +1203,7 @@ export default function App() {
         </aside>
 
         {/* Dynamic Display Panel View */}
-        <main className="flex-1 flex flex-col overflow-y-auto p-4 md:p-8">
+        <main className="flex-1 flex flex-col overflow-y-auto p-4 pb-24 md:p-8 md:pb-8">
 
           {/* Tab Content Dynamic Mounting */}
           {activeTab === "dashboard" && <DashboardTab {...shared} />}
@@ -1281,7 +1281,7 @@ export default function App() {
         <button
           onClick={() => setGapsOpen(true)}
           title="Documents missing against posted spend"
-          className="fixed bottom-5 end-5 z-[95] flex items-center gap-2 px-4 py-3 rounded-full shadow-lg
+          className="fixed bottom-5 end-5 z-[95] flex items-center gap-1.5 px-3 py-2.5 sm:gap-2 sm:px-4 sm:py-3 rounded-full shadow-lg
                      bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-colors"
         >
           <span className="text-base leading-none">📄</span>
@@ -1530,11 +1530,11 @@ export default function App() {
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Amounts</p>
                   <table className="w-full text-xs">
                     <tbody>
-                      <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Gross</td><td className="py-1 text-end font-mono font-bold">{exp.amount.toLocaleString()} {exp.currency}{exp.rate !== 1 ? ` @ ${exp.rate}` : ""}</td></tr>
+                      <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Gross</td><td className="py-1 text-end font-mono font-bold"><span dir="ltr">{exp.amount.toLocaleString()} {exp.currency}{exp.rate !== 1 ? ` @ ${exp.rate}` : ""}</span></td></tr>
                       <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Converted (USD base)</td><td className="py-1 text-end font-mono">{formatUSD(exp.convertedAmount)}</td></tr>
                       {exp.whtAmount > 0 && (<>
-                        <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">WHT withheld</td><td className="py-1 text-end font-mono text-red-600">−{exp.whtAmount.toLocaleString()} {exp.currency}</td></tr>
-                        <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Net paid</td><td className="py-1 text-end font-mono font-bold">{exp.netAmount.toLocaleString()} {exp.currency}</td></tr>
+                        <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">WHT withheld</td><td className="py-1 text-end font-mono text-red-600"><span dir="ltr">−{exp.whtAmount.toLocaleString()} {exp.currency}</span></td></tr>
+                        <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Net paid</td><td className="py-1 text-end font-mono font-bold"><span dir="ltr">{exp.netAmount.toLocaleString()} {exp.currency}</span></td></tr>
                       </>)}
                       {exp.paymentMethod && <tr className="border-t border-slate-100"><td className="py-1 text-slate-500">Method / Ref</td><td className="py-1 text-end">{exp.paymentMethod}{exp.paymentRef ? ` · ${exp.paymentRef}` : ""}</td></tr>}
                     </tbody>

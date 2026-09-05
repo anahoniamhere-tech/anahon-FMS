@@ -1523,7 +1523,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                     <div key={ts.id} className="text-xs p-2 bg-white border border-slate-100 rounded space-y-1">
                                       <div className="flex justify-between items-center">
                                         <strong className="text-slate-800">{emp?.name || "Staff"}</strong>
-                                        <span className="font-mono font-bold text-slate-900 bg-red-50 text-red-750 px-1.5 py-0.5 rounded">
+                                        <span dir="ltr" className="font-mono font-bold text-slate-900 bg-red-50 text-red-750 px-1.5 py-0.5 rounded">
                                           {alloc?.percentage || 0}% ({formatUSD(allocatedSalary)})
                                         </span>
                                       </div>

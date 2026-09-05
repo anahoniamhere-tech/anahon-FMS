@@ -890,7 +890,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                 <div className="grid grid-cols-3 gap-2 text-xs border-t border-slate-200 pt-2 font-mono">
                                   <div>
                                     <span className="text-[10px] text-slate-500 uppercase block font-bold">Gross Amount</span>
-                                    <span className="font-bold text-slate-900">{(exp.amount || 0).toLocaleString()} {exp.currency}</span>
+                                    <span dir="ltr" className="font-bold text-slate-900">{(exp.amount || 0).toLocaleString()} {exp.currency}</span>
                                   </div>
                                   <div>
                                     <span className="text-[10px] text-slate-500 uppercase block font-bold">WHT Withheld (7.5%)</span>

@@ -73,5 +73,39 @@ ok("the Arabic label in the reports keeps an even gap", /<span className="text-s
 const proj = read("src/tabs/ProjectsTab.tsx");
 ok("the Word export's selector matches the JSX", proj.includes(".text-end {") && !proj.includes(".text-right {"));
 
+console.log("\nmachine text that leads with a number is isolated");
+// A run only scrambles when it STARTS with a digit or sign and then mixes with a
+// Latin word: "−1,250.00 USD" renders "USD 1,250.00−" inside an Arabic paragraph,
+// and "2026-08-01 → 2026-08-31" reads backwards. dir="ltr" on the inline element
+// isolates it; putting it on a <td> instead would invert that column's alignment.
+const risky: string[] = [];
+for (const f of files) {
+  const lines = read(f).split("\n");
+  lines.forEach((line, i) => {
+    if (!/toLocaleString\(\)\} \{[^}]*[Cc]urrency/.test(line)) return;
+    const window = lines.slice(Math.max(0, i - 2), i + 1).join(" ");
+    if (!/dir="ltr"/.test(window)) risky.push(`${f}:${i + 1}`);
+  });
+}
+ok("every amount + currency pair is isolated", risky.length === 0, risky.join(", "));
+ok("the date range on the payroll sheet is isolated",
+  /<span dir="ltr">\{eng\[pid\]\.first\} → \{eng\[pid\]\.last\}<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
+ok("so is the LOE percentage", /<span dir="ltr">\{eng\[pid\]\.pct\}% \(payroll\)<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
+ok("the withholding line keeps its minus in front",
+  /<span dir="ltr">−\{exp\.whtAmount\.toLocaleString\(\)\} \{exp\.currency\}<\/span>/.test(app));
+
+console.log("\nthe phone screen");
+// The lang button was 28px wide beside a 44px one — under the touch minimum and
+// visibly lopsided. Both are 44 now, and the title yields instead of shoving them off.
+ok("both header buttons meet the 44px touch minimum", (app.match(/min-h-\[44px\] min-w-\[44px\]/g) || []).length >= 2);
+ok("the title block yields", /<div className="flex min-w-0 items-center gap-3">/.test(app) && /<h1 className="truncate text-xs font-bold/.test(app));
+ok("the tab badge cannot grow without bound", /w-fit max-w-\[7\.5rem\] truncate/.test(app));
+ok("the buttons never shrink", /<div className="flex shrink-0 items-center gap-2">/.test(app));
+ok("they sit clear of the edge", /ps-4 pe-5 py-3 flex items-center justify-between/.test(app));
+// The pill is fixed, so without this the last rows sit under it with no way to
+// scroll them out — 31px of the row was unreadable on a phone.
+ok("the list can scroll clear of the missing-evidence pill", /overflow-y-auto p-4 pb-24 md:p-8 md:pb-8/.test(app));
+ok("and the pill is slimmer where the screen is narrow", /gap-1\.5 px-3 py-2\.5 sm:gap-2 sm:px-4 sm:py-3 rounded-full/.test(app));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

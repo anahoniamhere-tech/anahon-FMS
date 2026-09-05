@@ -310,7 +310,7 @@ export default function NetworkTab({ state, currentUser, refreshState, triggerTo
                 </button>
               )}
               {canEdit && (
-                <span className="ml-auto flex gap-2">
+                <span className="ms-auto flex gap-2">
                   <button onClick={() => setEngForm({ ...e, projectId: e.projectId || "" })} className="text-[10px] font-bold text-slate-500 hover:text-red-700">Edit</button>
                   <button onClick={() => removeEng(e)} className="text-[10px] font-bold text-slate-400 hover:text-red-700">Remove</button>
                 </span>

@@ -120,7 +120,7 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                       return (
                         <div key={acc.code} className="grid grid-cols-4 gap-4 text-xs font-mono py-2 hover:bg-slate-50">
                           <span>{acc.code}</span>
-                          <span>{acc.name}{acc.currency !== "USD" ? <span className="text-[9px] text-slate-400"> ({acc.balance.toLocaleString()} {acc.currency})</span> : null}</span>
+                          <span>{acc.name}{acc.currency !== "USD" ? <span dir="ltr" className="text-[9px] text-slate-400"> ({acc.balance.toLocaleString()} {acc.currency})</span> : null}</span>
                           <span className="text-end font-bold text-slate-900">{debVal > 0 ? formatUSD(debVal) : "-"}</span>
                           <span className="text-end font-bold text-slate-900">{credVal > 0 ? formatUSD(credVal) : "-"}</span>
                         </div>
