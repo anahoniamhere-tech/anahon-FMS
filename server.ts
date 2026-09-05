@@ -4048,7 +4048,7 @@ app.post("/api/archive/home", async (req, res) => {
     const p = path.join(SITE_DIR, "src/data/home.json");
     const prev = readJsonFile(p, {});
     for (const [k, v] of Object.entries(widgets || {})) {
-      if (!["hero", "articles", "episodes"].includes(k) || typeof v !== "object" || !v) continue;
+      if (!["hero", "articles", "episodes", "articlesPage"].includes(k) || typeof v !== "object" || !v) continue;
       const w: any = v;
       prev[k] = { ...(prev[k] || {}),
         ...(typeof w.title_en === "string" ? { title_en: w.title_en } : {}),

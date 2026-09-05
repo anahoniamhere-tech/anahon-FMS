@@ -50,10 +50,19 @@ ok("the library panel is hidden below md", /<aside className="hidden w-64 shrink
 ok("the phone is told what it can and cannot do", /md:hidden">\{t\("On a phone you can tap text to edit it/.test(live));
 ok("no physical direction class crept in", !/\b(ml|mr|pl|pr|left|right|border-l|border-r|text-left|text-right)-/.test(live + web));
 
+console.log("\nthe Articles page has widgets of its own");
+const index = site("src/components/ArticlesIndex.astro"), archive = text("src/tabs/ArchiveTab.tsx");
+ok("ArticlesIndex reads home.json › articlesPage", /import homeCfg from '..\/data\/home.json'/.test(index) && /\(homeCfg as any\)\.articlesPage/.test(index));
+ok("pins come first, removals are hidden, the title can be overridden", /\[\.\.\.pinned, \.\.\.all\.filter\(\(a\) => !removed\.has\(a\.data\.slug\)/.test(index) && /cfg\.title_ar : cfg\.title_en/.test(index));
+ok("the grid is a widget frame and each card names its slug", /class="articles-grid" data-widget-frame="articlesPage"/.test(index) && /data-item=\{article\.data\.slug\}/.test(index));
+ok("the server accepts the key", /\["hero", "articles", "episodes", "articlesPage"\]\.includes\(k\)/.test(server));
+ok("the Live editor labels it", /articlesPage: "Articles page"/.test(live));
+ok("the Archive form edits it (pins by article, not from the media picker)", /<Widget k="articlesPage"/.test(archive) && /k !== "articlesPage" && <button/.test(archive) && /k === "articlesPage" && \(/.test(archive));
+
 console.log("\nevery string the two tabs show has an Arabic twin");
 const keys = new Set<string>();
 for (const src of [live, web]) for (const m of src.matchAll(/\bt\("((?:[^"\\]|\\.)*)"\)/g)) keys.add(m[1].replace(/\\'/g, "'"));
-for (const k of ["Home hero slider", "Latest episodes", "Latest articles", "Pages & sections", "Navigation, footer & labels", "Programs & mission", "Home — hero", "Funding register", "Registration details"]) keys.add(k);
+for (const k of ["Home hero slider", "Latest episodes", "Latest articles", "Articles page", "Pages & sections", "Navigation, footer & labels", "Programs & mission", "Home — hero", "Funding register", "Registration details"]) keys.add(k);
 const missing = [...keys].filter(k => !(k in AR));
 ok(`${keys.size} strings, all translated`, missing.length === 0, missing.slice(0, 5).join(" | "));
 

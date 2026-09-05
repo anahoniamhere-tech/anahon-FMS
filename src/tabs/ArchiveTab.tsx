@@ -15,7 +15,7 @@ import { ARCHIVE_EDITORS, SITE_EDITORS } from "../roles";
 type Item = { id: string; platform: string; kind: string; title: string; thumb: string; date: string; tags: string[]; series: string; url: string; duration: number | null };
 type Schema = { formats?: string[]; topics_extra?: string[]; topics_icontent?: string[]; suppressed?: string[]; order?: string[]; facets?: Record<string, string> };
 type Widget = { title_en?: string; title_ar?: string; pinned?: string[]; removed?: string[] };
-type Home = { hero?: Widget; articles?: Widget; episodes?: Widget };
+type Home = { hero?: Widget; articles?: Widget; episodes?: Widget; articlesPage?: Widget };
 
 const PAGE = 60;
 const EDIT_ROLES = ARCHIVE_EDITORS;
@@ -265,10 +265,16 @@ function HomeView({ items, canEdit, triggerToast }: any) {
           <div className="flex flex-wrap gap-2">
             {(w.pinned || []).map(id => { const it = byId.get(id); return (
               <span key={id} className="flex items-center gap-1 rounded border border-slate-200 p-1">
-                {it?.thumb && <img src={it.thumb} alt="" className="h-8 w-12 rounded object-cover" />}<span className="max-w-[14rem] truncate" dir="auto">{it?.title || id}</span>
+                {it?.thumb && <img src={it.thumb} alt="" className="h-8 w-12 rounded object-cover" />}<span className="max-w-[14rem] truncate" dir="auto">{it?.title || articles.find(a => a.slug === id)?.title || id}</span>
                 {canEdit && <button onClick={() => setW(k, { pinned: (w.pinned || []).filter(x => x !== id) })} className="text-red-600">×</button>}
               </span>); })}
-            {canEdit && <button onClick={() => { setPickFor(k as any); setPickQ(""); }} className="rounded border px-2 py-1">+ pin from the archive</button>}
+            {canEdit && k !== "articlesPage" && <button onClick={() => { setPickFor(k as any); setPickQ(""); }} className="rounded border px-2 py-1">+ pin from the archive</button>}
+            {canEdit && k === "articlesPage" && (
+              <select onChange={e => { if (e.target.value) setW(k, { pinned: [...new Set([...(w.pinned || []), e.target.value])] }); e.target.value = ""; }} className="rounded border border-slate-300 px-2 py-1">
+                <option value="">+ pin an article first…</option>
+                {articles.map(a => <option key={`${a.lang}/${a.slug}`} value={a.slug}>{a.lang} · {a.title.slice(0, 60)}</option>)}
+              </select>
+            )}
           </div>
         </>)}
         <p className="text-slate-500">Removed from this widget:</p>
@@ -277,9 +283,9 @@ function HomeView({ items, canEdit, triggerToast }: any) {
             <span key={id} className="rounded-full bg-red-50 px-2 py-0.5 text-red-700" title={id}>{it?.title?.slice(0, 40) || art?.title?.slice(0, 40) || id}{canEdit && <button onClick={() => setW(k, { removed: (w.removed || []).filter(x => x !== id) })} className="ms-1">×</button>}</span>); })}
           {!(w.removed || []).length && <span className="text-slate-400">—</span>}
         </div>
-        {k === "articles" && canEdit && (
+        {(k === "articles" || k === "articlesPage") && canEdit && (
           <select onChange={e => { if (e.target.value) setW(k, { removed: [...new Set([...(w.removed || []), e.target.value])] }); e.target.value = ""; }} className="rounded border border-slate-300 px-2 py-1">
-            <option value="">remove an article from the home page…</option>
+            <option value="">{k === "articles" ? "remove an article from the home page…" : "remove an article from the Articles page…"}</option>
             {articles.map(a => <option key={`${a.lang}/${a.slug}`} value={a.slug}>{a.lang} · {a.title.slice(0, 60)}</option>)}
           </select>
         )}
@@ -292,6 +298,7 @@ function HomeView({ items, canEdit, triggerToast }: any) {
       <Widget k="hero" label="Hero slider (latest video · podcast · documentary)" hasPins />
       <Widget k="articles" label="Latest articles" hasPins={false} />
       <Widget k="episodes" label="Latest episodes" hasPins />
+      <Widget k="articlesPage" label="Articles page (/articles/ and /ar/المقالات/)" hasPins />
       {canEdit && <button onClick={save} className="rounded bg-slate-900 px-4 py-1.5 text-xs font-bold text-white">Save home page</button>}
       {pickFor && (
         <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-xs">

@@ -38,7 +38,7 @@ const PAGES: { label: string; en: string; ar: string }[] = [
 type LibItem = { path: string; name: string; size: number; mtime: number };
 type ArchiveItem = { id: string; platform: string; kind: string; title: string; thumb: string; date: string; tags: string[]; series: string };
 type Article = { slug: string; lang: string; title: string; date: string };
-const WIDGET_LABEL: Record<string, string> = { hero: "Home hero slider", episodes: "Latest episodes", articles: "Latest articles" };
+const WIDGET_LABEL: Record<string, string> = { hero: "Home hero slider", episodes: "Latest episodes", articles: "Latest articles", articlesPage: "Articles page" };
 
 export default function LiveTab({ state, currentUser, triggerToast, lang, openDoor }: SharedProps) {
   const canEdit = EDIT_ROLES.includes(currentUser?.role);
