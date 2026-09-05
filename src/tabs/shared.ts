@@ -59,3 +59,61 @@ export interface SharedProps {
   setFocusId: (id: string | null) => void;
   workspaceRef: any;
 }
+
+/* ── Telling an outsider something, over WhatsApp ─────────────────────────────
+ * Suppliers, freelancers and clients never install this system, and WhatsApp is how
+ * they are actually reached ([[anahon-notifications-decision]] part 3). A wa.me link
+ * opens WhatsApp with the message already written; a person reads it and presses Send.
+ * That is the whole design: no Business API, no approved templates, no verification, no
+ * cost — and a human in the loop, which is the same rule the rest of the system follows
+ * about never sending on someone's behalf.
+ *
+ * These are the helper and the wording only. The buttons belong to the screens that know
+ * which record is in hand: Buying & paying (a paid voucher), Projects & funding (a
+ * quotation or a balance), People (a timesheet or an invoice).
+ */
+
+/**
+ * A wa.me link, or null when the number cannot be dialled internationally.
+ *
+ * wa.me takes digits only, in full international form — no +, no spaces, no leading 00.
+ * A number stored without a country code cannot be turned into one by guessing, and a
+ * wrong guess opens a chat with a stranger, so those return null and the caller hides
+ * the button rather than offering a link that misdelivers.
+ */
+export function waLink(phone: string, text: string): string | null {
+  const raw = String(phone || "").trim();
+  if (!raw) return null;
+  const international = raw.startsWith("+") || raw.startsWith("00");
+  const digits = raw.replace(/\D/g, "").replace(/^00/, "");
+  // 8 is the shortest national number that could carry a country code and still dial.
+  // ponytail: no default country — add one here if every record turns out to be Lebanese.
+  if (!digits || digits.length < 8) return null;
+  if (!international && digits.startsWith("0")) return null;   // a national trunk prefix: country unknown
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
+/** Put the values into a translated sentence. The placeholders survive translation. */
+const fill = (s: string, p: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => p[k] ?? `{${k}}`);
+
+/**
+ * The four messages, each already ending "— AnaHon" so the reader knows who wrote it.
+ * The whole sentence is one i18n key rather than stitched fragments: Arabic puts the
+ * pieces in a different order, and stitching would produce word salad.
+ */
+export const WA_TEMPLATES = {
+  /** A voucher has been paid. Buying & paying. */
+  "supplier-paid": (t: (s: string) => string, p: { name: string; voucherNo: string; amount: string; date: string }) =>
+    fill(t("Hello {name}, we have paid voucher {voucherNo}, {amount}, on {date}. Please confirm receipt. — AnaHon"), p),
+  /** A quotation has gone out. Projects & funding. */
+  "client-quotation": (t: (s: string) => string, p: { name: string; ref: string; amount: string }) =>
+    fill(t("Hello {name}, we have sent you quotation {ref} for {amount}. Tell us if anything should change. — AnaHon"), p),
+  /** Money is still owed on it. Projects & funding. */
+  "client-balance": (t: (s: string) => string, p: { name: string; amount: string; date: string }) =>
+    fill(t("Hello {name}, a balance of {amount} is outstanding since {date}. Could you let us know when it will be settled? — AnaHon"), p),
+  /** A timesheet or an invoice has not arrived. People. */
+  "freelancer-nudge": (t: (s: string) => string, p: { name: string; what: string; period: string }) =>
+    fill(t("Hello {name}, we are still waiting for your {what} for {period}. Send it when you can so payment is not held up. — AnaHon"), p),
+};
+
+export type WaTemplateKey = keyof typeof WA_TEMPLATES;
