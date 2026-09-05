@@ -1,4 +1,9 @@
 // What the desk shows today, per active login, straight from the database. Read-only.
+//
+// Caveat: this reads the WHOLE database, not the trimmed payload each role actually
+// receives from loadState. For a restricted seat the real "Due this week" is smaller —
+// a Procurement or Digital Officer is never sent the statutory checklist, so those rows
+// appear here and not on their screen. "Waiting on you" is right either way.
 // Run: DATABASE_URL="file:./dev.db" npx tsx scripts/desk-preview.ts
 import { PrismaClient } from "@prisma/client";
 import { deskItems } from "../src/workflow.js";
