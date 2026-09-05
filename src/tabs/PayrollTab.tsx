@@ -3,7 +3,7 @@ import { Donor, Employee, Project } from "../types";
 import { tr } from "../i18n";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import { DIRECTORS, HR, PAYROLL_VIEWERS, TIMESHEET_FILERS } from "../roles";
-import { maySeePersonnelFile } from "../personnelDocs";
+import { maySeePersonnelFile, missingPersonnelDocs } from "../personnelDocs";
 
 export default function PayrollTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, formatUSD, handleGenerateContract, isSelfService, openDoc, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps) {
   // Employee registration states
@@ -437,6 +437,18 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                               {t("Employment started")} <span dir="ltr" className="font-mono">{emp.startDate}</span>
                             </p>
                           ) : null}
+                          {/* What the file is missing, under the same gate as the file. Derived —
+                              no list is stored — so filing a paper answers it with no second step. */}
+                          {maySeePersonnelFile(currentUser, state.employees, emp.id) && (() => {
+                            const gaps = missingPersonnelDocs(state.documents || [], emp.id);
+                            return (
+                              <p className={`mt-1.5 text-[11px] ${gaps.length ? "text-amber-700" : "text-emerald-700"}`}>
+                                {gaps.length
+                                  ? <>⚠ {t("Not on file")}: {gaps.map(g => t(g.label)).join(" · ")}</>
+                                  : <>✓ {t("Identity paper, CV and a signed contract are all on file.")}</>}
+                              </p>
+                            );
+                          })()}
                           {/* The WhatsApp number is part of the personnel file, so it asks the
                               same question the file asks — maySeePersonnelFile — instead of a
                               second role list that could drift away from it. A Project Officer

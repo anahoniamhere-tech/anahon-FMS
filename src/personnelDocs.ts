@@ -27,6 +27,41 @@ export const PERSONNEL_CATEGORIES = [
 /** Roles that hold the personnel file for the whole organisation. */
 export const PERSONNEL_ROLES = PERSONNEL_FILE;
 
+/**
+ * What every personnel file is supposed to hold, and the category spellings that satisfy each.
+ *
+ * The spellings are the point. `AppDoc.category` is free text, and the vault genuinely holds
+ * BOTH "Contract" (the 12 papers imported from the old drive) and "Contracts" (what the
+ * generator writes). A check that keys on one spelling reports a file as empty when it is
+ * full — that is not hypothetical: it produced a report on 6 Sep 2026 claiming six project
+ * engagements had never been contracted, when every one of them had two to four signed
+ * documents on file. So this list is the single answer to "does this person have a contract",
+ * and anything that asks that question asks it here.
+ */
+export const REQUIRED_PERSONNEL: { key: string; label: string; accepts: string[] }[] = [
+  { key: "identity", label: "Identity paper", accepts: ["National ID", "Passport"] },
+  { key: "cv", label: "CV", accepts: ["CV"] },
+  { key: "contract", label: "Signed contract", accepts: ["Contract", "Contracts", "Contract Addendum (Signed)"] },
+];
+
+/**
+ * Which required papers this person's file is missing. Optional papers — a visa, a work
+ * permit, a diploma — are deliberately not listed: they apply to some people and not others,
+ * and a checklist that nags about a residency permit for a Lebanese national is a checklist
+ * people learn to ignore.
+ */
+export function missingPersonnelDocs(
+  docs: { category?: string; partyId?: string | null }[],
+  partyId: string
+): { key: string; label: string }[] {
+  const held = new Set(
+    docs.filter(d => d.partyId === partyId).map(d => String(d.category || "").trim())
+  );
+  return REQUIRED_PERSONNEL
+    .filter(r => !r.accepts.some(c => held.has(c)))
+    .map(({ key, label }) => ({ key, label }));
+}
+
 export function isPersonnelDoc(doc: { category?: string }): boolean {
   return PERSONNEL_CATEGORIES.includes(String(doc?.category || "") as any);
 }

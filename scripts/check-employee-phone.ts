@@ -7,7 +7,7 @@
 // button that is permanently dead: the two rules about what a number looks like have to
 // agree. Run: npx tsx scripts/check-employee-phone.ts
 import { readFileSync } from "node:fs";
-import { maySeePersonnelFile } from "../src/personnelDocs.js";
+import { maySeePersonnelFile, missingPersonnelDocs, REQUIRED_PERSONNEL } from "../src/personnelDocs.js";
 import { waLink, WA_TEMPLATES } from "../src/tabs/shared.js";
 import { HR, TIMESHEET_FILERS, PAYROLL_VIEWERS, PERSONNEL_FILE } from "../src/roles.js";
 
@@ -168,6 +168,39 @@ ok("the reply says whether any account actually signs in with it",
 ok("the card warns when it reaches no account",
   payroll.includes("no account signs in with that address yet"));
 ok("and names the account when it does", payroll.includes("d.account.name"));
+
+console.log("\nI. what a personnel file is missing");
+// The spelling is the whole point. The vault holds BOTH "Contract" (imported from the old
+// drive) and "Contracts" (what the generator writes). Keying on one produced a report on
+// 6 Sep 2026 that six engagements had never been contracted, when every one had signed papers.
+const DOCS = [
+  { partyId: "emp-1", category: "National ID" },
+  { partyId: "emp-1", category: "CV" },
+  { partyId: "emp-1", category: "Contract" },          // the imported spelling
+  { partyId: "emp-2", category: "Passport" },
+  { partyId: "emp-2", category: "CV" },
+  { partyId: "emp-2", category: "Contracts" },         // the generated spelling
+  { partyId: "emp-3", category: "CV" },
+  { partyId: "emp-4", category: "Contract Addendum (Signed)" },
+  { partyId: "emp-9", category: "Timesheet" },
+];
+const gaps = (id: string) => missingPersonnelDocs(DOCS, id).map(g => g.key).sort().join(",");
+ok("a complete file reports nothing missing — with the imported spelling", gaps("emp-1") === "");
+ok("and with the generated spelling", gaps("emp-2") === "");
+ok("an addendum counts as a signed contract", !gaps("emp-4").includes("contract"));
+ok("a passport satisfies the identity paper, not only a national ID", !gaps("emp-2").includes("identity"));
+ok("a file with only a CV is missing identity and contract", gaps("emp-3") === "contract,identity");
+ok("a file with nothing personal is missing all three", gaps("emp-9") === "contract,cv,identity");
+ok("one person's papers never answer for another", gaps("emp-404") === "contract,cv,identity");
+ok("both contract spellings are accepted, in one place",
+  REQUIRED_PERSONNEL.find(r => r.key === "contract")!.accepts.includes("Contract")
+  && REQUIRED_PERSONNEL.find(r => r.key === "contract")!.accepts.includes("Contracts"));
+// A checklist that nags about a residency permit for a Lebanese national is one people ignore.
+ok("optional papers are not demanded",
+  !REQUIRED_PERSONNEL.some(r => r.accepts.some(c => ["Visa", "Residency / Work Permit", "Diploma / Certificate", "Personal Photo", "Payslip"].includes(c))));
+ok("the card shows it under the file's own rule, not a second one",
+  payroll.includes("missingPersonnelDocs(state.documents || [], emp.id)")
+  && /maySeePersonnelFile\(currentUser, state\.employees, emp\.id\) && \(\(\) => \{\n\s*const gaps/.test(payroll));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
