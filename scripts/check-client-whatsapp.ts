@@ -29,9 +29,18 @@ ok("the quotation button is a link the person presses", /href=\{link\} target="_
 ok("so is the contact one", /href=\{link\} target="_blank"/.test(network));
 
 console.log("\nB. the sentence follows the money");
-ok("part-paid or invoiced asks about the balance",
-  /paidSoFar > 0 \|\| q\.status === "Invoiced"\s*\?\s*WA_TEMPLATES\["client-balance"\]/.test(production));
-ok("an offer still out quotes the quotation", /:\s*WA_TEMPLATES\["client-quotation"\]/.test(production));
+// 6 Sep 2026, from a real message: quotation 002/2026 was Accepted — the client had
+// signed it, the signed copy was on file — and the button offered "we have sent you
+// quotation 002/2026 for 200.00 USD, tell us if anything should change". Asking a client
+// who has signed to review the offer again reads as if we had lost their signature. That
+// sentence belongs to a Sent quote with nothing against it, and to nothing else.
+ok("only an offer still under discussion quotes the quotation",
+  /const stillAnOffer = q\.status === "Sent" && paidSoFar === 0;/.test(production)
+  && /stillAnOffer\s*\?\s*WA_TEMPLATES\["client-quotation"\]/.test(production));
+ok("an accepted quote asks about the balance, not about the offer",
+  /:\s*WA_TEMPLATES\["client-balance"\]/.test(production));
+ok("and nothing in the mapping treats Accepted as still-an-offer",
+  !/q\.status === "Accepted"[^\n]*client-quotation/.test(production));
 ok("the balance sent is what is still owed, not the quote",
   /amount: money\(stillOwed\)/.test(production) && /const stillOwed = outstandingOn\(q\.amount, paidSoFar\)/.test(production));
 // The arithmetic itself, on the case that started this: a 4,000 job paid 50/50.

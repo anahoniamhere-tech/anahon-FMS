@@ -674,9 +674,16 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                 const stillOwed = outstandingOn(q.amount, paidSoFar);
                                 const first = (client?.name || "").split(/\s+/)[0];
                                 const money = (n: number) => `${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${q.currency}`;
-                                const text = paidSoFar > 0 || q.status === "Invoiced"
-                                  ? WA_TEMPLATES["client-balance"](t, { name: first, amount: money(stillOwed), date: q.date })
-                                  : WA_TEMPLATES["client-quotation"](t, { name: first, ref: q.quoteNo, amount: money(q.amount) });
+                                // "Tell us if anything should change" belongs to an offer still
+                                // under discussion — a Sent quote with nothing against it, and
+                                // nothing else. Once it is Accepted the client has signed it;
+                                // asking them to review it again reads as if we had lost the
+                                // signed copy. Anything accepted, invoiced or part-paid is a
+                                // balance, and the figure is what the books still show owed.
+                                const stillAnOffer = q.status === "Sent" && paidSoFar === 0;
+                                const text = stillAnOffer
+                                  ? WA_TEMPLATES["client-quotation"](t, { name: first, ref: q.quoteNo, amount: money(q.amount) })
+                                  : WA_TEMPLATES["client-balance"](t, { name: first, amount: money(stillOwed), date: q.date });
                                 const link = client ? waLink(client.phone || "", text) : null;
                                 return link ? (
                                   <a href={link} target="_blank" rel="noreferrer"
