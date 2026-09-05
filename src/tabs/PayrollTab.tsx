@@ -289,7 +289,14 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                           <p className="text-xs text-slate-500">
                             {emp.position} •{" "}
                             {emp.salary || emp.allowance ? (
-                              <>Base: <span dir="ltr">{formatUSD(emp.salary)}</span> + <span dir="ltr">{formatUSD(emp.allowance)}</span> allowance</>
+                              <>
+                                {t("Full salary")}: <span dir="ltr">{formatUSD(emp.salary)}</span> + <span dir="ltr">{formatUSD(emp.allowance)}</span> {t("allowance")}
+                                {/* A rate is not a wage. It says what 100% of this person costs; what
+                                    is actually paid is whatever level of effort a project subcontracts. */}
+                                <span className="block text-[10px] text-slate-500 italic">
+                                  {t("The rate set by the yearly agreement — paid only through a subcontract, at the level of effort that project funds.")}
+                                </span>
+                              </>
                             ) : (
                               <span className="italic">{t("No salary base set — this role is paid only while a project funds it.")}</span>
                             )}

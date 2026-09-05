@@ -42,7 +42,11 @@ const payroll = src("tabs/PayrollTab.tsx");
 ok("an unset base says so instead of showing $0.00",
   /emp\.salary \|\| emp\.allowance \?/.test(payroll) && payroll.includes("No salary base set"));
 ok("and the figures come back the moment either one is set",
-  /Base: <span dir="ltr">\{formatUSD\(emp\.salary\)\}<\/span>/.test(payroll));
+  /<span dir="ltr">\{formatUSD\(emp\.salary\)\}<\/span>/.test(payroll));
+// A rate is not a wage: the figure is what 100% of this person costs, and what is actually
+// paid is the level of effort a project subcontracts. The card must not read as a monthly wage.
+ok("a stored figure is labelled the rate the yearly agreement sets, not a wage",
+  payroll.includes('{t("Full salary")}') && payroll.includes("The rate set by the yearly agreement"));
 ok("the sentence has Arabic, so it is not the English fallback",
   /"No salary base set[^"]*":\s*"[^"]*[؀-ۿ]/.test(src("i18n.ts")));
 // Same empty base, second screen: the co-funding sheet apportioned it into "40% ($0.00)".

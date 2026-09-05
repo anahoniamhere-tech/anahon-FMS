@@ -98,7 +98,25 @@ ok("the audit line distinguishes the three, and records a missing parent",
   /isSub \? "subcontract" : "yearly framework employment contract"/.test(server)
   && server.includes('under framework contract ${parentReference || "NONE ON FILE"}'));
 
-console.log("\nF. the reference is read back, never guessed at");
+console.log("\nF. the rate is typed once, on the instrument that states it");
+// Saad, 6 Sep 2026: the yearly salary may change from year to year, and he does not want to
+// maintain the number twice. So the yearly agreement writes it to the record — one figure,
+// typed where it is already being typed. A subcontract buys a share of the rate and must
+// never redefine it, or next year's agreement would be overwritten by a project.
+ok("only a framework contract sets the rate",
+  /const isFramework = kindVal === "Employment" && !project && !!employeeId;/.test(server)
+  && /if \(isFramework && newRate > 0 && newRate !== \(party\.salary \|\| 0\)\)/.test(server));
+ok("drawing one with no rate leaves the existing rate alone rather than wiping it",
+  server.includes("newRate > 0 &&"));
+ok("the write is audit-logged with what it changed from",
+  server.includes("Full Salary Set By Contract") && server.includes("changed from ${party.salary} to "));
+ok("and the audit line says a rate is not an instruction to pay",
+  server.includes("A rate, not an instruction to pay"));
+ok("the subcontract reads the rate but never writes it",
+  server.includes("fullSalary: isSub ? Number((party as any).salary || 0) : undefined")
+  && !/isSub[\s\S]{0,120}prisma\.employee\.update/.test(server));
+
+console.log("\nG. the reference is read back, never guessed at");
 ok("it comes out of the id the route builds",
   referenceOfContractDoc("doc-contract-ANH-EC-SK-2026-01-emp-3", "emp-3") === "ANH-EC-SK-2026-01");
 ok("a reference containing the party id still survives",

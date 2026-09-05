@@ -1860,6 +1860,8 @@ app.post("/api/contracts/generate", async (req, res) => {
     // and carries no money, and each project that funds the role is contracted separately.
     // Derived, never stored — a flag could disagree with the project field beside it.
     const isSub = kindVal === "Employment" && !!project;
+    /** The yearly agreement: employment, no project. It is where the full salary is stated. */
+    const isFramework = kindVal === "Employment" && !project && !!employeeId;
     const reference = `${project?.code || "ANH"}-${kindVal === "Service" ? "SA" : isSub ? "SC" : "EC"}-${party.name.split(/\s+/).map((n: string) => n[0]).join("").toUpperCase()}-${startDate.slice(0, 7)}`;
 
     // The framework contract this subcontract sits under: the same person's most recent
@@ -1897,6 +1899,19 @@ app.post("/api/contracts/generate", async (req, res) => {
       linkedRecordId: project?.id || "GENERAL",
       partyId: partyKey
     });
+
+    // A yearly agreement IS the statement of the full salary, so the record follows it: type
+    // the rate once, on the contract, and nothing has to be remembered and re-typed on the
+    // employee record afterwards. Only a framework contract does this — a subcontract buys a
+    // share of the rate and must never redefine it — and only when a rate is actually stated,
+    // so drawing a framework with 0 leaves an existing rate alone rather than wiping it.
+    const newRate = Number(monthlyFee) || 0;
+    if (isFramework && newRate > 0 && newRate !== (party.salary || 0)) {
+      await prisma.employee.update({ where: { id: employeeId }, data: { salary: newRate } });
+      await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", "Full Salary Set By Contract",
+        `${party.name}: full monthly salary ${party.salary ? `changed from ${party.salary} to ` : "set to "}${newRate} USD by yearly agreement ${reference}. ` +
+        `A rate, not an instruction to pay: salary is drawn only through a subcontract under which a project funds the role.`);
+    }
 
     await createAuditLog(
       user?.id || "u-1",
