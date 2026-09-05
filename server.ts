@@ -6146,16 +6146,37 @@ app.post("/api/compliance/complete", async (req, res) => {
  * addresses. Read-only by construction: an iCal feed cannot be written to, so the system
  * can never alter or delete anything in a real calendar.
  */
-const CALENDAR_FILE = path.join(__dirname, ".calendar-feed.json");
+// Connected calendars live beside the database, which is the one directory the container
+// can write and the backup already carries. The old location was mounted read-only, so
+// pressing Connect failed with EROFS — it is still read here, once, so an address set up
+// by hand on the host is not lost.
+const CALENDAR_STATE_DIR = fs.existsSync("/data/db") ? "/data/db" : __dirname;
+const CALENDAR_FILE = path.join(CALENDAR_STATE_DIR, ".calendar-feed.json");
+const CALENDAR_FILE_LEGACY = path.join(__dirname, ".calendar-feed.json");
 
-interface CalFeed { url: string; label: string; connectedAt: string }
+interface CalFeed { url: string; label: string; connectedAt: string; userId?: string }
 
 /** Read the feed list. Accepts the original single-feed file shape so an existing
  *  install keeps working without anyone re-pasting an address. */
+/**
+ * Whose calendar is whose.
+ *
+ * Every member of staff connects their own Google Calendar and sees only their own on
+ * their desk — a diary is personal, and one shared list would put a fellowship session
+ * or a family commitment in front of the whole newsroom. Entries written before this
+ * change carry no owner; they were the director's, and stay visible to a director only.
+ */
+function feedsFor(user: { id: string; role: string } | null | undefined): CalFeed[] {
+  if (!user) return [];
+  return calendarFeeds().filter(f => f.userId ? f.userId === user.id : isDirector(user.role));
+}
+
 function calendarFeeds(): CalFeed[] {
   try {
-    if (!fs.existsSync(CALENDAR_FILE)) return [];
-    const j = JSON.parse(fs.readFileSync(CALENDAR_FILE, "utf8"));
+    const file = fs.existsSync(CALENDAR_FILE) ? CALENDAR_FILE
+      : fs.existsSync(CALENDAR_FILE_LEGACY) ? CALENDAR_FILE_LEGACY : null;
+    if (!file) return [];
+    const j = JSON.parse(fs.readFileSync(file, "utf8"));
     if (Array.isArray(j?.feeds)) return j.feeds.filter((f: any) => f?.url);
     return j?.url ? [j as CalFeed] : [];          // legacy single-feed file
   } catch { return []; }
@@ -6175,15 +6196,14 @@ const CAL_ADMIN = DIRECTOR_ROLES;
 app.post("/api/calendar/connect", async (req, res) => {
   try {
     const { icsUrl, label, user } = req.body;
-    if (!user || !CAL_ADMIN.includes(String(user.role))) {
-      return res.status(403).json({ error: "Only the Program Director may connect a calendar." });
-    }
+    if (!user?.id) return res.status(403).json({ error: "Sign in to connect a calendar." });
     const url = String(icsUrl || "").trim();
     if (!/^https:\/\/calendar\.google\.com\/calendar\/ical\/.+\.ics$/i.test(url)) {
       return res.status(400).json({ error: "That does not look like a Google secret iCal address. It should start with https://calendar.google.com/calendar/ical/ and end in .ics" });
     }
 
-    const feeds = calendarFeeds();
+    const all = calendarFeeds();
+    const feeds = feedsFor(user);
     if (feeds.some(f => f.url === url)) {
       return res.status(400).json({ error: "That calendar is already connected." });
     }
@@ -6199,12 +6219,12 @@ app.post("/api/calendar/connect", async (req, res) => {
       return res.status(400).json({ error: `A calendar called "${clean}" is already connected — give this one a different name.` });
     }
 
-    feeds.push({ url, label: clean, connectedAt: new Date().toISOString() });
-    writeCalendarFeeds(feeds);
+    all.push({ url, label: clean, connectedAt: new Date().toISOString(), userId: user.id });
+    writeCalendarFeeds(all);
     calCache.set(url, { at: Date.now(), body });
 
     await createAuditLog(user.id, user.name, "Calendar Connected",
-      `Google Calendar feed "${clean}" connected for the desk (read-only). ${feeds.length} calendar(s) now feed My Desk. Addresses are held on the server and are not part of app state.`);
+      `Google Calendar feed "${clean}" connected to this account's own desk (read-only). ${feeds.length + 1} calendar(s) now feed it. Addresses are held on the server and are not part of app state.`);
 
     res.json({ success: true, connected: true, calendars: feeds.map(f => f.label) });
   } catch (err: any) {
@@ -6215,15 +6235,15 @@ app.post("/api/calendar/connect", async (req, res) => {
 app.post("/api/calendar/disconnect", async (req, res) => {
   try {
     const { user, label } = req.body;
-    if (!user || !CAL_ADMIN.includes(String(user.role))) {
-      return res.status(403).json({ error: "Only the Program Director may disconnect a calendar." });
-    }
-    const feeds = calendarFeeds();
-    // No label = remove everything (the original behaviour). A label removes just that one.
-    const keep = label ? feeds.filter(f => f.label !== label) : [];
-    if (label && keep.length === feeds.length) return res.status(404).json({ error: `No calendar called "${label}".` });
+    if (!user?.id) return res.status(403).json({ error: "Sign in to disconnect a calendar." });
+    const all = calendarFeeds();
+    const mine = feedsFor(user);                 // never anyone else's
+    // No label = remove all of mine. A label removes just that one.
+    const dropping = label ? mine.filter(f => f.label === label) : mine;
+    if (label && !dropping.length) return res.status(404).json({ error: `No calendar of yours called "${label}".` });
 
-    for (const f of feeds) if (!keep.includes(f)) calCache.delete(f.url);
+    const keep = all.filter(f => !dropping.includes(f));
+    for (const f of dropping) calCache.delete(f.url);
     if (keep.length) writeCalendarFeeds(keep);
     else if (fs.existsSync(CALENDAR_FILE)) fs.unlinkSync(CALENDAR_FILE);
 
@@ -6239,12 +6259,12 @@ app.post("/api/calendar/disconnect", async (req, res) => {
 // never a feed address. One unreachable feed degrades to a warning rather than emptying
 // the desk: a stale personal calendar must not hide today's AnaHon meetings.
 app.get("/api/calendar/events", async (req, res) => {
-  // The merged diary carries the director's own commitments. Only a director reads it.
+  // A diary is personal: everyone reads their own, nobody reads anyone else's.
   const viewerId = await viewerIdFromReq(req);
   const viewer = viewerId ? await prisma.user.findUnique({ where: { id: viewerId } }) : null;
-  if (!viewer || !DIRECTORS.includes(viewer.role)) return res.status(403).json({ error: "The diary is the director's." });
+  if (!viewer || !viewer.active) return res.status(403).json({ error: "Sign in to see your diary." });
   try {
-    const feeds = calendarFeeds();
+    const feeds = feedsFor(viewer);
     if (!feeds.length) return res.json({ connected: false, events: [], calendars: [] });
 
     const days = Math.min(180, Math.max(1, parseInt(String(req.query.days || "45"), 10) || 45));

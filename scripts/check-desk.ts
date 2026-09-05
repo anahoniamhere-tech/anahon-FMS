@@ -132,7 +132,9 @@ ok(`every desk verb, status, seat and t("…") literal has Arabic (${arNeeded.si
 const bare = [...desk.matchAll(/(?<![=-])>\s*([^<>{}]*[A-Za-z]{2,}[^<>{}]*?)\s*</g)].map(m => m[1].trim()).filter(x => !/[;=()]/.test(x) && !/^[·.:,/\s-]*$/.test(x));
 ok("no bare English text nodes in MyDeskTab", bare.length === 0, bare.slice(0, 8).join(" | "));
 ok("MyDeskTab keeps only rows on doors the viewer can open", /filter\(i => doors\.has\(i\.door\)\)/.test(desk));
-ok("MyDeskTab asks for the diary only as a director", desk.includes("if (isDirector) loadCalendar()") && desk.includes("{isDirector && <div"));
+// A diary is personal, not the director's: each account asks for its own and the server
+// answers with that account's feeds only (see check-reads.ts for the server half).
+ok("the desk asks for this account's own diary", desk.includes("useEffect(() => { loadCalendar(); }, []);") && !/isDirector\) loadCalendar/.test(desk));
 // Phase 4: a task is ticked by whoever holds it, or by a director when nobody does.
 ok("the tick belongs to the task's holder, or the director when it has none",
   /isTask && \(i\.record\.assigneeUserId \? i\.record\.assigneeUserId === currentUser\?\.id \|\| isDirector : isDirector\)/.test(desk)

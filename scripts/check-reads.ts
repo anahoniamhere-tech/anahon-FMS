@@ -36,7 +36,7 @@ console.log("\nnarrower still");
 ok("the bank statement's suggestions are finance's and procurement's", /SUPPLIER_EDITORS\.includes\(\(req as any\)\.dbUser\?\.role\)/.test(server));
 ok("the seat log is the director's", /isDirector\(req\.dbUser\?\.role\)\) return res\.status\(403\)/.test(server));
 ok("the financial statements keep their own reader list", /REPORT_READERS\.includes\(reader\.role\)/.test(server));
-ok("the diary stays the director's", /DIRECTORS\.includes\(viewer\.role\)\) return res\.status\(403\)/.test(server));
+ok("a diary is personal — each person reads their own feeds only", /const feeds = feedsFor\(viewer\);/.test(server) && /f\.userId \? f\.userId === user\.id : isDirector\(user\.role\)/.test(server));
 
 console.log("\nwhat the browser can still show");
 const files = ["App.tsx", "tabs/EditorialTab.tsx", "tabs/ExpensesTab.tsx", "tabs/ProjectsTab.tsx", "tabs/ProductionTab.tsx"];

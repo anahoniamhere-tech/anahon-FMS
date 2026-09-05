@@ -340,6 +340,8 @@ export const AR: Record<string, string> = {
   "Team, rates & audit log": "الفريق والأسعار وسجل التدقيق",
   // my desk (phase 3)
   // my desk on my phone (phase 5)
+  "Paste the secret iCal address from your own Google Calendar (Settings → your calendar → Integrate calendar). Only you see it: it is held on the server, never shown again, never sent to the browser, and never put on anyone else's desk. Read-only — nothing here can change your calendar.": "الصق عنوان iCal السري من تقويم Google الخاص بك (الإعدادات ← تقويمك ← دمج التقويم). أنت وحدك تراه: يُحفظ على الخادم، ولا يُعرض مجدداً، ولا يُرسل إلى المتصفح، ولا يظهر على مكتب أحد غيرك. للقراءة فقط — لا شيء هنا يغيّر تقويمك.",
+  "My calendar": "تقويمي",
   "Subscribe on this device": "اشترك على هذا الجهاز",
   "Scan it with the phone's camera and open the link: the calendar app offers to subscribe. If it downloads a file instead, the address was opened as a web page — use the one above, which starts with webcal.": "امسحه بكاميرا الهاتف وافتح الرابط: يعرض تطبيق التقويم الاشتراك. وإن نزّل ملفاً بدل ذلك فهذا يعني أن العنوان فُتح كصفحة ويب — استخدم العنوان أعلاه الذي يبدأ بـ webcal.",
   "My desk on my phone": "مكتبي على هاتفي",

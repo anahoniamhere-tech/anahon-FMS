@@ -147,8 +147,8 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // ---- The desk and the diary ----------------------------------------------
   "/api/compliance/save": DIRECTORS,
   "/api/compliance/delete": DIRECTORS,
-  "/api/calendar/connect": DIRECTORS,
-  "/api/calendar/disconnect": DIRECTORS,
+  "/api/calendar/connect": ANY,        // everyone connects their own diary
+  "/api/calendar/disconnect": ANY,     // and removes only their own
 
   // ---- Administering the system itself -------------------------------------
   "/api/users/create": MASTER_ONLY,

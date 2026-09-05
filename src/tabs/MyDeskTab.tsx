@@ -172,8 +172,8 @@ export default function MyDeskTab({
       setCal({ connected: false, events: [] });
     }
   };
-  // The diary is the director's; the server refuses everyone else, so nobody else asks.
-  useEffect(() => { if (isDirector) loadCalendar(); }, [isDirector]);
+  // Everyone has their own diary; the server answers with this account's feeds only.
+  useEffect(() => { loadCalendar(); }, []);
 
   const connectCalendar = async () => {
     setBusy("cal");
@@ -558,10 +558,10 @@ export default function MyDeskTab({
 
       {/* Calendar — what is actually in the diary, next to what the desk owes. Directors only:
           the merged feed carries personal commitments. Read-only: nothing here can change the real calendar. */}
-      {isDirector && <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-            <CalendarDays className="h-4 w-4 text-[#6D1A1A]" /> {t("Calendar")}
+            <CalendarDays className="h-4 w-4 text-[#6D1A1A]" /> {t("My calendar")}
           </h3>
           {cal?.connected && (
             <div className="flex flex-wrap items-center gap-2">
@@ -570,7 +570,7 @@ export default function MyDeskTab({
                   <span className={`h-1.5 w-1.5 rounded-full ${calColour(name)}`} /> {name}
                 </span>
               ))}
-              {isDirector && (
+              {(
                 <button
                   onClick={() => setAddingCal(v => !v)}
                   className="rounded-full border border-dashed border-slate-300 px-2 py-0.5 text-[10px] font-bold text-slate-500 hover:border-[#6D1A1A] hover:text-[#6D1A1A]"
@@ -698,7 +698,7 @@ export default function MyDeskTab({
         {cal && (!cal.connected || addingCal) && (
           <div className="mb-3 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <p className="text-[11px] leading-relaxed text-slate-600">
-              {t("Paste the secret iCal address from Google Calendar (Settings → your calendar → Integrate calendar). It is held on this machine only, never shown again, and never sent to the browser. The feed is read-only — nothing here can alter your calendar.")}
+              {t("Paste the secret iCal address from your own Google Calendar (Settings → your calendar → Integrate calendar). Only you see it: it is held on the server, never shown again, never sent to the browser, and never put on anyone else's desk. Read-only — nothing here can change your calendar.")}
             </p>
             <div className="flex flex-wrap gap-2">
               <input
@@ -752,7 +752,7 @@ export default function MyDeskTab({
             </div>
           );
         })}
-      </div>}
+      </div>
 
       {/* Your desk on your phone. The address is the whole key, so it is shown once and
           replaced rather than looked up, and the server serves it on the office network
