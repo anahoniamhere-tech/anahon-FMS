@@ -973,9 +973,12 @@ app.post("/api/help/ask", async (req, res) => {
     const doors = doorsFor(role);
     const state = await loadState(viewer);
     const rows = safeRows(deskItems({ id: viewer.id, email: viewer.email, role }, state as any, localDate()));
+    // The free tier, on Saad's call (5 Sep 2026): both keys stay set on the NAS, but a
+    // staff question is not worth per-call spend. Google trains on free-tier input, which
+    // is exactly why safeRows() above sent no record — see src/helpBot.ts.
     const raw = await askJson(
       helpPrompt(question, { role, ownRole: viewer.role, doors, rows, today: localDate() }),
-      REPLY_SCHEMA, undefined, "low"
+      REPLY_SCHEMA, undefined, "low", "gemini"
     );
     res.json(parseReply(raw, doors));
   } catch (err: any) {
@@ -1863,9 +1866,14 @@ export function takeUsage(): string { const u = lastUsage; lastUsage = ""; retur
 
 async function askJson(
   prompt: string, schema: Record<string, any>, file?: Attachment,
-  effort: "low" | "medium" | "high" = "medium"
+  effort: "low" | "medium" | "high" = "medium",
+  // Which provider to spend on. Default is Claude-first with the Gemini fallback below —
+  // every caller but one. "gemini" means the caller has chosen the free tier on purpose
+  // and would rather be told the answer is unavailable than be billed for it; Claude is
+  // not tried at all, so nothing falls through to a paid call by accident.
+  prefer: "claude" | "gemini" = "claude"
 ): Promise<any> {
-  const key = anthropicKey();
+  const key = prefer === "gemini" ? undefined : anthropicKey();
   if (key) {
     try {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
