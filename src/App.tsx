@@ -450,6 +450,19 @@ export default function App() {
     if (typeof window !== "undefined" && window.innerWidth < 768) setIsOpen(false);
   };
 
+  // A notification opens the app at the door its item lives behind: /?door=expenses&
+  // focus=expenses:e-12 (public/sw.js writes it). Read once, then scrubbed from the address
+  // bar so a reload does not keep dragging the person back to the same record. The redirect
+  // effect below still has the last word — a door this role cannot open is not opened.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const door = q.get("door"), focus = q.get("focus");
+    if (!door && !focus) return;
+    if (door) setActiveTab(door);
+    if (focus) setFocusId(focus);
+    window.history.replaceState({}, "", window.location.pathname);
+  }, []);
+
   // Self-service staff (Policy 8.5) are routed to the timesheet tab. Lives up here with the
   // other hooks — placing it after the login early-return breaks the Rules of Hooks.
   useEffect(() => {

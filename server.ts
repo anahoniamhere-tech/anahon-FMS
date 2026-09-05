@@ -14,6 +14,8 @@ import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/a
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
+import { NAV } from "./src/nav.js";
+import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
 import { canonEmail } from "./src/email.js";
@@ -138,7 +140,7 @@ const EDITOR_ALLOWED_POSTS = new Set([
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
 // Anyone can be given a task, so every working seat may tick its own and put it back;
 // the routes themselves check that the task is theirs. The auditor is read-only.
-const TASK_POSTS = ["/api/compliance/complete", "/api/compliance/reopen", "/api/calendar/feed"];
+const TASK_POSTS = ["/api/compliance/complete", "/api/compliance/reopen", "/api/calendar/feed", "/api/push/subscribe", "/api/push/unsubscribe"];
 const AUDITOR_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/assets/verify"]);
 // A self-service employee files their own timesheet and their own papers, nothing else.
 const SELF_ALLOWED_POSTS = new Set(["/api/auth/sync", "/api/timesheets/submit", "/api/document/upload", ...TASK_POSTS]);
@@ -198,6 +200,22 @@ async function findUserByEmail(email: string) {
 
 // Sign-in is the only POST that may be made without already being signed in.
 const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
+
+/**
+ * A change means someone's turn may have started. Ask, thirty seconds later.
+ *
+ * Registered here rather than in each route: there are 104 of them and one forgotten
+ * call is a notification that never arrives. `finish` fires after the response, so a
+ * refused or failed request never buzzes anyone, and the debounce inside schedulePush
+ * collapses the several writes one approval makes into a single pass.
+ */
+const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/reminders/plan", "/api/push/unsubscribe"]);
+app.use((req, res, next) => {
+  if (req.method === "POST" && req.path.startsWith("/api/") && !READ_ONLY_POSTS.has(req.path)) {
+    res.on("finish", () => { if (res.statusCode < 400) schedulePush(); });
+  }
+  next();
+});
 
 /**
  * Reading is not public either.
@@ -934,7 +952,9 @@ async function reminderPlanFor(viewer: any) {
   const state = await loadState(viewer);
   const mine = deskItems({ id: viewer.id, email: viewer.email, role: viewer.role }, state as any, localDate())
     .filter(i => i.group !== "week");                            // my own turn and the seats I cover
-  const ledger = await prisma.reminder.findMany({ where: { userId: viewer.id } });
+  // The calendar's own rows only. Without the filter it would read the phone's rows as
+  // its own, find no Google event on them, and cancel work that is still owed.
+  const ledger = await prisma.reminder.findMany({ where: { userId: viewer.id, channel: "calendar" } });
   return planReminders(mine, ledger as any, String(process.env.FMS_PUBLIC_URL || "http://anahon.local:3100"));
 }
 
@@ -986,6 +1006,169 @@ app.post("/api/help/ask", async (req, res) => {
   }
 });
 
+/* ── Web push: "it is your turn", on the phone ───────────────────────────────
+ * The calendar carries deadlines. This carries the other half — the Submitted voucher,
+ * the fact-check, the approval slot — work that is owed *now* and carries no date at
+ * all, which is exactly what planReminders reports as `skipped` and a calendar can
+ * never hold ([[anahon-notifications-decision]] part 1).
+ *
+ * Delivery is NAS → push service (FCM/APNs) over the NAS's own internet, so the phone
+ * receives it whether or not Tailscale is connected at that moment; only registering
+ * and opening the app need the tailnet. The origin is
+ * https://anahon-1.tailbcb2b7.ts.net:8444 — iOS pushes only to a home-screen web app.
+ *
+ * The keys are Admin's, in the NAS .env. Missing keys are not fatal: the path logs once
+ * and stays shut while everything else in the system runs.
+ */
+const PUSH_READY = !!(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY && process.env.VAPID_SUBJECT);
+if (PUSH_READY) {
+  webpush.setVapidDetails(process.env.VAPID_SUBJECT!, process.env.VAPID_PUBLIC_KEY!, process.env.VAPID_PRIVATE_KEY!);
+} else {
+  console.warn("[push] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT not all set — notifications are off; everything else runs.");
+}
+
+/** The public key the browser needs to subscribe, and whether it is worth asking. */
+app.get("/api/push/key", async (_req, res) => {
+  res.json({ ready: PUSH_READY, publicKey: PUSH_READY ? process.env.VAPID_PUBLIC_KEY : null });
+});
+
+/** This install agrees to be notified. Always the caller's own row — never anyone else's. */
+app.post("/api/push/subscribe", async (req, res) => {
+  try {
+    if (!PUSH_READY) return res.status(503).json({ error: "Notifications are not configured on the server." });
+    const viewer = (req as any).dbUser;
+    const sub = req.body?.subscription;
+    const endpoint = String(sub?.endpoint || "");
+    const p256dh = String(sub?.keys?.p256dh || ""), auth = String(sub?.keys?.auth || "");
+    if (!/^https:\/\//.test(endpoint) || !p256dh || !auth) return res.status(400).json({ error: "That is not a usable push subscription." });
+    // The endpoint is the identity. The same install re-subscribing must land on the
+    // caller's own row, not be refused as a duplicate and not be stolen from someone else.
+    const now = new Date().toISOString();
+    await prisma.pushSubscription.upsert({
+      where: { endpoint },
+      update: { userId: viewer.id, p256dh, auth },
+      create: { id: `ps-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, userId: viewer.id, endpoint, p256dh, auth, createdAt: now },
+    });
+    await createAuditLog(viewer.id, viewer.name, "Notifications On", `${viewer.name} turned on notifications for one device.`);
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** Stop notifying this install. Scoped to the caller: deleteMany with their own id. */
+app.post("/api/push/unsubscribe", async (req, res) => {
+  try {
+    const viewer = (req as any).dbUser;
+    const endpoint = String(req.body?.endpoint || "");
+    if (!endpoint) return res.status(400).json({ error: "No device was named." });
+    const { count } = await prisma.pushSubscription.deleteMany({ where: { endpoint, userId: viewer.id } });
+    if (count) await createAuditLog(viewer.id, viewer.name, "Notifications Off", `${viewer.name} turned off notifications for one device.`);
+    res.json({ ok: true, removed: count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Send one person what newly became their turn, and remember it.
+ *
+ * The same planReminders the calendar uses, against that person's own "push" ledger
+ * rows — so a notification is sent once and a second run after another edit says
+ * nothing. `undated: "carry"` is the whole point: the calendar skips those, push does
+ * not. Only `mine` and `cover` — "due this week on someone else's desk" is not a
+ * reason to buzz a phone.
+ *
+ * Nothing is cancelled on the device: a notification already delivered cannot be
+ * recalled, and the ledger row is closed silently so it is not sent again.
+ */
+async function pushTurnsFor(viewer: any) {
+  const subs = await prisma.pushSubscription.findMany({ where: { userId: viewer.id } });
+  if (!subs.length) return { sent: 0, closed: 0, dead: 0 };
+  const state = await loadState(viewer);
+  const mine = deskItems({ id: viewer.id, email: viewer.email, role: viewer.role }, state as any, localDate())
+    .filter(i => i.group === "mine" || i.group === "cover");
+  const ledger = await prisma.reminder.findMany({ where: { userId: viewer.id, channel: "push" } });
+  const url = String(process.env.FMS_PUBLIC_URL || "http://anahon.local:3100").replace(/\/$/, "");
+  const plan = planReminders(mine, ledger as any, url, { undated: "carry" });
+  const byId = new Map(mine.map(i => [i.id, i]));
+  const now = new Date().toISOString();
+  let sent = 0, dead = 0;
+
+  for (const c of plan.create) {
+    const item = byId.get(c.itemId);
+    if (!item) continue;
+    const payload = JSON.stringify({
+      title: c.title,
+      body: NAV.flatMap(sec => sec.items).find(n => n.navKey === item.door)?.label || item.door,
+      tag: c.itemId,
+      url: `/?door=${encodeURIComponent(item.door)}&focus=${encodeURIComponent(item.recordId)}`,
+    });
+    let delivered = false;
+    for (const sub of subs) {
+      try {
+        await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload);
+        delivered = true;
+      } catch (err: any) {
+        // 404/410 mean the install is gone — the row is rubbish and would fail forever.
+        if (err?.statusCode === 404 || err?.statusCode === 410) {
+          await prisma.pushSubscription.deleteMany({ where: { endpoint: sub.endpoint } });
+          dead++;
+        } else {
+          console.warn(`[push] ${viewer.name}: ${err?.statusCode || ""} ${String(err?.message).slice(0, 120)}`);
+        }
+      }
+    }
+    // Only write the ledger row if it actually reached a device; otherwise the next run
+    // would think this person had already been told.
+    if (delivered) {
+      await prisma.reminder.create({
+        data: {
+          id: `rp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          userId: viewer.id, itemId: c.itemId, channel: "push", googleEventId: null,
+          title: c.title, whenDate: c.whenDate, state: "active", createdAt: now, updatedAt: now,
+        },
+      });
+      sent++;
+    }
+  }
+  // Work that left the desk: close the row quietly so it can be sent again if it comes back.
+  let closed = 0;
+  for (const c of plan.cancel) {
+    await prisma.reminder.update({ where: { id: c.id }, data: { state: "cancelled", updatedAt: now } });
+    closed++;
+  }
+  return { sent, closed, dead };
+}
+
+/**
+ * After a change, tell whoever it now belongs to — once, thirty seconds later.
+ *
+ * A single approval writes several records and would otherwise buzz a phone several
+ * times; the debounce collapses a burst of edits into one pass. Deliberately not
+ * nightly: a deadline is the calendar's job, and a phone that buzzes at 6am about work
+ * with no date is the thing people turn off.
+ */
+let pushTimer: NodeJS.Timeout | null = null;
+function schedulePush() {
+  if (!PUSH_READY) return;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(async () => {
+    pushTimer = null;
+    try {
+      const subs = await prisma.pushSubscription.findMany({ select: { userId: true }, distinct: ["userId"] });
+      for (const { userId } of subs) {
+        const u = await prisma.user.findUnique({ where: { id: userId } });
+        if (!u || !u.active) continue;
+        const r = await pushTurnsFor(u);
+        if (r.sent || r.dead) console.log(`[push] ${u.name}: ${r.sent} sent, ${r.closed} closed, ${r.dead} dead device(s) dropped`);
+      }
+    } catch (err: any) {
+      console.warn(`[push] run failed: ${String(err?.message).slice(0, 200)}`);
+    }
+  }, 30_000);
+}
+
 /** Carry out the plan for one person and record what was done. Shared by the button and the nightly run. */
 async function pushRemindersFor(viewer: any, how: "by hand" | "overnight") {
   const plan = await reminderPlanFor(viewer);
@@ -998,8 +1181,9 @@ async function pushRemindersFor(viewer: any, how: "by hand" | "overnight") {
     for (const c of plan.create) {
       const ev = await calendarCall(token, "/calendars/primary/events", "POST", eventBody(c.title, c.whenDate, c.description));
       await prisma.reminder.upsert({
-        where: { userId_itemId: { userId: viewer.id, itemId: c.itemId } },
-        create: { id: `rem-${Date.now()}-${created}`, userId: viewer.id, itemId: c.itemId, googleEventId: ev?.id || null,
+        // channel is part of the key now: this is the calendar's row, never the phone's.
+        where: { userId_itemId_channel: { userId: viewer.id, itemId: c.itemId, channel: "calendar" } },
+        create: { id: `rem-${Date.now()}-${created}`, userId: viewer.id, itemId: c.itemId, channel: "calendar", googleEventId: ev?.id || null,
           title: c.title, whenDate: c.whenDate, state: "active", createdAt: now, updatedAt: now },
         update: { googleEventId: ev?.id || null, title: c.title, whenDate: c.whenDate, state: "active", updatedAt: now },
       });

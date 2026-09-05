@@ -54,28 +54,36 @@ export function reminderBody(i: DeskItem, systemUrl: string): string {
  * Undated work is reported as skipped rather than dropped, because "nothing to do" and
  * "nowhere to put it" are different answers and only one of them is a bug.
  */
-export function planReminders(items: DeskItem[], ledger: LedgerRow[], systemUrl: string): Plan {
+export function planReminders(
+  items: DeskItem[], ledger: LedgerRow[], systemUrl: string,
+  // What to do with work that carries no date. A calendar has nowhere to put it, so the
+  // default reports it and moves on. A push has no date to honour — the notification is
+  // "it is your turn", not "it is due" — and the undated Submitted voucher is precisely
+  // the message that matters most, so the push channel carries it with an empty whenDate.
+  opts: { undated?: "skip" | "carry" } = {}
+): Plan {
   const plan: Plan = { create: [], update: [], cancel: [], skipped: [] };
   const byItem = new Map(ledger.map(r => [r.itemId, r]));
   const owed = new Set<string>();
 
   for (const i of items) {
     const title = reminderTitle(i);
-    if (!i.when) { plan.skipped.push({ itemId: i.id, title, because: "no date on the record" }); continue; }
+    if (!i.when && opts.undated !== "carry") { plan.skipped.push({ itemId: i.id, title, because: "no date on the record" }); continue; }
     owed.add(i.id);
+    const when = i.when || "";                 // "" is how an undated push row is written
     const description = reminderBody(i, systemUrl);
     const row = byItem.get(i.id);
     if (!row || row.state !== "active") {
-      plan.create.push({ itemId: i.id, title, whenDate: i.when, description });
+      plan.create.push({ itemId: i.id, title, whenDate: when, description });
       continue;
     }
-    const movedDate = row.whenDate !== i.when;
+    const movedDate = row.whenDate !== when;
     const movedTitle = row.title !== title;
     if (movedDate || movedTitle) {
       plan.update.push({
-        id: row.id, itemId: i.id, googleEventId: row.googleEventId, title, whenDate: i.when, description,
+        id: row.id, itemId: i.id, googleEventId: row.googleEventId, title, whenDate: when, description,
         because: movedDate && movedTitle ? "the date and the wording changed"
-          : movedDate ? `moved from ${row.whenDate} to ${i.when}` : "the wording changed",
+          : movedDate ? `moved from ${row.whenDate || "no date"} to ${when || "no date"}` : "the wording changed",
       });
     }
   }

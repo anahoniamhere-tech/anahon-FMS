@@ -39,6 +39,8 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/document/upload": ANY,                  // my own papers; the personnel filter decides who reads them
   "/api/materials/link": NEWSROOM,
   "/api/help/ask": ANY,                         // asking the help desk a question; the answer is scoped to the asker
+  "/api/push/subscribe": ANY,                   // this device wants to be told when it is my turn
+  "/api/push/unsubscribe": ANY,                 // and to stop; both act on the caller's own rows only
   "/api/compliance/complete": ANY,              // the route checks the task is mine
   "/api/compliance/reopen": ANY,
   "/api/timesheets/submit": ANY,                // the route checks it is my own card

@@ -207,6 +207,14 @@ export const HELP: HelpEntry[] = [
     },
   },
   {
+    id: "phone-app", area: "Seats & approvals",
+    q: { en: "How do I get the app on my phone, and why does it need Tailscale?", ar: "كيف أضع التطبيق على هاتفي، ولماذا يحتاج إلى Tailscale؟" },
+    a: {
+      en: "The app is this system installed from the browser — nothing comes from a store. It runs on the office server, which is reachable from outside only over Tailscale, a private network that costs nothing. Ask the Executive Director for your share invite, then on the phone: 1) install Tailscale from the App Store or Play Store and sign in with your own Google account — this creates your own free network; 2) open the invite link and accept it: the office server appears in your Tailscale as a shared machine; 3) with Tailscale switched on, open https://anahon-1.tailbcb2b7.ts.net:8444 in Safari (iPhone) or Chrome (Android) and sign in as usual; 4) iPhone: Share → Add to Home Screen. Android: Chrome's menu → Install app. From now on open it from the icon — notifications reach only the installed copy. The address works only by its full name, so keep Tailscale on when you use the app away from the office and type exactly that address, never the server's number. Through this share you reach the system and nothing else on the server.",
+      ar: "التطبيق هو هذا النظام نفسه مثبَّتاً من المتصفح — لا شيء يأتي من متجر. يعمل على خادم المكتب، ولا يُوصَل إليه من خارج المكتب إلا عبر Tailscale، وهي شبكة خاصة مجانية. اطلب من المدير التنفيذي دعوة المشاركة الخاصة بك، ثم على الهاتف: 1) ثبّت Tailscale من App Store أو Play Store وسجّل الدخول بحساب Google الخاص بك — فتُنشأ لك شبكتك المجانية؛ 2) افتح رابط الدعوة واقبله، فيظهر خادم المكتب في Tailscale لديك كجهاز مشارَك؛ 3) وTailscale مشغَّل، افتح https://anahon-1.tailbcb2b7.ts.net:8444 في Safari (آيفون) أو Chrome (أندرويد) وسجّل الدخول كالمعتاد؛ 4) آيفون: مشاركة ← إضافة إلى الشاشة الرئيسية. أندرويد: قائمة Chrome ← تثبيت التطبيق. من الآن افتحه من الأيقونة — فالإشعارات لا تصل إلا إلى النسخة المثبَّتة. لا يعمل العنوان إلا باسمه الكامل، فأبقِ Tailscale مشغَّلاً حين تستخدم التطبيق خارج المكتب واكتب هذا العنوان بالضبط لا رقم الخادم. وعبر هذه المشاركة تصل إلى النظام وحده، لا إلى شيء آخر على الخادم.",
+    },
+  },
+  {
     id: "desk-feed", area: "Seats & approvals",
     q: { en: "How do I see my desk on my phone?", ar: "كيف أرى مكتبي على هاتفي؟" },
     a: {

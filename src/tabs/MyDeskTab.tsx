@@ -47,6 +47,11 @@ export default function MyDeskTab({
   // The private feed address, held only for as long as this screen is open: the server
   // never hands the same secret back, so a lost address is replaced, not looked up.
   const [feed, setFeed] = useState<null | { url: string; webcal: string; qr: string | null; rotated: boolean }>(null);
+  // Notifications. "unsupported" covers the two cases a person cannot fix from this button:
+  // an insecure origin (the browser gives no serviceWorker at all) and a worker that never
+  // registered — both mean they are not in the installed app, so the Help entry is shown
+  // instead of a button that could only fail.
+  const [push, setPush] = useState<null | { ready: boolean; publicKey: string | null; supported: boolean; on: boolean }>(null);
   // What a push to Google would do, read before it is authorised. Never written to.
   const [plan, setPlan] = useState<null | { configured: boolean; summary: string; empty: boolean; plan: any }>(null);
   const toggle = (set: (f: (p: Set<string>) => Set<string>) => void, id: string) =>
@@ -432,6 +437,80 @@ export default function MyDeskTab({
     }
   };
 
+  // What the phone can do, asked once. Never assumed: iOS gives PushManager only inside an
+  // installed home-screen app, so the same browser answers differently before and after.
+  useEffect(() => {
+    (async () => {
+      const supported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window
+        && !!(await navigator.serviceWorker.getRegistration());
+      let ready = false, publicKey: string | null = null, on = false;
+      try {
+        const d = await (await fetch("/api/push/key")).json();
+        ready = !!d.ready; publicKey = d.publicKey || null;
+      } catch { /* the server said nothing; the card explains itself below */ }
+      if (supported) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        on = !!(await reg?.pushManager.getSubscription());
+      }
+      setPush({ ready, publicKey, supported, on });
+    })();
+  }, []);
+
+  // The count on the app icon. Free where it exists, absent where it does not.
+  useEffect(() => {
+    const n = mine.length + cover.length;
+    const nav: any = navigator;
+    if (!nav.setAppBadge) return;
+    (n > 0 ? nav.setAppBadge(n) : nav.clearAppBadge?.()).catch?.(() => { /* not permitted here */ });
+  }, [mine.length, cover.length]);
+
+  /** VAPID keys travel as base64url; PushManager wants the bytes. */
+  const keyBytes = (k: string) => {
+    const b64 = (k + "=".repeat((4 - (k.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+    return Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  };
+
+  const turnOnPush = async () => {
+    if (!push?.publicKey) return;
+    setBusy("push");
+    try {
+      // The permission prompt must be inside the tap on iOS, so it is asked here, not on load.
+      if ((await Notification.requestPermission()) !== "granted") throw new Error(t("Notifications were not allowed on this device."));
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) throw new Error(t("Open the installed app, not the browser tab."));
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(push.publicKey) });
+      const r = await fetch("/api/push/subscribe", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscription: sub.toJSON() }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setPush({ ...push, on: true });
+      triggerToast(t("This device will be told when it is your turn."), "success");
+    } catch (e: any) {
+      triggerToast(e.message);
+    } finally { setBusy(null); }
+  };
+
+  const turnOffPush = async () => {
+    setBusy("push");
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = await reg?.pushManager.getSubscription();
+      if (sub) {
+        await fetch("/api/push/unsubscribe", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+      }
+      setPush(push ? { ...push, on: false } : null);
+      triggerToast(t("This device will no longer be notified."), "success");
+    } catch (e: any) {
+      triggerToast(e.message);
+    } finally { setBusy(null); }
+  };
+
   return (
     <div className="space-y-5">
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#4A1010] via-[#6D1A1A] to-[#4A1010] px-5 py-4 text-white shadow-md">
@@ -747,6 +826,45 @@ export default function MyDeskTab({
             </div>
           );
         })}
+      </div>
+
+      {/* "It is your turn", on the phone. The calendar carries dates; this carries the work
+          that has none — a Submitted voucher waiting on you is the message that matters
+          most and the one a calendar can never hold. When the browser cannot do it at all
+          (not the installed app, or an insecure origin) the install instructions are shown
+          instead of a button that could only fail. */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+          <BellRing className="h-4 w-4 text-[#6D1A1A]" /> {t("Tell me when it is my turn")}
+          <Info id="phone-app" lang={lang} />
+        </h3>
+        {!push ? null : !push.ready ? (
+          <p className="mt-2 text-[11px] text-slate-500">{t("Notifications are not switched on for this system yet.")}</p>
+        ) : !push.supported ? (
+          <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+            {t("Notifications reach the installed app only. Open Help & Q&A and read “How do I get the app on my phone” to install it.")}
+          </p>
+        ) : push.on ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <p className="text-[11px] text-emerald-800">
+              <CheckCircle2 className="me-1 inline h-3.5 w-3.5" />{t("This device is being notified.")}
+            </p>
+            <button
+              onClick={turnOffPush}
+              disabled={busy === "push"}
+              className="rounded-lg border border-slate-300 px-3 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+            >{t("Stop")}</button>
+          </div>
+        ) : (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              onClick={turnOnPush}
+              disabled={busy === "push"}
+              className="rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#4A1010] disabled:opacity-40"
+            >{busy === "push" ? t("Working…") : t("Turn on notifications")}</button>
+            <p className="text-[11px] text-slate-500">{t("One buzz when a record becomes your turn. Deadlines stay in the calendar.")}</p>
+          </div>
+        )}
       </div>
 
       {/* Your desk on your phone. The address is the whole key, so it is shown once and

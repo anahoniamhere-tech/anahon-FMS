@@ -26,3 +26,39 @@ self.addEventListener("fetch", (e) => {
     fetch(e.request).catch(async () => (await caches.match(PAGE)) || Response.error())
   );
 });
+
+/* ── "It is your turn" ────────────────────────────────────────────────────────
+ * The server sends one notification per desk item that newly became this person's
+ * turn. Nothing here is cached and nothing is fetched: the payload carries every
+ * word shown, so a notification cannot arrive stale or leak a request to a phone
+ * that is off the tailnet.
+ *
+ * The click opens the app at the door the item lives behind — /?door=expenses&
+ * focus=expenses:e-12 — which App.tsx reads once on load. An app window that is
+ * already open is focused and navigated rather than a second one being opened.
+ */
+self.addEventListener("push", (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch { d = {}; }
+  const title = d.title || "AnaHon";
+  e.waitUntil(self.registration.showNotification(title, {
+    body: d.body || "",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: d.tag || title,          // a re-send for the same item replaces, never stacks
+    data: { url: d.url || "/" },
+  }));
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/";
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if (c.url.startsWith(self.registration.scope) && "navigate" in c) return c.navigate(url).then((w) => w && w.focus());
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});

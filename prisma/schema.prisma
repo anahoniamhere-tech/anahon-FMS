@@ -570,6 +570,26 @@ model Reminder {
   createdAt     String
   updatedAt     String
 
-  @@unique([userId, itemId])
+  /// Which way this reminder was delivered: "calendar" (Google/ics) or "push" (the phone).
+  /// The two ledgers are separate on purpose — a calendar cannot carry undated work, and a
+  /// push has no event to correct later, so the same desk item may be owed on both.
+  channel       String  @default("calendar")
+
+  @@unique([userId, itemId, channel])
   @@index([userId, state])
+}
+
+/// One browser or installed phone app that has agreed to receive "it is your turn".
+/// The endpoint is the address the push service gave that install; it is the identity,
+/// which is why it is unique — reinstalling produces a new one and the old row is dead
+/// until the push service answers 404/410 and the sender deletes it.
+model PushSubscription {
+  id        String @id
+  userId    String
+  endpoint  String @unique
+  p256dh    String
+  auth      String
+  createdAt String
+
+  @@index([userId])
 }
