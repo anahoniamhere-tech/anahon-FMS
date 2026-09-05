@@ -8,6 +8,8 @@ services:
       - "3100:3100"
     env_file: .env            # GEMINI_API_KEY, ANTHROPIC_API_KEY, FIREBASE_PROJECT_ID — never on the SMB share
     environment:
+      # The office runs on Beirut time; without this the container is UTC and "today" turns over at 03:00.
+      TZ: Asia/Beirut
       FMS_PUBLIC_URL: http://anahon.local:3100   # shown in "open on your phone"; must be a Firebase-authorized domain
       ARCHIVE_DIR: /data/archive
       SITE_DIR: /data/site

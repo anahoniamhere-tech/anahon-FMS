@@ -95,5 +95,14 @@ ok("the push refuses until a calendar is actually connected", /reminders\/push[\
 ok("one consent writes into one person's calendar only", /calendarConfiguredFor = \(viewer: any\) =>[\s\S]{0,200}canonEmail\(viewer\?\.email \|\| ""\) === calendarOwner\(\)/.test(server)
   && /if \(!calendarConfiguredFor\(viewer\)\) \{\s*\n\s*return res\.status\(403\)/.test(server));
 
+console.log("\nthe nightly run");
+ok("the button and the night use one function", /async function pushRemindersFor\(viewer: any, how: "by hand" \| "overnight"\)/.test(server)
+  && /pushRemindersFor\(viewer, "by hand"\)/.test(server) && /pushRemindersFor\(owner, "overnight"\)/.test(server));
+ok("it runs once a day, after the hour, in Beirut time", /timeZone: "Asia\/Beirut"/.test(server) && /if \(hour < REMINDERS_HOUR \|\| remindersLastRun === date\) return;/.test(server));
+ok("a failed night is logged, not retried every ten minutes", /remindersLastRun = date;\s*\/\/ claim the day first/.test(server) && /"Reminders Failed"/.test(server));
+ok("it writes only into the connected owner's calendar", /const owner = await findUserByEmail\(calendarOwner\(\)\);/.test(server));
+ok("it can be switched off without a code change", /process\.env\.REMINDERS_NIGHTLY !== "off"/.test(server));
+ok("the container keeps office time", readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8").includes("TZ: Asia/Beirut"));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

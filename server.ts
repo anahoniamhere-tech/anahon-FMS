@@ -942,18 +942,11 @@ app.post("/api/reminders/plan", async (req, res) => {
   }
 });
 
-app.post("/api/reminders/push", async (req, res) => {
-  try {
-    const viewer = (req as any).dbUser;
-    if (!calendarConfigured()) {
-      return res.status(400).json({ error: "No Google Calendar is connected to this system yet, so there is nowhere to write. Run the consent step first." });
-    }
-    if (!calendarConfiguredFor(viewer)) {
-      return res.status(403).json({ error: "The connected Google Calendar belongs to another account. Yours is not connected yet, so nothing is written." });
-    }
-    const plan = await reminderPlanFor(viewer);
-    if (planIsEmpty(plan)) return res.json({ success: true, summary: describePlan(plan), created: 0, updated: 0, cancelled: 0 });
-
+/** Carry out the plan for one person and record what was done. Shared by the button and the nightly run. */
+async function pushRemindersFor(viewer: any, how: "by hand" | "overnight") {
+  const plan = await reminderPlanFor(viewer);
+  if (planIsEmpty(plan)) return { summary: describePlan(plan), created: 0, updated: 0, cancelled: 0 };
+  {
     const token = await googleAccessToken();
     const now = new Date().toISOString();
     let created = 0, updated = 0, cancelled = 0;
@@ -980,12 +973,59 @@ app.post("/api/reminders/push", async (req, res) => {
     }
 
     await createAuditLog(viewer.id, viewer.name, "Reminders Pushed",
-      `${created} added, ${updated} corrected, ${cancelled} removed in ${viewer.name}'s own Google Calendar. The desk decides what is owed; this only copies it.`);
-    res.json({ success: true, summary: describePlan(plan), created, updated, cancelled });
+      `${created} added, ${updated} corrected, ${cancelled} removed in ${viewer.name}'s own Google Calendar, ${how}. The desk decides what is owed; this only copies it.`);
+    return { summary: describePlan(plan), created, updated, cancelled };
+  }
+}
+
+app.post("/api/reminders/push", async (req, res) => {
+  try {
+    const viewer = (req as any).dbUser;
+    if (!calendarConfigured()) {
+      return res.status(400).json({ error: "No Google Calendar is connected to this system yet, so there is nowhere to write. Run the consent step first." });
+    }
+    if (!calendarConfiguredFor(viewer)) {
+      return res.status(403).json({ error: "The connected Google Calendar belongs to another account. Yours is not connected yet, so nothing is written." });
+    }
+    res.json({ success: true, ...(await pushRemindersFor(viewer, "by hand")) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
+
+/* ── The nightly run ─────────────────────────────────────────────────────────
+ * Once a day, early, the connected person's calendar is brought back in line with
+ * their desk: what moved is corrected, what is finished is removed, what is new is
+ * added. It is the same push the button makes, with the same ledger, so a quiet night
+ * writes nothing at all. No cron outside the container: the server checks every ten
+ * minutes whether today's run has happened yet, which also survives a restart.
+ */
+const REMINDERS_HOUR = Number(process.env.REMINDERS_HOUR ?? 6);      // Beirut local
+const beirutNow = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Beirut", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hour12: false })
+    .formatToParts(new Date()).reduce((o: any, p) => (o[p.type] = p.value, o), {});
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour) % 24 };
+};
+let remindersLastRun = "";
+async function nightlyReminders() {
+  const { date, hour } = beirutNow();
+  if (hour < REMINDERS_HOUR || remindersLastRun === date) return;
+  remindersLastRun = date;                                             // claim the day first: a failure is logged, not retried every ten minutes
+  if (!calendarConfigured() || !calendarOwner()) return;
+  try {
+    const owner = await findUserByEmail(calendarOwner());
+    if (!owner || !owner.active) return;
+    const r = await pushRemindersFor(owner, "overnight");
+    console.log(`[reminders] ${date}: ${r.summary} → ${r.created} added, ${r.updated} corrected, ${r.cancelled} removed`);
+  } catch (err: any) {
+    console.log(`[reminders] ${date}: failed — ${err.message}`);
+    await createAuditLog("u-1", "System", "Reminders Failed", `The overnight calendar run did not complete: ${err.message}. The button on My Desk still works.`).catch(() => {});
+  }
+}
+if (!process.env.VERCEL && process.env.REMINDERS_NIGHTLY !== "off") {
+  setInterval(nightlyReminders, 10 * 60 * 1000).unref();
+  setTimeout(nightlyReminders, 30 * 1000).unref();                    // and once shortly after boot, in case the hour already passed
+}
 
 app.post("/api/calendar/feed", async (req, res) => {
   try {
