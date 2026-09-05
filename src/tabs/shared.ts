@@ -114,6 +114,18 @@ export const WA_TEMPLATES = {
   /** A timesheet or an invoice has not arrived. People. */
   "freelancer-nudge": (t: (s: string) => string, p: { name: string; what: string; period: string }) =>
     fill(t("Hello {name}, we are still waiting for your {what} for {period}. Send it when you can so payment is not held up. — AnaHon"), p),
+  /**
+   * A networking follow-up that was promised. Projects & funding (the Follow-up owed list).
+   *
+   * The name and nothing else, deliberately. `NetworkContact.followUp` ("propose AnaHon as
+   * trainer") is our own note about the person, not a sentence to put in front of them; and
+   * `metAt` is optional, so a "we met at {where}" opener renders "we met at  and said…" for
+   * every contact the field is empty on. What is left has to hold on its own, because the
+   * sender may press Send without reading it: an opener that is true of everyone in the
+   * register, and that they edit in WhatsApp when they want to say more.
+   */
+  "contact-followup": (t: (s: string) => string, p: { name: string }) =>
+    fill(t("Hello {name}, following up on our conversation as we agreed. Would you have a few minutes this week? — AnaHon"), p),
 };
 
 export type WaTemplateKey = keyof typeof WA_TEMPLATES;

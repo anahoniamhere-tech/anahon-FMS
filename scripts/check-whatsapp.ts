@@ -34,6 +34,7 @@ const params: Record<WaTemplateKey, any> = {
   "client-quotation": { name: "Zahle Municipality", ref: "Q-2026-018", amount: "$4,000.00" },
   "client-balance": { name: "Zahle Municipality", amount: "$1,500.00", date: "2026-08-01" },
   "freelancer-nudge": { name: "Omar", what: "timesheet", period: "August 2026" },
+  "contact-followup": { name: "Jihane" },
 };
 for (const key of Object.keys(WA_TEMPLATES) as WaTemplateKey[]) {
   for (const lang of ["en", "ar"]) {
@@ -44,6 +45,23 @@ for (const key of Object.keys(WA_TEMPLATES) as WaTemplateKey[]) {
   }
   ok(`${key}: the name reaches the reader`, WA_TEMPLATES[key]((s: string) => s, params[key]).includes(params[key].name));
 }
+
+console.log("\nD. the follow-up opener is safe to send unread");
+// It goes to anyone on the Follow-up owed list, and the sender may press Send without
+// reading it. Two things would break that: the internal `followUp` note ("propose AnaHon
+// as trainer") is about the person, not for them; and any second placeholder — `metAt` is
+// optional, so "we met at {where}" renders "we met at  and said…" wherever it is empty.
+for (const lang of ["en", "ar"]) {
+  const text = WA_TEMPLATES["contact-followup"]((s: string) => tr(lang, s), { name: "Jihane" });
+  ok(`contact-followup (${lang}): the name is the only thing filled in`,
+    (text.match(/Jihane/g) || []).length === 1 && !/\{\w+\}/.test(text), text);
+  ok(`contact-followup (${lang}): it says nothing a stranger could not read`,
+    !/followUp|trainer|met at|propose/i.test(text), text);
+}
+// A sixth parameter appearing here later is the regression this guards against.
+ok("it takes the name and nothing else",
+  WA_TEMPLATES["contact-followup"]((s: string) => s, { name: "X" }) ===
+  "Hello X, following up on our conversation as we agreed. Would you have a few minutes this week? — AnaHon");
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
