@@ -469,8 +469,13 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                     .filter(s => s.left > 0)
                     .map(({ q, left }) => ({
                       q, left,
+                      // Pending advices are included on purpose. They cannot be linked —
+                      // an eBLOM advice is not proof and the route refuses one — but a
+                      // client's money sitting in the system where nobody chasing that
+                      // client can see it is how 002/2026 came to be chased after it was
+                      // paid. Shown, and plainly not linkable.
                       txs: state.bankTransactions.filter(bt =>
-                        bt.type === "Deposit" && !bt.pending && !bt.projectId && !claimedTx.has(bt.id) &&
+                        bt.type === "Deposit" && !bt.projectId && !claimedTx.has(bt.id) &&
                         (state.bankAccounts.find(ba => ba.id === bt.bankAccountId)?.currency || "USD") === q.currency &&
                         Math.abs(bt.amount - left) <= Math.max(1, left * 0.01))
                     }))
@@ -478,13 +483,20 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                   if (!suggestions.length) return null;
                   return (
                     <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
-                      <p className="text-[11px] font-bold text-amber-800 uppercase">🏦 Possible payment matches on the bank statement</p>
+                      <p className="text-[11px] font-bold text-amber-800 uppercase">🏦 Money in that may settle an open quotation</p>
                       {suggestions.map(({ q, left, txs }) => txs.map(tx => {
                         const acct = state.bankAccounts.find(ba => ba.id === tx.bankAccountId);
                         return (
-                          <div key={`${q.id}-${tx.id}`} className="flex flex-wrap items-center gap-2 text-xs text-slate-700">
-                            <span><strong>{q.quoteNo}</strong> (<span dir="ltr">{q.currency} {left.toLocaleString()}</span> still owed of <span dir="ltr">{q.currency} {q.amount.toLocaleString()}</span>) ↔ deposit {tx.date} · <span dir="ltr">{formatIn(tx.amount, acct?.currency || "USD")}</span> · "{tx.description.slice(0, 50)}"</span>
-                            {MANAGERS.includes(currentUser.role) && (
+                          <div key={`${q.id}-${tx.id}`} className={`flex flex-wrap items-center gap-2 text-xs ${tx.pending ? "text-slate-500" : "text-slate-700"}`}>
+                            <span><strong>{q.quoteNo}</strong> (<span dir="ltr">{q.currency} {left.toLocaleString()}</span> still owed of <span dir="ltr">{q.currency} {q.amount.toLocaleString()}</span>) ↔ {tx.pending ? "advice" : "deposit"} {tx.date} · <span dir="ltr">{formatIn(tx.amount, acct?.currency || "USD")}</span> · "{tx.description.slice(0, 50)}"</span>
+                            {tx.pending ? (
+                              // No button, and the reason is written where it is read — an
+                              // advice becomes linkable when the statement carrying it is
+                              // imported (Bank & cash), not by anyone pressing anything here.
+                              <span className="rounded bg-white px-2 py-0.5 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-300">
+                                ⏳ advice received, awaiting the statement — import it in Bank &amp; cash, then link it
+                              </span>
+                            ) : MANAGERS.includes(currentUser.role) && (
                               <button onClick={() => linkQuotePayment(q, tx.id)} className="bg-emerald-600 text-white text-[10px] font-bold rounded px-2 py-1 hover:bg-emerald-700 transition-all">
                                 ✓ Confirm settlement
                               </button>

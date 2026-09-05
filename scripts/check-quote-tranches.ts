@@ -92,5 +92,23 @@ ok("unlinking a tranche still deletes the off-bank evidence line it was made of"
 ok("the audit line says how much of the quote is settled, not just that something happened",
   /of \$\{quote\.amount\} settled, status/.test(server));
 
+console.log("\nF. an advice is shown but never linkable");
+// 6 Sep 2026: a client's 200 USD sat in the system as a pending eBLOM advice, invisible on
+// the quotations screen, so the quote read as unpaid and the client was chased. The advice
+// is now listed against the quote it matches — but listing it must never make it pressable,
+// because the route refuses a pending line and would only produce an error nobody expects.
+const tab = readFileSync("src/tabs/ProductionTab.tsx", "utf8");
+const card = (tab.match(/const claimedTx[\s\S]*?<\/div>\s*\);\s*\}\)\(\)\}/) || [""])[0];
+ok("the match list no longer skips pending lines", !/bt\.type === "Deposit" && !bt\.pending/.test(card));
+ok("a pending line is offered no Confirm button", /\{tx\.pending \? \(/.test(card)
+  && card.indexOf("tx.pending ?") < card.indexOf("Confirm settlement"));
+ok("and it says what has to happen instead, on the row itself",
+  /advice received, awaiting the statement/.test(card));
+ok("it is still called an advice, not a deposit", /\{tx\.pending \? "advice" : "deposit"\}/.test(card));
+ok("the server would refuse it anyway if the button were ever wired back",
+  /That deposit is only an eBLOM advice, not yet on an imported statement/.test(server));
+ok("only a real deposit reaches the link call",
+  (card.match(/linkQuotePayment\(q, tx\.id\)/g) || []).length === 1);
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
