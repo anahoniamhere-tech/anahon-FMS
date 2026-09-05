@@ -160,13 +160,13 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                   </div>
                   <button
                     onClick={(e) => handlePartnerDrawSubmit(e, "invest")}
-                    className="bg-slate-905 bg-slate-900 text-white text-xs font-semibold rounded px-4 py-2.5 hover:bg-slate-950 shadow"
+                    className="bg-slate-900 text-white text-xs font-semibold rounded px-4 py-2.5 hover:bg-slate-950 shadow"
                   >
                     Post Capital Contribution
                   </button>
                   <button
                     onClick={(e) => handlePartnerDrawSubmit(e, "withdraw")}
-                    className="bg-red-660 bg-red-600 text-white text-xs font-semibold rounded px-4 py-2.5 hover:bg-red-750 shadow"
+                    className="bg-red-600 text-white text-xs font-semibold rounded px-4 py-2.5 hover:bg-red-750 shadow"
                   >
                     Lodge Partner Drawings
                   </button>
@@ -178,7 +178,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                 {state.partnerAccounts.map(p => (
                   <div key={p.id} className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
                     <h4 className="text-md font-bold text-slate-950 uppercase font-sans border-b border-slate-200 pb-2 flex items-center gap-1.5">
-                      <User className="h-4 w-4 text-red-650 text-red-600" />
+                      <User className="h-4 w-4 text-red-650" />
                       {p.partnerName} Partner Equity Line
                     </h4>
                     <div className="space-y-2 text-xs font-mono font-medium">
@@ -194,7 +194,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                         <span>Loan accounts back to platform:</span>
                         <span className="text-slate-950 font-bold">{formatUSD(p.loansToCompany)}</span>
                       </div>
-                      <div className="flex justify-between font-bold text-sm text-slate-950 pt-2 text-slate-800">
+                      <div className="flex justify-between font-bold text-sm text-slate-950 pt-2">
                         <span>Current Account Net Equity Balance:</span>
                         <span className="text-slate-950 font-bold">{formatUSD(p.currentAccountBalance)}</span>
                       </div>
@@ -523,7 +523,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
 
                                   return (
                                     <tr key={t.id} className="hover:bg-slate-50">
-                                      <td className="px-4 py-4 font-mono font-bold text-red-650 text-red-600">
+                                      <td className="px-4 py-4 font-mono font-bold text-red-650">
                                         {t.voucherNo || "Statement Adjust"}
                                       </td>
                                       <td className="px-4 py-4">

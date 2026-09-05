@@ -645,7 +645,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                       )}
                     </div>
                     <div className="flex items-end">
-                      <button type="submit" className="w-full bg-red-650 bg-red-600 text-white font-medium text-xs px-4 py-2.5 rounded-lg hover:bg-red-700 shadow transition-all">
+                      <button type="submit" className="w-full bg-red-650 text-white font-medium text-xs px-4 py-2.5 rounded-lg hover:bg-red-700 shadow transition-all">
                         Post Disbursement VoucherPV-2026
                       </button>
                     </div>
@@ -922,7 +922,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                         netAmount: netVal
                                       });
                                     }}
-                                    className="text-[11px] bg-amber-650 bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded font-medium shadow-sm animate-pulse"
+                                    className="text-[11px] bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded font-medium shadow-sm animate-pulse"
                                   >
                                     💸 Settle Cashier payment (Apply WHT)
                                   </button>

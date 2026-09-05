@@ -183,7 +183,7 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
               {/* The Gemini AI compliance audit panel */}
               <div className="p-6 bg-slate-900 text-white rounded-xl shadow-lg border border-slate-800 space-y-4">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded bg-red-650 bg-red-600 text-white text-lg font-bold">
+                  <div className="flex h-10 w-10 items-center justify-center rounded bg-red-650 text-white text-lg font-bold">
                     AH
                   </div>
                   <div>
@@ -208,7 +208,7 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
                   <button
                     onClick={runGeminiScan}
                     disabled={geminiLoading}
-                    className="bg-red-650 bg-red-600 hover:bg-red-700 text-white font-semibold text-xs px-5 py-2.5 rounded shadow transition-all flex items-center gap-2 shrink-0 disabled:opacity-50"
+                    className="bg-red-650 hover:bg-red-700 text-white font-semibold text-xs px-5 py-2.5 rounded shadow transition-all flex items-center gap-2 shrink-0 disabled:opacity-50"
                   >
                     {geminiLoading ? (
                       <>

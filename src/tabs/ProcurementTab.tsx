@@ -249,7 +249,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                   </div>
 
                   <div className="md:col-span-3 flex justify-end">
-                    <button type="submit" className="bg-red-660 bg-red-600 text-white font-medium text-xs rounded px-4 py-2 hover:bg-slate-950 transition-all">
+                    <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded px-4 py-2 hover:bg-slate-950 transition-all">
                       Settle Quotation Sheet Audit File
                     </button>
                   </div>

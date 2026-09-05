@@ -139,7 +139,7 @@ export default function AssetsTab({ currentUser, formatUSD, refreshState, state,
                       </div>
                       <div>
                         <span className="text-[9px] block text-slate-400">BOOK VALUE</span>
-                        <span className="font-bold text-red-650 font-bold text-red-650">{formatUSD(asset.currentBookValue)}</span>
+                        <span className="font-bold font-bold text-red-650">{formatUSD(asset.currentBookValue)}</span>
                       </div>
                     </div>
 

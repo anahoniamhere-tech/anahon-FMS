@@ -120,7 +120,7 @@ export default function AccountsTab({ currentUser, setState, state, t, triggerTo
                       <option value="LBP">LBP</option>
                     </select>
                   </div>
-                  <button type="submit" className="bg-red-650 bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">
+                  <button type="submit" className="bg-red-650 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-750 transition-all">
                     Register Account Line
                   </button>
                 </form>

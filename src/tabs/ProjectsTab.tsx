@@ -717,7 +717,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                 {state.donors.map(d => (
                   <div key={d.id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
                     <div className="flex items-center gap-2 mb-2">
-                      <Award className="h-5 w-5 text-red-650 text-red-600" />
+                      <Award className="h-5 w-5 text-red-650" />
                       <h4 className="text-sm font-bold text-slate-900">{d.name}</h4>
                     </div>
                     <p className="text-xs text-slate-500">Region Origin: {d.country}</p>
@@ -1523,7 +1523,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                     <div key={ts.id} className="text-xs p-2 bg-white border border-slate-100 rounded space-y-1">
                                       <div className="flex justify-between items-center">
                                         <strong className="text-slate-800">{emp?.name || "Staff"}</strong>
-                                        <span dir="ltr" className="font-mono font-bold text-slate-900 bg-red-50 text-red-750 px-1.5 py-0.5 rounded">
+                                        <span dir="ltr" className="font-mono font-bold text-slate-900 bg-red-50 px-1.5 py-0.5 rounded">
                                           {alloc?.percentage || 0}% ({formatUSD(allocatedSalary)})
                                         </span>
                                       </div>

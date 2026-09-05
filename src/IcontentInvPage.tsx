@@ -255,7 +255,7 @@ export default function IcontentInvPage() {
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); handleDownload(img.url, `${img.id}${img.url.substring(img.url.lastIndexOf("."))}`); }}
-                      className="p-2.5 rounded-full bg-red-650 bg-red-600 hover:bg-red-500 text-white shadow-lg transition-all"
+                      className="p-2.5 rounded-full bg-red-650 hover:bg-red-500 text-white shadow-lg transition-all"
                       style={{ minWidth: '44px', minHeight: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                       title="Download Image"
                     >
@@ -297,7 +297,7 @@ export default function IcontentInvPage() {
                         onClick={() => handleCopyLink(img.url, img.id)}
                         className={`flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold rounded-lg border transition-all cursor-pointer ${
                           copiedId === img.id
-                            ? "bg-emerald-950/40 border-emerald-850 border-emerald-800 text-emerald-400"
+                            ? "bg-emerald-950/40 border-emerald-800 text-emerald-400"
                             : "bg-slate-900 hover:bg-slate-800 border-slate-800 text-slate-350 hover:text-white"
                         }`}
                         style={{ minHeight: '44px' }}
@@ -354,7 +354,7 @@ export default function IcontentInvPage() {
                 <div className="flex md:flex-col gap-2 shrink-0 w-full md:w-32">
                   <button
                     onClick={() => handleDownload(img.url, `${img.id}${img.url.substring(img.url.lastIndexOf("."))}`)}
-                    className="flex-1 md:flex-none flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold bg-red-650 bg-red-600 hover:bg-red-550 hover:bg-red-550 hover:bg-red-500 text-white rounded-lg transition-colors cursor-pointer"
+                    className="flex-1 md:flex-none flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold bg-red-650 hover:bg-red-500 text-white rounded-lg transition-colors cursor-pointer"
                     style={{ minHeight: '44px' }}
                   >
                     <Download size={14} />
@@ -402,7 +402,7 @@ export default function IcontentInvPage() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-slate-900 border border-slate-850 border-slate-800 rounded-2xl max-w-4xl w-full overflow-hidden shadow-2xl flex flex-col md:flex-row max-h-[90vh]"
+              className="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full overflow-hidden shadow-2xl flex flex-col md:flex-row max-h-[90vh]"
             >
               {/* Media viewer */}
               <div className="flex-1 bg-black flex items-center justify-center relative p-6 max-h-[50vh] md:max-h-full overflow-hidden">
@@ -457,7 +457,7 @@ export default function IcontentInvPage() {
                 <div className="mt-8 pt-4 border-t border-slate-850 grid grid-cols-2 gap-2">
                   <button
                     onClick={() => handleDownload(activeModalImage.url, `${activeModalImage.id}${activeModalImage.url.substring(activeModalImage.url.lastIndexOf("."))}`)}
-                    className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold bg-red-650 bg-red-600 hover:bg-red-550 hover:bg-red-500 text-white rounded-lg transition-colors cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 text-xs font-semibold bg-red-650 hover:bg-red-500 text-white rounded-lg transition-colors cursor-pointer"
                     style={{ minHeight: '44px' }}
                   >
                     <Download size={14} />
