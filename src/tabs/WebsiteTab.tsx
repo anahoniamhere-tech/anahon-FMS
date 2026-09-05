@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { SharedProps } from "./shared";
 import { SITE_EDITORS } from "../roles";
+import { tr } from "../i18n";
 
 /**
  * Website — every piece of copy the site renders, edited here.
@@ -10,6 +11,9 @@ import { SITE_EDITORS } from "../roles";
  * programs.json / home.json when present). This tab renders any section as a form:
  * objects with `en` / `ar` keys become two columns; strings, numbers, booleans and
  * lists are edited in place. Saving a section writes the file and refreshes the site.
+ *
+ * The Live editor edits the same files by clicking the page; this is the same content as a
+ * form, so nothing is reachable in one and not the other except what the page cannot show.
  */
 const EDIT_ROLES = SITE_EDITORS;
 const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then(r => r.json());
@@ -26,7 +30,8 @@ const isBilingual = (v: any) => v && typeof v === "object" && !Array.isArray(v) 
 const looksLong = (s: string) => s.length > 70 || s.includes("\n");
 
 /** Recursive editor for one JSON value. Keeps the shape; only leaves change. */
-function Field({ value, onChange, path, canEdit }: { value: any; onChange: (v: any) => void; path: string; canEdit: boolean }) {
+type T = (s: string) => string;
+function Field({ value, onChange, path, canEdit, t }: { value: any; onChange: (v: any) => void; path: string; canEdit: boolean; t: T }) {
   if (typeof value === "string") {
     const key = path.split(/[.\[]/).pop() || "";
     if (/^(img|image|cover|photo|thumb|logo|avatar|picture|background)$/i.test(key) || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(value)) {
@@ -36,11 +41,11 @@ function Field({ value, onChange, path, canEdit }: { value: any; onChange: (v: a
         <div className="flex items-center gap-2">
           {src ? <img src={src} alt="" className="h-14 w-20 rounded border border-slate-200 object-cover" /> : <div className="h-14 w-20 rounded bg-slate-100" />}
           <input value={value} disabled={!canEdit} dir="ltr" onChange={e => onChange(e.target.value)} className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs" placeholder="/uploads/website/… or https://…" />
-          {canEdit && <label className="cursor-pointer rounded border px-2 py-1 text-xs">Upload<input type="file" accept="image/*" className="hidden" onChange={async ev => {
+          {canEdit && <label className="cursor-pointer rounded border px-2 py-1 text-xs">{t("Upload")}<input type="file" accept="image/*" className="hidden" onChange={async ev => {
             const f = ev.target.files?.[0]; if (!f) return;
             const b64 = await new Promise<string>(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(",")[1] || ""); fr.readAsDataURL(f); });
             const up = await post("/api/website/image", { filename: f.name, mimeType: f.type, base64: b64 });
-            if (up.success) onChange(up.path); else window.alert(up.error || "Upload failed");
+            if (up.success) onChange(up.path); else window.alert(up.error || t("Upload failed"));
           }} /></label>}
         </div>
       );
@@ -64,13 +69,13 @@ function Field({ value, onChange, path, canEdit }: { value: any; onChange: (v: a
               {canEdit && <span className="flex gap-2">
                 <button onClick={() => { if (i > 0) { const n = [...value]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; onChange(n); } }} className="hover:text-slate-700">↑</button>
                 <button onClick={() => { if (i < value.length - 1) { const n = [...value]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; onChange(n); } }} className="hover:text-slate-700">↓</button>
-                <button onClick={() => { if (window.confirm("Remove this entry?")) onChange(value.filter((_, j) => j !== i)); }} className="text-red-600">remove</button>
+                <button onClick={() => { if (window.confirm(t("Remove this entry?"))) onChange(value.filter((_, j) => j !== i)); }} className="text-red-600">{t("remove")}</button>
               </span>}
             </div>
-            <Field value={item} onChange={v => onChange(value.map((x, j) => j === i ? v : x))} path={`${path}[${i}]`} canEdit={canEdit} />
+            <Field value={item} onChange={v => onChange(value.map((x, j) => j === i ? v : x))} path={`${path}[${i}]`} canEdit={canEdit} t={t} />
           </div>
         ))}
-        {canEdit && <button onClick={() => onChange([...value, blank(template)])} className="rounded border px-2 py-0.5 text-xs">+ add</button>}
+        {canEdit && <button onClick={() => onChange([...value, blank(template)])} className="rounded border px-2 py-0.5 text-xs">+ {t("add")}</button>}
       </div>
     );
   }
@@ -83,11 +88,11 @@ function Field({ value, onChange, path, canEdit }: { value: any; onChange: (v: a
             {(["en", "ar"] as const).map(l => (
               <div key={l} className="rounded border border-slate-200 p-2">
                 <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{l === "en" ? "English" : "العربية"}</p>
-                <Field value={value[l]} onChange={v => onChange({ ...value, [l]: v })} path={`${path}.${l}`} canEdit={canEdit} />
+                <Field value={value[l]} onChange={v => onChange({ ...value, [l]: v })} path={`${path}.${l}`} canEdit={canEdit} t={t} />
               </div>
             ))}
           </div>
-          {keys.map(k => <label key={k} className="block text-xs"><span className="text-slate-500">{humanize(k)}</span><Field value={value[k]} onChange={v => onChange({ ...value, [k]: v })} path={`${path}.${k}`} canEdit={canEdit} /></label>)}
+          {keys.map(k => <label key={k} className="block text-xs"><span className="text-slate-500">{t(humanize(k))}</span><Field value={value[k]} onChange={v => onChange({ ...value, [k]: v })} path={`${path}.${k}`} canEdit={canEdit} t={t} /></label>)}
         </div>
       );
     }
@@ -95,8 +100,8 @@ function Field({ value, onChange, path, canEdit }: { value: any; onChange: (v: a
       <div className="space-y-2">
         {Object.entries(value).map(([k, v]) => (
           <label key={k} className="block text-xs">
-            <span className="text-slate-500">{humanize(k)}</span>
-            <Field value={v} onChange={nv => onChange({ ...value, [k]: nv })} path={`${path}.${k}`} canEdit={canEdit} />
+            <span className="text-slate-500">{t(humanize(k))}</span>
+            <Field value={v} onChange={nv => onChange({ ...value, [k]: nv })} path={`${path}.${k}`} canEdit={canEdit} t={t} />
           </label>
         ))}
       </div>
@@ -105,8 +110,9 @@ function Field({ value, onChange, path, canEdit }: { value: any; onChange: (v: a
   return <span className="text-xs text-slate-400">{String(value)}</span>;
 }
 
-export default function WebsiteTab({ state, currentUser, triggerToast }: SharedProps) {
+export default function WebsiteTab({ state, currentUser, triggerToast, lang }: SharedProps) {
   const canEdit = EDIT_ROLES.includes(currentUser?.role);
+  const t: T = s => tr(lang, s);
   useEffect(() => { (window as any).__siteUrl = (state as any)?.siteUrl || ""; }, [state]);
   const [content, setContent] = useState<Record<string, any>>({});
   const [file, setFile] = useState<string>("site");
@@ -125,29 +131,29 @@ export default function WebsiteTab({ state, currentUser, triggerToast }: SharedP
     setSaving(true);
     const r = await post("/api/website/content", { file, section, value: draft });
     setSaving(false);
-    if (r.success) { triggerToast(`Saved — site refreshed (${r.refreshed?.invalidated ?? 0} modules)`); setContent(c => ({ ...c, [file]: { ...c[file], [section]: draft } })); }
-    else triggerToast(r.error || "Save failed", "error");
+    if (r.success) { triggerToast(`${t("Saved — site refreshed")} (${r.refreshed?.invalidated ?? 0})`); setContent(c => ({ ...c, [file]: { ...c[file], [section]: draft } })); }
+    else triggerToast(r.error || t("Save failed"), "error");
   };
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-xl font-bold text-slate-900">🌐 Website</h2>
+        <h2 className="text-xl font-bold text-slate-900">🌐 {t("Site content")}</h2>
         <div className="flex rounded-full bg-slate-100 p-0.5 text-xs font-bold">
-          {files.map(f => <button key={f} onClick={() => setFile(f)} className={`rounded-full px-3 py-1 ${file === f ? "bg-slate-900 text-white" : "text-slate-600"}`}>{FILE_LABEL[f] || f}</button>)}
+          {files.map(f => <button key={f} onClick={() => setFile(f)} className={`rounded-full px-3 py-1 ${file === f ? "bg-slate-900 text-white" : "text-slate-600"}`}>{t(FILE_LABEL[f] || f)}</button>)}
         </div>
-        {canEdit && <button onClick={save} disabled={!dirty || saving} className="ms-auto rounded bg-red-700 px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40">{saving ? "Saving…" : dirty ? "Save & refresh site" : "Saved"}</button>}
+        {canEdit && <button onClick={save} disabled={!dirty || saving} className="ms-auto rounded bg-red-700 px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40">{saving ? t("Saving…") : dirty ? t("Save & refresh site") : t("Saved")}</button>}
       </div>
-      <p className="text-xs text-slate-500">What you save here is what the website renders — no editing on the site itself. Structure (which sections exist, which fields) is set in the site's code; the words, links and lists are yours.</p>
+      <p className="text-xs text-slate-500">{t("What you save here is what the website renders. Structure (which sections exist, which fields) is set in the site's code; the words, links and lists are yours. To change the same words by clicking the page itself, use the Live editor.")}</p>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[14rem_1fr]">
         <nav className="space-y-1">
           {sections.map(s => (
-            <button key={s} onClick={() => { if (dirty && !window.confirm("Discard unsaved changes in this section?")) return; setSection(s); }}
-              className={`block w-full rounded px-3 py-1.5 text-start text-xs ${section === s ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`}>{humanize(s)}</button>
+            <button key={s} onClick={() => { if (dirty && !window.confirm(t("Discard unsaved changes in this section?"))) return; setSection(s); }}
+              className={`block w-full rounded px-3 py-1.5 text-start text-xs ${section === s ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`}>{t(humanize(s))}</button>
           ))}
         </nav>
         <div className="rounded-lg border border-slate-200 bg-white p-3">
-          {draft === null ? <p className="text-xs text-slate-500">Choose a section.</p> : <Field value={draft} onChange={setDraft} path={`${file}.${section}`} canEdit={canEdit} />}
+          {draft === null ? <p className="text-xs text-slate-500">{t("Choose a section.")}</p> : <Field value={draft} onChange={setDraft} path={`${file}.${section}`} canEdit={canEdit} t={t} />}
         </div>
       </div>
     </div>

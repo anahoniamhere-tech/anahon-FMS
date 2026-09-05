@@ -1034,6 +1034,7 @@ export default function App() {
     searchTerm, setSearchTerm, setDrawerExpenseId, handleVoucherDocUpload,
     selectedProjectId, setSelectedProjectId, workspaceRef,
     focusId, setFocusId,
+    openDoor: (door: string, focus?: string) => { if (focus) setFocusId(focus); setActiveTab(door); },
   };
 
   return (

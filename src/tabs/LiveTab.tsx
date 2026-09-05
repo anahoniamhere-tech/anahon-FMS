@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { SharedProps } from "./shared";
 import Info from "../Info";
 import { SITE_EDITORS } from "../roles";
+import { tr } from "../i18n";
 
 /**
  * Live editor — the website itself, framed from its editing server, edited in place.
@@ -10,6 +11,10 @@ import { SITE_EDITORS } from "../roles";
  * library on the right onto any image. Each change is matched to the site's content
  * files (site.json, i18n.json, programs.json, home.json) and written; the preview
  * reloads with the new content. Publish builds the public site and pushes it out.
+ *
+ * Two edges, both by design: a published article's words live in the Editorial desk (the
+ * page names its record; a click hands it over), and drag-and-drop is a mouse gesture, so
+ * the library panel is hidden below md and the phone keeps tap-to-edit only.
  */
 const EDIT_ROLES = SITE_EDITORS;
 const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then(r => r.json());
@@ -35,14 +40,16 @@ type ArchiveItem = { id: string; platform: string; kind: string; title: string; 
 type Article = { slug: string; lang: string; title: string; date: string };
 const WIDGET_LABEL: Record<string, string> = { hero: "Home hero slider", episodes: "Latest episodes", articles: "Latest articles" };
 
-export default function LiveTab({ state, currentUser, triggerToast, lang }: SharedProps) {
+export default function LiveTab({ state, currentUser, triggerToast, lang, openDoor }: SharedProps) {
   const canEdit = EDIT_ROLES.includes(currentUser?.role);
+  const t = (s: string) => tr(lang, s);
   const siteUrl = String(state.siteUrl || "").replace(/\/$/, "");
   const siteOrigin = siteUrl ? new URL(siteUrl).origin : "";
   const frame = useRef<HTMLIFrameElement>(null);
   const [edit, setEdit] = useState(false);
   const [path, setPath] = useState("/");
   const [pageLang, setPageLang] = useState<"en" | "ar">("en");
+  const [articleId, setArticleId] = useState("");   // the desk record behind the framed page, when it is an article
   const [lib, setLib] = useState<LibItem[]>([]);
   const [panel, setPanel] = useState<"library" | "pictures">("library");
   const [items, setItems] = useState<ArchiveItem[]>([]);
@@ -66,7 +73,8 @@ export default function LiveTab({ state, currentUser, triggerToast, lang }: Shar
     const onMsg = async (e: MessageEvent) => {
       const d = e.data; if (!d || d.anahon !== true) return;
       if (siteOrigin && e.origin !== siteOrigin) return;
-      if (d.type === "ready") { setPath(d.url || "/"); setPageLang(d.lang === "ar" ? "ar" : "en"); tell({ type: "edit", on: editRef.current }); return; }
+      if (d.type === "ready") { setPath(d.url || "/"); setPageLang(d.lang === "ar" ? "ar" : "en"); setArticleId(String(d.articleId || "")); tell({ type: "edit", on: editRef.current }); return; }
+      if (d.type === "article") { if (d.id) openDoor("editorial", String(d.id)); return; }
       if (d.type === "widget") {
         const w = String(d.widget || ""); const id = String(d.id || "");
         if (!WIDGET_LABEL[w] || !id) return;
@@ -75,15 +83,15 @@ export default function LiveTab({ state, currentUser, triggerToast, lang }: Shar
         const pinned: string[] = (c.pinned || []).filter((x: string) => x !== id), removed: string[] = (c.removed || []).filter((x: string) => x !== id);
         const next = d.op === "pin" ? { pinned: [id, ...pinned], removed } : { pinned, removed: [...removed, id] };
         const r = await post("/api/archive/home", { widgets: { [w]: next } });
-        if (r.success) triggerToast(d.op === "pin" ? `Pinned to ${WIDGET_LABEL[w]}` : `Removed from ${WIDGET_LABEL[w]}`, "success");
-        else triggerToast(r.error || "Not saved", "error");
+        if (r.success) triggerToast(`${t(d.op === "pin" ? "Pinned to" : "Removed from")} ${t(WIDGET_LABEL[w])}`, "success");
+        else triggerToast(r.error || t("Not saved"), "error");
         tell({ type: "result", ok: !!r.success });
         return;
       }
       if (d.type === "text" || d.type === "image") {
         const r = await post("/api/website/edit", { kind: d.type, from: d.from, to: d.to, lang: d.lang, url: d.url });
-        if (r.success) triggerToast(`Saved — ${r.count} place${r.count === 1 ? "" : "s"}: ${r.paths.join(", ")}`, "success");
-        else triggerToast(r.error || "Not saved", "error");
+        if (r.success) triggerToast(`${t("Saved")} — ${r.count} ${t(r.count === 1 ? "place" : "places")}: ${r.paths.join(", ")}`, "success");
+        else triggerToast(r.error || t("Not saved"), "error");
         tell({ type: "result", ok: !!r.success });
       }
     };
@@ -94,19 +102,19 @@ export default function LiveTab({ state, currentUser, triggerToast, lang }: Shar
   const go = (p: string) => { setPath(p); if (frame.current) frame.current.src = siteUrl + p; };
   const current = PAGES.find(p => p.en === path || p.ar === path);
   const publish = async () => {
-    if (!window.confirm("Build the public website from what you see here and push it to the host?")) return;
+    if (!window.confirm(t("Build the public website from what you see here and push it to the host?"))) return;
     setBusy(true); setLog(null);
     const r = await post("/api/website/build", {});
     setBusy(false); setLog(r.log || r.error || JSON.stringify(r));
-    triggerToast(r.ok ? `Published in ${r.seconds}s${r.deployed === null ? " (built only — no host configured yet)" : ""}` : (r.error || "Publish failed"), r.ok ? "success" : "error");
+    triggerToast(r.ok ? `${t("Published in")} ${r.seconds}s${r.deployed === null ? ` (${t("built only — no host configured yet")})` : ""}` : (r.error || t("Publish failed")), r.ok ? "success" : "error");
   };
   const upload = async (f: File) => {
     const b64 = await new Promise<string>(r => { const fr = new FileReader(); fr.onload = () => r(String(fr.result).split(",")[1] || ""); fr.readAsDataURL(f); });
     const up = await post("/api/website/image", { filename: f.name, mimeType: f.type, base64: b64 });
-    if (up.success) { triggerToast(`Uploaded ${up.path}`, "success"); loadLib(); } else triggerToast(up.error || "Upload failed", "error");
+    if (up.success) { triggerToast(`${t("Uploaded")} ${up.path}`, "success"); loadLib(); } else triggerToast(up.error || t("Upload failed"), "error");
   };
 
-  if (!siteUrl) return <div className="p-6 text-sm text-slate-500">The site's editing server is not configured (SITE_URL).</div>;
+  if (!siteUrl) return <div className="p-6 text-sm text-slate-500">{t("The site's editing server is not configured (SITE_URL).")}</div>;
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col gap-2">
@@ -125,58 +133,65 @@ export default function LiveTab({ state, currentUser, triggerToast, lang }: Shar
         {canEdit && (
           <label className={`flex cursor-pointer items-center gap-2 rounded px-3 py-1 text-xs font-semibold ${edit ? "bg-red-600 text-white" : "bg-slate-100"}`}>
             <input type="checkbox" checked={edit} onChange={e => setEdit(e.target.checked)} className="hidden" />
-            {edit ? "✎ Editing — click text, drop pictures" : "Browse (turn on editing)"}
+            {edit ? `✎ ${t("Editing — click text, drop pictures")}` : t("Browse (turn on editing)")}
           </label>
         )}
         {canEdit && (
           <Info id="live-editor" lang={lang} />
         )}
-        {canEdit && <><button onClick={publish} disabled={busy} className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">{busy ? "Publishing…" : "⬆ Publish"}</button><Info id="publish-site" lang={lang} /></>}
-        <a href={siteUrl + path} target="_blank" rel="noreferrer" className="text-xs text-slate-500 underline">open ↗</a>
+        {canEdit && <><button onClick={publish} disabled={busy} className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">{busy ? t("Publishing…") : `⬆ ${t("Publish")}`}</button><Info id="publish-site" lang={lang} /></>}
+        <a href={siteUrl + path} target="_blank" rel="noreferrer" className="text-xs text-slate-500 underline">{t("open")} ↗</a>
       </div>
+      {canEdit && edit && articleId && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <span>{t("This is a published article — its words are edited in the Editorial desk, not here.")}</span>
+          <button onClick={() => openDoor("editorial", articleId)} className="ms-auto rounded bg-amber-700 px-3 py-1 font-semibold text-white">{t("Open in the Editorial desk")}</button>
+        </div>
+      )}
+      {canEdit && <p className="text-[11px] text-slate-500 md:hidden">{t("On a phone you can tap text to edit it; dropping pictures and library items needs a computer.")}</p>}
       <div className="flex min-h-0 flex-1 gap-2">
         <iframe ref={frame} src={siteUrl + "/"} title="AnaHon website" className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white" />
         {canEdit && (
-          <aside className="flex w-64 shrink-0 flex-col rounded-lg border border-slate-200 bg-white">
+          <aside className="hidden w-64 shrink-0 flex-col rounded-lg border border-slate-200 bg-white md:flex">
             <div className="flex border-b text-xs font-semibold">
-              {(["library", "pictures"] as const).map(p => <button key={p} onClick={() => setPanel(p)} className={`flex-1 px-2 py-1.5 capitalize ${panel === p ? "bg-slate-800 text-white" : ""}`}>{p}</button>)}
+              {(["library", "pictures"] as const).map(p => <button key={p} onClick={() => setPanel(p)} className={`flex-1 px-2 py-1.5 ${panel === p ? "bg-slate-800 text-white" : ""}`}>{t(p === "library" ? "Library" : "Pictures")}</button>)}
             </div>
             {panel === "library" && (
               <>
                 <div className="space-y-1 border-b p-1.5">
-                  <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search titles…" className="w-full rounded border border-slate-300 px-2 py-1 text-xs" />
+                  <input value={q} onChange={e => setQ(e.target.value)} placeholder={t("Search titles…")} className="w-full rounded border border-slate-300 px-2 py-1 text-xs" />
                   <div className="flex flex-wrap gap-1 text-[10px]">
-                    {(["podcast", "documentary", "video", "article", "all"] as const).map(f => <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-1.5 py-0.5 capitalize ${filter === f ? "border-red-600 bg-red-600 text-white" : "border-slate-300"}`}>{f}</button>)}
+                    {(["podcast", "documentary", "video", "article", "all"] as const).map(f => <button key={f} onClick={() => setFilter(f)} className={`rounded-full border px-1.5 py-0.5 ${filter === f ? "border-red-600 bg-red-600 text-white" : "border-slate-300"}`}>{t(f)}</button>)}
                   </div>
                 </div>
                 <div className="flex-1 space-y-1 overflow-y-auto p-1">
                   {filter === "article"
                     ? articles.filter(a => a.lang === pageLang && (!q || a.title.toLowerCase().includes(q.toLowerCase()))).slice(0, 60).map(a => (
-                      <div key={a.slug + a.lang} draggable onDragStart={e => { e.dataTransfer.setData("text/plain", "item:" + a.slug); e.dataTransfer.effectAllowed = "copy"; }} title="Drag onto the Latest articles widget"
+                      <div key={a.slug + a.lang} draggable onDragStart={e => { e.dataTransfer.setData("text/plain", "item:" + a.slug); e.dataTransfer.effectAllowed = "copy"; }} title={t("Drag onto the Latest articles widget")}
                         className="cursor-grab rounded border border-slate-200 px-2 py-1 text-xs hover:border-red-400"><div className="line-clamp-2">{a.title}</div><div className="text-[10px] text-slate-400">{a.date}</div></div>))
                     : items.filter(i => (filter === "all" || (filter === "video" ? ["video", "reel"].includes(i.kind) && !i.tags.includes("podcast") : i.tags.includes(filter))) && (!q || i.title.toLowerCase().includes(q.toLowerCase()))).slice(0, 80).map(i => (
-                      <div key={i.id} draggable onDragStart={e => { e.dataTransfer.setData("text/plain", "item:" + i.id); e.dataTransfer.effectAllowed = "copy"; }} title="Drag onto a widget on the page"
+                      <div key={i.id} draggable onDragStart={e => { e.dataTransfer.setData("text/plain", "item:" + i.id); e.dataTransfer.effectAllowed = "copy"; }} title={t("Drag onto a widget on the page")}
                         className="flex cursor-grab gap-1.5 rounded border border-slate-200 p-1 text-xs hover:border-red-400">
                         <img src={i.thumb} alt="" className="h-10 w-14 shrink-0 rounded object-cover" />
                         <div className="min-w-0"><div className="line-clamp-2 leading-tight">{i.title}</div><div className="text-[10px] text-slate-400">{i.date} · {i.tags.includes("podcast") ? "podcast" : i.tags.includes("documentary") ? "documentary" : i.kind}</div></div>
                       </div>))}
-                  {!items.length && <div className="p-2 text-xs text-slate-400">Loading the library…</div>}
+                  {!items.length && <div className="p-2 text-xs text-slate-400">{t("Loading the library…")}</div>}
                 </div>
-                <div className="border-t px-2 py-1 text-[10px] text-slate-400">Drop on the hero, episodes or articles widget to pin it first. Hover an entry on the page and click × to remove it.</div>
+                <div className="border-t px-2 py-1 text-[10px] text-slate-400">{t("Drop on the hero, episodes or articles widget to pin it first. Hover an entry on the page and click × to remove it.")}</div>
               </>
             )}
             {panel === "pictures" && <>
             <div className="flex items-center justify-between border-b px-2 py-1.5 text-xs font-semibold">
-              <span>Pictures</span>
-              <label className="cursor-pointer rounded border px-1.5 py-0.5 font-normal">+ upload<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} /></label>
+              <span>{t("Pictures")}</span>
+              <label className="cursor-pointer rounded border px-1.5 py-0.5 font-normal">+ {t("upload")}<input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} /></label>
             </div>
             <div className="grid flex-1 grid-cols-2 gap-1 overflow-y-auto p-1">
               {lib.map(it => (
-                <img key={it.path} src={siteUrl + it.path} alt={it.name} title={`${it.name} — drag onto a picture on the page`} draggable
+                <img key={it.path} src={siteUrl + it.path} alt={it.name} title={`${it.name} — ${t("drag onto a picture on the page")}`} draggable
                   onDragStart={e => { e.dataTransfer.setData("text/plain", it.path); e.dataTransfer.effectAllowed = "copy"; }}
                   className="h-16 w-full cursor-grab rounded border border-slate-200 object-cover" />
               ))}
-              {!lib.length && <div className="col-span-2 p-2 text-xs text-slate-400">No pictures yet — upload one.</div>}
+              {!lib.length && <div className="col-span-2 p-2 text-xs text-slate-400">{t("No pictures yet — upload one.")}</div>}
             </div>
             </>}
           </aside>
@@ -184,7 +199,7 @@ export default function LiveTab({ state, currentUser, triggerToast, lang }: Shar
       </div>
       {log !== null && (
         <details open className="rounded-lg border border-slate-200 bg-white text-xs">
-          <summary className="cursor-pointer px-3 py-1.5 font-semibold">Publish log</summary>
+          <summary className="cursor-pointer px-3 py-1.5 font-semibold">{t("Publish log")}</summary>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap px-3 pb-2 font-mono text-[11px] text-slate-600">{log}</pre>
         </details>
       )}

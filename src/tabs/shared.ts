@@ -57,6 +57,9 @@ export interface SharedProps {
   // A record another screen asked to open (My Desk → Editorial desk). The tab clears it once used.
   focusId: string | null;
   setFocusId: (id: string | null) => void;
+  // Open another door, optionally on one record (Live editor → Editorial desk). The redirect
+  // effect in App.tsx still refuses a door this role cannot open.
+  openDoor: (door: string, focus?: string) => void;
   workspaceRef: any;
 }
 

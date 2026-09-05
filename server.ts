@@ -4265,8 +4265,8 @@ app.post("/api/website/edit", async (req, res) => {
       if (hits.length > before) fs.writeFileSync(p, JSON.stringify(doc, null, 1) + "\n");
     }
     if (!hits.length) return res.status(404).json({ error: kind === "text"
-      ? "This text is written in the site's code, not in the content files — tell Saad's assistant to move it."
-      : "This picture is set in the site's code, not in the content files." });
+      ? "This text is part of the page's design, not its content — it can only be changed in the site's code. Articles are edited in the Editorial desk."
+      : "This picture is part of the page's design, not its content — it can only be changed in the site's code." });
     await createAuditLog(user?.id, user?.name, "Website Content Saved", `Live editor (${url || "?"}): ${kind} "${want.slice(0, 60)}" → "${to.slice(0, 60)}" in ${hits.join(", ")}`);
     res.json({ success: true, count: hits.length, paths: hits, refreshed: await siteRefresh() });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
