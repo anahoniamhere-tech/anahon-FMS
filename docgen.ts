@@ -173,8 +173,16 @@ export function contractHtml(o: {
    * recompute the fee, which is a typed figure. 0 or absent means no rate is on record.
    */
   fullSalary?: number;
+  /**
+   * The yearly agreement this one replaces, when the person already had one. A new agreement
+   * says so on its face rather than leaving two live-looking contracts in the file with only
+   * their dates to tell them apart. It replaces the yearly agreement ONLY — a subcontract is
+   * tied to a project period and money that has usually already moved, and ends on its own
+   * terms. Ignored unless this is a yearly agreement.
+   */
+  supersedesReference?: string | null;
 }) {
-  const { party: emp, project: p, account, countersignatory, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLine, reference, parentReference, fullSalary } = o;
+  const { party: emp, project: p, account, countersignatory, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLine, reference, parentReference, fullSalary, supersedesReference } = o;
   const isService = kind === "Service";
   /**
    * A subcontract is an employment engagement that names a project. Nothing new is stored
@@ -219,6 +227,7 @@ ${row("Period", `${esc(longDate(startDate))} to ${esc(longDate(endDate))}`)}
 ${loePct ? row("Level of Effort", `${esc(loePct)}%`) : ""}
 ${monthlyFee ? row(isService ? "Fee per period" : isFramework ? "Full monthly salary (100% level of effort)" : "Monthly Fee", esc(money(monthlyFee))) : ""}
 ${isSub && fullSalary ? row("Full monthly salary under the framework contract", esc(money(fullSalary))) : ""}
+${isFramework && supersedesReference ? row("Replaces", esc(supersedesReference)) : ""}
 ${row("Contract Total", noFixedValue ? esc(TOTAL_TEXT) : `<strong>${esc(money(contractTotal))}</strong>`)}
 ${budgetLine ? row("Budget Line", esc(`${budgetLine.code} — ${budgetLine.description}`)) : ""}
 ${row("MoF Tax Registry ID", registered
@@ -237,7 +246,9 @@ ${row("Paid From", account
 
 <h2 style="margin-top:22px;color:#1a1a1a;font-size:13px"><strong>1. Engagement</strong></h2>
 <p>AnaHon Media Platform engages ${esc(emp.name)} as <b>${esc(roleText)}</b>${p ? ` on project ${esc(p.code)} — ${esc(p.name)}` : ""}
-for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.${isSub
+for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.${isFramework && supersedesReference
+      ? ` This agreement <b>replaces the yearly agreement ${esc(supersedesReference)}</b>, which ceases to have effect from the start date above. It does not affect any subcontract already issued: each of those runs to the end of its own period on its own terms.`
+      : ""}${isSub
       ? parentReference
         ? ` This subcontract is made under the yearly framework contract <b>${esc(parentReference)}</b> between AnaHon Media Platform and ${esc(emp.name)}, which establishes the engagement but carries no remuneration of its own. This subcontract carries the remuneration for this project only, and governs for this project where the two differ. It ends with the period above; the framework contract continues.`
         : ` <b>No yearly framework contract is on file for ${esc(emp.name)}.</b> Under AnaHon's engagement model this subcontract should sit under one; until it is issued, this document stands alone and is the whole of the engagement it describes.`

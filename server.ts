@@ -1867,13 +1867,21 @@ app.post("/api/contracts/generate", async (req, res) => {
     // The framework contract this subcontract sits under: the same person's most recent
     // project-less employment contract. `undefined` would mean "not looked for"; we always
     // look, so the value is a reference or null, and the document says which.
+    // The same lookup answers two questions, because it is the same fact: the person's most
+    // recent yearly agreement. For a subcontract that is the parent it sits under; for a new
+    // yearly agreement it is the one being replaced.
     let parentReference: string | null = null;
-    if (isSub) {
-      const parent = await prisma.appDoc.findFirst({
+    let supersedesReference: string | null = null;
+    if (isSub || isFramework) {
+      const prior = await prisma.appDoc.findFirst({
         where: { category: "Contracts", partyId: partyKey, linkedRecordId: "GENERAL" },
         orderBy: { created_at: "desc" }
       });
-      parentReference = parent ? referenceOfContractDoc(parent.id, partyKey) : null;
+      const priorRef = prior ? referenceOfContractDoc(prior.id, partyKey) : null;
+      // Reissuing the same agreement writes the same document id, so without this a contract
+      // would announce that it supersedes itself.
+      if (isSub) parentReference = priorRef;
+      else if (priorRef && priorRef !== reference) supersedesReference = priorRef;
     }
 
     const html = contractHtml({
@@ -1882,7 +1890,7 @@ app.post("/api/contracts/generate", async (req, res) => {
       startDate, endDate,
       loePct: loePct === undefined || loePct === null || loePct === "" ? undefined : Number(loePct),
       monthlyFee: Number(monthlyFee), contractTotal: Number(contractTotal),
-      budgetLine, reference, parentReference,
+      budgetLine, reference, parentReference, supersedesReference,
       // The rate the framework contract sets. Quoted on a subcontract for context; never
       // used to recompute the fee, which stays a figure a person typed.
       fullSalary: isSub ? Number((party as any).salary || 0) : undefined
@@ -1919,7 +1927,8 @@ app.post("/api/contracts/generate", async (req, res) => {
       "Contract Generated",
       `Generated ${kindVal === "Service" ? "service agreement" : isSub ? "subcontract" : "yearly framework employment contract"} ${reference} for ` +
       `${party.name} (${party.position})${employeeId ? " [employee]" : " [service provider]"}` +
-      `${project ? ` on ${project.code}` : ""}${isSub ? ` under framework contract ${parentReference || "NONE ON FILE"}` : ""}: ${monthlyFee} USD, total ${contractTotal} USD, ` +
+      `${project ? ` on ${project.code}` : ""}${isSub ? ` under framework contract ${parentReference || "NONE ON FILE"}` : ""}` +
+      `${supersedesReference ? ` replacing ${supersedesReference}` : ""}: ${monthlyFee} USD, total ${contractTotal} USD, ` +
       `${startDate} to ${endDate}. Unsigned — requires countersignature before it has effect.`
     );
 

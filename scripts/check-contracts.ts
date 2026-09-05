@@ -116,7 +116,29 @@ ok("the subcontract reads the rate but never writes it",
   server.includes("fullSalary: isSub ? Number((party as any).salary || 0) : undefined")
   && !/isSub[\s\S]{0,120}prisma\.employee\.update/.test(server));
 
-console.log("\nG. the reference is read back, never guessed at");
+console.log("\nG. a new yearly agreement says what it replaces");
+// Saad, 6 Sep 2026: at the SKF grant's start the previous contracts are cancelled and a new
+// agreement runs to the year end; in January a fresh one is signed with the new positions. So
+// two yearly agreements will sit in one person's file, and the newer must say it replaces the
+// older rather than leaving the dates to be compared.
+const replacing = text({ reference: "ANH-EC-SK-2027-01", monthlyFee: 1300, supersedesReference: "ANH-EC-SK-2026-09" });
+ok("the clause names the agreement it replaces", replacing.includes("replaces the yearly agreement ANH-EC-SK-2026-09"));
+ok("and says from when the old one stops", replacing.includes("ceases to have effect from the start date above"));
+// Money has usually already moved on a subcontract; a new yearly agreement must not sweep it away.
+ok("it explicitly does NOT cancel subcontracts already issued",
+  replacing.includes("does not affect any subcontract already issued") && replacing.includes("runs to the end of its own period"));
+ok("the particulars carry a Replaces row", replacing.includes("ReplacesANH-EC-SK-2026-09"));
+ok("a first agreement claims to replace nothing",
+  !text({ reference: "ANH-EC-SK-2026-09", monthlyFee: 1300 }).includes("replaces the yearly agreement"));
+ok("a subcontract never gets the clause, even when one is passed",
+  !text({ ...SUB, parentReference: "ANH-EC-SK-2027-01", supersedesReference: "ANH-EC-SK-2026-09" }).includes("replaces the yearly agreement"));
+ok("the server reuses one lookup for parent and predecessor — they are the same fact",
+  /if \(isSub \|\| isFramework\) \{/.test(server) && /if \(isSub\) parentReference = priorRef;/.test(server));
+ok("and refuses to let a reissued agreement supersede itself",
+  /priorRef && priorRef !== reference/.test(server));
+ok("the audit line records the replacement", server.includes('replacing ${supersedesReference}'));
+
+console.log("\nH. the reference is read back, never guessed at");
 ok("it comes out of the id the route builds",
   referenceOfContractDoc("doc-contract-ANH-EC-SK-2026-01-emp-3", "emp-3") === "ANH-EC-SK-2026-01");
 ok("a reference containing the party id still survives",

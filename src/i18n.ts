@@ -409,7 +409,7 @@ export const AR: Record<string, string> = {
   "Nudge": "تذكير",
   "no WhatsApp number on file": "لا يوجد رقم واتساب في الملف",
   "Employment started": "بدأ العمل في",
-  "The yearly framework contract runs from this date.": "يبدأ العقد الإطاري السنوي من هذا التاريخ.",
+  "When this person joined. The agreement's own period is set on the agreement.": "تاريخ التحاق الشخص بالعمل. أمّا مدة الاتفاق فتُحدَّد على الاتفاق نفسه.",
   "Full salary": "الراتب الكامل",
   "allowance": "بدل",
   "The rate set by the yearly agreement — paid only through a subcontract, at the level of effort that project funds.": "المعدّل الذي يحدّده الاتفاق السنوي — لا يُدفع إلا عبر عقد فرعي، وبنسبة الجهد التي يموّلها ذلك المشروع.",

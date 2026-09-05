@@ -355,7 +355,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                                   {t("Save")}
                                 </button>
                               )}
-                              <span className="text-[10px] text-slate-500">{t("The yearly framework contract runs from this date.")}</span>
+                              <span className="text-[10px] text-slate-500">{t("When this person joined. The agreement's own period is set on the agreement.")}</span>
                             </div>
                           ) : emp.startDate ? (
                             <p className="mt-1.5 text-[11px] text-slate-500">

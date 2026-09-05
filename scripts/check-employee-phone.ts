@@ -110,6 +110,10 @@ console.log("\nG. the employment start date");
 // the HR list rather than the file's rule — two sensitivities, two lists already in roles.ts.
 const gates = readFileSync(new URL("../src/gates.ts", import.meta.url), "utf8");
 ok("the route is HR's, not the personnel file's", gates.includes('"/api/employees/start-date": HR'));
+// It records when someone joined, not when their agreement runs: from 2027 the yearly cycle
+// starts in January regardless, so the field must not promise to set the contract period.
+ok("the hint does not claim the agreement runs from this date",
+  !payroll.includes("The yearly framework contract runs from this date"));
 ok("and the route enforces that itself", /app\.post\("\/api\/employees\/start-date"[\s\S]{0,400}HR\.includes\(user\?\.role \|\| ""\)/.test(server));
 ok("the card shows the field to HR and the date to everyone else",
   payroll.includes("HR.includes(currentUser.role) ? (") && payroll.includes("emp-start-"));
