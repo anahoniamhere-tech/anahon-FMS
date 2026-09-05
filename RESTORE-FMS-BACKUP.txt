@@ -62,3 +62,10 @@ It is a snapshot, not a sync. It reflects the moment the script last ran.
 Re-run scripts/backup_to_drive.sh after any significant bookkeeping session.
 
 [3 Sep 2026] The encryption key also lives in Apple Passwords under "AnaHon archive key 2026-08-17" (iCloud Keychain, phone + Mac) and as a printed copy in the office file. If the Mac is gone, start there.
+
+WORKBENCH SET (added 5 Sep 2026) — workbench-<date>.tar.gz.enc
+  Decrypt exactly like the vault set, then untar. Inside: site/ (the website's live-edited
+  content, data, uploads, images — copy back into /mnt/mainpool/anahon/site), archive-catalogue/
+  (everything in /mnt/mainpool/anahon/archive except archive/raw; the raw media is in Drive's
+  AnaHon-Archive-Encrypted), claude-memory/ (restore to ~/.claude/projects/-Users-saadmatar-AnaHon/memory),
+  documents/ (~/AnaHon/documents).
