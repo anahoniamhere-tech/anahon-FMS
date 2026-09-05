@@ -49,6 +49,20 @@ ok("and that list IS the Clients & quotations door, not a second opinion", (() =
 })(), "nav says one set, roles.ts another");
 ok("a diary is personal — each person reads their own feeds only", /const feeds = feedsFor\(viewer\);/.test(server) && /f\.userId \? f\.userId === user\.id : isDirector\(user\.role\)/.test(server));
 
+console.log("\nreads leave a trace");
+ok("sensitive reads are recorded on the way out, with the status", /res\.on\("finish"/.test(server) && /res\.statusCode < 400 \? "Record Read" : "Read Refused"/.test(server));
+ok("only a signed-in reader can write a line (no anonymous flooding)", (() => {
+  const g = (server.match(/if \(req\.method === "GET"[\s\S]*?return next\(\);\n  \}/) || [""])[0];
+  return g.indexOf('if (!viewerId) return res.status(401)') < g.indexOf("READ_AUDIT.find") && g.includes("READ_AUDIT.find");
+})());
+const watched = (server.match(/const READ_AUDIT: \[RegExp, string\]\[\] = \[([\s\S]*?)\n\];/) || ["", ""])[1];
+ok("the quotation, the statements, the documents and the bank suggestions are watched",
+  ["quotations", "reports", "document", "subscriptions", "audit"].every(k => watched.includes(k)));
+ok("the whole-state read is NOT watched — it would bury the log", !/api\\\/state/.test(watched));
+ok("nor the per-page raster — one document opened is one line, not twenty", !watched.includes("page\\/[^/]+\\/") && watched.includes("pages"));
+ok("a document line names the paper, not just its id", /doc\.refNo/.test(server) && /doc\.filename/.test(server));
+ok("a quotation line names the offer and the client", /q\.quoteNo/.test(server) && /client\.name/.test(server));
+
 console.log("\nwhat the browser can still show");
 const files = ["App.tsx", "tabs/EditorialTab.tsx", "tabs/ExpensesTab.tsx", "tabs/ProjectsTab.tsx", "tabs/ProductionTab.tsx"];
 for (const f of files) {
