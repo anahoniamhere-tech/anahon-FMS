@@ -409,6 +409,7 @@ export const AR: Record<string, string> = {
   "Nudge": "تذكير",
   "no WhatsApp number on file": "لا يوجد رقم واتساب في الملف",
   "No salary base set — this role is paid only while a project funds it.": "لا يوجد أساس راتب مسجّل — يُدفع لهذا الدور فقط طالما يموّله مشروع.",
+  "A share shown without an amount belongs to someone with no salary base set — the percentage comes from the timesheet, the money does not exist yet.": "الحصة المعروضة بلا مبلغ تخصّ شخصاً لا أساس راتب مسجّلاً له — النسبة مأخوذة من كشف الدوام، أمّا المبلغ فغير موجود بعد.",
   "Opens WhatsApp with the message ready — you press Send.": "يفتح واتساب والرسالة جاهزة — أنت من يضغط إرسال.",
   "Tell me when it is my turn": "أعلمني حين يحين دوري",
   "Turn on notifications": "تفعيل الإشعارات",

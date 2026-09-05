@@ -1517,6 +1517,12 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                 {projTimesheets.map(ts => {
                                   const emp = state.employees.find(e => e.id === ts.employeeId);
                                   const alloc = ts.allocations.find((a: any) => a.projectId === selectedProjectId);
+                                  // No base on the employee record means there is no amount to
+                                  // apportion — every base is 0 until a project funds the role.
+                                  // The percentage is real (it comes from the timesheet); the
+                                  // money is not, so the share is shown without a figure rather
+                                  // than as "$0.00", which reads as a measured nil.
+                                  const hasBase = !!(emp?.salary || emp?.allowance);
                                   const allocatedSalary = (emp?.salary || 0) * ((alloc?.percentage || 0) / 100);
 
                                   return (
@@ -1524,7 +1530,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                       <div className="flex justify-between items-center">
                                         <strong className="text-slate-800">{emp?.name || "Staff"}</strong>
                                         <span dir="ltr" className="font-mono font-bold text-slate-900 bg-red-50 px-1.5 py-0.5 rounded">
-                                          {alloc?.percentage || 0}% ({formatUSD(allocatedSalary)})
+                                          {alloc?.percentage || 0}%{hasBase ? ` (${formatUSD(allocatedSalary)})` : ""}
                                         </span>
                                       </div>
                                       <div className="flex justify-between text-[10px] text-slate-500">
@@ -1535,6 +1541,14 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                   );
                                 })}
                               </div>
+                            )}
+                            {projTimesheets.some(ts => {
+                              const e = state.employees.find(x => x.id === ts.employeeId);
+                              return !(e?.salary || e?.allowance);
+                            }) && (
+                              <p className="text-[10px] text-slate-500 italic">
+                                {t("A share shown without an amount belongs to someone with no salary base set — the percentage comes from the timesheet, the money does not exist yet.")}
+                              </p>
                             )}
                           </div>
 

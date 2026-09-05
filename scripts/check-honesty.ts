@@ -44,6 +44,15 @@ ok("and the figures come back the moment either one is set",
   /Base: <span dir="ltr">\{formatUSD\(emp\.salary\)\}<\/span>/.test(payroll));
 ok("the sentence has Arabic, so it is not the English fallback",
   /"No salary base set[^"]*":\s*"[^"]*[؀-ۿ]/.test(src("i18n.ts")));
+// Same empty base, second screen: the co-funding sheet apportioned it into "40% ($0.00)".
+const projects = src("tabs/ProjectsTab.tsx");
+ok("a co-funding share with no base shows the percentage alone, not $0.00",
+  /const hasBase = !!\(emp\?\.salary \|\| emp\?\.allowance\);/.test(projects)
+  && /\{alloc\?\.percentage \|\| 0\}%\{hasBase \? /.test(projects));
+ok("and the sheet says once why the amounts are missing, not on every row",
+  projects.includes("A share shown without an amount"));
+ok("that sentence has Arabic too",
+  /"A share shown without an amount[^"]*":\s*"[^"]*[؀-ۿ]/.test(src("i18n.ts")));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
