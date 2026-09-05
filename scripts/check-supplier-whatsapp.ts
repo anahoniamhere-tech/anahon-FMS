@@ -42,7 +42,13 @@ ok("the caller sends the net, not the gross — WHT is withheld, not paid to the
   /const net = exp\.netAmount \|\| \(\(exp\.amount \|\| 0\) - \(exp\.whtAmount \|\| 0\)\)/.test(expenses));
 ok("in the currency the voucher was paid in, not converted to USD",
   /amount: `\$\{net\.toLocaleString\([^`]*\)\} \$\{exp\.currency\}`/.test(expenses));
-ok("dated from when it was paid", /date: exp\.paid_at \|\| exp\.created_at/.test(expenses));
+ok("dated from when it was paid, falling back to when it was raised",
+  /date: \(exp\.paid_at \|\| exp\.created_at \|\| ""\)\.slice\(0, 10\)/.test(expenses));
+// Every date in the live table is a full ISO timestamp. "on 2026-06-23T10:00:00Z" is
+// machine noise in a message to a shopkeeper.
+ok("as a plain date — no timestamp reaches the reader",
+  WA_TEMPLATES["supplier-paid"](t, { name: "L", voucherNo: "PV-1", amount: "1 USD", date: "2026-06-23T10:00:00Z".slice(0, 10) })
+    .includes("on 2026-06-23."));
 
 console.log("\nC. when the button appears");
 ok("only once the money has gone — Paid or Posted, never Draft/Submitted/Approved",

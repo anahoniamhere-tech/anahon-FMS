@@ -954,7 +954,11 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                               name: first,
                               voucherNo: exp.voucherNo || "",
                               amount: `${net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${exp.currency}`,
-                              date: exp.paid_at || exp.created_at || "",
+                              // Stored as a full ISO timestamp; a supplier reading
+                              // "on 2026-06-23T10:00:00Z" is reading machine noise.
+                              // Three of the paid vouchers on file carry no paid_at,
+                              // so the date the voucher was raised stands in.
+                              date: (exp.paid_at || exp.created_at || "").slice(0, 10),
                             }));
                             return link ? (
                               <a
