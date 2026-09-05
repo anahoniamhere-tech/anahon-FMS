@@ -143,21 +143,24 @@ console.log("\nH. who countersigns, and what the page calls them");
 // one role, so that would have cost the master account its own — and "Super Admin" is a
 // permission key that must never appear as a job title on something a person signs. Instead the
 // master account stands in for the vacant seat, as it does everywhere else, and the page says so.
+const fn = (server.match(/async function authorisedSignatory[\s\S]*?\n\}/) || [""])[0];
+ok("one function answers it — a contract, a payslip and a provider invoice all ask the same question",
+  !!fn && (server.match(/await authorisedSignatory\(\)/g) || []).length === 3);
 ok("the Programme Director is preferred when the seat is filled",
-  /where: \{ role: "Program Director", active: true \}/.test(server));
-ok("the master account stands in before Finance is reached", (() => {
-  const b = (server.match(/const signatory =[\s\S]*?;\n/) || [""])[0];
-  return b.indexOf('"Super Admin"') > b.indexOf('"Program Director"')
-    && b.indexOf('"Super Admin"') < b.indexOf('"Finance Officer"');
-})(), "order of the fallback chain");
-ok("a real seat-holder is titled by the seat", server.includes('? "Programme Director"'));
+  fn.indexOf('role: "Program Director"') < fn.indexOf('role: "Super Admin"'));
+ok("the master account stands in before Finance is reached",
+  fn.indexOf('role: "Super Admin"') < fn.indexOf('role: "Finance Officer"'));
+ok("a real seat-holder is titled by the seat", fn.includes('title: "Programme Director"'));
 ok("the master account is titled by the seat it stands in for, not by its permission key",
-  server.includes('"Signing for the Programme Director seat"'));
-ok("no permission key is ever printed as a title",
-  /countersignatory: signatory \? \{ name: signatory\.name, role: signatoryTitle\(signatory\.role\) \}/.test(server)
-  && !/role: signatory\.role \}/.test(server));
+  fn.includes('title: "Signing for the Programme Director seat"'));
 ok("and a Finance fallback admits the seat is vacant rather than implying authority",
-  server.includes("the Programme Director seat is vacant"));
+  fn.includes("the Programme Director seat is vacant"));
+// The payslip and the provider invoice printed `(${officer.role})`, which with the seat vacant
+// put a permission key on the page. Nothing may print an account role as a title any more.
+ok("no document prints an account role as a title",
+  !/\$\{officer\.role\}/.test(server) && !/role: signatory\.role \}/.test(server));
+ok("the payslip and the provider invoice use the seat title",
+  (server.match(/\$\{officer\.name\} \(\$\{officer\.title\}\)/g) || []).length === 2);
 ok("the signature block prints the name over that title",
   /countersignatory\?\.name \|\| "—"[\s\S]{0,60}countersignatory\?\.role/.test(
     readFileSync(new URL("../docgen.ts", import.meta.url), "utf8")));

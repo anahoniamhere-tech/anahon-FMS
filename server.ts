@@ -908,6 +908,24 @@ app.post("/api/users/set-active", async (req, res) => {
   }
 });
 
+/**
+ * Who signs for AnaHon, and what to call them on the page.
+ *
+ * The Programme Director seat is often vacant, and everywhere else in this system the master
+ * account stands in for a vacant seat — so it is tried before Finance, which is a last resort
+ * and not a substitute authority. The title is always the SEAT, never the account's role:
+ * "Super Admin" is a permission key, and a payslip, an invoice or a contract must not print it
+ * as though it were a job title. One function because three documents ask the same question.
+ */
+async function authorisedSignatory(): Promise<{ name: string; title: string } | null> {
+  const seat = await prisma.user.findFirst({ where: { role: "Program Director", active: true } });
+  if (seat) return { name: seat.name, title: "Programme Director" };
+  const master = await prisma.user.findFirst({ where: { role: "Super Admin", active: true } });
+  if (master) return { name: master.name, title: "Signing for the Programme Director seat" };
+  const finance = await prisma.user.findFirst({ where: { role: "Finance Officer", active: true } });
+  return finance ? { name: finance.name, title: `${finance.role} — the Programme Director seat is vacant` } : null;
+}
+
 /* The WhatsApp number on a personnel file.
  *
  * Same gate as the papers in that file — maySeePersonnelFile — so there is one rule and
@@ -1850,21 +1868,7 @@ app.post("/api/contracts/generate", async (req, res) => {
       ? await prisma.bankAccount.findUnique({ where: { id: party.bankAccountId } })
       : null;
 
-    // The Programme Director countersigns. That seat can be vacant, and everywhere else in this
-    // system the master account stands in for a vacant seat — a contract is no exception, so it
-    // is tried before Finance. Two things this deliberately does NOT do: it does not require
-    // anyone to hold "Program Director" as their account role (that would cost the master account
-    // its own role, since an account has exactly one), and it does not print that role onto the
-    // page. "Super Admin" is a permission key, not a job title; the instrument says which SEAT is
-    // being signed for, the same way standing in a seat is recorded everywhere else.
-    const signatory =
-      (await prisma.user.findFirst({ where: { role: "Program Director", active: true } })) ||
-      (await prisma.user.findFirst({ where: { role: "Super Admin", active: true } })) ||
-      (await prisma.user.findFirst({ where: { role: "Finance Officer", active: true } }));
-    const signatoryTitle = (role: string) =>
-      role === "Program Director" ? "Programme Director"
-        : role === "Super Admin" ? "Signing for the Programme Director seat"
-          : `${role} — the Programme Director seat is vacant`;
+    const signatory = await authorisedSignatory();
 
     const kindVal = forcedKind || (kind === "Service" ? "Service" : "Employment");
     // Employment + a project is a subcontract: the yearly framework contract names no project
@@ -1897,7 +1901,7 @@ app.post("/api/contracts/generate", async (req, res) => {
 
     const html = contractHtml({
       party, project, account, role, kind: kindVal as "Employment" | "Service",
-      countersignatory: signatory ? { name: signatory.name, role: signatoryTitle(signatory.role) } : undefined,
+      countersignatory: signatory ? { name: signatory.name, role: signatory.title } : undefined,
       startDate, endDate,
       loePct: loePct === undefined || loePct === null || loePct === "" ? undefined : Number(loePct),
       monthlyFee: Number(monthlyFee), contractTotal: Number(contractTotal),
@@ -2830,15 +2834,14 @@ app.post("/api/vendors/payment-doc", async (req, res) => {
       orderBy: { created_at: "desc" }
     });
 
-    const officer = await prisma.user.findFirst({ where: { role: "Program Director", active: true } })
-      || await prisma.user.findFirst({ where: { role: "Finance Officer", active: true } });
+    const officer = await authorisedSignatory();
 
     const html = providerInvoiceHtml({
       vendor,
       expense,
       project,
       agreementRef: agreement?.filename?.split("_")[0] || "",
-      countersignatory: officer ? `${officer.name} (${officer.role})` : (user?.name || "Authorised signatory")
+      countersignatory: officer ? `${officer.name} (${officer.title})` : (user?.name || "Authorised signatory")
     });
 
     const docId = `doc-provinv-${expense.id}`;
@@ -4838,8 +4841,7 @@ app.post("/api/payroll/payslip", async (req, res) => {
       });
     }
 
-    const officer = await prisma.user.findFirst({ where: { role: "Program Director", active: true } })
-      || await prisma.user.findFirst({ where: { role: "Finance Officer", active: true } });
+    const officer = await authorisedSignatory();
 
     const html = payslipHtml({
       employee,
@@ -4847,7 +4849,7 @@ app.post("/api/payroll/payslip", async (req, res) => {
       timesheet,
       allocations,
       account,
-      countersignatory: officer ? `${officer.name} (${officer.role})` : (user?.name || "Authorised signatory")
+      countersignatory: officer ? `${officer.name} (${officer.title})` : (user?.name || "Authorised signatory")
     });
 
     const docId = `doc-payslip-${employeeId}-${month}`;
