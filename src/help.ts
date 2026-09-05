@@ -214,6 +214,14 @@ export const HELP: HelpEntry[] = [
       ar: "اطلب عنوان تقويم من «مكتبي» وافتح عنوان webcal على الهاتف — عندها يعرض تطبيق التقويم الاشتراك. أما فتحه كصفحة ويب فينزّل المواعيد مرة واحدة وينساها، وهذا ليس الأمر نفسه؛ العنوان الذي يبدأ بـ webcal هو الذي يبقى محدَّثاً. يحمل بنداً ليوم كامل لكل أمر مؤرّخ هو دورك، ويُحدَّث كل ساعة تقريباً، ولا يحمل شيئاً يخصّ غيرك. العنوان هو المفتاح كله — من يملكه يقرأ مكتبك — لذلك يُعرض مرة واحدة، ولا يُسترجع، ولا يعمل إلا من داخل شبكة المكتب أو عبر Tailscale. وإن شورك بالخطأ فاضغط «استبدله»: يتوقف القديم فوراً وعلى كل جهاز مشترك أن يُضاف من جديد.",
     },
   },
+  {
+    id: "reminders", area: "Seats & approvals",
+    q: { en: "What does “Remind me in Google Calendar” do?", ar: "ماذا يفعل «ذكّرني في تقويم Google»؟" },
+    a: {
+      en: "The subscribed feed shows your desk; it does not ring. This copies the same items into your own Google Calendar as real entries, each with an alert the evening before, so they reach you wherever you are. Press “Show me what would change” first: it writes nothing anywhere and lists exactly what would be added, corrected or removed. Only then does “Do it” appear. The system remembers every entry it made, so running it again tomorrow corrects what moved and removes what is done rather than creating the same reminder a second time. Undated work is listed but never given an invented date. The calendar entry is a copy — acting on the record itself is what clears it.",
+      ar: "التغذية المشترَك بها تعرض مكتبك لكنها لا ترنّ. هذا ينسخ البنود نفسها إلى تقويم Google الخاص بك كمواعيد حقيقية، لكل منها تنبيه في مساء اليوم السابق، فتصلك أينما كنت. اضغط «أرِني ما الذي سيتغيّر» أولاً: لا يكتب شيئاً في أي مكان، ويعرض بالضبط ما سيُضاف أو يُصحَّح أو يُزال. وعندها فقط يظهر «نفّذ». يتذكّر النظام كل موعد أنشأه، فتشغيله غداً يصحّح ما تغيّر ويزيل ما انتهى بدل إنشاء التذكير نفسه مرة ثانية. والعمل بلا تاريخ يُذكر لكن لا يُخترع له تاريخ. الموعد نسخة — والتنفيذ على السجل نفسه هو ما ينهيه.",
+    },
+  },
 ];
 
 export const helpById = (id: string) => HELP.find(h => h.id === id);

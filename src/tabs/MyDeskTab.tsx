@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock, LayoutGrid, Plus, Trash2, Smartphone } from "lucide-react";
+import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock, LayoutGrid, Plus, Trash2, Smartphone, BellRing } from "lucide-react";
 import { SharedProps } from "./shared";
 import { PERSONNEL_CATEGORIES, isPersonnelDoc } from "../personnelDocs";
 import { deskItems, localToday, DeskItem } from "../workflow";
@@ -47,6 +47,8 @@ export default function MyDeskTab({
   // The private feed address, held only for as long as this screen is open: the server
   // never hands the same secret back, so a lost address is replaced, not looked up.
   const [feed, setFeed] = useState<null | { url: string; webcal: string; qr: string | null; rotated: boolean }>(null);
+  // What a push to Google would do, read before it is authorised. Never written to.
+  const [plan, setPlan] = useState<null | { configured: boolean; summary: string; empty: boolean; plan: any }>(null);
   const toggle = (set: (f: (p: Set<string>) => Set<string>) => void, id: string) =>
     set(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
@@ -127,6 +129,34 @@ export default function MyDeskTab({
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || t("Could not remove the calendar."));
       triggerToast(`${t("Removed")}: ${label}`);
+      await loadCalendar();
+    } catch (e: any) { triggerToast(e.message); } finally { setBusy(null); }
+  };
+
+  /** Ask what a push would do. This writes nothing, anywhere. */
+  const dryRun = async () => {
+    setBusy("plan");
+    try {
+      const r = await fetch("/api/reminders/plan", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user: currentUser }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || t("Could not work out what would change."));
+      setPlan(d);
+    } catch (e: any) { triggerToast(e.message); } finally { setBusy(null); }
+  };
+
+  /** Carry out exactly the plan that was shown. */
+  const pushReminders = async () => {
+    setBusy("push");
+    try {
+      const r = await fetch("/api/reminders/push", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user: currentUser }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || t("Could not write to the calendar."));
+      triggerToast(`${d.created} ${t("added")} · ${d.updated} ${t("corrected")} · ${d.cancelled} ${t("removed")}`);
+      await dryRun();
       await loadCalendar();
     } catch (e: any) { triggerToast(e.message); } finally { setBusy(null); }
   };
@@ -818,6 +848,58 @@ export default function MyDeskTab({
               </div>
             )}
             <p className="text-[11px] text-slate-500">{t("Anyone with this address can read your desk. Replace it if it is ever shared by mistake.")}</p>
+          </div>
+        )}
+      </div>
+
+      {/* A subscribed feed shows the work; it does not ring. This copies the same items
+          into the person's own Google Calendar, where an alert can reach them. */}
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+          <BellRing className="h-4 w-4 text-[#6D1A1A]" /> {t("Remind me in Google Calendar")}
+          <Info id="reminders" lang={lang} />
+        </h3>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            onClick={dryRun}
+            disabled={busy === "plan"}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+          >{busy === "plan" ? t("Working…") : t("Show me what would change")}</button>
+          {plan && !plan.empty && plan.configured && (
+            <button
+              onClick={pushReminders}
+              disabled={busy === "push"}
+              className="rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#4A1010] disabled:opacity-40"
+            >{busy === "push" ? t("Writing…") : t("Do it")}</button>
+          )}
+          {plan && <span className="text-[11px] text-slate-500">{plan.summary}</span>}
+        </div>
+        {plan && !plan.configured && (
+          <p className="mt-2 text-[11px] leading-relaxed text-[#8f2020]">
+            {t("No Google Calendar is connected to this system yet, so nothing can be written. The plan above is what would happen once it is.")}
+          </p>
+        )}
+        {plan && (
+          <div className="mt-3 space-y-3">
+            {([["create", t("Would be added")], ["update", t("Would be corrected")], ["cancel", t("Would be removed")], ["skipped", t("Cannot go in a calendar")]] as const).map(([key, label]) => {
+              const rows = (plan.plan?.[key] || []) as any[];
+              if (!rows.length) return null;
+              return (
+                <div key={key}>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label} · {rows.length}</p>
+                  <div className="mt-1">
+                    {rows.slice(0, 8).map((r: any) => (
+                      <div key={r.itemId} className="flex flex-wrap items-baseline gap-x-2 border-b border-slate-100 py-1 last:border-0">
+                        <span className="text-[12px] text-slate-800">{r.title}</span>
+                        {r.whenDate && <span className="font-mono text-[10px] text-slate-500">{r.whenDate}</span>}
+                        {r.because && <span className="text-[10px] text-slate-400">{r.because}</span>}
+                      </div>
+                    ))}
+                    {rows.length > 8 && <p className="pt-1 text-[10px] text-slate-400">+{rows.length - 8} {t("more")}</p>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

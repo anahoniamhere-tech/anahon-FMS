@@ -14,6 +14,7 @@ import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/a
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
 import { deskIcs } from "./src/deskIcs.js";
+import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
 import { canonEmail } from "./src/email.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
@@ -860,6 +861,120 @@ app.get("/api/desk.ics", async (req, res) => {
 
 // Mint or rotate my own feed address. Always mine — a token for someone else's desk is
 // never handed out, whatever the role.
+/* ── Reminders: the desk, written into a real calendar ───────────────────────
+ * The subscribed feed (/api/desk.ics) shows the work; it cannot reliably ring. A real
+ * event in the person's own Google Calendar can, and follows them to every device.
+ *
+ * Two routes, deliberately separate. `plan` writes nothing anywhere — not to Google, not
+ * to the ledger — and answers with exactly what a run would do, so it can be read before
+ * it is authorised. `push` performs that plan and records what it did. The ledger is the
+ * whole reason this is safe to run nightly: without it, the same event is created again
+ * every night.
+ */
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const calendarConfigured = () =>
+  !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REFRESH_TOKEN);
+
+/** A short-lived access token from the long-lived refresh token. Nothing is stored. */
+async function googleAccessToken(): Promise<string> {
+  const r = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: String(process.env.GOOGLE_CLIENT_ID),
+      client_secret: String(process.env.GOOGLE_CLIENT_SECRET),
+      refresh_token: String(process.env.GOOGLE_REFRESH_TOKEN),
+      grant_type: "refresh_token",
+    }),
+  });
+  const j: any = await r.json().catch(() => ({}));
+  if (!r.ok || !j.access_token) throw new Error(`Google refused the token (${r.status}): ${j.error_description || j.error || "no detail"}`);
+  return j.access_token;
+}
+
+/** An all-day event on the due date, with an alert the evening before. */
+const eventBody = (title: string, whenDate: string, description: string) => ({
+  summary: title,
+  description,
+  start: { date: whenDate },
+  end: { date: new Date(new Date(`${whenDate}T12:00:00Z`).getTime() + 86400000).toISOString().slice(0, 10) },
+  reminders: { useDefault: false, overrides: [{ method: "popup", minutes: 14 * 60 }] },
+  source: { title: "AnaHon — My Desk", url: String(process.env.FMS_PUBLIC_URL || "http://anahon.local:3100") },
+});
+
+async function calendarCall(token: string, path: string, method: string, body?: any) {
+  const r = await fetch(`https://www.googleapis.com/calendar/v3${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (r.status === 410 || r.status === 404) return null;         // already gone on Google's side
+  const j: any = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Google Calendar ${method} ${path} failed (${r.status}): ${j.error?.message || "no detail"}`);
+  return j;
+}
+
+/** What a run would do. Writes nothing. */
+async function reminderPlanFor(viewer: any) {
+  const state = await loadState(viewer);
+  const mine = deskItems({ id: viewer.id, email: viewer.email, role: viewer.role }, state as any, localDate())
+    .filter(i => i.group !== "week");                            // my own turn and the seats I cover
+  const ledger = await prisma.reminder.findMany({ where: { userId: viewer.id } });
+  return planReminders(mine, ledger as any, String(process.env.FMS_PUBLIC_URL || "http://anahon.local:3100"));
+}
+
+app.post("/api/reminders/plan", async (req, res) => {
+  try {
+    const viewer = (req as any).dbUser;
+    const plan = await reminderPlanFor(viewer);
+    res.json({ configured: calendarConfigured(), summary: describePlan(plan), empty: planIsEmpty(plan), plan });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/reminders/push", async (req, res) => {
+  try {
+    const viewer = (req as any).dbUser;
+    if (!calendarConfigured()) {
+      return res.status(400).json({ error: "No Google Calendar is connected to this system yet, so there is nowhere to write. Run the consent step first." });
+    }
+    const plan = await reminderPlanFor(viewer);
+    if (planIsEmpty(plan)) return res.json({ success: true, summary: describePlan(plan), created: 0, updated: 0, cancelled: 0 });
+
+    const token = await googleAccessToken();
+    const now = new Date().toISOString();
+    let created = 0, updated = 0, cancelled = 0;
+
+    for (const c of plan.create) {
+      const ev = await calendarCall(token, "/calendars/primary/events", "POST", eventBody(c.title, c.whenDate, c.description));
+      await prisma.reminder.upsert({
+        where: { userId_itemId: { userId: viewer.id, itemId: c.itemId } },
+        create: { id: `rem-${Date.now()}-${created}`, userId: viewer.id, itemId: c.itemId, googleEventId: ev?.id || null,
+          title: c.title, whenDate: c.whenDate, state: "active", createdAt: now, updatedAt: now },
+        update: { googleEventId: ev?.id || null, title: c.title, whenDate: c.whenDate, state: "active", updatedAt: now },
+      });
+      created++;
+    }
+    for (const u of plan.update) {
+      if (u.googleEventId) await calendarCall(token, `/calendars/primary/events/${u.googleEventId}`, "PATCH", eventBody(u.title, u.whenDate, u.description));
+      await prisma.reminder.update({ where: { id: u.id }, data: { title: u.title, whenDate: u.whenDate, updatedAt: now } });
+      updated++;
+    }
+    for (const x of plan.cancel) {
+      if (x.googleEventId) await calendarCall(token, `/calendars/primary/events/${x.googleEventId}`, "DELETE");
+      await prisma.reminder.update({ where: { id: x.id }, data: { state: "cancelled", updatedAt: now } });
+      cancelled++;
+    }
+
+    await createAuditLog(viewer.id, viewer.name, "Reminders Pushed",
+      `${created} added, ${updated} corrected, ${cancelled} removed in ${viewer.name}'s own Google Calendar. The desk decides what is owed; this only copies it.`);
+    res.json({ success: true, summary: describePlan(plan), created, updated, cancelled });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/calendar/feed", async (req, res) => {
   try {
     const me = (req as any).dbUser;

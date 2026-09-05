@@ -34,6 +34,8 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // ---- Signing in, and things every account does for itself -----------------
   "/api/auth/sync": ANY,
   "/api/calendar/feed": ANY,                    // my own feed address
+  "/api/reminders/plan": ANY,                   // what would go into my own calendar
+  "/api/reminders/push": ANY,                   // and putting it there
   "/api/document/upload": ANY,                  // my own papers; the personnel filter decides who reads them
   "/api/materials/link": NEWSROOM,
   "/api/compliance/complete": ANY,              // the route checks the task is mine

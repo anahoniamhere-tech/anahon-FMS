@@ -530,3 +530,23 @@ model Tool {
 
   @@index([category])
 }
+
+/// One row per person per desk item that has been pushed to a calendar (phase 6).
+/// Its whole job is to stop the same reminder being created twice.
+model Reminder {
+  id            String  @id
+  userId        String
+  /// The desk item's stable id, e.g. "expenses:e-12" — see src/workflow.ts.
+  itemId        String
+  googleEventId String?
+  calendarId    String  @default("primary")
+  title         String
+  whenDate      String
+  /// "active" while the work is owed; "cancelled" once it left the desk. Never deleted.
+  state         String  @default("active")
+  createdAt     String
+  updatedAt     String
+
+  @@unique([userId, itemId])
+  @@index([userId, state])
+}
