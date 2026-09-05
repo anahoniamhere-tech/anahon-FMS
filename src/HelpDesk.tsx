@@ -60,6 +60,9 @@ export default function HelpDesk({
     }
   };
 
+  // From `md` the sidebar is in the flow at w-64 (256px) and <main> adds p-8, so the
+  // content's own left edge is 288px = 18rem. The widget is fixed, so without that
+  // offset it sat on top of the sidebar and covered the bottom of the navigation.
   // Resting: the same raise the door tiles use, so it reads as part of the system.
   // z-[95] puts it beside the "N missing" pill and under that drawer's backdrop
   // (z-[96]) — at 96 it floated on top of the dim.
@@ -69,7 +72,7 @@ export default function HelpDesk({
         onClick={() => setOpen(true)}
         title={t("Ask for help")}
         aria-label={t("Ask for help")}
-        className="fixed bottom-5 start-5 z-[95] flex h-12 w-12 items-center justify-center rounded-full bg-[#6D1A1A] text-white shadow-lg shadow-[#6D1A1A]/25 transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-[#4A1010] hover:shadow-xl hover:shadow-[#6D1A1A]/30"
+        className="fixed bottom-5 start-5 z-[95] flex h-12 w-12 md:start-[18rem] items-center justify-center rounded-full bg-[#6D1A1A] text-white shadow-lg shadow-[#6D1A1A]/25 transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-[#4A1010] hover:shadow-xl hover:shadow-[#6D1A1A]/30"
       >
         <MessageCircleQuestion className="h-5 w-5" />
       </button>
@@ -79,13 +82,15 @@ export default function HelpDesk({
   // Open: the panel is 335px wide on a phone and the "N missing" pill sits in the
   // opposite bottom corner — measured, the panel covered it whole (106x36) and the pill
   // could not be clicked. The overlap exists on any viewport under 498px, so the panel
-  // lifts clear below `sm` and drops back to the launcher's corner above it. Height is
+  // lifts clear until `lg` and drops back to the launcher's corner above it. Height is
   // not fixed (Arabic wraps differently), so this raises the bottom, never the top.
+  // `lg` and not `sm`: from `md` the panel starts at the content edge (288px), which at
+  // 768-771px puts its right edge back under the pill. Measured, not guessed.
   return (
     <div
       ref={boxRef}
       dir={rtl ? "rtl" : "ltr"}
-      className="fixed bottom-24 start-5 z-[95] flex max-h-[70vh] w-[min(22rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-[#E6D3CA] bg-white shadow-2xl shadow-[#4A1010]/20 sm:bottom-5"
+      className="fixed bottom-24 start-5 z-[95] flex max-h-[70vh] md:start-[18rem] w-[min(22rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-[#E6D3CA] bg-white shadow-2xl shadow-[#4A1010]/20 lg:bottom-5"
     >
       <div className="flex items-center justify-between gap-2 bg-[#6D1A1A] ps-3 pe-1.5 py-1.5 text-white">
         <p className="flex items-center gap-2 text-xs font-bold">
