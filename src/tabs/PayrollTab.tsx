@@ -23,6 +23,10 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
 
   const [newEmpContractType, setNewEmpContractType] = useState("");
 
+  // Asked for here so nobody is registered without one: without a login an employee cannot
+  // open their own file, payslips or timesheets, and it has been forgotten twice.
+  const [newEmpLogin, setNewEmpLogin] = useState("");
+
   // Timesheet Allocation interactive adjustment
   const [selectedTSMonth, setSelectedTSMonth] = useState("2026-05");
 
@@ -127,11 +131,20 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
           paymentMethod: newEmpPaymentMethod,
           bankAccountId: newEmpBankAccountId,
           contractType: newEmpContractType || "Regular Employee",
+          userEmail: newEmpLogin,
           user: currentUser
         })
       });
+      const data = await res.json();
       if (res.ok) {
-        triggerToast(`Employee ${newEmpName} registered on payroll!`);
+        // Say what the login actually reached, the same way the card does — a registration
+        // that silently records an address nobody signs in with is the old bug again.
+        triggerToast(
+          `Employee ${newEmpName} registered on payroll` + (
+            !newEmpLogin ? " — no self-service login, set one on their card."
+              : data.account ? `, signing in as ${data.account.name} (${data.account.role}).`
+                : " — but no account signs in with that address yet."),
+          newEmpLogin && !data.account ? "error" : undefined as any);
         setNewEmpName("");
         setNewEmpPosition("");
         setNewEmpSalary("");
@@ -139,9 +152,9 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
         setNewEmpPaymentMethod("Bank Transfer");
         setNewEmpBankAccountId("");
         setNewEmpContractType("");
+        setNewEmpLogin("");
         refreshState();
       } else {
-        const data = await res.json();
         triggerToast(data.error || "Failed to register employee.", "error");
       }
     } catch {
@@ -285,6 +298,18 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                       <option value="Bank Transfer">🏦 Bank transfer to employee</option>
                       <option value="Cash">💵 Cash withdrawn from that account</option>
                     </select>
+                  </div>
+                  <div>
+                    <label htmlFor="emp-login" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Signs in as")}</label>
+                    <input
+                      type="email"
+                      dir="ltr"
+                      placeholder="name@example.com"
+                      id="emp-login"
+                      value={newEmpLogin}
+                      onChange={(e) => setNewEmpLogin(e.target.value)}
+                      className="finance-input w-full font-mono text-xs"
+                    />
                   </div>
                   <button type="submit" className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
                     Register Employee

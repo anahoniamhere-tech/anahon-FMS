@@ -956,6 +956,29 @@ app.post("/api/employees/phone", async (req, res) => {
   }
 });
 
+/**
+ * The one rule for putting a login on an employee record, shared by registration and the
+ * payroll card. It is a privilege grant: the address stored here is what lets someone open
+ * that employee's personnel file, payslips and timesheets as their own. Returns the canonical
+ * address to store, the reason it cannot be, and whether any account actually answers to it —
+ * two copies of this rule is how the record and the sign-in drifted apart twice already.
+ */
+async function employeeLogin(raw: any, exceptEmployeeId?: string): Promise<{ email: string; error?: string; account?: any }> {
+  const addr = String(raw ?? "").trim();
+  if (!addr) return { email: "" };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) return { email: "", error: "That is not an e-mail address." };
+  // Canonical, the same way accounts are stored, so Gmail's many spellings of one mailbox
+  // cannot make the record and the sign-in disagree again.
+  const email = canonEmail(addr);
+  const clash = (await prisma.employee.findMany()).find(
+    e => e.id !== exceptEmployeeId && e.userEmail && canonEmail(e.userEmail) === email);
+  // Two employees on one address would each hand the other their payslips.
+  if (clash) return { email: "", error: `${clash.name} already signs in with that address. Clear it there first — one address is one person.` };
+  // Recording an address before the account exists is legitimate — a new hire is usually
+  // registered before their first sign-in — so this reports, it does not refuse.
+  return { email, account: await findUserByEmail(email) };
+}
+
 /* Which login is this person's, for self-service.
  *
  * This is a privilege grant, not a contact detail: the address written here is what lets
@@ -972,28 +995,14 @@ app.post("/api/employees/login", async (req, res) => {
     }
     const target = await prisma.employee.findUnique({ where: { id: employeeId } });
     if (!target) return res.status(404).json({ error: "Employee not found." });
-    const raw = String(userEmail ?? "").trim();
-    if (raw && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw)) {
-      return res.status(400).json({ error: "That is not an e-mail address." });
-    }
-    // Stored canonically, the same way accounts are, so Gmail's many spellings of one
-    // mailbox cannot make the record and the sign-in disagree again.
-    const next = raw ? canonEmail(raw) : "";
-    if (next) {
-      // Two employees sharing one address would each hand the other their payslips.
-      const clash = (await prisma.employee.findMany()).find(
-        e => e.id !== employeeId && e.userEmail && canonEmail(e.userEmail) === next);
-      if (clash) {
-        return res.status(400).json({ error: `${clash.name} already signs in with that address. Clear it there first — one address is one person.` });
-      }
-    }
+    const resolved = await employeeLogin(userEmail, employeeId);
+    if (resolved.error) return res.status(400).json({ error: resolved.error });
+    const next = resolved.email;
     await prisma.employee.update({ where: { id: employeeId }, data: { userEmail: next } });
     await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", "Sign-In Address Changed",
       `${target.name}: self-service login ${next ? `set to ${next}` : "removed"}` +
       `${target.userEmail ? ` (was ${target.userEmail})` : ""}. This is what lets that person open their own personnel file, payslips and timesheets.`);
-    // Recording an address before the account exists is legitimate — a new hire is often
-    // registered before their first sign-in — so this reports, it does not refuse.
-    const account = next ? await findUserByEmail(next) : null;
+    const account = resolved.account;
     res.json({
       success: true, userEmail: next,
       account: account ? { name: account.name, role: account.role, active: account.active } : null
@@ -1786,7 +1795,7 @@ app.post("/api/vendors/new", async (req, res) => {
 // Create New Employee
 app.post("/api/employees/new", async (req, res) => {
   try {
-    const { name, position, salary, allowance, paymentMethod, bankAccountId, contractType, phone, user } = req.body;
+    const { name, position, salary, allowance, paymentMethod, bankAccountId, contractType, phone, userEmail, user } = req.body;
     if (!name || !position || salary === undefined) {
       return res.status(400).json({ error: "Employee name, position, and base salary are required." });
     }
@@ -1802,6 +1811,11 @@ app.post("/api/employees/new", async (req, res) => {
     const account = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
     if (!account) return res.status(400).json({ error: `Unknown bank account '${bankAccountId}'.` });
 
+    // Asked for at registration rather than left blank and remembered later: an employee
+    // created without one cannot open their own file, and twice nobody went back to fix it.
+    const login = await employeeLogin(userEmail);
+    if (login.error) return res.status(400).json({ error: login.error });
+
     const empid = `emp-${Date.now()}`;
     const employee = await prisma.employee.create({
       data: {
@@ -1814,6 +1828,7 @@ app.post("/api/employees/new", async (req, res) => {
         paymentMethod: method,
         bankAccountId: account.id,
         contractType: contractType || "Regular Employee",
+        userEmail: login.email,
         active: true
       }
     });
@@ -1822,10 +1837,14 @@ app.post("/api/employees/new", async (req, res) => {
       user?.id || "u-1",
       user?.name || "Super Admin",
       "Employee Registered",
-      `Registered New Team Member: ${name} as ${position}. Salary drawn from ${account.name} (${account.accountNo}), delivered by ${method === "Cash" ? "cash withdrawal" : "bank transfer"}.`
+      `Registered New Team Member: ${name} as ${position}. Salary drawn from ${account.name} (${account.accountNo}), delivered by ${method === "Cash" ? "cash withdrawal" : "bank transfer"}.` +
+      `${login.email ? ` Self-service login ${login.email}${login.account ? "" : " — no account signs in with it yet"}.` : " No self-service login recorded — they cannot open their own file until one is set."}`
     );
 
-    res.json({ success: true, employee });
+    res.json({
+      success: true, employee,
+      account: login.account ? { name: login.account.name, role: login.account.role, active: login.account.active } : null
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

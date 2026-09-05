@@ -141,9 +141,21 @@ console.log("\nH. which login belongs to which employee");
 ok("HR sets it, and gates.ts says so", gates.includes('"/api/employees/login": HR'));
 ok("the route enforces that itself",
   /app\.post\("\/api\/employees\/login"[\s\S]{0,400}HR\.includes\(user\?\.role \|\| ""\)/.test(server));
+// Registration asks for it too now, so the rule lives in ONE function both routes call —
+// two copies of it is exactly how the record and the sign-in drifted apart twice.
+const rule = (server.match(/async function employeeLogin[\s\S]*?\n\}/) || [""])[0];
+ok("one function decides, and both routes call it",
+  !!rule && (server.match(/await employeeLogin\(/g) || []).length === 2);
 ok("it is stored canonically, so Gmail's spellings cannot split one person again",
-  /const next = raw \? canonEmail\(raw\) : "";/.test(server));
-ok("two employees may not share one address", server.includes("already signs in with that address"));
+  rule.includes("const email = canonEmail(addr);"));
+ok("two employees may not share one address", rule.includes("already signs in with that address"));
+ok("registration records it rather than leaving the field blank",
+  /const login = await employeeLogin\(userEmail\);/.test(server) && /userEmail: login\.email,/.test(server));
+ok("and registering without one says so on the audit line",
+  server.includes("No self-service login recorded"));
+ok("the register form asks for it", payroll.includes('id="emp-login"') && payroll.includes("userEmail: newEmpLogin"));
+ok("and reports what the address reached, like the card does",
+  payroll.includes("no account signs in with that address yet"));
 ok("clearing it is allowed", server.includes('"removed"') || server.includes(': "removed"'));
 ok("the audit line names the old address as well as the new",
   server.includes("Sign-In Address Changed") && server.includes("(was ${target.userEmail})"));
@@ -152,7 +164,7 @@ ok("and says what the address grants, not just that it changed",
 // Recording an address before the person's first sign-in is legitimate; saying nothing about it
 // is how a mismatch survives unnoticed, so the answer reports whether an account exists.
 ok("the reply says whether any account actually signs in with it",
-  /const account = next \? await findUserByEmail\(next\) : null;/.test(server));
+  rule.includes("account: await findUserByEmail(email)"));
 ok("the card warns when it reaches no account",
   payroll.includes("no account signs in with that address yet"));
 ok("and names the account when it does", payroll.includes("d.account.name"));
