@@ -15,6 +15,7 @@ import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITOR
 import { deskItems } from "./src/workflow.js";
 import { deskIcs } from "./src/deskIcs.js";
 import { canonEmail } from "./src/email.js";
+import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs } from "./src/personnelDocs.js";
@@ -272,6 +273,12 @@ app.use(async (req: any, res, next) => {
           await createAuditLog(dbUser.id, dbUser.name, "Role Assumption Refused", `${dbUser.name} tried ${req.path} while standing in as ${wanted}; that seat may not.`);
           return res.status(403).json({ error: `The ${wanted} seat cannot do this. Stop acting to use your own authority.` });
         }
+        const step = typeof req.body?.action === "string" ? req.body.action : undefined;
+        if (!mayCall(req.path, wanted, step)) {
+          await createAuditLog(dbUser.id, dbUser.name, "Role Assumption Refused",
+            `${dbUser.name} tried ${req.path}${step ? ` — ${step}` : ""} while standing in as ${wanted}; that seat may not.`);
+          return res.status(403).json({ error: `The ${wanted} seat cannot do this. Stop acting to use your own authority.` });
+        }
         const ctx = { actingAs: wanted, ownRole: dbUser.role, vacant: !holder };
         req.body.user.role = wanted;
         req.body.user.actingAs = wanted;
@@ -299,6 +306,25 @@ app.use(async (req: any, res, next) => {
       }
       if (dbUser.role === SELF && !SELF_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "A self-service account files its own timesheet and papers only." });
+      }
+      /**
+       * Phase 9: the route asks the same question the desk does. src/gates.ts names the
+       * seats for every route (and, for a voucher, for every step of its life), so the
+       * button and the route can no longer disagree. Whether it is THIS record's turn —
+       * not approving what you raised, ticking only your own task — stays in the route.
+       */
+      const effectiveRole = req.body.user.role;
+      const step = typeof req.body?.action === "string" ? req.body.action : undefined;
+      if (!mayCall(req.path, effectiveRole, step)) {
+        const seats = seatsFor(req.path, step);
+        await createAuditLog(dbUser.id, dbUser.name, "Action Refused",
+          `${dbUser.name} (${effectiveRole}${effectiveRole !== dbUser.role ? `, standing in` : ""}) tried ${req.path}${step ? ` — ${step}` : ""}. ` +
+          (seats.length ? `That step belongs to: ${seats.join(", ")}.` : "No seat is allowed to call it."));
+        return res.status(403).json({
+          error: seats.length
+            ? `This step belongs to ${seats.filter(r => r !== "Super Admin").join(" or ") || "the master account"}.`
+            : "This action is not available.",
+        });
       }
       if (CONTENT_CREW_ROLES.includes(dbUser.role) && !CREW_ALLOWED_POSTS.has(req.path)) {
         return res.status(403).json({ error: "Content-team accounts act on the editorial pipeline only — this action needs an editor or finance role." });
@@ -2321,6 +2347,11 @@ app.post("/api/activities/delete", async (req, res) => {
     const { id, user } = req.body;
     const act = await prisma.projectActivity.findUnique({ where: { id } });
     if (!act) return res.status(404).json({ error: "Activity not found." });
+    // A Project Officer runs their own programme's timeline, not another's.
+    if (user?.role === "Project Officer") {
+      const mine = await scopedProjectIds((req as any).dbUser);
+      if (mine && !mine.has(act.projectId)) return res.status(403).json({ error: "That step belongs to another programme." });
+    }
     await prisma.projectActivity.delete({ where: { id } });
     await createAuditLog(user?.id, user?.name, "Project Activity Removed", `Removed "${act.title}" from the timeline.`);
     res.json({ success: true });
@@ -5843,6 +5874,11 @@ app.post("/api/timesheets/approve", async (req, res) => {
 
     const ts = await prisma.timesheet.findUnique({ where: { id } });
     if (!ts) return res.status(404).json({ error: "Timesheet not found." });
+    if (ts.status === "Approved") return res.status(400).json({ error: "This timesheet is already approved." });
+    const own = await prisma.employee.findUnique({ where: { id: ts.employeeId } });
+    if (own?.userEmail && canonEmail(own.userEmail) === canonEmail(user?.email || "")) {
+      return res.status(403).json({ error: "Nobody approves their own timesheet." });
+    }
 
     const updated = await prisma.timesheet.update({
       where: { id },
