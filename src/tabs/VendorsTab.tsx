@@ -4,6 +4,7 @@ import { Account, Vendor } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { MANAGERS, SUPPLIER_EDITORS } from "../roles";
+import { missingSupplierDocs } from "../supplierDocs";
 
 export default function VendorsTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, only, formatUSD, handleGenerateContract, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps & { only?: "subscriptions" | "suppliers" }) {
   // Subscriptions sheet (Vendor Registry) — renewal tracking with alerts.
@@ -598,6 +599,19 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                           >
                             {partyFileFor === v.id ? "▾ close file" : "📂 open file (agreement + invoices)"}
                           </button>
+                          {/* What the file is missing, from the procurement policy. Derived —
+                              no list is stored — so filing the paper answers it with no second
+                              step. Ungated: a supplier record is not a personnel file, and
+                              everyone this row already reaches may see what it lacks. */}
+                          {(() => {
+                            const gaps = missingSupplierDocs(state.documents || [], v);
+                            if (!gaps.length) return null;
+                            return (
+                              <p className="mt-0.5 text-[10px] text-amber-700">
+                                ⚠ {t("Not on file")}: {gaps.map(g => t(g.label)).join(" · ")}
+                              </p>
+                            );
+                          })()}
                         </td>
                         <td className="px-6 py-4 font-medium text-slate-700">{v.category}</td>
                         <td className="px-6 py-4 font-mono font-medium hidden md:table-cell">{v.taxId}</td>

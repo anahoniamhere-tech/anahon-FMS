@@ -416,6 +416,8 @@ export const AR: Record<string, string> = {
   "Identity paper": "وثيقة هوية",
   "CV": "السيرة الذاتية",
   "Signed contract": "عقد موقّع",
+  "Vendor registration form": "استمارة تسجيل مورّد",
+  "Signed agreement": "اتفاقية موقّعة",
   "Identity paper, CV and a signed contract are all on file.": "وثيقة الهوية والسيرة الذاتية والعقد الموقّع كلها في الملف.",
   "The account that may open this person's own file, payslips and timesheets.": "الحساب الذي يمكنه فتح ملف هذا الشخص وقسائم راتبه وكشوف دوامه.",
   "Full salary": "الراتب الكامل",
