@@ -391,6 +391,13 @@ export const AR: Record<string, string> = {
   "Hello {name}, we have sent you quotation {ref} for {amount}. Tell us if anything should change. — AnaHon": "مرحباً {name}، أرسلنا لك عرض السعر {ref} بقيمة {amount}. أخبرنا إن كان يلزم أي تعديل. — أنا هون",
   "Hello {name}, a balance of {amount} is outstanding since {date}. Could you let us know when it will be settled? — AnaHon": "مرحباً {name}، ما زال هناك رصيد مستحق بقيمة {amount} منذ {date}. هلّا أعلمتنا بموعد التسديد؟ — أنا هون",
   "Hello {name}, we are still waiting for your {what} for {period}. Send it when you can so payment is not held up. — AnaHon": "مرحباً {name}، ما زلنا بانتظار {what} الخاص بك عن {period}. أرسله متى تيسّر كي لا يتأخر الدفع. — أنا هون",
+  // The personnel-file phone and the timesheet nudge that uses it.
+  "WhatsApp": "واتساب",
+  "Full international form, starting with + and the country code.": "بالصيغة الدولية الكاملة، تبدأ بـ + ورمز الدولة.",
+  "timesheet": "كشف الدوام",
+  "Nudge": "تذكير",
+  "no WhatsApp number on file": "لا يوجد رقم واتساب في الملف",
+  "Opens WhatsApp with the message ready — you press Send.": "يفتح واتساب والرسالة جاهزة — أنت من يضغط إرسال.",
   "Tell me when it is my turn": "أعلمني حين يحين دوري",
   "Turn on notifications": "تفعيل الإشعارات",
   "Stop": "إيقاف",

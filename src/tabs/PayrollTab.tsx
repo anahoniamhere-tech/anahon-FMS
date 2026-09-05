@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { Donor, Employee, Project } from "../types";
 import { tr } from "../i18n";
-import { SharedProps } from "./shared";
+import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import { DIRECTORS, HR, PAYROLL_VIEWERS } from "../roles";
+import { maySeePersonnelFile } from "../personnelDocs";
 
 export default function PayrollTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, formatUSD, handleGenerateContract, isSelfService, openDoc, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps) {
   // Employee registration states
@@ -26,6 +27,27 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
   const [selectedTSMonth, setSelectedTSMonth] = useState("2026-05");
 
   const [tsAllocValues, setTsAllocValues] = useState<{ [projId: string]: number }>({});
+
+  // Phone numbers being typed, keyed by employee. Absent = not being edited, so the field
+  // falls back to what is on file and the Save button only appears once it differs.
+  const [phoneDraft, setPhoneDraft] = useState<{ [empId: string]: string }>({});
+
+  const savePhone = async (empId: string) => {
+    try {
+      const res = await fetch("/api/employees/phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employeeId: empId, phone: phoneDraft[empId] ?? "", user: currentUser })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Failed to save the number.");
+      triggerToast(d.phone ? "WhatsApp number saved." : "WhatsApp number removed.");
+      setPhoneDraft(prev => { const next = { ...prev }; delete next[empId]; return next; });
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
 
   const generatePayslip = async (employeeId: string, name: string, month: string) => {
     try {
@@ -276,6 +298,39 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                               🧾 Payslip {selectedTSMonth}
                             </button>
                           )}
+                          {/* The WhatsApp number is part of the personnel file, so it asks the
+                              same question the file asks — maySeePersonnelFile — instead of a
+                              second role list that could drift away from it. A Project Officer
+                              never reaches this line: loadState sends them no employees at all. */}
+                          {maySeePersonnelFile(currentUser, state.employees, emp.id) && (
+                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                              <label htmlFor={`emp-phone-${emp.id}`} className="text-[10px] font-bold uppercase text-slate-500">
+                                {t("WhatsApp")}
+                              </label>
+                              <input
+                                id={`emp-phone-${emp.id}`}
+                                type="tel"
+                                dir="ltr"
+                                inputMode="tel"
+                                placeholder="+9613123456"
+                                value={phoneDraft[emp.id] ?? emp.phone ?? ""}
+                                onChange={e => setPhoneDraft({ ...phoneDraft, [emp.id]: e.target.value })}
+                                className="finance-input w-44 font-mono text-xs"
+                              />
+                              {(phoneDraft[emp.id] ?? emp.phone ?? "") !== (emp.phone ?? "") && (
+                                <button
+                                  type="button"
+                                  onClick={() => savePhone(emp.id)}
+                                  className="rounded bg-slate-900 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-slate-950"
+                                >
+                                  {t("Save")}
+                                </button>
+                              )}
+                              <span className="text-[10px] text-slate-500">
+                                {t("Full international form, starting with + and the country code.")}
+                              </span>
+                            </div>
+                          )}
                           <button
                             type="button"
                             onClick={() => setPartyFileFor(partyFileFor === emp.id ? null : emp.id)}
@@ -391,6 +446,37 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                             Submit allocations log ({enteredPool}%)
                           </button>
                         )}
+
+                        {/* Nothing here sends anything: the link opens WhatsApp with the message
+                            ready and a person presses Send. Freelancers and service providers are
+                            Vendor rows and their nudge belongs to Buying & paying, not to payroll. */}
+                        {HR.includes(currentUser.role) && !isOwnCard
+                          && (!activeTimesheet || !["Submitted", "Approved"].includes(activeTimesheet.status))
+                          && (() => {
+                            const first = emp.name.split(/\s+/)[0];
+                            const link = waLink(emp.phone || "", WA_TEMPLATES["freelancer-nudge"](t, {
+                              name: first, what: t("timesheet"), period: selectedTSMonth,
+                            }));
+                            return link ? (
+                              <a
+                                href={link}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={t("Opens WhatsApp with the message ready — you press Send.")}
+                                className="inline-flex min-h-[44px] items-center justify-center rounded bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100 md:min-h-0"
+                              >
+                                💬 {t("Nudge")} {first} — {selectedTSMonth}
+                              </a>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled
+                                className="inline-flex min-h-[44px] cursor-not-allowed items-center justify-center rounded bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-500 md:min-h-0"
+                              >
+                                💬 {t("Nudge")} — {t("no WhatsApp number on file")}
+                              </button>
+                            );
+                          })()}
 
                         {activeTimesheet && activeTimesheet.status === "Submitted" && DIRECTORS.includes(currentUser.role) && (
                           <button

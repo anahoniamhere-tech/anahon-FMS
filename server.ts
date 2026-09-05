@@ -262,11 +262,19 @@ const READ_AUDIT: [RegExp, string][] = [
 
 /** Name the paper, not just its id — a line an auditor cannot interpret is half a line. */
 async function readSubject(label: string, reqPath: string): Promise<string> {
-  const id = reqPath.split("/").filter(Boolean).pop() || "";
-  if (!/^\/api\/document\//.test(reqPath)) return id && !/^(pdf|period|detect|acting)$/.test(id) ? `${label} ${id}` : label;
-  const docId = /\/api\/document\/([^/]+)\/pdf$/.test(reqPath) ? reqPath.split("/")[3] : id;
-  const doc = await prisma.appDoc.findUnique({ where: { id: docId }, select: { refNo: true, filename: true } }).catch(() => null);
-  return doc ? `${label} — ${doc.refNo} "${doc.filename}"` : `${label} ${docId}`;
+  const quoted = reqPath.match(/^\/api\/quotations\/([^/]+)\/pdf$/);
+  if (quoted) {
+    const q = await prisma.quotation.findUnique({ where: { id: quoted[1] }, select: { quoteNo: true, clientId: true } }).catch(() => null);
+    const client = q ? await prisma.client.findUnique({ where: { id: q.clientId }, select: { name: true } }).catch(() => null) : null;
+    return q ? `${label} — ${q.quoteNo}${client ? ` for ${client.name}` : ""}` : `${label} ${quoted[1]}`;
+  }
+  if (reqPath.startsWith("/api/document/")) {
+    const seg = reqPath.split("/").filter(Boolean);
+    const docId = reqPath.match(/^\/api\/document\/([^/]+)\/pdf$/)?.[1] || seg[seg.length - 1];
+    const doc = await prisma.appDoc.findUnique({ where: { id: docId }, select: { refNo: true, filename: true } }).catch(() => null);
+    return doc ? `${label} — ${doc.refNo} "${doc.filename}"` : `${label} ${docId}`;
+  }
+  return label;
 }
 
 app.use(async (req: any, res, next) => {
