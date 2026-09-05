@@ -17,6 +17,17 @@ export const MANAGERS = ["Super Admin", "Finance Officer", "Program Director"];
 export const HR = ["Super Admin", "HR / Payroll Officer"];
 export const PAYROLL_VIEWERS = ["Super Admin", "HR / Payroll Officer", "Finance Officer"];
 export const PERSONNEL_FILE = ["Super Admin", "HR / Payroll Officer", "Program Director"];
+/**
+ * May file a timesheet for somebody else. Anyone may file their own — the route checks the
+ * card is yours, which is why gates.ts still lists it as ANY.
+ *
+ * Spelled out rather than composed. It is the union of PAYROLL_VIEWERS and PERSONNEL_FILE
+ * today, but that is a coincidence of two other lists: composing it would mean that adding
+ * a seat to the personnel file silently handed it the power to file other people's hours.
+ * This is the set the route enforced by hand since before roles.ts existed — named here,
+ * not changed, so the button and the route finally agree about it.
+ */
+export const TIMESHEET_FILERS = ["Super Admin", "HR / Payroll Officer", "Program Director", "Finance Officer"];
 
 export const PLO = "Procurement and Logistics Officer";
 export const DIGITAL = "Digital Officer";

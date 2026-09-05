@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Donor, Employee, Project } from "../types";
 import { tr } from "../i18n";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
-import { DIRECTORS, HR, PAYROLL_VIEWERS } from "../roles";
+import { DIRECTORS, HR, PAYROLL_VIEWERS, TIMESHEET_FILERS } from "../roles";
 import { maySeePersonnelFile } from "../personnelDocs";
 
 export default function PayrollTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, formatUSD, handleGenerateContract, isSelfService, openDoc, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps) {
@@ -438,7 +438,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                           );
                         })}
 
-                        {activeTimesheet?.status !== "Approved" && enteredPool > 0 && (HR.includes(currentUser.role) || isOwnCard) && (
+                        {activeTimesheet?.status !== "Approved" && enteredPool > 0 && (TIMESHEET_FILERS.includes(currentUser.role) || isOwnCard) && (
                           <button
                             onClick={() => handleTimesheetSubmit(emp.id)}
                             className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5"

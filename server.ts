@@ -11,7 +11,7 @@ import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml} from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
-import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW } from "./src/roles.js";
+import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
@@ -536,7 +536,11 @@ async function loadState(viewer?: any) {
     prisma.fixedAsset.findMany(),
     prisma.partnerAccount.findMany(),
     prisma.appDoc.findMany(),
-    prisma.auditLog.findMany({ orderBy: { timestamp: "desc" } }),
+    // The screen shows recent activity; the archive itself stays in the database. Before
+    // the cap every row travelled to every director on every page load (762 rows = 244 KB
+    // on 5 Sep 2026), and read logging made that grow faster. auditLogTotal keeps the
+    // screen honest about what it is not showing.
+    prisma.auditLog.findMany({ orderBy: { timestamp: "desc" }, take: 500 }),
     prisma.complianceTask.findMany(),
     prisma.opportunity.findMany(),
     prisma.cashCount.findMany({ orderBy: { date: "desc" } }),
@@ -552,6 +556,8 @@ async function loadState(viewer?: any) {
     prisma.orgSettings.findFirst(),
     prisma.fxRates.findFirst()
   ]);
+
+  const auditTotal = await prisma.auditLog.count();
 
   // Deserialize dynamic array list columns
   const formattedExpenses = expenses.map(e => ({
@@ -762,6 +768,7 @@ async function loadState(viewer?: any) {
       note: d.note
     })),
     auditLogs,
+    auditLogTotal: auditTotal,
     complianceTasks,
     // Funding funnel — forward-looking pipeline only, never financial data.
     opportunities: opportunities.map(o => ({
@@ -6415,9 +6422,8 @@ app.post("/api/timesheets/submit", async (req, res) => {
   try {
     const { employeeId, month, allocations, user } = req.body;
 
-    // Policy 8.5: staff may file their OWN timesheet; HR/PD/admin may file for anyone.
-    const HR_ROLES = ["Super Admin", "HR / Payroll Officer", "Program Director", "Finance Officer"];
-    if (!HR_ROLES.includes(user?.role || "")) {
+    // Policy 8.5: staff may file their OWN timesheet; the filing seats may file for anyone.
+    if (!TIMESHEET_FILERS.includes(user?.role || "")) {
       const emp = await prisma.employee.findUnique({ where: { id: employeeId } });
       const email = (user?.email || "").toLowerCase();
       if (!emp || !email || (emp as any).userEmail?.toLowerCase() !== email) {

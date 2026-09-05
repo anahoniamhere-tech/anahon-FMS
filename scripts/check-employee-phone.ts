@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { maySeePersonnelFile } from "../src/personnelDocs.js";
 import { waLink, WA_TEMPLATES } from "../src/tabs/shared.js";
-import { HR } from "../src/roles.js";
+import { HR, TIMESHEET_FILERS, PAYROLL_VIEWERS, PERSONNEL_FILE } from "../src/roles.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -83,6 +83,26 @@ ok("it asks for the timesheet", text.includes("timesheet"));
 // Every base salary is 0 until a project funds the role, so a message that quoted a
 // figure would read "we owe you $0.00". This one names no amount at all.
 ok("it quotes no figure, so a 0 salary base cannot leak into it", !/[$€]|\d+\.\d\d/.test(text));
+
+console.log("\nF. who may file a timesheet for somebody else");
+// The route used to keep this list to itself, and the button offered it to two of the four
+// seats the route accepted. One list now, and it is deliberately not composed from the two
+// it happens to equal today — see the comment on TIMESHEET_FILERS.
+for (const r of ["Super Admin", "HR / Payroll Officer", "Program Director", "Finance Officer"]) {
+  ok(`${r} may file for anyone`, TIMESHEET_FILERS.includes(r));
+}
+for (const r of ["Project Officer", "Project Lead", "Auditor / Read-Only Reviewer", "Employee (Self-Service)", "Reporter"]) {
+  ok(`${r} files only their own card`, !TIMESHEET_FILERS.includes(r));
+}
+ok("the route asks the list and keeps no array of its own",
+  /TIMESHEET_FILERS\.includes\(user\?\.role \|\| ""\)/.test(server) && !/const HR_ROLES = \[/.test(server));
+ok("and the button asks the same list, so the two can no longer disagree",
+  payroll.includes("TIMESHEET_FILERS.includes(currentUser.role) || isOwnCard"));
+ok("the route stays ANY in gates.ts — filing your own card is the other way in",
+  readFileSync(new URL("../src/gates.ts", import.meta.url), "utf8").includes('"/api/timesheets/submit": ANY'));
+ok("it is wider than PAYROLL_VIEWERS and wider than PERSONNEL_FILE, which is why neither was reused",
+  PAYROLL_VIEWERS.every(r => TIMESHEET_FILERS.includes(r)) && PERSONNEL_FILE.every(r => TIMESHEET_FILERS.includes(r))
+  && TIMESHEET_FILERS.length > PAYROLL_VIEWERS.length && TIMESHEET_FILERS.length > PERSONNEL_FILE.length);
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
