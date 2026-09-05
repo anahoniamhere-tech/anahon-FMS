@@ -36,7 +36,11 @@ export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
 mkdir -p "$PULL" "$STAGE"
 
 echo "== $(date '+%F %T') start"
-SNAP=$(ssh -o BatchMode=yes -o ConnectTimeout=15 "$NAS" "ls $FMS/.zfs/snapshot | sort | tail -1")
+newest() {  # newest <mount path> -> youngest snapshot name, by creation time. Never by name: the
+  # hand-named pre-<thing>-<stamp> safety snapshots other rooms leave sort after the hourly ones.
+  ssh -o BatchMode=yes -o ConnectTimeout=15 "$NAS" "/usr/sbin/zfs list -H -t snapshot -o name -s creation ${1#/mnt/} | tail -1 | cut -d@ -f2"
+}
+SNAP=$(newest "$FMS")
 [ -n "$SNAP" ] || { echo "no snapshot on NAS"; exit 1; }
 SRC="$FMS/.zfs/snapshot/$SNAP"
 echo "1/4  pull from NAS snapshot $SNAP"
@@ -45,13 +49,15 @@ rsync -a --delete -e "ssh -o BatchMode=yes" "$NAS:$SRC/vault/" "$PULL/vault/"
 rsync -a -e "ssh -o BatchMode=yes" "$NAS:$FMS/calendar-feed.json" "$PULL/calendar-feed.json" 2>/dev/null || true
 [ "$(sqlite3 "$PULL/dev.db" 'pragma integrity_check;' | head -1)" = "ok" ] || { echo "database integrity check FAILED"; exit 1; }
 # The workbench: small, and the only copy of each thing outside the box it lives on.
-SNAP_SITE=$(ssh -o BatchMode=yes "$NAS" "ls $SITE/.zfs/snapshot | sort | tail -1"); SNAP_ARCH=$(ssh -o BatchMode=yes "$NAS" "ls $ARCH/.zfs/snapshot | sort | tail -1")
+SNAP_SITE=$(newest "$SITE"); SNAP_ARCH=$(newest "$ARCH")
 mkdir -p "$PULL/workbench/site" "$PULL/workbench/archive-catalogue" "$PULL/workbench/claude-memory" "$PULL/workbench/documents"
+# The server's .env (API keys, Google refresh token, VAPID pair): mode 600 on the NAS, so rsync as admin cannot read it.
+ssh -o BatchMode=yes "$NAS" "sudo -n cat $SRC/src/.env" > "$PULL/workbench/fms.env" && chmod 600 "$PULL/workbench/fms.env" || echo "  WARNING: src/.env NOT pulled (sudo -n cat failed)"
 for d in content data uploads images; do rsync -a --delete -e "ssh -o BatchMode=yes" "$NAS:$SITE/.zfs/snapshot/$SNAP_SITE/$d/" "$PULL/workbench/site/$d/" 2>/dev/null || true; done
 rsync -a --delete --exclude 'archive/raw' -e "ssh -o BatchMode=yes" "$NAS:$ARCH/.zfs/snapshot/$SNAP_ARCH/" "$PULL/workbench/archive-catalogue/" 2>/dev/null || true
 [ -d "$MEMORY" ] && rsync -a --delete "$MEMORY/" "$PULL/workbench/claude-memory/"
 [ -d "$DOCS" ] && rsync -a --delete "$DOCS/" "$PULL/workbench/documents/"
-echo "  workbench: $(du -sh "$PULL/workbench" | cut -f1) (site content $SNAP_SITE, archive catalogue $SNAP_ARCH, memory, documents)"
+echo "  workbench: $(du -sh "$PULL/workbench" | cut -f1) (site content $SNAP_SITE, archive catalogue $SNAP_ARCH, memory, documents, .env)"
 
 encrypt() {  # encrypt <plaintext> <dest.enc>
   openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in "$1" -out "$2.part" -pass file:"$KEY"

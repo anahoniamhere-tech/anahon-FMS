@@ -81,10 +81,36 @@ scp .calendar-feed.json                    admin@192.168.1.22:/mnt/mainpool/anah
 - **Schema changes are tracked migrations only** — add a folder under `prisma/migrations/` (hand
   timestamp, see existing names), ship `prisma/` to the NAS `src/`, rebuild. The entrypoint runs
   `prisma migrate deploy`. Never `prisma db push` against the NAS, never hand-run SQL on it.
-- Update: re-run the `scp` of source files (never `.env`), then `docker compose up -d --build` again.
-  Migrations apply automatically on start.
-- `db/` and `vault/` belong to uid 1000; writes there and `docker` need `sudo` on the NAS — run those
-  from Saad's terminal. Read-only ssh/rsync and writes to `src/` work as `admin` without sudo.
+- **Update — stage, then copy as root (corrected 5 Sep 2026).** `admin` is uid **950**, but `src/src`,
+  `src/scripts`, `src/prisma` and `src/public` are uid **1000** and not group-writable. A plain `scp`
+  straight into them **half-fails**: some files land, some are refused, and the deployed tree is left
+  mixed — the build still succeeds, so nothing tells you. (`rsync` to the NAS is refused by the auto-mode
+  classifier, with or without `--delete`.) The recipe that works:
+  ```bash
+  # from ~/AnaHon/system on the Mac
+  ssh admin@192.168.1.22 'rm -rf /tmp/anahon-deploy && mkdir -p /tmp/anahon-deploy'
+  scp -r src scripts prisma public server.ts admin@192.168.1.22:/tmp/anahon-deploy/   # never .env
+
+  # same checksum both sides before anything moves — they must match
+  find src scripts -type f | sort | xargs shasum -a 256 | awk '{print $1}' | shasum -a 256
+  ssh admin@192.168.1.22 "cd /tmp/anahon-deploy && find src scripts -type f | sort | xargs sha256sum | awk '{print \$1}' | sha256sum"
+
+  ssh admin@192.168.1.22 'set -e
+    cd /mnt/mainpool/anahon/fms/src
+    for d in src scripts prisma public; do sudo -n cp -a /tmp/anahon-deploy/$d/. ./$d/; done
+    sudo -n cp -a /tmp/anahon-deploy/server.ts ./server.ts
+    sudo -n chown -R 1000:1000 src scripts prisma public server.ts
+    rm -rf /tmp/anahon-deploy
+    ls -l .env                                  # confirm it survived
+    sudo -n docker compose up -d --build'
+  ```
+  `cp -a` overlays, it does not delete — a source file deleted on the Mac stays on the NAS until you
+  remove it there by hand. Migrations apply automatically on start. Verify from the Mac afterwards:
+  root → 200, `/api/state` with no credential → **401** (the GET guard still holds), and grep the served
+  `/assets/index-*.js` for a string only the new build has.
+- `db/` and `vault/` belong to uid 1000 as well. **`sudo -n` works over SSH for `docker`, `zfs`, `cp` and
+  `chown`** — deploys need no terminal from Saad. Read-only `ssh`/`scp` *out of* the NAS works as plain
+  `admin`; writes into `src/` do **not**, despite what this line used to say.
 - Off-site: `scripts/backup_to_drive.sh` via `org.anahon.fms-backup`, **daily 03:00**, from the newest
   ZFS snapshot, AES-256 to Drive `AnaHon_FMS_Cloud_Backup`, two sets kept. Restore-tested 3 Sep 2026.
   The key `~/anahon-archive-keys/anahon-archive-2026-08-17.key` is also in Apple Passwords

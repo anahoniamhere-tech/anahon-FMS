@@ -68,4 +68,6 @@ WORKBENCH SET (added 5 Sep 2026) — workbench-<date>.tar.gz.enc
   content, data, uploads, images — copy back into /mnt/mainpool/anahon/site), archive-catalogue/
   (everything in /mnt/mainpool/anahon/archive except archive/raw; the raw media is in Drive's
   AnaHon-Archive-Encrypted), claude-memory/ (restore to ~/.claude/projects/-Users-saadmatar-AnaHon/memory),
-  documents/ (~/AnaHon/documents).
+  documents/ (~/AnaHon/documents), and fms.env (added 5 Sep 2026: the server's own
+  /mnt/mainpool/anahon/fms/src/.env — API keys, the Google refresh token, the VAPID push pair;
+  restore it to that path, owner 1000:1000, mode 600, then docker compose up -d).
