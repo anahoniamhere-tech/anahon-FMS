@@ -340,6 +340,8 @@ export const AR: Record<string, string> = {
   "Team, rates & audit log": "الفريق والأسعار وسجل التدقيق",
   // my desk (phase 3)
   // my desk on my phone (phase 5)
+  "Subscribe on this device": "اشترك على هذا الجهاز",
+  "Scan it with the phone's camera and open the link: the calendar app offers to subscribe. If it downloads a file instead, the address was opened as a web page — use the one above, which starts with webcal.": "امسحه بكاميرا الهاتف وافتح الرابط: يعرض تطبيق التقويم الاشتراك. وإن نزّل ملفاً بدل ذلك فهذا يعني أن العنوان فُتح كصفحة ويب — استخدم العنوان أعلاه الذي يبدأ بـ webcal.",
   "My desk on my phone": "مكتبي على هاتفي",
   "Get my calendar address": "احصل على عنوان تقويمي",
   "Subscribe to it in the phone's calendar. It shows only what is your turn, and works on the office network or Tailscale.": "اشترك به في تقويم الهاتف. يعرض ما هو دورك فقط، ويعمل على شبكة المكتب أو Tailscale.",

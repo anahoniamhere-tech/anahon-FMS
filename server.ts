@@ -872,7 +872,11 @@ app.post("/api/calendar/feed", async (req, res) => {
     const path = `/api/desk.ics?t=${calendarToken}`;
     const base = String(process.env.FMS_PUBLIC_URL || "").replace(/\/$/, "");
     const url = base ? base + path : path;
-    res.json({ success: true, path, url, qr: base ? await qrSvg(url) : null });
+    // A phone asked for this over http downloads the file once and forgets it. webcal://
+    // is the same address in the scheme Calendar recognises as a subscription — it opens
+    // the app and offers to keep it, which is the whole point of a feed.
+    const webcal = url.replace(/^https?:/, "webcal:");
+    res.json({ success: true, path, url, webcal, qr: base ? await qrSvg(webcal) : null });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -46,7 +46,7 @@ export default function MyDeskTab({
   const [taskForm, setTaskForm] = useState<null | { id?: string; title: string; category: string; dueDate: string; notes: string; assigneeUserId: string }>(null);
   // The private feed address, held only for as long as this screen is open: the server
   // never hands the same secret back, so a lost address is replaced, not looked up.
-  const [feed, setFeed] = useState<null | { url: string; qr: string | null; rotated: boolean }>(null);
+  const [feed, setFeed] = useState<null | { url: string; webcal: string; qr: string | null; rotated: boolean }>(null);
   const toggle = (set: (f: (p: Set<string>) => Set<string>) => void, id: string) =>
     set(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
@@ -126,7 +126,8 @@ export default function MyDeskTab({
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || t("Could not make the feed address."));
-      setFeed({ url: d.url || `${window.location.origin}${d.path}`, qr: d.qr || null, rotated: !!feed });
+      const url = d.url || `${window.location.origin}${d.path}`;
+      setFeed({ url, webcal: d.webcal || url.replace(/^https?:/, "webcal:"), qr: d.qr || null, rotated: !!feed });
     } catch (e: any) { triggerToast(e.message); } finally { setBusy(null); }
   };
 
@@ -774,9 +775,13 @@ export default function MyDeskTab({
           <div className="mt-2 space-y-2">
             {feed.rotated && <p className="text-[11px] font-bold text-[#8f2020]">{t("The old address stopped working. Any device still subscribed must be added again.")}</p>}
             <div className="flex flex-wrap items-center gap-2">
-              <input readOnly value={feed.url} onFocus={e => e.currentTarget.select()} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 font-mono text-[11px]" />
+              <input readOnly value={feed.webcal} onFocus={e => e.currentTarget.select()} className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-slate-50 px-2 py-1.5 font-mono text-[11px]" />
+              <a
+                href={feed.webcal}
+                className="rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#4A1010]"
+              >{t("Subscribe on this device")}</a>
               <button
-                onClick={() => { navigator.clipboard?.writeText(feed.url); triggerToast(t("Address copied. It is not shown again.")); }}
+                onClick={() => { navigator.clipboard?.writeText(feed.webcal); triggerToast(t("Address copied. It is not shown again.")); }}
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
               >{t("Copy")}</button>
               <button
@@ -785,7 +790,12 @@ export default function MyDeskTab({
                 className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-600 hover:border-[#E23B3B] hover:text-[#E23B3B] disabled:opacity-40"
               >{t("Replace it")}</button>
             </div>
-            {feed.qr && <div className="w-40" dangerouslySetInnerHTML={{ __html: feed.qr }} />}
+            {feed.qr && (
+              <div className="flex items-start gap-3">
+                <div className="w-40 shrink-0" dangerouslySetInnerHTML={{ __html: feed.qr }} />
+                <p className="text-[11px] leading-relaxed text-slate-500">{t("Scan it with the phone's camera and open the link: the calendar app offers to subscribe. If it downloads a file instead, the address was opened as a web page — use the one above, which starts with webcal.")}</p>
+              </div>
+            )}
             <p className="text-[11px] text-slate-500">{t("Anyone with this address can read your desk. Replace it if it is ever shared by mistake.")}</p>
           </div>
         )}
