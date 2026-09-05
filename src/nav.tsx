@@ -83,6 +83,7 @@ export const NAV: NavSection[] = [
     items: [
       { navKey: "procurement", label: "Quotes & bids", icon: ic(Layers) },
       { navKey: "vendors", label: "Suppliers", icon: ic(Users), roles: ["*full", ...PLO] },
+      { navKey: "subscriptions", label: "Subscriptions & renewals", icon: glyph("🔁"), roles: ["*full", ...PLO] },
       { navKey: "expenses", label: "Payment requests", icon: ic(FileText), badge: "expenses" },
       { navKey: "assets", label: "Equipment", icon: ic(HardDrive), roles: ["*full", ...PLO] },
     ],

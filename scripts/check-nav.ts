@@ -39,7 +39,7 @@ const added = ["handbooks", "mydesk"];   // visible to the restricted roles now
 const addedSelf = ["handbooks", "help", "mydesk"]; // self-service had none of them
 // Seats placed in phase 2 (they had no login before, so there is no "before" to compare):
 const placed: Record<string, string[]> = {
-  "Procurement and Logistics Officer": ["mydesk", "help", "handbooks", "projects", "network", "procurement", "vendors", "expenses", "assets", "payroll"],
+  "Procurement and Logistics Officer": ["mydesk", "help", "handbooks", "projects", "network", "procurement", "vendors", "subscriptions", "expenses", "assets", "payroll"],
   "Digital Officer": ["mydesk", "help", "handbooks", "social", "live", "website", "archive", "tools", "network", "payroll"],
   "Chief Editor": ["mydesk", "help", "handbooks", "editorial", "social", "live", "website", "archive", "payroll"],
   "Production Manager": ["mydesk", "help", "handbooks", "editorial", "social", "live", "website", "archive", "payroll"],

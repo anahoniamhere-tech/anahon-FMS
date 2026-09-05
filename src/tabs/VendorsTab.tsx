@@ -5,7 +5,7 @@ import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { MANAGERS, SUPPLIER_EDITORS } from "../roles";
 
-export default function VendorsTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, formatUSD, handleGenerateContract, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps) {
+export default function VendorsTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, only, formatUSD, handleGenerateContract, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps & { only?: "subscriptions" | "suppliers" }) {
   // Subscriptions sheet (Vendor Registry) — renewal tracking with alerts.
   const [subForm, setSubForm] = useState<any | null>(null);
 
@@ -209,6 +209,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                 </p>
               </div>
 
+              {only !== "suppliers" && (<>
               {/* ── Subscriptions & renewals ─────────────────────────────────
                   Small recurring charges are the easiest money to lose track of:
                   each one is trivial, the total is not. */}
@@ -380,6 +381,9 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                 )}
               </div>
 
+              </>)}
+
+              {only !== "subscriptions" && (<>
               {/* Register New Vendor Form */}
               {SUPPLIER_EDITORS.includes(currentUser.role) && (
                 <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
@@ -667,6 +671,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                   </form>
                 );
               })()}
+            </>)}
             </div>
   );
 }

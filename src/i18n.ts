@@ -339,6 +339,7 @@ export const AR: Record<string, string> = {
   "Timesheets & payroll": "الجداول الزمنية والرواتب",
   "Team, rates & audit log": "الفريق والأسعار وسجل التدقيق",
   // my desk (phase 3)
+  "Subscriptions & renewals": "الاشتراكات والتجديدات",
   // my desk on my phone (phase 5)
   "Take this calendar off my desk": "أزل هذا التقويم من مكتبي",
   "Could not remove the calendar.": "تعذّرت إزالة التقويم.",

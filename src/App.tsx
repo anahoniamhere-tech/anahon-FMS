@@ -982,6 +982,12 @@ export default function App() {
 
 
   // Everything the split-out tab components receive. Grows as tabs are split.
+  // The compliance dot used to be painted on unconditionally, so it meant nothing.
+  // It now marks what it claims to: statutory tasks past their date.
+  const overdueTasks = (state?.complianceTasks || []).filter(
+    t => t.status !== "Done" && t.dueDate < new Date().toLocaleDateString("en-CA")
+  ).length;
+
   const shared: SharedProps = {
     state, setState, currentUser, t, lang, rtl, formatUSD, formatIn,
     refreshState, triggerToast, handleNavClick, openDoc,
@@ -1162,7 +1168,9 @@ export default function App() {
                         {state.expenses.filter(e => ["Submitted", "Under Finance Review", "Approved"].includes(e.status)).length}
                       </span>
                     )}
-                    {item.badge === "compliance" && <span className="ml-auto flex h-2 w-2 rounded-full bg-rose-500 animate-pulse shrink-0" />}
+                    {item.badge === "compliance" && overdueTasks > 0 && (
+                      <span className="ml-auto flex h-2 w-2 rounded-full bg-rose-500" title={`${overdueTasks} overdue`} />
+                    )}
                   </button>
                 ))}
               </React.Fragment>
@@ -1223,7 +1231,8 @@ export default function App() {
 
 
           {/* tab content Vendor Master */}
-          {activeTab === "vendors" && <VendorsTab {...shared} />}
+          {activeTab === "vendors" && <VendorsTab {...shared} only="suppliers" />}
+              {activeTab === "subscriptions" && <VendorsTab {...shared} only="subscriptions" />}
 
 
           {/* tab content Cash & Bank Balances */}

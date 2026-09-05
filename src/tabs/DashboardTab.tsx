@@ -35,13 +35,25 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                   </p>
                 </div>
                 {/* Instant KPI metrics banner */}
-                <div className="flex items-center gap-3 bg-red-50 border border-red-100 p-3 rounded-lg p-3">
+                {/* Counted from the register, not asserted: a score nothing computes is
+                    worse than no score, because it gets quoted to a donor. */}
+                <button
+                  type="button"
+                  onClick={() => handleNavClick("mydesk")}
+                  className="flex items-center gap-3 rounded-lg border border-red-100 bg-red-50 p-3 text-left hover:border-red-300"
+                >
                   <Activity className="h-8 w-8 text-red-600" />
                   <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700">Audit Compliance Score</h3>
-                    <p className="text-xl font-bold font-mono text-red-600">98.5%</p>
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-700">Statutory checklist</h3>
+                    <p className="text-xl font-bold font-mono text-red-600">
+                      {(state.complianceTasks || []).filter(t => t.status === "Done").length}
+                      <span className="text-slate-400"> / {(state.complianceTasks || []).length}</span>
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      {(state.complianceTasks || []).filter(t => t.status !== "Done" && t.dueDate < new Date().toLocaleDateString("en-CA")).length} overdue · open on My Desk
+                    </p>
                   </div>
-                </div>
+                </button>
               </div>
 
               {/* Financial Summary KPIs — hidden from Project Officers (requester role sees only their projects' burn) */}
@@ -143,8 +155,12 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                     <span className="text-xs font-semibold uppercase tracking-wider text-slate-600">Vat rate / Tax settings</span>
                     <Percent className="h-5 w-5 text-slate-600" />
                   </div>
-                  <h3 className="mt-2 text-2xl font-bold font-mono text-slate-800">MoF 11% / SSD Pool</h3>
-                  <p className="mt-1 text-xs text-slate-500">MoF Chapter 3 · click to open Compliance</p>
+                  <h3 className="mt-2 text-2xl font-bold font-mono text-slate-800">
+                    {state.orgSettings?.vatRate ?? 0}% VAT
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Approval threshold {formatUSD(state.orgSettings?.approvalThresholdUSD ?? 0)} · click to open Compliance
+                  </p>
                 </button>
               </div>
               )}
