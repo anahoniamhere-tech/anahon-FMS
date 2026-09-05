@@ -14,6 +14,7 @@ import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/a
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
 import { deskIcs } from "./src/deskIcs.js";
+import { canonEmail } from "./src/email.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs } from "./src/personnelDocs.js";
@@ -178,6 +179,20 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/meetings/transcribe"
 ]);
 
+/**
+ * The account behind a verified sign-in. Exact match first; then, for Gmail, the
+ * canonical form — see src/email.ts for why one mailbox has many spellings.
+ */
+async function findUserByEmail(email: string) {
+  const addr = String(email || "").trim().toLowerCase();
+  const exact = await prisma.user.findUnique({ where: { email: addr } });
+  if (exact) return exact;
+  const canon = canonEmail(addr);
+  if (canon === addr && !/@(gmail|googlemail)\.com$/.test(addr)) return null;
+  const all = await prisma.user.findMany();
+  return all.find(u => canonEmail(u.email) === canon) || null;
+}
+
 // Sign-in is the only POST that may be made without already being signed in.
 const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
 
@@ -193,7 +208,7 @@ app.use(async (req: any, res, next) => {
     if (token) {
       try {
         const verified = await verifyIdToken(token);
-        dbUser = await prisma.user.findUnique({ where: { email: verified.email } });
+        dbUser = await findUserByEmail(verified.email);
         if (!dbUser) {
           return res.status(403).json({ error: `${verified.email} authenticated, but has no account in this system. An administrator must create one first.` });
         }
@@ -683,7 +698,7 @@ app.post("/api/auth/sync", async (req, res) => {
       return res.status(401).json({ error: `Sign-in could not be verified: ${err.message}` });
     }
 
-    const user = await prisma.user.findUnique({ where: { email: verified.email } });
+    const user = await findUserByEmail(verified.email);
     if (!user) {
       await createAuditLog(null, verified.email, "Sign-In Refused — No Account",
         `${verified.email} authenticated with Firebase but has no account in this system. No account was created. If this person should have access, a Super Admin must create it explicitly.`);
@@ -713,10 +728,7 @@ app.post("/api/users/create", async (req, res) => {
     // Gmail ignores dots in the local part and Google's ID token reports the address
     // WITHOUT them. Sign-in matches the token exactly, so store it the way Google will
     // say it — "anahon.leb@gmail.com" typed here would otherwise never be able to log in.
-    {
-      const [local, domain] = addr.split("@");
-      if (["gmail.com", "googlemail.com"].includes(domain)) addr = `${local.replace(/\./g, "")}@gmail.com`;
-    }
+    addr = canonEmail(addr);
     if (!ASSIGNABLE_ROLES.includes(role)) return res.status(400).json({ error: `Role must be one of: ${ASSIGNABLE_ROLES.join(", ")}` });
     const existing = await prisma.user.findUnique({ where: { email: addr } });
     if (existing) return res.status(400).json({ error: `${addr} already has an account (${existing.name}, ${existing.role}).` });
@@ -912,7 +924,7 @@ app.get("/api/state", async (req, res) => {
     let viewer;
     try {
       const verified = await verifyIdToken(token);
-      viewer = await prisma.user.findUnique({ where: { email: verified.email } });
+      viewer = await findUserByEmail(verified.email);
     } catch (err: any) {
       return res.status(401).json({ error: `Sign-in could not be verified: ${err.message}` });
     }
@@ -6253,7 +6265,7 @@ function ticketUser(t: string): string {
 }
 async function viewerIdFromReq(req: any): Promise<string> {
   const tok = bearerToken(req);
-  if (tok) { try { const v = await verifyIdToken(tok); const u = await prisma.user.findUnique({ where: { email: v.email } }); if (u && u.active) return u.id; } catch { /* fall through */ } }
+  if (tok) { try { const v = await verifyIdToken(tok); const u = await findUserByEmail(v.email); if (u && u.active) return u.id; } catch { /* fall through */ } }
   return ticketUser(String(req.query.t || ""));
 }
 app.get("/api/document/ticket", async (req, res) => {
