@@ -13,6 +13,7 @@ import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
+import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
 import { canonEmail } from "./src/email.js";
@@ -942,6 +943,41 @@ app.post("/api/reminders/plan", async (req, res) => {
     const viewer = (req as any).dbUser;
     const plan = await reminderPlanFor(viewer);
     res.json({ configured: calendarConfiguredFor(viewer), summary: describePlan(plan), empty: planIsEmpty(plan), plan });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ── The help desk, as a floating question box ───────────────────────────────
+ * Four questions in one: what the Q&A already answers, where to find something, what
+ * this person may do, and what a row on their desk means. The grounding is the repo
+ * itself (src/helpBot.ts) — one prompt, no retrieval, nothing to keep in step.
+ *
+ * The answer is for the role in force: req.body.user.role is the worn seat when a
+ * Super Admin is standing in, their own role otherwise, and the middleware set it.
+ *
+ * What leaves this building: the question, the corpus, and the person's desk rows
+ * reduced to kind/status/verb/door/date. Never the record — the provider is the Gemini
+ * free tier and Google trains on free-tier input.
+ */
+app.post("/api/help/ask", async (req, res) => {
+  try {
+    const question = String(req.body?.question || "").trim();
+    if (!question) return res.status(400).json({ error: "Ask a question first." });
+    if (question.length > 2000) return res.status(400).json({ error: "That question is too long — shorten it." });
+    if (!aiConfigured()) {
+      return res.status(503).json({ error: "The help desk needs an AI key on the server. Ask the Super Admin." });
+    }
+    const viewer = (req as any).dbUser;
+    const role = String(req.body?.user?.role || viewer.role);   // the worn seat when standing in
+    const doors = doorsFor(role);
+    const state = await loadState(viewer);
+    const rows = safeRows(deskItems({ id: viewer.id, email: viewer.email, role }, state as any, localDate()));
+    const raw = await askJson(
+      helpPrompt(question, { role, ownRole: viewer.role, doors, rows, today: localDate() }),
+      REPLY_SCHEMA, undefined, "low"
+    );
+    res.json(parseReply(raw, doors));
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

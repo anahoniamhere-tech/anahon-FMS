@@ -58,6 +58,7 @@ import PartnersTab from "./tabs/PartnersTab";
 import ComplianceTab from "./tabs/ComplianceTab";
 import MyDeskTab from "./tabs/MyDeskTab";
 import DoorsTab from "./tabs/DoorsTab";
+import HelpDesk from "./HelpDesk";
 import FunnelTab from "./tabs/FunnelTab";
 import VendorsTab from "./tabs/VendorsTab";
 import ProductionTab from "./tabs/ProductionTab";
@@ -79,7 +80,7 @@ import SocialTab from "./tabs/SocialTab";
 import WebsiteTab from "./tabs/WebsiteTab";
 import LiveTab from "./tabs/LiveTab";
 import RoleSwitch, { ActingBanner } from "./RoleSwitch";
-import { visibleNav, LANDING } from "./nav";
+import { NAV, visibleNav, LANDING } from "./nav";
 import { withTicket, refreshDocTicket } from "./docTicket";
 import { SharedProps } from "./tabs/shared";
 import { auth } from "./firebaseConfig";
@@ -1606,6 +1607,16 @@ export default function App() {
           </>
         );
       })()}
+
+      {/* The help desk, on every screen. Answers for the role in force and, where the
+          answer has a door, hands back a button that opens it rather than describing it. */}
+      {currentUser && (
+        <HelpDesk
+          t={t} lang={lang} rtl={rtl}
+          doorLabel={k => t(NAV.flatMap(s => s.items).find(i => i.navKey === k)?.label || k)}
+          onOpenDoor={handleNavClick}
+        />
+      )}
 
       {/* Root-Level Floating Sidebar Toggle Handle */}
       <button
