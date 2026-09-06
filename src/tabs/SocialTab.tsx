@@ -50,6 +50,25 @@ export default function SocialTab({ state, currentUser, triggerToast, refreshSta
     const r = await post("/api/social/postiz/unlink", { id }).catch(e => ({ error: e.message }));
     if (r.success) { triggerToast("Unlinked"); await refreshState(); } else triggerToast(r.error || "Unlink failed", "error");
   };
+  // Publish from the desk — text + link to the connected Pages, for items that passed the gate
+  const publishedItems2 = useMemo(() => items.filter(i => i.status === "Published" && !i.retractedAt), [items]);
+  const [deskItem, setDeskItem] = useState(""); const [deskText, setDeskText] = useState(""); const [deskLink, setDeskLink] = useState("");
+  const [deskAccounts, setDeskAccounts] = useState<string[]>([]); const [deskWhen, setDeskWhen] = useState(""); const [deskBusy, setDeskBusy] = useState(false);
+  const textAccounts: any[] = (pz?.integrations || []).filter((a: any) => !a.disabled && !/instagram|tiktok|youtube/.test(a.network));
+  const pickDeskItem = (id: string) => {
+    setDeskItem(id); const it = publishedItems2.find(i => i.id === id); if (!it) return;
+    setDeskText(`${it.title}\n\n${it.brief || ""}`.trim()); setDeskLink(it.websiteUrl || "");
+    if (!deskAccounts.length) setDeskAccounts(textAccounts.map(a => a.id));
+  };
+  const deskPublish = async () => {
+    const names = textAccounts.filter(a => deskAccounts.includes(a.id)).map(a => a.name).join(", ");
+    if (!window.confirm(`Post this ${deskWhen ? "at " + deskWhen.replace("T", " ") : "now"} to ${names}?\n\n${deskText.slice(0, 200)}`)) return;
+    setDeskBusy(true);
+    const r = await post("/api/social/postiz/publish", { id: deskItem, integrationIds: deskAccounts, message: deskText, link: deskLink || undefined, when: deskWhen ? new Date(deskWhen).toISOString() : "now" }).catch(e => ({ error: e.message }));
+    setDeskBusy(false);
+    if (r.success) { triggerToast(deskWhen ? "Scheduled through Postiz" : "Posting through Postiz — the state updates within minutes"); setDeskItem(""); setDeskText(""); setDeskLink(""); setDeskWhen(""); await refreshState(); }
+    else triggerToast(r.error || "Postiz refused the post", "error");
+  };
   const STATE_PILL: Record<string, string> = { DRAFT: "bg-slate-100 text-slate-700", QUEUE: "bg-amber-50 text-amber-800", PUBLISHED: "bg-emerald-50 text-emerald-800", ERROR: "bg-red-50 text-red-800" };
   const STATE_WORD: Record<string, string> = { DRAFT: "draft, waiting for the gate", QUEUE: "scheduled", PUBLISHED: "published", ERROR: "failed" };
   const pill = (l: any) => (
@@ -131,6 +150,30 @@ export default function SocialTab({ state, currentUser, triggerToast, refreshSta
               </select>
             ))}
             {linkGroup && <button onClick={linkDraft} disabled={linking} className="rounded bg-red-700 px-3 py-1 font-bold text-white disabled:opacity-40">{linking ? "Linking…" : "Link"}</button>}
+          </div>
+        )}
+
+        {canPost && pz?.ok && textAccounts.length > 0 && publishedItems2.length > 0 && (
+          <div className="space-y-2 rounded border border-slate-200 p-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <b>Publish from the desk</b>
+              <select value={deskItem} onChange={e => pickDeskItem(e.target.value)} className="rounded border border-slate-300 px-2 py-1">
+                <option value="">a published item…</option>
+                {publishedItems2.map(i => <option key={i.id} value={i.id}>{i.title.slice(0, 60)}</option>)}
+              </select>
+              <span className="text-slate-500">text and links only — photos are composed in Postiz</span>
+            </div>
+            {deskItem && (<>
+              <textarea value={deskText} onChange={e => setDeskText(e.target.value)} rows={4} dir="auto" className="w-full rounded border border-slate-300 p-2" />
+              <input value={deskLink} onChange={e => setDeskLink(e.target.value)} dir="ltr" placeholder="Link (optional) — https://anahon.org/…" className="w-full rounded border border-slate-300 px-2 py-1" />
+              <div className="flex flex-wrap items-center gap-3">
+                {textAccounts.map(a => (
+                  <label key={a.id} className="flex items-center gap-1"><input type="checkbox" checked={deskAccounts.includes(a.id)} onChange={e => setDeskAccounts(e.target.checked ? [...deskAccounts, a.id] : deskAccounts.filter(x => x !== a.id))} /> {a.channel} · {a.name}</label>
+                ))}
+                <label className="flex items-center gap-1 text-slate-600">when <input type="datetime-local" value={deskWhen} onChange={e => setDeskWhen(e.target.value)} dir="ltr" className="rounded border border-slate-300 px-1 py-0.5" /> <span className="text-slate-400">(empty = now)</span></label>
+                <button onClick={deskPublish} disabled={deskBusy || !deskAccounts.length || !deskText.trim()} className="ms-auto rounded bg-red-700 px-4 py-1.5 font-bold text-white disabled:opacity-40">{deskBusy ? "Sending…" : deskWhen ? "Schedule" : "Post now"}</button>
+              </div>
+            </>)}
           </div>
         )}
 

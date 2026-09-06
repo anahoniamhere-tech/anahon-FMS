@@ -67,6 +67,27 @@ export function draftGroups(posts: PostizPost[], linked: Set<string>) {
   })).sort((a, b) => a.publishDate.localeCompare(b.publishDate));
 }
 
+/**
+ * "Publish from the desk": one text (with an optional link) to a set of Postiz accounts, without
+ * opening Postiz. Only offered for items that already passed the gate. Text and links only —
+ * photos need a public media address Postiz does not have yet (PLAN.md §2).
+ */
+const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+export function buildDeskPost(o: { integrationIds: string[]; message: string; link?: string; when?: string }) {
+  const text = [o.message.trim(), (o.link || "").trim()].filter(Boolean).join("\n\n");
+  if (!text) throw new Error("a post needs a message or a link");
+  if (!o.integrationIds.length) throw new Error("pick at least one account");
+  const content = text.split(/\n{2,}/).map(p => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`).join("");
+  const when = o.when && o.when !== "now" ? new Date(o.when) : new Date(Date.now() + 60_000);
+  if (isNaN(when.getTime())) throw new Error("the date is not valid");
+  const group = `desk-${Date.now().toString(36)}`;
+  return {
+    type: o.when && o.when !== "now" ? "schedule" : "now",
+    date: when.toISOString(), shortLink: false, tags: [],
+    posts: o.integrationIds.map(id => ({ integration: { id }, group, value: [{ content, image: [] }], settings: {} }))
+  };
+}
+
 // ---- client ------------------------------------------------------------------------------
 const base = () => (process.env.POSTIZ_URL || "").trim().replace(/\/$/, "");
 const key = () => (process.env.POSTIZ_API_KEY || "").trim();
@@ -93,6 +114,8 @@ export const postiz = {
   /** Every post whose publish date falls in the window — drafts, queued, published and errored alike. */
   posts: (from = days(-30), to = days(120)) =>
     api<{ posts: PostizPost[] }>(`/posts?startDate=${encodeURIComponent(iso(from))}&endDate=${encodeURIComponent(iso(to))}`).then(r => r.posts || []),
+  /** Returns one {postId, integration} per account. */
+  create: (body: ReturnType<typeof buildDeskPost>) => api<{ postId: string; integration: string }[]>("/posts", { method: "POST", body }),
   schedule: (postId: string) => api(`/posts/${postId}/status`, { method: "PUT", body: { status: "schedule" } }),
   unschedule: (postId: string) => api(`/posts/${postId}/status`, { method: "PUT", body: { status: "draft" } })
 };

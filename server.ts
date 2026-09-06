@@ -10,7 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
-import { postiz, postizConfigured, postizPublicUrl, toLinks, mergeStates, outsideGate, draftGroups, channelOf, type PostizLink, type PostizPost } from "./src/postiz.js";
+import { postiz, postizConfigured, postizPublicUrl, toLinks, mergeStates, outsideGate, draftGroups, channelOf, buildDeskPost, type PostizLink, type PostizPost } from "./src/postiz.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
@@ -127,7 +127,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
   "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build",
   "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
-  "/api/social/publish", "/api/social/edit", "/api/social/delete", "/api/social/postiz/link", "/api/social/postiz/unlink",
+  "/api/social/publish", "/api/social/edit", "/api/social/delete", "/api/social/postiz/link", "/api/social/postiz/unlink", "/api/social/postiz/publish",
   "/api/tools/save", "/api/tools/delete",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/document/upload", "/api/materials/link",
@@ -137,7 +137,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 const EDITOR_ALLOWED_POSTS = new Set([
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
-  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/delete", "/api/social/edit", "/api/social/publish", "/api/social/postiz/link", "/api/social/postiz/unlink", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
+  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/delete", "/api/social/edit", "/api/social/publish", "/api/social/postiz/link", "/api/social/postiz/unlink", "/api/social/postiz/publish", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
 ]);
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
 // Anyone can be given a task, so every working seat may tick its own and put it back;
@@ -4435,6 +4435,31 @@ app.post("/api/social/postiz/unlink", async (req, res) => {
     await createAuditLog(user?.id, user?.name, "Social Draft Unlinked", `"${item.title}" no longer releases any Postiz draft.`);
     res.json({ success: true, item: updated });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+// Publish from the desk: a Published item, a text, the accounts — Postiz posts it, no composer visit.
+app.post("/api/social/postiz/publish", async (req, res) => {
+  try {
+    const { id, integrationIds, message, link, when, user } = req.body;
+    if (!SITE_EDITORS.includes(user?.role)) return res.status(403).json({ error: "Posting needs an editor or the Digital Officer." });
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (item.status !== "Published" || item.retractedAt) return res.status(403).json({ error: "Only items that passed the gate (Published, not retracted) can be posted from the desk." });
+    const accounts: any[] = await postiz.integrations();
+    const chosen = accounts.filter(a => (integrationIds || []).includes(a.id) && !a.disabled);
+    if (!chosen.length) return res.status(400).json({ error: "Pick at least one connected account." });
+    const noText = chosen.filter(a => /instagram|tiktok|youtube/.test(a.identifier));
+    if (noText.length) return res.status(400).json({ error: `${noText.map(a => a.name).join(", ")}: this network needs media — compose it in Postiz.` });
+    const body = buildDeskPost({ integrationIds: chosen.map(a => a.id), message: String(message || ""), link, when });
+    const created = await postiz.create(body);
+    const links: PostizLink[] = created.map(c => {
+      const a = chosen.find(x => x.id === c.integration) || {};
+      return { postId: c.postId, integrationId: c.integration, channel: channelOf(a.identifier), network: a.identifier, account: a.name,
+        state: "QUEUE", releaseURL: "", publishDate: body.date, preview: String(message || "").slice(0, 140) };
+    });
+    const updated = await prisma.contentItem.update({ where: { id }, data: { postizJson: JSON.stringify([...parsePostiz(item), ...links]) } });
+    await createAuditLog(user?.id, user?.name, "Social Post Scheduled", `"${item.title}" → ${links.map(l => `${l.channel} (${l.account})`).join(", ")} ${body.type === "now" ? "now" : `at ${body.date.slice(0, 16).replace("T", " ")}`}: "${String(message || "").slice(0, 80)}"`);
+    res.json({ success: true, item: updated, posts: links });
+  } catch (e: any) { res.status(400).json({ error: e.message }); }
 });
 /** Called by /api/content/publish once the gate has passed and the audit row is written. */
 async function releaseToPostiz(item: { id: string; title: string; postizJson: string }, user: any) {

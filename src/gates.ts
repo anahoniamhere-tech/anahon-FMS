@@ -141,6 +141,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/social/delete": SITE_EDITORS,
   "/api/social/postiz/link": SITE_EDITORS,      // a Postiz draft is linked before the gate; the gate itself is /api/content/publish
   "/api/social/postiz/unlink": SITE_EDITORS,
+  "/api/social/postiz/publish": SITE_EDITORS,     // only for items already Published — the route checks the record
   "/api/tools/save": TOOL_EDITORS,
   "/api/tools/delete": TOOL_EDITORS,
   "/api/contacts/save": CONTACT_EDITORS,
