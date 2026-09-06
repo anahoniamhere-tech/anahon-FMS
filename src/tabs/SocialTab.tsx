@@ -19,7 +19,7 @@ const STATE_PILL: Record<string, string> = {
 const STATE_WORD: Record<string, string> = { Draft: "waiting for the gate", Queued: "scheduled", Publishing: "publishing…", Published: "published", Failed: "failed", Cancelled: "cancelled" };
 const fmtWhen = (iso: string) => iso ? iso.slice(0, 16).replace("T", " ") : "";
 const toLocalInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-const MAX_VIDEO_MB = 300;
+const MAX_VIDEO_MB = 300; const MAX_IMAGE_MB = 10;
 type Media = "none" | "cover" | "image" | "video";
 
 export default function SocialTab({ state, currentUser, triggerToast }: SharedProps) {
@@ -52,16 +52,16 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
   const items: any[] = useMemo(() => ((state as any)?.contentItems || []).filter((i: any) => !i.retractedAt), [state]);
   const [targets, setTargets] = useState<string[]>([]);          // "accountId|network"
   const [message, setMessage] = useState(""); const [link, setLink] = useState("");
-  const [media, setMedia] = useState<Media>("none"); const [imageUrl, setImageUrl] = useState("");
+  const [media, setMedia] = useState<Media>("none"); const [imageUrl, setImageUrl] = useState(""); const [imageId, setImageId] = useState("");
   const [videoId, setVideoId] = useState(""); const [asReel, setAsReel] = useState(false);
-  const [videos, setVideos] = useState<any[] | null>(null); const [uploading, setUploading] = useState(0);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [library, setLibrary] = useState<{ videos: any[]; images: any[] } | null>(null); const [uploading, setUploading] = useState(0);
+  const fileRef = useRef<HTMLInputElement>(null); const imgRef = useRef<HTMLInputElement>(null);
   const [itemId, setItemId] = useState(""); const [when, setWhen] = useState(""); const [busy, setBusy] = useState(false);
   const item = items.find(i => i.id === itemId);
   const targetOptions = accounts.flatMap(a => [{ key: `${a.id}|facebook`, label: `Facebook · ${a.name}` }, ...(a.igId ? [{ key: `${a.id}|instagram`, label: `Instagram · @${a.igUsername}` }] : [])]);
   useEffect(() => { if (!targets.length && accounts.length) setTargets(accounts.map(a => `${a.id}|facebook`)); }, [accounts.length]);
-  const loadVideos = () => fetch("/api/social/videos").then(r => r.json()).then(d => setVideos(d.ok ? d.videos : [])).catch(() => setVideos([]));
-  useEffect(() => { if (media === "video" && videos == null) loadVideos(); }, [media]);
+  const loadLibrary = () => fetch("/api/social/media").then(r => r.json()).then(d => setLibrary(d.ok ? d : { videos: [], images: [] })).catch(() => setLibrary({ videos: [], images: [] }));
+  useEffect(() => { if ((media === "video" || media === "image") && library == null) loadLibrary(); }, [media]);
   const pickItem = (id: string) => {
     setItemId(id); const it = items.find(i => i.id === id);
     if (media === "cover" && !it?.coverPath) setMedia("none");             // the cover pill must never stay lit for an item without one
@@ -69,20 +69,25 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
     setMessage(`${it.title}\n\n${it.brief || ""}`.trim()); setLink(it.websiteUrl || "");
     if (it.coverPath && media === "none") setMedia("cover");
   };
-  const uploadVideo = async (f: File) => {
-    const type = /\.mov$/i.test(f.name) ? "video/quicktime" : /\.mp4$/i.test(f.name) ? "video/mp4" : f.type;   // some systems give a .mov no type at all
-    if (!/^video\/(mp4|quicktime)$/.test(type)) return triggerToast("Only MP4 or MOV videos", "error");
-    if (f.size > MAX_VIDEO_MB * 1048576) return triggerToast(`That video is ${Math.round(f.size / 1048576)} MB; the limit is ${MAX_VIDEO_MB} MB`, "error");
+  // Upload a video or an image into the vault; the server files it and hands back the document.
+  const uploadMedia = async (f: File, kind: "video" | "image") => {
+    const type = kind === "video"
+      ? (/\.mov$/i.test(f.name) ? "video/quicktime" : /\.mp4$/i.test(f.name) ? "video/mp4" : f.type)      // some systems give a .mov no type at all
+      : (/\.jpe?g$/i.test(f.name) ? "image/jpeg" : /\.png$/i.test(f.name) ? "image/png" : /\.webp$/i.test(f.name) ? "image/webp" : f.type);
+    if (kind === "video" && !/^video\/(mp4|quicktime)$/.test(type)) return triggerToast("Only MP4 or MOV videos", "error");
+    if (kind === "image" && !/^image\/(jpeg|png|webp)$/.test(type)) return triggerToast("Only JPEG, PNG or WebP images", "error");
+    const capMb = kind === "video" ? MAX_VIDEO_MB : MAX_IMAGE_MB;
+    if (f.size > capMb * 1048576) return triggerToast(`That file is ${Math.round(f.size / 1048576)} MB; the limit is ${capMb} MB`, "error");
     setUploading(f.size);
-    const r = await fetch(`/api/social/video?name=${encodeURIComponent(f.name)}&item=${encodeURIComponent(itemId)}`, { method: "POST", headers: { "content-type": type }, body: f })
-      .then(async res => { try { return await res.json(); } catch { return { error: res.status === 413 ? `The server refused the size (over ${MAX_VIDEO_MB} MB)` : `Upload failed (HTTP ${res.status})` }; } }).catch(e => ({ error: e.message }));
+    const r = await fetch(`/api/social/media?name=${encodeURIComponent(f.name)}&item=${encodeURIComponent(itemId)}`, { method: "POST", headers: { "content-type": type }, body: f })
+      .then(async res => { try { return await res.json(); } catch { return { error: res.status === 413 ? `The server refused the size (over ${capMb} MB)` : `Upload failed (HTTP ${res.status})` }; } }).catch(e => ({ error: e.message }));
     setUploading(0);
-    if (r.success) { triggerToast(r.duplicate ? "That video was already in the vault — reused" : `Uploaded ${r.doc.filename} (${r.doc.sizeStr})`); setVideoId(r.doc.id); loadVideos(); }
+    if (r.success) { triggerToast(r.duplicate ? "That file was already in the vault — reused" : `Uploaded ${r.doc.filename} (${r.doc.sizeStr})`); if (kind === "video") setVideoId(r.doc.id); else { setImageId(r.doc.id); setImageUrl(""); } loadLibrary(); }
     else triggerToast(r.error || "Upload failed", "error");
   };
   const igChosen = targets.some(t => t.endsWith("|instagram")); const fbChosen = targets.some(t => t.endsWith("|facebook"));
   const willDraft = item && item.status !== "Published";
-  const hasMedia = media === "cover" ? !!item?.coverPath : media === "image" ? !!imageUrl : media === "video" ? !!videoId : false;
+  const hasMedia = media === "cover" ? !!item?.coverPath : media === "image" ? !!(imageUrl || imageId) : media === "video" ? !!videoId : false;
   const canSend = targets.length > 0 && !busy && !uploading && (message.trim() || link.trim() || hasMedia) && (media === "none" || hasMedia) && !(igChosen && media !== "video" && media !== "image");
   const queueIt = async () => {
     const names = targetOptions.filter(o => targets.includes(o.key)).map(o => o.label).join(", ");
@@ -91,12 +96,12 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
     setBusy(true);
     const r = await post("/api/social/queue", {
       targets: targets.map(t => { const [accountId, network] = t.split("|"); return { accountId, network }; }),
-      message, link: link || undefined, imageUrl: media === "image" ? imageUrl : undefined, useCover: media === "cover",
+      message, link: link || undefined, imageUrl: media === "image" && !imageId ? imageUrl : undefined, imageRef: media === "image" && imageId ? imageId : undefined, useCover: media === "cover",
       videoRef: media === "video" ? videoId : undefined, asReel: media === "video" && asReel,
       publishAt: when ? new Date(when).toISOString() : undefined, contentItemId: itemId || undefined
     }).catch(e => ({ error: e.message }));
     setBusy(false);
-    if (r.success) { triggerToast(r.drafted ? "Drafted — it goes out when the item passes the gate" : when ? "Scheduled" : media === "video" ? (igChosen ? "Uploading to the networks — Instagram takes a few minutes to process a Reel" : "Uploading to Facebook — the queue reports when it is live") : "Publishing — the queue reports within a minute"); setMessage(""); setLink(""); setImageUrl(""); setVideoId(""); setMedia("none"); setItemId(""); setWhen(""); loadQueue(); }
+    if (r.success) { triggerToast(r.drafted ? "Drafted — it goes out when the item passes the gate" : when ? "Scheduled" : media === "video" ? (igChosen ? "Uploading to the networks — Instagram takes a few minutes to process a Reel" : "Uploading to Facebook — the queue reports when it is live") : "Publishing — the queue reports within a minute"); setMessage(""); setLink(""); setImageUrl(""); setImageId(""); setVideoId(""); setMedia("none"); setItemId(""); setWhen(""); loadQueue(); }
     else triggerToast(r.error || "Could not queue the post", "error");
   };
   const act = async (route: string, id: string, ok: string) => {
@@ -177,16 +182,30 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
             <div className="flex rounded-full bg-slate-100 p-0.5">
               {mediaBtn("none", "none")}{mediaBtn("cover", "item's cover", !item?.coverPath)}{mediaBtn("image", "image URL")}{mediaBtn("video", "video")}
             </div>
-            {media === "image" && <input value={imageUrl} onChange={e => setImageUrl(e.target.value)} dir="ltr" placeholder="https://… (public)" className="min-w-[16rem] flex-1 rounded border border-slate-300 px-2 py-1" />}
           </div>
+          {media === "image" && (
+            <div className="space-y-2 rounded border border-slate-200 p-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <select value={imageId} onChange={e => { setImageId(e.target.value); if (e.target.value) setImageUrl(""); }} dir="ltr" className="min-w-[16rem] flex-1 rounded border border-slate-300 px-2 py-1">
+                  <option value="">{library == null ? "loading the vault's images…" : library.images.length ? "choose an image in the vault…" : "no images in the vault yet"}</option>
+                  {(library?.images || []).map(v => <option key={v.id} value={v.id}>{`${v.filename} · ${v.sizeStr} · ${v.created_at.slice(0, 10)}${v.refNo ? ` · ${v.refNo}` : ""}`}</option>)}
+                </select>
+                <input ref={imgRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadMedia(f, "image"); e.target.value = ""; }} />
+                <button type="button" onClick={() => imgRef.current?.click()} disabled={!!uploading} className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40">{uploading ? `Uploading ${Math.max(1, Math.round(uploading / 1048576))} MB…` : "Upload an image"}</button>
+                <span className="text-slate-400">or</span>
+                <input value={imageUrl} onChange={e => { setImageUrl(e.target.value); if (e.target.value) setImageId(""); }} dir="ltr" placeholder="a public https:// address" className="min-w-[14rem] flex-1 rounded border border-slate-300 px-2 py-1" />
+              </div>
+              <p className="text-slate-500">JPEG, PNG or WebP up to <span dir="ltr">{MAX_IMAGE_MB} MB</span>. An uploaded image reaches Facebook; Instagram only takes a public address, because Meta fetches the file itself.</p>
+            </div>
+          )}
           {media === "video" && (
             <div className="space-y-2 rounded border border-slate-200 p-2">
               <div className="flex flex-wrap items-center gap-2">
                 <select value={videoId} onChange={e => setVideoId(e.target.value)} dir="ltr" className="min-w-[16rem] flex-1 rounded border border-slate-300 px-2 py-1">
-                  <option value="">{videos == null ? "loading the vault's videos…" : videos.length ? "choose a video in the vault…" : "no videos in the vault yet"}</option>
-                  {(videos || []).map(v => <option key={v.id} value={v.id}>{`${v.filename} · ${v.sizeStr} · ${v.created_at.slice(0, 10)}${v.refNo ? ` · ${v.refNo}` : ""}`}</option>)}
+                  <option value="">{library == null ? "loading the vault's videos…" : library.videos.length ? "choose a video in the vault…" : "no videos in the vault yet"}</option>
+                  {(library?.videos || []).map(v => <option key={v.id} value={v.id}>{`${v.filename} · ${v.sizeStr} · ${v.created_at.slice(0, 10)}${v.refNo ? ` · ${v.refNo}` : ""}`}</option>)}
                 </select>
-                <input ref={fileRef} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadVideo(f); e.target.value = ""; }} />
+                <input ref={fileRef} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadMedia(f, "video"); e.target.value = ""; }} />
                 <button type="button" onClick={() => fileRef.current?.click()} disabled={!!uploading} className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40">{uploading ? `Uploading ${Math.round(uploading / 1048576)} MB…` : "Upload a video"}</button>
                 {fbChosen && <label className="flex items-center gap-1"><input type="checkbox" checked={asReel} onChange={e => setAsReel(e.target.checked)} /> as a Reel on Facebook (vertical 9:16, 3–90 s)</label>}
               </div>
@@ -194,7 +213,7 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
             </div>
           )}
           {igChosen && media !== "video" && media !== "image" && <p className="text-amber-700">Instagram needs an image or a video. An image must be a public HTTPS address (Meta fetches the file itself); a video from the vault works, as a Reel.</p>}
-          {igChosen && media === "cover" && <p className="text-amber-700">The item's cover on the vault reaches Facebook only — Instagram needs a public image address.</p>}
+          {igChosen && (media === "cover" || (media === "image" && imageId)) && <p className="text-amber-700">An image on the vault reaches Facebook only — Instagram needs a public image address.</p>}
 
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-1 text-slate-600">when <input type="datetime-local" value={when} min={toLocalInput(new Date())} onChange={e => setWhen(e.target.value)} dir="ltr" disabled={!!willDraft} className="rounded border border-slate-300 px-1 py-0.5 disabled:opacity-40" /> <span className="text-slate-400">(empty = now)</span></label>

@@ -10,7 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
-import { graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
+import { graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
@@ -127,7 +127,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
   "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build",
   "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
-  "/api/social/accounts/remove", "/api/social/video", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete",
+  "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete",
   "/api/tools/save", "/api/tools/delete",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/document/upload", "/api/materials/link",
@@ -137,7 +137,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 const EDITOR_ALLOWED_POSTS = new Set([
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
-  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/video", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
+  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
 ]);
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
 // Anyone can be given a task, so every working seat may tick its own and put it back;
@@ -4388,56 +4388,67 @@ app.get("/api/social/queue", async (_req, res) => {
   const items = ids.length ? await prisma.contentItem.findMany({ where: { id: { in: ids } }, select: { id: true, title: true, status: true } }) : [];
   res.json({ ok: true, rows: rows.map(r => ({ ...r, stats: JSON.parse(r.statsJson || "{}") })), items: Object.fromEntries(items.map(i => [i.id, i])) });
 });
-// Videos come from the vault. This is the one upload route that takes raw bytes instead of JSON
+// Media comes from the vault. This is the one upload route that takes raw bytes instead of JSON
 // base64 (express.json is capped at 50 MB, which would cap a video near 37 MB): the file is written
-// under GENERAL/Social Video and filed as an AppDoc like every other paper, hash-deduplicated.
-const SOCIAL_VIDEO_CATEGORIES = ["Social Video", "Reference Material"];   // what the desk may post: its own uploads and the Editorial desk's materials — never project evidence or deliverables
-const VIDEO_FIELDS = { id: true, refNo: true, filename: true, mimeType: true, sizeStr: true, category: true, linkedRecordId: true, created_at: true } as const;
+// under GENERAL/Social Video or GENERAL/Social Image and filed as an AppDoc like every other paper.
+const SOCIAL_MEDIA_CATEGORIES = ["Social Video", "Social Image", "Reference Material", "Cover"];   // what the desk may post: its own uploads and the Editorial desk's — never project evidence or deliverables
+const MEDIA_FIELDS = { id: true, refNo: true, filename: true, mimeType: true, sizeStr: true, category: true, linkedRecordId: true, created_at: true } as const;
 const ISO_BMFF_BOXES = new Set(["ftyp", "moov", "mdat", "free", "skip", "wide", "pnot"]);   // an MP4 opens with ftyp; an old .mov may open on another box
 const looksLikeMp4 = (head: Buffer) => head.length >= 8 && ISO_BMFF_BOXES.has(head.subarray(4, 8).toString("latin1"));
-app.post("/api/social/video", express.raw({ type: "video/*", limit: MAX_VIDEO_BYTES }), async (req: any, res) => {
+/** The bytes must say what the name says: JPEG, PNG or WebP magic. */
+const looksLikeImage = (head: Buffer, mime: string) =>
+  mime === "image/jpeg" ? head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff
+  : mime === "image/png" ? head.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+  : mime === "image/webp" ? head.subarray(0, 4).toString("latin1") === "RIFF" && head.subarray(8, 12).toString("latin1") === "WEBP"
+  : false;
+const looksLikeMedia = (head: Buffer, mime: string) => mime.startsWith("video/") ? looksLikeMp4(head) : looksLikeImage(head, mime);
+app.post("/api/social/media", express.raw({ type: ["video/*", "image/*"], limit: MAX_VIDEO_BYTES }), async (req: any, res) => {
   try {
     const user = req.dbUser;                                                  // express.raw replaced req.body, so the guard's req.body.user is gone
-    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Uploading a video needs an editor or the Digital Officer." });
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Uploading media needs an editor or the Digital Officer." });
     const buffer: Buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     const mime = String(req.headers["content-type"] || "").split(";")[0].trim();
-    if (!buffer.length) return res.status(400).json({ error: "No video received." });
-    if (!VIDEO_MIMES.includes(mime)) return res.status(400).json({ error: `${mime || "That file"} is not a video the networks accept. ${VIDEO_SPEC}.` });
-    if (buffer.length > MAX_VIDEO_BYTES) return res.status(400).json({ error: `The video is ${Math.round(buffer.length / 1048576)} MB; the limit is ${MAX_VIDEO_BYTES / 1048576} MB.` });
-    if (!looksLikeMp4(buffer)) return res.status(400).json({ error: `That file is not an MP4/MOV inside, whatever its name. ${VIDEO_SPEC}.` });
-    const safeName = String(req.query.name || `video-${Date.now()}.mp4`).replace(/[^\w.\-()\[\] ؀-ۿ]/g, "_").slice(-120);
+    const video = mime.startsWith("video/");
+    if (!buffer.length) return res.status(400).json({ error: "No file received." });
+    if (!(video ? VIDEO_MIMES : IMAGE_MIMES).includes(mime)) return res.status(400).json({ error: video ? `${mime} is not a video the networks accept. ${VIDEO_SPEC}.` : `${mime || "That file"} is not an image the networks accept — JPEG, PNG or WebP.` });
+    const cap = video ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+    if (buffer.length > cap) return res.status(400).json({ error: `The file is ${Math.round(buffer.length / 1048576)} MB; the limit is ${cap / 1048576} MB.` });
+    if (!looksLikeMedia(buffer.subarray(0, 12), mime)) return res.status(400).json({ error: video ? `That file is not an MP4/MOV inside, whatever its name. ${VIDEO_SPEC}.` : "That file is not a JPEG, PNG or WebP inside, whatever its name." });
+    const category = video ? "Social Video" : "Social Image";
+    const safeName = String(req.query.name || `${video ? "video" : "image"}-${Date.now()}`).replace(/[^\w.\-()\[\] ؀-ۿ]/g, "_").slice(-120);
     const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
-    // ponytail: "the same bytes never file twice" bends to "never twice as a Social Video" — a project's clip
-    // re-uploaded here gets its own postable row rather than handing the desk the project's document.
-    const dupe = await prisma.appDoc.findFirst({ where: { contentHash, category: "Social Video" }, select: VIDEO_FIELDS });
+    // ponytail: "the same bytes never file twice" bends to "never twice in the desk's own categories" — a project's
+    // clip re-uploaded here gets its own postable row rather than handing the desk the project's document.
+    const dupe = await prisma.appDoc.findFirst({ where: { contentHash, category }, select: MEDIA_FIELDS });
     if (dupe) {
-      await createAuditLog(user.id, user.name, "Document Already On File", `${safeName} matches ${dupe.refNo || dupe.id} byte-for-byte — existing video reused.`);
+      await createAuditLog(user.id, user.name, "Document Already On File", `${safeName} matches ${dupe.refNo || dupe.id} byte-for-byte — existing file reused.`);
       return res.json({ success: true, doc: dupe, duplicate: true });
     }
-    const dir = path.join(VAULT_ROOT, "GENERAL", "Social Video");
+    const dir = path.join(VAULT_ROOT, "GENERAL", category);
     fs.mkdirSync(dir, { recursive: true });
     let finalName = safeName;
     if (fs.existsSync(path.join(dir, finalName))) finalName = `${Date.now()}_${safeName}`;
     fs.writeFileSync(path.join(dir, finalName), buffer);
     const doc = await prisma.appDoc.create({ data: {
       id: `doc-${Date.now()}`, refNo: await nextDocRef(prisma), filename: safeName, mimeType: mime,
-      sizeStr: `${Math.max(1, Math.round(buffer.length / 1048576))} MB`, base64: `file://GENERAL/Social Video/${finalName}`,
-      category: "Social Video", linkedRecordType: "Content", linkedRecordId: String(req.query.item || "") || "-", contentHash, created_at: new Date().toISOString()
-    }, select: VIDEO_FIELDS });
-    await createAuditLog(user.id, user.name, "Document Uploaded", `${safeName} (${doc.sizeStr}) filed as ${doc.refNo} under GENERAL/Social Video for the Social desk.`);
+      sizeStr: buffer.length >= 1048576 ? `${Math.round(buffer.length / 1048576)} MB` : `${Math.max(1, Math.round(buffer.length / 1024))} KB`,
+      base64: `file://GENERAL/${category}/${finalName}`,
+      category, linkedRecordType: "Content", linkedRecordId: String(req.query.item || "") || "-", contentHash, created_at: new Date().toISOString()
+    }, select: MEDIA_FIELDS });
+    await createAuditLog(user.id, user.name, "Document Uploaded", `${safeName} (${doc.sizeStr}) filed as ${doc.refNo} under GENERAL/${category} for the Social desk.`);
     res.json({ success: true, doc });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
-app.get("/api/social/videos", async (req: any, res) => {
-  if (!SITE_EDITOR_ROLES.includes(req.dbUser?.role)) return res.status(403).json({ error: "The vault's videos are the Social desk's." });
-  const docs = await prisma.appDoc.findMany({ where: { mimeType: { startsWith: "video/" }, category: { in: SOCIAL_VIDEO_CATEGORIES } }, orderBy: { created_at: "desc" }, take: 50, select: VIDEO_FIELDS });
-  res.json({ ok: true, videos: docs });
+app.get("/api/social/media", async (req: any, res) => {
+  if (!SITE_EDITOR_ROLES.includes(req.dbUser?.role)) return res.status(403).json({ error: "The vault's media is the Social desk's." });
+  const docs = await prisma.appDoc.findMany({ where: { category: { in: SOCIAL_MEDIA_CATEGORIES }, OR: [{ mimeType: { startsWith: "video/" } }, { mimeType: { startsWith: "image/" } }] }, orderBy: { created_at: "desc" }, take: 100, select: MEDIA_FIELDS });
+  res.json({ ok: true, videos: docs.filter(d => d.mimeType.startsWith("video/")), images: docs.filter(d => d.mimeType.startsWith("image/")) });
 });
 // Queue one post per target. Tied to an item that has not passed the gate → Draft, released by
 // /api/content/publish. Tied to a published item, or to no item → Queued for publishAt (now by default).
 app.post("/api/social/queue", async (req, res) => {
   try {
-    const { targets, message, link, imageUrl, useCover, videoRef, asReel, publishAt, contentItemId, user } = req.body;
+    const { targets, message, link, imageUrl, imageRef, useCover, videoRef, asReel, publishAt, contentItemId, user } = req.body;
     if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Posting to social media needs an editor or the Digital Officer." });
     const list: { accountId: string; network: string }[] = Array.isArray(targets) ? targets : [];
     if (!list.length) return res.status(400).json({ error: "Pick at least one account." });
@@ -4448,16 +4459,23 @@ app.post("/api/social/queue", async (req, res) => {
       if (!item?.coverPath) return res.status(400).json({ error: "That item has no cover to post." });
       image = `cover:${item.id}`;
     }
-    if (image && !/^https:\/\//.test(image) && !image.startsWith("cover:")) return res.status(400).json({ error: "An image must be a public HTTPS address, or the item's cover." });
+    // A vault file the desk may post: its own upload or the Editorial desk's; the bytes must be what the name says.
+    const vaultMedia = async (docId: string, kind: "video" | "image") => {
+      const d = await prisma.appDoc.findUnique({ where: { id: String(docId) } });
+      const file = d ? vaultPathFromPointer(d.base64 || "") : null;
+      if (!d || isPersonnelDoc(d) || !SOCIAL_MEDIA_CATEGORIES.includes(d.category) || !file || !fs.existsSync(file)) throw new Error(`That ${kind} is not one the desk may post — upload it here first.`);
+      if (!(kind === "video" ? VIDEO_MIMES : IMAGE_MIMES).includes(d.mimeType)) throw new Error(kind === "video" ? `That file is ${d.mimeType}, not a video the networks accept. ${VIDEO_SPEC}.` : `That file is ${d.mimeType}, not an image the networks accept — JPEG, PNG or WebP.`);
+      const fd = fs.openSync(file, "r"); const head = Buffer.alloc(12); fs.readSync(fd, head, 0, 12, 0); fs.closeSync(fd);
+      if (!looksLikeMedia(head, d.mimeType)) throw new Error(`That file is not a ${kind === "video" ? "MP4/MOV" : "JPEG, PNG or WebP"} inside, whatever its name.`);
+      return `doc:${d.id}`;
+    };
+    try {
+      if (imageRef) image = await vaultMedia(imageRef, "image");
+    } catch (e: any) { return res.status(400).json({ error: e.message }); }
+    if (image && !/^https:\/\//.test(image) && !image.startsWith("cover:") && !image.startsWith("doc:")) return res.status(400).json({ error: "An image must be a public HTTPS address, an upload, or the item's cover." });
     let video = "";
     if (videoRef) {
-      const d = await prisma.appDoc.findUnique({ where: { id: String(videoRef) } });
-      const file = d ? vaultPathFromPointer(d.base64 || "") : null;
-      if (!d || isPersonnelDoc(d) || !SOCIAL_VIDEO_CATEGORIES.includes(d.category) || !file || !fs.existsSync(file)) return res.status(400).json({ error: "That video is not one the desk may post — upload it here first." });
-      if (!VIDEO_MIMES.includes(d.mimeType)) return res.status(400).json({ error: `That file is ${d.mimeType}, not a video the networks accept. ${VIDEO_SPEC}.` });
-      const fd = fs.openSync(file, "r"); const head = Buffer.alloc(8); fs.readSync(fd, head, 0, 8, 0); fs.closeSync(fd);
-      if (!looksLikeMp4(head)) return res.status(400).json({ error: `That file is not an MP4/MOV inside, whatever its name. ${VIDEO_SPEC}.` });
-      video = `doc:${d.id}`;
+      try { video = await vaultMedia(videoRef, "video"); } catch (e: any) { return res.status(400).json({ error: e.message }); }
     }
     const when = publishAt ? new Date(publishAt) : new Date();
     if (isNaN(when.getTime())) return res.status(400).json({ error: "That date is not valid." });

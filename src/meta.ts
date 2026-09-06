@@ -29,6 +29,9 @@ export const META_SCOPES_IG = ["instagram_basic", "instagram_content_publish", "
 /** Instagram's Reel ceiling (ig-user/media reference). Facebook takes 2 GB, but one cap keeps the desk honest. */
 export const MAX_VIDEO_BYTES = 300 * 1024 * 1024;
 export const VIDEO_MIMES = ["video/mp4", "video/quicktime"];
+/** Facebook photo posts from bytes. Instagram cannot take image bytes at all (image_url only), whatever the size. */
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+export const IMAGE_MIMES = ["image/jpeg", "image/png", "image/webp"];
 export const VIDEO_SPEC = "MP4 or MOV (H.264 video, AAC audio), up to 300 MB. A Facebook video: 3 seconds to 15 minutes. A Reel is vertical 9:16 — Facebook 3–90 seconds, Instagram 3 seconds to 15 minutes";
 /** How long an Instagram container may stay in processing before the desk gives up on it. */
 export const CONTAINER_TIMEOUT_MS = 30 * 60_000;
@@ -79,7 +82,7 @@ export function planPublish(row: PlanInput): Plan {
   }
   if (row.network === "instagram") {
     if (!row.imageUrl) return { kind: "ig-image", error: "Instagram needs an image or a video." };
-    if (!/^https:\/\//.test(row.imageUrl)) return { kind: "ig-image", error: "Instagram needs a public HTTPS image address — Meta fetches the file itself, so an item's cover on the vault cannot go to Instagram until the media has a public address. A video from the vault can: it is uploaded as a Reel." };
+    if (!/^https:\/\//.test(row.imageUrl)) return { kind: "ig-image", error: "Instagram needs a public HTTPS image address — Meta fetches the file itself, so an uploaded image or an item's cover on the vault cannot go to Instagram until the media has a public address. A video from the vault can: it is uploaded as a Reel." };
     return { kind: "ig-image" };
   }
   if (row.network === "facebook") {
@@ -276,6 +279,8 @@ export async function publishRow(row: SocialPostRow, a: SocialAccountRow, media:
     } else {
       const bytes = await media(row.imageUrl);
       if (!bytes) throw new Error(`The image "${row.imageUrl}" could not be read from the vault.`);
+      if (!IMAGE_MIMES.includes(bytes.mime)) throw new Error(`Not an image Facebook accepts (${bytes.mime}) — JPEG, PNG or WebP.`);
+      if (bytes.size > MAX_IMAGE_BYTES) throw new Error(`The image is ${Math.round(bytes.size / 1048576)} MB; the limit is ${MAX_IMAGE_BYTES / 1048576} MB.`);
       const form = new FormData();
       form.set("source", new Blob([bytes.buffer], { type: bytes.mime }), bytes.name);
       r = await committing(graph(`/${a.id}/photos`, { method: "POST", token: a.token, form, params: { message: text } }));

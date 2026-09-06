@@ -1,7 +1,7 @@
 // Social desk self-check — pure asserts on src/meta.ts, no network, no database.
 // Run: npx tsx scripts/check-social.ts
 import assert from "node:assert";
-import { nextAttemptAt, isDue, gateRelease, composeText, planPublish, initialState, connectUrl, BACKOFF_MINUTES, hintFor, isFinalError, isPending, GraphError, MAX_VIDEO_BYTES, VIDEO_MIMES, graph } from "../src/meta";
+import { nextAttemptAt, isDue, gateRelease, composeText, planPublish, initialState, connectUrl, BACKOFF_MINUTES, hintFor, isFinalError, isPending, GraphError, MAX_VIDEO_BYTES, VIDEO_MIMES, MAX_IMAGE_BYTES, IMAGE_MIMES, graph } from "../src/meta";
 
 const now = new Date("2026-09-06T12:00:00.000Z");
 
@@ -67,6 +67,10 @@ assert.strictEqual(isFinalError(new Error("network")), false);
 assert.strictEqual(isPending({ containerId: "c1" }), true);
 assert.strictEqual(isPending({ postId: "p", permalink: "" }), false);
 assert.ok(MAX_VIDEO_BYTES === 300 * 1024 * 1024 && VIDEO_MIMES.includes("video/quicktime"));
+// An uploaded image (doc:) is a Facebook photo post from bytes; Instagram still refuses anything that is not a public address.
+assert.deepStrictEqual(planPublish({ network: "facebook", message: "", link: "", imageUrl: "doc:doc-9" }), { kind: "fb-photo" });
+assert.match(planPublish({ network: "instagram", message: "hi", link: "", imageUrl: "doc:doc-9" }).error!, /public HTTPS/);
+assert.ok(IMAGE_MIMES.includes("image/webp") && MAX_IMAGE_BYTES === 10 * 1024 * 1024);
 
 // The connect URL carries the redirect, the state and the scopes; Instagram scopes only when asked.
 const u = connectUrl("123", "https://fms.example/api/social/meta/callback", "st4te", false);
