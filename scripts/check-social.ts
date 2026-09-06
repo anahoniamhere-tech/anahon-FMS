@@ -1,7 +1,7 @@
 // Social desk self-check — pure asserts on src/meta.ts, no network, no database.
 // Run: npx tsx scripts/check-social.ts
 import assert from "node:assert";
-import { nextAttemptAt, isDue, gateRelease, composeText, planPublish, initialState, connectUrl, BACKOFF_MINUTES } from "../src/meta";
+import { nextAttemptAt, isDue, gateRelease, composeText, planPublish, initialState, connectUrl, BACKOFF_MINUTES, hintFor, isFinalError, isPending, GraphError, MAX_VIDEO_BYTES, VIDEO_MIMES, graph } from "../src/meta";
 
 const now = new Date("2026-09-06T12:00:00.000Z");
 
@@ -45,10 +45,46 @@ assert.match(planPublish({ network: "instagram", message: "hi", link: "", imageU
 assert.deepStrictEqual(planPublish({ network: "instagram", message: "hi", link: "", imageUrl: "https://anahon.org/i.jpg" }), { kind: "ig-image" });
 assert.match(planPublish({ network: "tiktok", message: "hi", link: "", imageUrl: "" }).error!, /Unknown network/);
 
+// Video: a vault video makes a Facebook video (or a Reel when asked) and always an Instagram Reel;
+// one media per post; anything that is not a vault reference is refused.
+const vid = { network: "facebook", message: "hi", link: "", imageUrl: "", videoRef: "doc:doc-1", asReel: false };
+assert.deepStrictEqual(planPublish(vid), { kind: "fb-video" });
+assert.deepStrictEqual(planPublish({ ...vid, asReel: true }), { kind: "fb-reel" });
+assert.deepStrictEqual(planPublish({ ...vid, network: "instagram", message: "" }), { kind: "ig-reel" }, "Instagram video needs no caption and is always a Reel");
+assert.match(planPublish({ ...vid, imageUrl: "https://x/i.jpg" }).error!, /One media per post/);
+assert.match(planPublish({ ...vid, videoRef: "https://x/v.mp4" }).error!, /file in the vault/);
+assert.deepStrictEqual(planPublish({ ...vid, videoRef: "" }), { kind: "fb-feed" }, "no video → the old rules");
+
+// Meta's numbers become sentences; the file-is-wrong ones end the row without retries.
+assert.match(hintFor(undefined, 2207026), /MP4/);
+assert.match(hintFor(1363023), /2 GB/);
+assert.match(hintFor(613), /Reels limit/);
+assert.strictEqual(hintFor(999999, 8888888), "");
+assert.strictEqual(isFinalError(new GraphError("x", 1363026)), true, "too long: final");
+assert.strictEqual(isFinalError(new GraphError("x", 100, 2207026)), true, "bad format: final");
+assert.strictEqual(isFinalError(new GraphError("x", 4)), false, "throttled: retry");
+assert.strictEqual(isFinalError(new Error("network")), false);
+assert.strictEqual(isPending({ containerId: "c1" }), true);
+assert.strictEqual(isPending({ postId: "p", permalink: "" }), false);
+assert.ok(MAX_VIDEO_BYTES === 300 * 1024 * 1024 && VIDEO_MIMES.includes("video/quicktime"));
+
 // The connect URL carries the redirect, the state and the scopes; Instagram scopes only when asked.
 const u = connectUrl("123", "https://fms.example/api/social/meta/callback", "st4te", false);
 assert.ok(u.startsWith("https://www.facebook.com/v25.0/dialog/oauth?client_id=123&"));
 assert.ok(u.includes("redirect_uri=https%3A%2F%2Ffms.example%2Fapi%2Fsocial%2Fmeta%2Fcallback") && u.includes("state=st4te"));
 assert.ok(!u.includes("instagram_content_publish") && connectUrl("123", "x", "s", true).includes("instagram_content_publish"));
+
+// graph() treats a non-JSON or non-2xx answer as a failure — never as a post whose id is "undefined".
+const realFetch = globalThis.fetch;
+globalThis.fetch = (async () => new Response("<html>bad gateway</html>", { status: 502 })) as any;
+assert.ok((await graph("/x").catch(e => e)) instanceof GraphError, "502 with an HTML body → GraphError");
+globalThis.fetch = (async () => new Response("", { status: 200 })) as any;
+assert.ok((await graph("/x").catch(e => e)) instanceof GraphError, "200 with an empty body → GraphError");
+globalThis.fetch = (async () => new Response(JSON.stringify({ error: { message: "bad", code: 100, error_subcode: 2207026 } }), { status: 400 })) as any;
+const ge = await graph("/x").catch(e => e);
+assert.ok(ge instanceof GraphError && ge.subcode === 2207026 && /MP4/.test(ge.message) && isFinalError(ge), "Meta's subcode becomes a sentence and is final");
+globalThis.fetch = (async () => new Response(JSON.stringify({ id: "1_2" }), { status: 200 })) as any;
+assert.deepStrictEqual(await graph("/x"), { id: "1_2" });
+globalThis.fetch = realFetch;
 
 console.log("check-social: all asserts passed");

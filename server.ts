@@ -10,7 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
-import { graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, type ImageBytes } from "./src/meta.js";
+import { graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
@@ -127,7 +127,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
   "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build",
   "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
-  "/api/social/accounts/remove", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete",
+  "/api/social/accounts/remove", "/api/social/video", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete",
   "/api/tools/save", "/api/tools/delete",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/document/upload", "/api/materials/link",
@@ -137,7 +137,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 const EDITOR_ALLOWED_POSTS = new Set([
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
-  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
+  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/video", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
 ]);
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
 // Anyone can be given a task, so every working seat may tick its own and put it back;
@@ -4297,15 +4297,25 @@ async function digitalTask(title: string, notes: string) {
   const holder = await prisma.user.findFirst({ where: { role: DIGITAL_SEAT, active: true } }).catch(() => null);
   await prisma.complianceTask.create({ data: { id: `task-${Date.now()}`, title, category: "Social", dueDate: new Date().toISOString().slice(0, 10), status: "Pending", notes, assigneeUserId: holder?.id ?? null, createdBy: "u-1" } }).catch(() => {});
 }
-/** An item's cover on the vault, as bytes for a Facebook photo post. */
-async function coverBytes(ref: string): Promise<ImageBytes | null> {
-  const m = /^cover:(.+)$/.exec(ref); if (!m) return null;
-  const item = await prisma.contentItem.findUnique({ where: { id: m[1] } });
-  if (!item?.coverPath || item.coverPath.includes("..")) return null;
-  const file = path.join(VAULT_ROOT, item.coverPath);
+/** A vault reference as bytes: cover:<itemId> (the item's cover image) or doc:<AppDoc.id> (an uploaded video). */
+async function mediaBytes(ref: string): Promise<MediaBytes | null> {
+  let file = "", mime = "";
+  const cover = /^cover:(.+)$/.exec(ref), doc = /^doc:(.+)$/.exec(ref);
+  if (cover) {
+    const item = await prisma.contentItem.findUnique({ where: { id: cover[1] } });
+    if (!item?.coverPath || item.coverPath.includes("..")) return null;
+    file = path.join(VAULT_ROOT, item.coverPath);
+    const ext = path.extname(file).toLowerCase();
+    mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+  } else if (doc) {
+    const d = await prisma.appDoc.findUnique({ where: { id: doc[1] } });
+    if (!d || isPersonnelDoc(d)) return null;                        // a personnel file never leaves the building
+    const p = vaultPathFromPointer(d.base64 || ""); if (!p) return null;
+    file = p; mime = d.mimeType;
+  } else return null;
   if (!fs.existsSync(file)) return null;
-  const ext = path.extname(file).toLowerCase();
-  return { buffer: fs.readFileSync(file), mime: ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg", name: path.basename(file) };
+  const buffer = fs.readFileSync(file);
+  return { buffer, mime, name: path.basename(file), size: buffer.length };
 }
 
 // Connecting a Page: the desk asks for the dialog address, the browser goes to Meta, Meta sends
@@ -4357,7 +4367,9 @@ app.post("/api/social/accounts/remove", async (req, res) => {
     if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Removing a Page needs an editor or the Digital Officer." });
     const a = await prisma.socialAccount.findUnique({ where: { id } });
     if (!a) return res.status(404).json({ error: "No such account." });
-    const pending = await prisma.socialPost.updateMany({ where: { accountId: id, state: { in: ["Draft", "Queued"] } }, data: { state: "Cancelled", lastError: "The Page was disconnected." } });
+    // Drafts, queued rows, and Instagram Reels still transcoding (their container is not published until we say so). A Facebook Reel
+    // past its finish call is already committed and keeps going; a Publishing row with no container is mid-send in this same process.
+    const pending = await prisma.socialPost.updateMany({ where: { accountId: id, OR: [{ state: { in: ["Draft", "Queued"] } }, { state: "Publishing", network: "instagram", NOT: { containerId: "" } }] }, data: { state: "Cancelled", lastError: "The Page was disconnected.", containerId: "" } });
     await prisma.socialAccount.delete({ where: { id } });
     await createAuditLog(user?.id, user?.name, "Social Account Removed", `${a.name} disconnected${pending.count ? `; ${pending.count} pending post(s) cancelled` : ""}.`);
     res.json({ success: true });
@@ -4376,11 +4388,56 @@ app.get("/api/social/queue", async (_req, res) => {
   const items = ids.length ? await prisma.contentItem.findMany({ where: { id: { in: ids } }, select: { id: true, title: true, status: true } }) : [];
   res.json({ ok: true, rows: rows.map(r => ({ ...r, stats: JSON.parse(r.statsJson || "{}") })), items: Object.fromEntries(items.map(i => [i.id, i])) });
 });
+// Videos come from the vault. This is the one upload route that takes raw bytes instead of JSON
+// base64 (express.json is capped at 50 MB, which would cap a video near 37 MB): the file is written
+// under GENERAL/Social Video and filed as an AppDoc like every other paper, hash-deduplicated.
+const SOCIAL_VIDEO_CATEGORIES = ["Social Video", "Reference Material"];   // what the desk may post: its own uploads and the Editorial desk's materials — never project evidence or deliverables
+const VIDEO_FIELDS = { id: true, refNo: true, filename: true, mimeType: true, sizeStr: true, category: true, linkedRecordId: true, created_at: true } as const;
+const ISO_BMFF_BOXES = new Set(["ftyp", "moov", "mdat", "free", "skip", "wide", "pnot"]);   // an MP4 opens with ftyp; an old .mov may open on another box
+const looksLikeMp4 = (head: Buffer) => head.length >= 8 && ISO_BMFF_BOXES.has(head.subarray(4, 8).toString("latin1"));
+app.post("/api/social/video", express.raw({ type: "video/*", limit: MAX_VIDEO_BYTES }), async (req: any, res) => {
+  try {
+    const user = req.dbUser;                                                  // express.raw replaced req.body, so the guard's req.body.user is gone
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Uploading a video needs an editor or the Digital Officer." });
+    const buffer: Buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const mime = String(req.headers["content-type"] || "").split(";")[0].trim();
+    if (!buffer.length) return res.status(400).json({ error: "No video received." });
+    if (!VIDEO_MIMES.includes(mime)) return res.status(400).json({ error: `${mime || "That file"} is not a video the networks accept. ${VIDEO_SPEC}.` });
+    if (buffer.length > MAX_VIDEO_BYTES) return res.status(400).json({ error: `The video is ${Math.round(buffer.length / 1048576)} MB; the limit is ${MAX_VIDEO_BYTES / 1048576} MB.` });
+    if (!looksLikeMp4(buffer)) return res.status(400).json({ error: `That file is not an MP4/MOV inside, whatever its name. ${VIDEO_SPEC}.` });
+    const safeName = String(req.query.name || `video-${Date.now()}.mp4`).replace(/[^\w.\-()\[\] ؀-ۿ]/g, "_").slice(-120);
+    const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
+    // ponytail: "the same bytes never file twice" bends to "never twice as a Social Video" — a project's clip
+    // re-uploaded here gets its own postable row rather than handing the desk the project's document.
+    const dupe = await prisma.appDoc.findFirst({ where: { contentHash, category: "Social Video" }, select: VIDEO_FIELDS });
+    if (dupe) {
+      await createAuditLog(user.id, user.name, "Document Already On File", `${safeName} matches ${dupe.refNo || dupe.id} byte-for-byte — existing video reused.`);
+      return res.json({ success: true, doc: dupe, duplicate: true });
+    }
+    const dir = path.join(VAULT_ROOT, "GENERAL", "Social Video");
+    fs.mkdirSync(dir, { recursive: true });
+    let finalName = safeName;
+    if (fs.existsSync(path.join(dir, finalName))) finalName = `${Date.now()}_${safeName}`;
+    fs.writeFileSync(path.join(dir, finalName), buffer);
+    const doc = await prisma.appDoc.create({ data: {
+      id: `doc-${Date.now()}`, refNo: await nextDocRef(prisma), filename: safeName, mimeType: mime,
+      sizeStr: `${Math.max(1, Math.round(buffer.length / 1048576))} MB`, base64: `file://GENERAL/Social Video/${finalName}`,
+      category: "Social Video", linkedRecordType: "Content", linkedRecordId: String(req.query.item || "") || "-", contentHash, created_at: new Date().toISOString()
+    }, select: VIDEO_FIELDS });
+    await createAuditLog(user.id, user.name, "Document Uploaded", `${safeName} (${doc.sizeStr}) filed as ${doc.refNo} under GENERAL/Social Video for the Social desk.`);
+    res.json({ success: true, doc });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+app.get("/api/social/videos", async (req: any, res) => {
+  if (!SITE_EDITOR_ROLES.includes(req.dbUser?.role)) return res.status(403).json({ error: "The vault's videos are the Social desk's." });
+  const docs = await prisma.appDoc.findMany({ where: { mimeType: { startsWith: "video/" }, category: { in: SOCIAL_VIDEO_CATEGORIES } }, orderBy: { created_at: "desc" }, take: 50, select: VIDEO_FIELDS });
+  res.json({ ok: true, videos: docs });
+});
 // Queue one post per target. Tied to an item that has not passed the gate → Draft, released by
 // /api/content/publish. Tied to a published item, or to no item → Queued for publishAt (now by default).
 app.post("/api/social/queue", async (req, res) => {
   try {
-    const { targets, message, link, imageUrl, useCover, publishAt, contentItemId, user } = req.body;
+    const { targets, message, link, imageUrl, useCover, videoRef, asReel, publishAt, contentItemId, user } = req.body;
     if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Posting to social media needs an editor or the Digital Officer." });
     const list: { accountId: string; network: string }[] = Array.isArray(targets) ? targets : [];
     if (!list.length) return res.status(400).json({ error: "Pick at least one account." });
@@ -4392,6 +4449,16 @@ app.post("/api/social/queue", async (req, res) => {
       image = `cover:${item.id}`;
     }
     if (image && !/^https:\/\//.test(image) && !image.startsWith("cover:")) return res.status(400).json({ error: "An image must be a public HTTPS address, or the item's cover." });
+    let video = "";
+    if (videoRef) {
+      const d = await prisma.appDoc.findUnique({ where: { id: String(videoRef) } });
+      const file = d ? vaultPathFromPointer(d.base64 || "") : null;
+      if (!d || isPersonnelDoc(d) || !SOCIAL_VIDEO_CATEGORIES.includes(d.category) || !file || !fs.existsSync(file)) return res.status(400).json({ error: "That video is not one the desk may post — upload it here first." });
+      if (!VIDEO_MIMES.includes(d.mimeType)) return res.status(400).json({ error: `That file is ${d.mimeType}, not a video the networks accept. ${VIDEO_SPEC}.` });
+      const fd = fs.openSync(file, "r"); const head = Buffer.alloc(8); fs.readSync(fd, head, 0, 8, 0); fs.closeSync(fd);
+      if (!looksLikeMp4(head)) return res.status(400).json({ error: `That file is not an MP4/MOV inside, whatever its name. ${VIDEO_SPEC}.` });
+      video = `doc:${d.id}`;
+    }
     const when = publishAt ? new Date(publishAt) : new Date();
     if (isNaN(when.getTime())) return res.status(400).json({ error: "That date is not valid." });
     const accounts = await prisma.socialAccount.findMany({ where: { id: { in: list.map(t => t.accountId) } } });
@@ -4400,7 +4467,7 @@ app.post("/api/social/queue", async (req, res) => {
       const a = accounts.find(x => x.id === t.accountId);
       if (!a) return res.status(400).json({ error: "One of the accounts is not connected." });
       if (t.network === "instagram" && !a.igId) return res.status(400).json({ error: `${a.name} has no Instagram account linked.` });
-      const draft = { network: t.network, message: String(message || ""), link: String(link || ""), imageUrl: image };
+      const draft = { network: t.network, message: String(message || ""), link: String(link || ""), imageUrl: image, videoRef: video, asReel: !!asReel };
       const plan = planPublish(draft);
       if (plan.error) return res.status(400).json({ error: `${t.network === "instagram" ? "Instagram" : "Facebook"} (${a.name}): ${plan.error}` });
       rows.push({ id: `sp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, accountId: a.id, ...draft, contentItemId: item?.id || "",
@@ -4410,7 +4477,7 @@ app.post("/api/social/queue", async (req, res) => {
     const where = rows.map(r => `${r.network === "instagram" ? "Instagram" : "Facebook"} (${accounts.find(a => a.id === r.accountId)?.name})`).join(", ");
     const drafted = rows[0].state === "Draft";
     await createAuditLog(user?.id, user?.name, drafted ? "Social Post Drafted" : "Social Post Queued",
-      `${where}: "${String(message || "").slice(0, 80)}"${item ? ` for "${item.title}"` : ""} — ${drafted ? "waits for the editorial gate" : when.getTime() <= Date.now() + 60_000 ? "now" : `at ${when.toISOString().slice(0, 16).replace("T", " ")}`}.`);
+      `${where}: "${String(message || "").slice(0, 80)}"${video ? (asReel ? " with a video as a Reel" : " with a video") : image ? " with a photo" : ""}${item ? ` for "${item.title}"` : ""} — ${drafted ? "waits for the editorial gate" : when.getTime() <= Date.now() + 60_000 ? "now" : `at ${when.toISOString().slice(0, 16).replace("T", " ")}`}.`);
     if (!drafted) void drainSocialQueue();
     res.json({ success: true, rows, drafted });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -4434,8 +4501,12 @@ app.post("/api/social/queue/retry", async (req, res) => {
     const r = await prisma.socialPost.findUnique({ where: { id } });
     if (!r) return res.status(404).json({ error: "No such post." });
     if (!["Failed", "Cancelled"].includes(r.state)) return res.status(400).json({ error: `Only a failed or cancelled post can be retried; this one is ${r.state.toLowerCase()}.` });
-    await prisma.socialPost.update({ where: { id }, data: { state: "Queued", attempts: 0, lastError: "", publishAt: new Date().toISOString() } });
-    await createAuditLog(user?.id, user?.name, "Social Post Retried", `${r.network}: "${r.message.slice(0, 80)}"`);
+    if (!(await prisma.socialAccount.findUnique({ where: { id: r.accountId } }))) return res.status(400).json({ error: "That Page is no longer connected." });
+    const item = r.contentItemId ? await prisma.contentItem.findUnique({ where: { id: r.contentItemId } }) : null;
+    const state = initialState(item);                                         // back behind the gate when its item is unpublished or retracted — exactly as at creation
+    const w = await prisma.socialPost.updateMany({ where: { id, state: { in: ["Failed", "Cancelled"] } }, data: { state, attempts: 0, lastError: "", containerId: "", publishAt: new Date().toISOString() } });
+    if (!w.count) return res.status(409).json({ error: "That post changed state meanwhile — reload." });
+    await createAuditLog(user?.id, user?.name, "Social Post Retried", `${r.network}: "${r.message.slice(0, 80)}"${state === "Draft" ? " — back to waiting for the gate" : ""}`);
     void drainSocialQueue();
     res.json({ success: true });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -4474,40 +4545,99 @@ app.post("/api/social/delete", async (req, res) => {
  * opens a task for the Digital Officer. Every fifteen minutes, likes and comments are refreshed
  * for what went out in the last month.
  */
+async function markPublished(row: { id: string; network: string; accountId: string; message: string }, account: { name: string } | null, r: { postId: string; permalink: string }) {
+  await prisma.socialPost.update({ where: { id: row.id }, data: { state: "Published", postId: r.postId, permalink: r.permalink, containerId: "", publishedAt: new Date().toISOString(), lastError: "" } });
+  await createAuditLog("u-1", "System", "Social Post Published", `${row.network === "instagram" ? "Instagram" : "Facebook"} (${account?.name || row.accountId}): "${row.message.slice(0, 80)}" → ${r.permalink || r.postId}`);
+}
+/** Reels still transcoding — Instagram containers and Facebook Reels alike: one look per tick; publish on ready, fail on ERROR/EXPIRED or after 30 minutes. */
+async function sweepContainers() {
+  const pending = await prisma.socialPost.findMany({ where: { state: "Publishing", NOT: { containerId: "" } } });
+  for (const row of pending) {
+    const account = await prisma.socialAccount.findUnique({ where: { id: row.accountId } });
+    const ig = row.network === "instagram";
+    const net = ig ? "Instagram" : "Facebook";
+    const label = `${net} (${account?.name || row.accountId})`;
+    const fail = async (why: string) => {
+      await prisma.socialPost.update({ where: { id: row.id }, data: { state: "Failed", lastError: why.slice(0, 500), containerId: "" } });
+      await createAuditLog("u-1", "System", "Social Post Failed", `${label}: "${row.message.slice(0, 80)}" — ${why.slice(0, 200)}`);
+      await digitalTask(`Reel failed: ${account?.name || row.accountId}`, `"${row.message.slice(0, 120)}": ${why}. If it is the file, fix it and upload again; then Retry on the Social desk.`);
+    };
+    const tooLong = () => Date.now() - new Date(row.publishAt).getTime() > CONTAINER_TIMEOUT_MS;
+    try {
+      if (!account) { await fail("The Page this post was queued for is no longer connected."); continue; }
+      const c = ig ? await checkContainer(row.containerId, account as any) : await checkReel(row.containerId, account as any);
+      if (c.code === "FINISHED") {
+        const r = ig ? await publishContainer(row.containerId, account as any)
+          : { postId: row.containerId, permalink: await fbPermalink(row.containerId, account.token, `https://www.facebook.com/reel/${row.containerId}`) };
+        await markPublished(row, account, r); continue;
+      }
+      if (c.code === "PUBLISHED") {
+        // media_publish went through on an earlier tick but the row was not updated: find the Reel by its caption
+        const text = composeText(row.message, row.link);
+        const m = (await recentPosts(account as any).catch(() => ({ ig: [] as any[] }))).ig.find((x: any) => x.caption === text);
+        await markPublished(row, account, { postId: String(m?.id || ""), permalink: String(m?.permalink || "") });
+        if (!m) await prisma.socialPost.update({ where: { id: row.id }, data: { lastError: "Published by Instagram; the media id was not recorded." } });
+        continue;
+      }
+      if (c.code === "ERROR" || c.code === "EXPIRED") { await fail(c.detail || `${net} reported ${c.code}.`); continue; }
+      if (tooLong()) { await fail(`${net} did not finish processing the video within 30 minutes.`); continue; }
+      // IN_PROGRESS: still transcoding — look again next tick
+    } catch (e: any) {
+      const notReady = e?.subcode === 2207027 || e?.code === 9007;             // "not ready yet" is not an error — but it still counts against the 30 minutes
+      if (!notReady) console.log(`[social] ${label} check failed — ${e.message}`);
+      if (tooLong()) await fail(notReady ? `${net} did not finish processing the video within 30 minutes.` : String(e.message));
+    }
+  }
+}
 let draining = false;
 async function drainSocialQueue() {
-  if (draining) return; draining = true;
-  try {
-    const now = new Date();
-    const due = (await prisma.socialPost.findMany({ where: { state: "Queued" }, orderBy: { publishAt: "asc" } })).filter(r => isDue(r, now));
-    for (const row of due) {
-      const claimed = await prisma.socialPost.updateMany({ where: { id: row.id, state: "Queued" }, data: { state: "Publishing" } });
-      if (!claimed.count) continue;
-      const account = await prisma.socialAccount.findUnique({ where: { id: row.accountId } });
-      const label = `${row.network === "instagram" ? "Instagram" : "Facebook"} (${account?.name || row.accountId})`;
-      try {
-        if (!account) throw new Error("The Page this post was queued for is no longer connected.");
-        const r = await publishRow(row as any, account as any, coverBytes);
-        await prisma.socialPost.update({ where: { id: row.id }, data: { state: "Published", postId: r.postId, permalink: r.permalink, publishedAt: new Date().toISOString(), lastError: "" } });
-        await createAuditLog("u-1", "System", "Social Post Published", `${label}: "${row.message.slice(0, 80)}" → ${r.permalink || r.postId}`);
-      } catch (e: any) {
-        const attempts = row.attempts + 1;
-        const next = nextAttemptAt(attempts);
-        await prisma.socialPost.update({ where: { id: row.id }, data: { attempts, lastError: String(e.message).slice(0, 500), state: next ? "Queued" : "Failed", publishAt: next || row.publishAt } });
-        console.log(`[social] ${label} attempt ${attempts} failed — ${e.message}${next ? `; next at ${next}` : "; giving up"}`);
-        if (!next) {
-          await createAuditLog("u-1", "System", "Social Post Failed", `${label}: "${row.message.slice(0, 80)}" — ${String(e.message).slice(0, 200)}`);
-          await digitalTask(`Social post failed: ${account?.name || row.network}`, `"${row.message.slice(0, 120)}" could not be published after ${attempts} attempts: ${e.message}. Fix the cause, then Retry on the Social desk.`);
+  // actingContext.exit: the queue audits as itself, never in the hat of whoever's request happened to trigger it
+  return actingContext.exit(async () => {
+    if (draining) return; draining = true;
+    try {
+      // Only this function sets Publishing and ticks are serial, so a Publishing row with no container
+      // here was abandoned: the server stopped mid-send, or its follow-up write failed. A person decides.
+      const orphaned = await prisma.socialPost.updateMany({ where: { state: "Publishing", containerId: "" }, data: { state: "Failed", lastError: "The server restarted while this was being sent. Look on the Page before pressing Retry — it may already be there." } });
+      if (orphaned.count) await createAuditLog("u-1", "System", "Social Post Failed", `${orphaned.count} post(s) were mid-send when the server restarted; marked failed for a person to check.`);
+      await sweepContainers();
+      const now = new Date();
+      const due = (await prisma.socialPost.findMany({ where: { state: "Queued" }, orderBy: { publishAt: "asc" } })).filter(r => isDue(r, now));
+      for (const row of due) {
+        const claimed = await prisma.socialPost.updateMany({ where: { id: row.id, state: "Queued" }, data: { state: "Publishing" } });
+        if (!claimed.count) continue;
+        const account = await prisma.socialAccount.findUnique({ where: { id: row.accountId } });
+        const label = `${row.network === "instagram" ? "Instagram" : "Facebook"} (${account?.name || row.accountId})`;
+        try {
+          if (!account) throw new Error("The Page this post was queued for is no longer connected.");
+          const r = await publishRow(row as any, account as any, mediaBytes);
+          if (isPending(r)) {
+            // the network is transcoding the Reel: keep the row Publishing with its container; sweepContainers() takes it from here
+            await prisma.socialPost.update({ where: { id: row.id }, data: { containerId: r.containerId, publishAt: new Date().toISOString(), lastError: "" } });
+            console.log(`[social] ${label}: video uploaded, container ${r.containerId} processing`);
+            continue;
+          }
+          await markPublished(row, account, r);
+        } catch (e: any) {
+          const lost = isMaybePublished(e);                                   // the publishing request itself never answered: it may already be on the Page
+          const attempts = lost || isFinalError(e) ? BACKOFF_MINUTES.length + 1 : row.attempts + 1;   // no blind resend, no retries for a wrong file
+          const next = nextAttemptAt(attempts);
+          const why = lost ? `The upload timed out or the connection dropped after sending — look on the Page before pressing Retry. (${e.message})` : String(e.message);
+          await prisma.socialPost.update({ where: { id: row.id }, data: { attempts, lastError: why.slice(0, 500), state: next ? "Queued" : "Failed", publishAt: next || row.publishAt } });
+          console.log(`[social] ${label} attempt ${attempts} failed — ${e.message}${next ? `; next at ${next}` : "; giving up"}`);
+          if (!next) {
+            await createAuditLog("u-1", "System", "Social Post Failed", `${label}: "${row.message.slice(0, 80)}" — ${why.slice(0, 200)}`);
+            await digitalTask(`Social post failed: ${account?.name || row.network}`, `"${row.message.slice(0, 120)}" — ${why} Then Retry on the Social desk.`);
+          }
         }
       }
-    }
-  } catch (e: any) { console.log(`[social] queue tick failed — ${e.message}`); }
-  finally { draining = false; }
+    } catch (e: any) { console.log(`[social] queue tick failed — ${e.message}`); }
+    finally { draining = false; }
+  });
 }
 async function refreshSocialStats() {
   try {
     const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
-    const rows = await prisma.socialPost.findMany({ where: { state: "Published", publishedAt: { gte: since } } });
+    const rows = await prisma.socialPost.findMany({ where: { state: "Published", publishedAt: { gte: since }, NOT: { postId: "" } } });
     for (const row of rows) {
       const a = await prisma.socialAccount.findUnique({ where: { id: row.accountId } }); if (!a) continue;
       const stats = await postStats(row as any, a as any).catch(() => null); if (!stats) continue;
@@ -4517,20 +4647,24 @@ async function refreshSocialStats() {
 }
 /** /api/content/publish passed the gate: the item's drafts go out (never earlier than now). */
 async function releaseSocialDrafts(contentItemId: string) {
-  try {
-    const drafts = await prisma.socialPost.findMany({ where: { contentItemId, state: "Draft" } });
-    if (!drafts.length) return;
-    for (const r of gateRelease(drafts)) await prisma.socialPost.update({ where: { id: r.id }, data: { state: r.state, publishAt: r.publishAt } });
-    await createAuditLog("u-1", "System", "Social Drafts Released", `${drafts.length} social post(s) for content ${contentItemId} released by the editorial gate.`);
-    void drainSocialQueue();
-  } catch (e: any) { console.log(`[social] release failed — ${e.message}`); }
+  return actingContext.exit(async () => {
+    try {
+      const drafts = await prisma.socialPost.findMany({ where: { contentItemId, state: "Draft" } });
+      if (!drafts.length) return;
+      for (const r of gateRelease(drafts)) await prisma.socialPost.update({ where: { id: r.id }, data: { state: r.state, publishAt: r.publishAt } });
+      await createAuditLog("u-1", "System", "Social Drafts Released", `${drafts.length} social post(s) for content ${contentItemId} released by the editorial gate.`);
+      void drainSocialQueue();
+    } catch (e: any) { console.log(`[social] release failed — ${e.message}`); }
+  });
 }
-/** /api/content/retract: nothing still waiting for that item may go out. */
+/** /api/content/retract: nothing still waiting for that item may go out — including an Instagram Reel not yet published. */
 async function cancelSocialDrafts(contentItemId: string, why: string) {
-  try {
-    const r = await prisma.socialPost.updateMany({ where: { contentItemId, state: { in: ["Draft", "Queued"] } }, data: { state: "Cancelled", lastError: why } });
-    if (r.count) await createAuditLog("u-1", "System", "Social Posts Cancelled", `${r.count} pending social post(s) for content ${contentItemId} cancelled: ${why}.`);
-  } catch (e: any) { console.log(`[social] cancel failed — ${e.message}`); }
+  return actingContext.exit(async () => {
+    try {
+      const r = await prisma.socialPost.updateMany({ where: { contentItemId, OR: [{ state: { in: ["Draft", "Queued"] } }, { state: "Publishing", network: "instagram", NOT: { containerId: "" } }] }, data: { state: "Cancelled", lastError: why, containerId: "" } });
+      if (r.count) await createAuditLog("u-1", "System", "Social Posts Cancelled", `${r.count} pending social post(s) for content ${contentItemId} cancelled: ${why}.`);
+    } catch (e: any) { console.log(`[social] cancel failed — ${e.message}`); }
+  });
 }
 if (!process.env.VERCEL && process.env.SOCIAL_QUEUE !== "off") {
   setInterval(drainSocialQueue, 60 * 1000).unref();

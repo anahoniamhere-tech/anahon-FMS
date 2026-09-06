@@ -140,6 +140,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/social/queue": SITE_EDITORS,            // a post tied to an unpublished item waits as a Draft; the gate itself is /api/content/publish
   "/api/social/queue/cancel": SITE_EDITORS,
   "/api/social/queue/retry": SITE_EDITORS,
+  "/api/social/video": SITE_EDITORS,            // a video into the vault, raw bytes; filed like any document
   "/api/social/edit": SITE_EDITORS,
   "/api/social/delete": SITE_EDITORS,
   "/api/tools/save": TOOL_EDITORS,

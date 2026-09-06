@@ -498,6 +498,9 @@ model SocialPost {
   message       String @default("")
   link          String @default("")
   imageUrl      String @default("")            // public https URL, or cover:<contentItemId> (bytes from the vault — Facebook only)
+  videoRef      String @default("")            // doc:<AppDoc.id> — a video in the vault, uploaded as bytes (Facebook video/Reel, Instagram Reel)
+  asReel        Boolean @default(false)        // Facebook: post the video as a Reel rather than a Page video (Instagram is always a Reel)
+  containerId   String @default("")            // Instagram container awaiting FINISHED while the row is Publishing
   publishAt     String                         // ISO
   state         String @default("Queued")      // Draft | Queued | Publishing | Published | Failed | Cancelled
   attempts      Int    @default(0)
