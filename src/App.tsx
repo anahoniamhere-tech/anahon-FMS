@@ -663,7 +663,27 @@ export default function App() {
   if (authLoading || (fbUser && loading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-white" role="status" aria-live="polite">
-        <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="anahon-turn h-28 w-auto" />
+        <div className="flex flex-col items-center" style={{ perspective: "900px" }}>
+          {/* The thickness is real, not painted: the same PNG stacked along Z inside a
+              preserve-3d box: 28 copies 0.75px apart, about 20px of depth. Ten copies
+              combed — you could see the gaps. One image, fetched once, drawn at 112px. */}
+          <div className="anahon-turn relative h-28 w-28 [transform-style:preserve-3d]">
+            {Array.from({ length: 28 }, (_, i) => (
+              <img
+                key={i}
+                src="/assets/images/anahon_logo.png"
+                alt={i === 0 ? "AnaHon" : ""}
+                aria-hidden={i > 0}
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-contain"
+                style={{ transform: `translateZ(${(13.5 - i) * 0.75}px)` }}
+              />
+            ))}
+          </div>
+          {/* The shadow sits outside the rotating box on purpose: a filter or shadow on
+              an ancestor of preserve-3d children flattens the 3D context. */}
+          <div className="mt-5 h-2.5 w-20 rounded-[50%] bg-[#4A1010]/25 blur-md" />
+        </div>
         <span className="sr-only">Loading</span>
       </div>
     );
