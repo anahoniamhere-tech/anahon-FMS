@@ -7,8 +7,9 @@ import { SITE_EDITORS } from "../roles";
  * itself (rebuilt 6 Sep 2026). Pages are connected through Meta's own login; posts go into a
  * queue the server drains every minute. A post tied to a content item that has not passed the
  * editorial gate waits as a draft and is released when the item is published. Videos are uploaded
- * into the vault from here and sent to the networks as bytes (Facebook video or Reel, Instagram
- * Reel). Nothing here posts on its own; every action is a click with a confirm, audit-logged.
+ * and images are uploaded into the vault from here and sent to the networks as bytes (Facebook
+ * video, Reel or photo; Instagram Reel — Instagram images need a public address, since Meta fetches
+ * them itself). Nothing here posts on its own; every action is a click with a confirm, audit-logged.
  */
 const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then(r => r.json());
 const NET = (n: string) => n === "instagram" ? "Instagram" : "Facebook";
@@ -88,11 +89,12 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
   const igChosen = targets.some(t => t.endsWith("|instagram")); const fbChosen = targets.some(t => t.endsWith("|facebook"));
   const willDraft = item && item.status !== "Published";
   const hasMedia = media === "cover" ? !!item?.coverPath : media === "image" ? !!(imageUrl || imageId) : media === "video" ? !!videoId : false;
-  const canSend = targets.length > 0 && !busy && !uploading && (message.trim() || link.trim() || hasMedia) && (media === "none" || hasMedia) && !(igChosen && media !== "video" && media !== "image");
+  const canSend = targets.length > 0 && !busy && !uploading && (message.trim() || link.trim() || hasMedia) && (media === "none" || hasMedia)
+    && !(igChosen && media !== "video" && media !== "image") && !(igChosen && media === "image" && !!imageId);   // Instagram takes no image bytes, only an address
   const queueIt = async () => {
     const names = targetOptions.filter(o => targets.includes(o.key)).map(o => o.label).join(", ");
     const timing = willDraft ? "when the item passes the editorial gate" : when ? `at ${when.replace("T", " ")}` : "now";
-    if (!window.confirm(`Post to ${names} ${timing}?\n\n${message.slice(0, 200)}${media === "video" ? "\n\n(with the video)" : ""}`)) return;
+    if (!window.confirm(`Post to ${names} ${timing}?\n\n${message.slice(0, 200)}${media === "video" ? "\n\n(with the video)" : media === "image" ? "\n\n(with the image)" : media === "cover" ? "\n\n(with the item's cover)" : ""}`)) return;
     setBusy(true);
     const r = await post("/api/social/queue", {
       targets: targets.map(t => { const [accountId, network] = t.split("|"); return { accountId, network }; }),
@@ -176,11 +178,11 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
           <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} dir="auto" placeholder="What are you posting?" className="w-full rounded border border-slate-300 p-2" />
           <input value={link} onChange={e => setLink(e.target.value)} dir="ltr" placeholder="Link (optional) — https://anahon.org/…" className="w-full rounded border border-slate-300 px-2 py-1" />
 
-          {/* media: none · the item's cover · an image address · a video from the vault */}
+          {/* media: none · the item's cover · an image (vault, upload or public address) · a video from the vault */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-slate-500">Media</span>
             <div className="flex rounded-full bg-slate-100 p-0.5">
-              {mediaBtn("none", "none")}{mediaBtn("cover", "item's cover", !item?.coverPath)}{mediaBtn("image", "image URL")}{mediaBtn("video", "video")}
+              {mediaBtn("none", "none")}{mediaBtn("cover", "item's cover", !item?.coverPath)}{mediaBtn("image", "image")}{mediaBtn("video", "video")}
             </div>
           </div>
           {media === "image" && (
@@ -240,7 +242,7 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
                   {r.videoRef ? <span className="text-slate-400" title={r.asReel || r.network === "instagram" ? "Reel" : "video"}>🎬{r.asReel || r.network === "instagram" ? " Reel" : ""}</span> : r.imageUrl && <span className="text-slate-400">📷</span>}
                   {r.state === "Published" && (r.stats?.likes != null) && <span className="text-slate-500" dir="ltr">♥ {r.stats.likes} · 💬 {r.stats.comments}{r.stats.shares != null ? ` · ↗ ${r.stats.shares}` : ""}</span>}
                   {r.permalink && <a href={r.permalink} target="_blank" rel="noopener" className="text-slate-500 underline">open ↗</a>}
-                  {r.lastError && r.state !== "Published" && <span className="text-red-700" title={r.lastError}>{r.lastError.slice(0, 90)}{r.attempts ? ` (attempt ${r.attempts})` : ""}</span>}
+                  {r.lastError && r.state !== "Published" && <span dir="ltr" className="text-red-700" title={r.lastError}>{r.lastError.slice(0, 90)}{r.attempts ? ` (attempt ${r.attempts})` : ""}</span>}
                   {canPost && ["Draft", "Queued", "Failed"].includes(r.state) && <button onClick={() => act("/api/social/queue/cancel", r.id, "Cancelled")} className="text-red-700 underline">cancel</button>}
                   {canPost && ["Failed", "Cancelled"].includes(r.state) && <button onClick={() => act("/api/social/queue/retry", r.id, "Queued again")} className="text-red-700 underline">retry now</button>}
                 </div>

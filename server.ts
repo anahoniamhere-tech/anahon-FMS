@@ -4305,8 +4305,8 @@ async function mediaBytes(ref: string): Promise<MediaBytes | null> {
     const item = await prisma.contentItem.findUnique({ where: { id: cover[1] } });
     if (!item?.coverPath || item.coverPath.includes("..")) return null;
     file = path.join(VAULT_ROOT, item.coverPath);
-    const ext = path.extname(file).toLowerCase();
-    mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg";
+    mime = COVER_MIME[path.extname(file).toLowerCase()] || "";
+    if (!mime) return null;
   } else if (doc) {
     const d = await prisma.appDoc.findUnique({ where: { id: doc[1] } });
     if (!d || isPersonnelDoc(d)) return null;                        // a personnel file never leaves the building
@@ -4395,13 +4395,15 @@ const SOCIAL_MEDIA_CATEGORIES = ["Social Video", "Social Image", "Reference Mate
 const MEDIA_FIELDS = { id: true, refNo: true, filename: true, mimeType: true, sizeStr: true, category: true, linkedRecordId: true, created_at: true } as const;
 const ISO_BMFF_BOXES = new Set(["ftyp", "moov", "mdat", "free", "skip", "wide", "pnot"]);   // an MP4 opens with ftyp; an old .mov may open on another box
 const looksLikeMp4 = (head: Buffer) => head.length >= 8 && ISO_BMFF_BOXES.has(head.subarray(4, 8).toString("latin1"));
-/** The bytes must say what the name says: JPEG, PNG or WebP magic. */
-const looksLikeImage = (head: Buffer, mime: string) =>
-  mime === "image/jpeg" ? head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff
-  : mime === "image/png" ? head.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]))
-  : mime === "image/webp" ? head.subarray(0, 4).toString("latin1") === "RIFF" && head.subarray(8, 12).toString("latin1") === "WEBP"
-  : false;
-const looksLikeMedia = (head: Buffer, mime: string) => mime.startsWith("video/") ? looksLikeMp4(head) : looksLikeImage(head, mime);
+/** What the bytes actually are, whatever the name claims. */
+const sniffImage = (head: Buffer): string | null =>
+  head.length >= 12 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff ? "image/jpeg"
+  : head.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])) ? "image/png"
+  : head.subarray(0, 4).toString("latin1") === "RIFF" && head.subarray(8, 12).toString("latin1") === "WEBP" ? "image/webp"
+  : null;
+const looksLikeMedia = (head: Buffer, mime: string) => mime.startsWith("video/") ? looksLikeMp4(head) : sniffImage(head) === mime;
+const COVER_MIME: Record<string, string> = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp" };
+const readHead = (file: string) => { const fd = fs.openSync(file, "r"); const head = Buffer.alloc(12); fs.readSync(fd, head, 0, 12, 0); fs.closeSync(fd); return head; };
 app.post("/api/social/media", express.raw({ type: ["video/*", "image/*"], limit: MAX_VIDEO_BYTES }), async (req: any, res) => {
   try {
     const user = req.dbUser;                                                  // express.raw replaced req.body, so the guard's req.body.user is gone
@@ -4410,10 +4412,11 @@ app.post("/api/social/media", express.raw({ type: ["video/*", "image/*"], limit:
     const mime = String(req.headers["content-type"] || "").split(";")[0].trim();
     const video = mime.startsWith("video/");
     if (!buffer.length) return res.status(400).json({ error: "No file received." });
-    if (!(video ? VIDEO_MIMES : IMAGE_MIMES).includes(mime)) return res.status(400).json({ error: video ? `${mime} is not a video the networks accept. ${VIDEO_SPEC}.` : `${mime || "That file"} is not an image the networks accept — JPEG, PNG or WebP.` });
+    const real = video ? mime : sniffImage(buffer.subarray(0, 12)) || "";      // an image is what its bytes are, whatever the browser called it
+    if (!(video ? VIDEO_MIMES : IMAGE_MIMES).includes(real)) return res.status(400).json({ error: video ? `${mime} is not a video the networks accept. ${VIDEO_SPEC}.` : `That file is not a JPEG, PNG or WebP inside, whatever its name.` });
     const cap = video ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
     if (buffer.length > cap) return res.status(400).json({ error: `The file is ${Math.round(buffer.length / 1048576)} MB; the limit is ${cap / 1048576} MB.` });
-    if (!looksLikeMedia(buffer.subarray(0, 12), mime)) return res.status(400).json({ error: video ? `That file is not an MP4/MOV inside, whatever its name. ${VIDEO_SPEC}.` : "That file is not a JPEG, PNG or WebP inside, whatever its name." });
+    if (video && !looksLikeMp4(buffer.subarray(0, 12))) return res.status(400).json({ error: `That file is not an MP4/MOV inside, whatever its name. ${VIDEO_SPEC}.` });
     const category = video ? "Social Video" : "Social Image";
     const safeName = String(req.query.name || `${video ? "video" : "image"}-${Date.now()}`).replace(/[^\w.\-()\[\] ؀-ۿ]/g, "_").slice(-120);
     const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
@@ -4430,9 +4433,9 @@ app.post("/api/social/media", express.raw({ type: ["video/*", "image/*"], limit:
     if (fs.existsSync(path.join(dir, finalName))) finalName = `${Date.now()}_${safeName}`;
     fs.writeFileSync(path.join(dir, finalName), buffer);
     const doc = await prisma.appDoc.create({ data: {
-      id: `doc-${Date.now()}`, refNo: await nextDocRef(prisma), filename: safeName, mimeType: mime,
+      id: `doc-${Date.now()}`, refNo: await nextDocRef(prisma), filename: safeName, mimeType: real,
       sizeStr: buffer.length >= 1048576 ? `${Math.round(buffer.length / 1048576)} MB` : `${Math.max(1, Math.round(buffer.length / 1024))} KB`,
-      base64: `file://GENERAL/${category}/${finalName}`,
+      base64: `file://GENERAL/${category}/${finalName}`, 
       category, linkedRecordType: "Content", linkedRecordId: String(req.query.item || "") || "-", contentHash, created_at: new Date().toISOString()
     }, select: MEDIA_FIELDS });
     await createAuditLog(user.id, user.name, "Document Uploaded", `${safeName} (${doc.sizeStr}) filed as ${doc.refNo} under GENERAL/${category} for the Social desk.`);
@@ -4455,8 +4458,14 @@ app.post("/api/social/queue", async (req, res) => {
     const item = contentItemId ? await prisma.contentItem.findUnique({ where: { id: String(contentItemId) } }) : null;
     if (contentItemId && !item) return res.status(404).json({ error: "Content item not found." });
     let image = String(imageUrl || "").trim();
+    // The client may only ever name a public address. cover: and doc: are set below, by us, after their own checks —
+    // validating the derived value instead would let a crafted request name any vault document.
+    if (image && !/^https:\/\//.test(image)) return res.status(400).json({ error: "An image address must start with https://." });
     if (useCover) {
       if (!item?.coverPath) return res.status(400).json({ error: "That item has no cover to post." });
+      const cover = item.coverPath.includes("..") ? null : path.join(VAULT_ROOT, item.coverPath);
+      if (!cover || !fs.existsSync(cover)) return res.status(400).json({ error: "That item's cover is missing from the vault." });
+      if (sniffImage(readHead(cover)) !== COVER_MIME[path.extname(cover).toLowerCase()]) return res.status(400).json({ error: "That cover is not a JPEG, PNG or WebP — the networks will not take it." });
       image = `cover:${item.id}`;
     }
     // A vault file the desk may post: its own upload or the Editorial desk's; the bytes must be what the name says.
@@ -4465,14 +4474,12 @@ app.post("/api/social/queue", async (req, res) => {
       const file = d ? vaultPathFromPointer(d.base64 || "") : null;
       if (!d || isPersonnelDoc(d) || !SOCIAL_MEDIA_CATEGORIES.includes(d.category) || !file || !fs.existsSync(file)) throw new Error(`That ${kind} is not one the desk may post — upload it here first.`);
       if (!(kind === "video" ? VIDEO_MIMES : IMAGE_MIMES).includes(d.mimeType)) throw new Error(kind === "video" ? `That file is ${d.mimeType}, not a video the networks accept. ${VIDEO_SPEC}.` : `That file is ${d.mimeType}, not an image the networks accept — JPEG, PNG or WebP.`);
-      const fd = fs.openSync(file, "r"); const head = Buffer.alloc(12); fs.readSync(fd, head, 0, 12, 0); fs.closeSync(fd);
-      if (!looksLikeMedia(head, d.mimeType)) throw new Error(`That file is not a ${kind === "video" ? "MP4/MOV" : "JPEG, PNG or WebP"} inside, whatever its name.`);
+      if (!looksLikeMedia(readHead(file), d.mimeType)) throw new Error(`That file is not a ${kind === "video" ? "MP4/MOV" : "JPEG, PNG or WebP"} inside, whatever its name.`);
       return `doc:${d.id}`;
     };
     try {
       if (imageRef) image = await vaultMedia(imageRef, "image");
     } catch (e: any) { return res.status(400).json({ error: e.message }); }
-    if (image && !/^https:\/\//.test(image) && !image.startsWith("cover:") && !image.startsWith("doc:")) return res.status(400).json({ error: "An image must be a public HTTPS address, an upload, or the item's cover." });
     let video = "";
     if (videoRef) {
       try { video = await vaultMedia(videoRef, "video"); } catch (e: any) { return res.status(400).json({ error: e.message }); }
