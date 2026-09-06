@@ -55,14 +55,23 @@ const index = site("src/components/ArticlesIndex.astro"), archive = text("src/ta
 ok("ArticlesIndex reads home.json › articlesPage", /import homeCfg from '..\/data\/home.json'/.test(index) && /\(homeCfg as any\)\.articlesPage/.test(index));
 ok("pins come first, removals are hidden, the title can be overridden", /\[\.\.\.pinned, \.\.\.all\.filter\(\(a\) => !removed\.has\(a\.data\.slug\)/.test(index) && /cfg\.title_ar : cfg\.title_en/.test(index));
 ok("the grid is a widget frame and each card names its slug", /class="articles-grid" data-widget-frame="articlesPage"/.test(index) && /data-item=\{article\.data\.slug\}/.test(index));
-ok("the server accepts the key", /\["hero", "articles", "episodes", "articlesPage"\]\.includes\(k\)/.test(server));
+ok("the server accepts the key", /\["hero", "articles", "episodes"[^\]]*"articlesPage"[^\]]*\]\.includes\(k\)/.test(server));
 ok("the Live editor labels it", /articlesPage: "Articles page"/.test(live));
 ok("the Archive form edits it (pins by article, not from the media picker)", /<Widget k="articlesPage"/.test(archive) && /k !== "articlesPage" && <button/.test(archive) && /k === "articlesPage" && \(/.test(archive));
+
+console.log("\nthe Podcasts page has widgets of its own");
+const pod = site("src/components/Podcasts.astro");
+ok("Podcasts.astro reads home.json › podcastsPage", /import homeCfg from '..\/data\/home.json'/.test(pod) && /\(homeCfg as any\)\.podcastsPage/.test(pod));
+ok("pins lead, removals hide, the featured player follows the curated list", /const pods = \[\.\.\.pinned, \.\.\.all\.filter\(\(p\) => !removed\.has\(p\.id\)/.test(pod) && /const featured = pods\.find\(\(p\) => p\.embed\) \?\? pods\[0\];/.test(pod) && pod.indexOf("const pods = [...pinned") < pod.indexOf("const featured ="));
+ok("the list is a widget frame and each episode names its id", /class="eps-list" data-widget-frame="podcastsPage"/.test(pod) && /data-item=\{e\.id\}/.test(pod));
+ok("the server accepts the key", /"articlesPage", "podcastsPage"\]\.includes\(k\)/.test(server));
+ok("the Live editor labels it", /podcastsPage: "Podcasts page"/.test(live));
+ok("the Archive form edits it (media picker is right for episodes)", /<Widget k="podcastsPage"[^>]*hasPins/.test(archive));
 
 console.log("\nevery string the two tabs show has an Arabic twin");
 const keys = new Set<string>();
 for (const src of [live, web]) for (const m of src.matchAll(/\bt\("((?:[^"\\]|\\.)*)"\)/g)) keys.add(m[1].replace(/\\'/g, "'"));
-for (const k of ["Home hero slider", "Latest episodes", "Latest articles", "Articles page", "Pages & sections", "Navigation, footer & labels", "Programs & mission", "Home — hero", "Funding register", "Registration details"]) keys.add(k);
+for (const k of ["Home hero slider", "Latest episodes", "Latest articles", "Articles page", "Podcasts page", "Pages & sections", "Navigation, footer & labels", "Programs & mission", "Home — hero", "Funding register", "Registration details"]) keys.add(k);
 const missing = [...keys].filter(k => !(k in AR));
 ok(`${keys.size} strings, all translated`, missing.length === 0, missing.slice(0, 5).join(" | "));
 

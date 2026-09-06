@@ -15,7 +15,7 @@ import { ARCHIVE_EDITORS, SITE_EDITORS } from "../roles";
 type Item = { id: string; platform: string; kind: string; title: string; thumb: string; date: string; tags: string[]; series: string; url: string; duration: number | null };
 type Schema = { formats?: string[]; topics_extra?: string[]; topics_icontent?: string[]; suppressed?: string[]; order?: string[]; facets?: Record<string, string> };
 type Widget = { title_en?: string; title_ar?: string; pinned?: string[]; removed?: string[] };
-type Home = { hero?: Widget; articles?: Widget; episodes?: Widget; articlesPage?: Widget };
+type Home = { hero?: Widget; articles?: Widget; episodes?: Widget; articlesPage?: Widget; podcastsPage?: Widget };
 
 const PAGE = 60;
 const EDIT_ROLES = ARCHIVE_EDITORS;
@@ -299,6 +299,7 @@ function HomeView({ items, canEdit, triggerToast }: any) {
       <Widget k="articles" label="Latest articles" hasPins={false} />
       <Widget k="episodes" label="Latest episodes" hasPins />
       <Widget k="articlesPage" label="Articles page (/articles/ and /ar/المقالات/)" hasPins />
+      <Widget k="podcastsPage" label="Podcasts page (/podcasts/ and /ar/بودكاست/) — the pinned episode leads the player" hasPins />
       {canEdit && <button onClick={save} className="rounded bg-slate-900 px-4 py-1.5 text-xs font-bold text-white">Save home page</button>}
       {pickFor && (
         <div className="rounded-lg border border-slate-300 bg-slate-50 p-3 text-xs">

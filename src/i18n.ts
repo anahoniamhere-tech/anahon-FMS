@@ -572,6 +572,7 @@ export const AR: Record<string, string> = {
   "Graphic Designer": "مصمم غرافيك",
   // Website & systems — Live editor and Site content (6 Sep 2026)
   "Articles page": "صفحة المقالات",
+  "Podcasts page": "صفحة البودكاست",
   "Editing — click text, drop pictures": "التحرير — انقر النص، أفلت الصور",
   "Browse (turn on editing)": "تصفّح (فعّل التحرير)",
   "Publishing…": "جارٍ النشر…",
