@@ -63,7 +63,9 @@ export default function HelpDesk({
   // The widget is fixed, so without an offset it sat on top of the sidebar and covered
   // the bottom of the navigation. It docks to --dock-start, published on the app root:
   // the content's own left edge, 18rem with the sidebar open and 2rem collapsed. So it
-  // follows the sidebar both ways, over the same 300ms, without being told its state.
+  // follows the sidebar both ways without being told its state. It moves in one step
+  // rather than gliding: a change to an unregistered custom property is discrete, and
+  // registering it did not make the dependent inset-inline-start interpolate either.
   // Resting: the same raise the door tiles use, so it reads as part of the system.
   // z-[95] puts it beside the "N missing" pill and under that drawer's backdrop
   // (z-[96]) — at 96 it floated on top of the dim.
@@ -73,7 +75,7 @@ export default function HelpDesk({
         onClick={() => setOpen(true)}
         title={t("Ask for help")}
         aria-label={t("Ask for help")}
-        className="fixed bottom-5 start-5 z-[95] flex h-12 w-12 md:start-[var(--dock-start)] items-center justify-center rounded-full bg-[#6D1A1A] text-white shadow-lg shadow-[#6D1A1A]/25 duration-300 ease-in-out transition-[background-color,box-shadow,transform,inset-inline-start] hover:-translate-y-0.5 hover:bg-[#4A1010] hover:shadow-xl hover:shadow-[#6D1A1A]/30"
+        className="fixed bottom-5 start-5 z-[95] flex h-12 w-12 md:start-[var(--dock-start)] items-center justify-center rounded-full bg-[#6D1A1A] text-white shadow-lg shadow-[#6D1A1A]/25 transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-[#4A1010] hover:shadow-xl hover:shadow-[#6D1A1A]/30"
       >
         <MessageCircleQuestion className="h-5 w-5" />
       </button>
@@ -91,7 +93,7 @@ export default function HelpDesk({
     <div
       ref={boxRef}
       dir={rtl ? "rtl" : "ltr"}
-      className="fixed bottom-24 start-5 z-[95] flex max-h-[70vh] md:start-[var(--dock-start)] w-[min(22rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-[#E6D3CA] bg-white shadow-2xl shadow-[#4A1010]/20 duration-300 ease-in-out transition-[inset-inline-start] lg:bottom-5"
+      className="fixed bottom-24 start-5 z-[95] flex max-h-[70vh] md:start-[var(--dock-start)] w-[min(22rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-[#E6D3CA] bg-white shadow-2xl shadow-[#4A1010]/20 lg:bottom-5"
     >
       <div className="flex items-center justify-between gap-2 bg-[#6D1A1A] ps-3 pe-1.5 py-1.5 text-white">
         <p className="flex items-center gap-2 text-xs font-bold">
