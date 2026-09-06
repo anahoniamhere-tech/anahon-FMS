@@ -10,6 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
+import { postiz, postizConfigured, postizPublicUrl, toLinks, mergeStates, outsideGate, draftGroups, channelOf, type PostizLink, type PostizPost } from "./src/postiz.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
@@ -126,7 +127,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
   "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build",
   "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
-  "/api/social/publish", "/api/social/edit", "/api/social/delete",
+  "/api/social/publish", "/api/social/edit", "/api/social/delete", "/api/social/postiz/link", "/api/social/postiz/unlink",
   "/api/tools/save", "/api/tools/delete",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/document/upload", "/api/materials/link",
@@ -136,7 +137,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 const EDITOR_ALLOWED_POSTS = new Set([
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
-  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/delete", "/api/social/edit", "/api/social/publish", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
+  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/delete", "/api/social/edit", "/api/social/publish", "/api/social/postiz/link", "/api/social/postiz/unlink", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
 ]);
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
 // Anyone can be given a task, so every working seat may tick its own and put it back;
@@ -585,6 +586,7 @@ async function loadState(viewer?: any) {
   const formattedContent = contentItems.map(c => ({
     ...c,
     channels: JSON.parse(c.channelsJson || "[]"),
+    postiz: JSON.parse(c.postizJson || "[]"),
     checks: JSON.parse(c.checksJson || "{}"),
     factCheckLog: JSON.parse(c.factCheckJson || "[]"),
     corrections: JSON.parse(c.correctionsJson || "[]"),
@@ -1191,6 +1193,47 @@ app.post("/api/reminders/plan", async (req, res) => {
  * reduced to kind/status/verb/door/date. Never the record — the provider is the Gemini
  * free tier and Google trains on free-tier input.
  */
+/**
+ * The policy manual, as one block of text the help desk can read.
+ *
+ * Twenty handbooks numbered 001-022, about 169k characters, pasted whole. No embedding,
+ * no chunking and no "pick the relevant policy first": the entire manual fits in one
+ * prompt beside the 37k corpus, and a selection heuristic can only be wrong in ways
+ * nobody sees — the contradiction this feature found on its first question sits across
+ * two documents, and any retrieval that fetched one would have hidden it.
+ *
+ * Extracted once and held here. The key is the handbooks' own content hashes, so
+ * re-filing a policy invalidates the cache and nothing else does — not a restart of the
+ * conversation, not another document being uploaded elsewhere.
+ */
+let policyCache: { key: string; text: string; chars: number; docs: number } | null = null;
+
+async function policyCorpus(): Promise<{ text: string; chars: number; docs: number }> {
+  const rows = await prisma.appDoc.findMany({ where: { category: "Handbook" }, orderBy: { filename: "asc" } });
+  const key = rows.map(r => `${r.id}:${r.contentHash}`).join("|");
+  if (policyCache && policyCache.key === key) return policyCache;
+
+  const started = Date.now();
+  const parts: string[] = [];
+  for (const r of rows) {
+    try {
+      const text = (await documentText(r.id)).trim();
+      if (!text) continue;
+      // The filename carries the policy's number (…_020.docx) and the bot is asked to cite
+      // it, so the heading states both rather than making the model infer it from the path.
+      parts.push(`### ${r.filename.replace(/\.(docx|pdf)$/i, "").replace(/_/g, " ")}\n${text}`);
+    } catch (err: any) {
+      // One unreadable handbook must not take the whole manual down; the bot answers from
+      // the rest and the log names what is missing.
+      console.warn(`[policies] could not read ${r.filename}: ${String(err?.message).slice(0, 120)}`);
+    }
+  }
+  const text = parts.join("\n\n");
+  policyCache = { key, text, chars: text.length, docs: parts.length };
+  console.log(`[policies] extracted ${parts.length}/${rows.length} handbooks, ${text.length} characters, in ${Date.now() - started} ms`);
+  return policyCache;
+}
+
 app.post("/api/help/ask", async (req, res) => {
   try {
     const question = String(req.body?.question || "").trim();
@@ -1207,13 +1250,23 @@ app.post("/api/help/ask", async (req, res) => {
     // The free tier, on Saad's call (5 Sep 2026): both keys stay set on the NAS, but a
     // staff question is not worth per-call spend. Google trains on free-tier input, which
     // is exactly why safeRows() above sent no record — see src/helpBot.ts.
+    const policies = await policyCorpus();
     const raw = await askJson(
-      helpPrompt(question, { role, ownRole: viewer.role, doors, rows, today: localDate() }),
+      helpPrompt(question, { role, ownRole: viewer.role, doors, rows, today: localDate() }, policies.text),
       REPLY_SCHEMA, undefined, "low", "gemini"
     );
     res.json(parseReply(raw, doors));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    // The free tier has a per-minute token budget and a 45k-token prompt meets it quickly,
+    // so this is a normal thing for a person to hit, not a fault to report. Observed in
+    // testing: 429 on a burst of questions, 503 when the model is under load.
+    const m = String(err?.message || "");
+    const friendly = /429|quota|RESOURCE_EXHAUSTED/i.test(m)
+      ? "The help desk has answered a lot of questions in the last minute. Wait a moment and ask again."
+      : /503|overloaded|high demand|UNAVAILABLE/i.test(m)
+        ? "The help desk is busy right now. Try again in a moment."
+        : m;
+    res.status(500).json({ error: friendly });
   }
 });
 
@@ -2373,6 +2426,24 @@ function usageNote(u: any, model = "opus"): string {
 /** Appended to the next audit line so spend is visible where the work is logged. */
 export function takeUsage(): string { const u = lastUsage; lastUsage = ""; return u; }
 
+/**
+ * JSON out of a model, when the model does not quite keep its promise.
+ *
+ * Even asked for application/json, Gemini occasionally returns a valid object followed by
+ * something else — observed once in about a dozen calls on a 45k-token prompt, which is
+ * often enough to reach a person. A bare JSON.parse throws there and the staff member sees
+ * "Unexpected non-whitespace character after JSON at position 395". So: parse it straight
+ * if it parses, otherwise take the outermost braces and try that, and only then give up.
+ */
+function parseModelJson(text: string): any {
+  try { return JSON.parse(text); } catch { /* fall through to the salvage below */ }
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a >= 0 && b > a) {
+    try { return JSON.parse(text.slice(a, b + 1)); } catch { /* genuinely not JSON */ }
+  }
+  throw new Error("The model's answer could not be read.");
+}
+
 async function askJson(
   prompt: string, schema: Record<string, any>, file?: Attachment,
   effort: "low" | "medium" | "high" = "medium",
@@ -2424,10 +2495,20 @@ async function askJson(
     const r = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: [{ role: "user", parts }],
-      config: { responseMimeType: "application/json" }
+      config: {
+        responseMimeType: "application/json",
+        // Only for the caller that chose this provider on purpose — today that is the help
+        // desk, reading a 45k-token prompt at a chat box where the wait is the whole cost.
+        // Measured on the same question against the same corpus: ~27 s with thinking on
+        // (and one 503 under load), 2-3.6 s with it off, both answering correctly and both
+        // surfacing the contradiction between the two procurement policies. Callers that
+        // only reach Gemini as a fallback keep the default budget, because for them the
+        // job is extraction from a document and the seconds do not matter.
+        ...(prefer === "gemini" ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      }
     });
     lastUsage = " [Gemini free tier]";
-    return JSON.parse(r.text || "{}");
+    return parseModelJson(r.text || "{}");
   }
   throw new Error("No ANTHROPIC_API_KEY or GEMINI_API_KEY configured — AI assist unavailable.");
 }
@@ -3829,6 +3910,7 @@ app.post("/api/content/publish", async (req, res) => {
       `"${item.title}" (${item.contentType}) published to ${channels.join(", ") || "no channel"} — fact-checked tag applied; PM+PD dual approval on record.`);
     // after the audit row is committed — the site reads this database and must not race the write
     if (!channels.length || channels.includes("Website")) void notifySite(id, "publish");
+    void releaseToPostiz(updated, user);                              // linked Postiz drafts go from draft to scheduled — the gate has passed
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -4200,6 +4282,112 @@ app.post("/api/social/delete", async (req, res) => {
     res.json({ ok: true, deleted: postId });
   } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
 });
+
+// ---- Postiz bridge (6 Sep 2026) ----------------------------------------------------
+// Approve in the FMS, publish through Postiz, status flows back. The Digital Officer composes
+// in Postiz and leaves DRAFTS; the desk links a draft group to a content item; passing the
+// gate (/api/content/publish) flips the drafts to scheduled. Postiz cannot call us back (its
+// webhook validator refuses private addresses), so a five-minute poll carries state home and
+// names anything Postiz published with no content item behind it. src/postiz.ts has the helpers.
+const parsePostiz = (item: { postizJson: string }): PostizLink[] => { try { return JSON.parse(item.postizJson || "[]"); } catch { return []; } };
+let postizOutside: PostizPost[] = [];              // last poll's "published outside the gate", shown on the desk
+const outsideSeen = new Set<string>(); let outsideSeeded = false;
+async function linkedPostIds() {
+  const items = await prisma.contentItem.findMany({ where: { NOT: { postizJson: "[]" } }, select: { id: true, title: true, postizJson: true } });
+  const set = new Set<string>(); for (const it of items) for (const l of parsePostiz(it)) set.add(l.postId);
+  return { items, set };
+}
+async function digitalTask(title: string, notes: string) {
+  const holder = await prisma.user.findFirst({ where: { role: DIGITAL_SEAT, active: true } }).catch(() => null);
+  await prisma.complianceTask.create({ data: { id: `task-${Date.now()}`, title, category: "Social", dueDate: new Date().toISOString().slice(0, 10), status: "Pending", notes, assigneeUserId: holder?.id ?? null, createdBy: "u-1" } }).catch(() => {});
+}
+app.get("/api/social/postiz/status", async (_req, res) => {
+  if (!postizConfigured()) return res.json({ ok: false, configured: false, error: "Postiz is not configured — POSTIZ_URL and POSTIZ_API_KEY in the FMS .env, then restart." });
+  try {
+    const integrations: any[] = await postiz.integrations();
+    res.json({ ok: true, configured: true, url: postizPublicUrl(),
+      integrations: integrations.map(i => ({ id: i.id, name: i.name, network: i.identifier, channel: channelOf(i.identifier), disabled: !!i.disabled, picture: i.picture })),
+      outside: postizOutside.map(p => ({ id: p.id, account: p.integration.name, channel: channelOf(p.integration.providerIdentifier), publishDate: p.publishDate, releaseURL: p.releaseURL, preview: toLinks([p])[0].preview })) });
+  } catch (e: any) { res.status(502).json({ ok: false, configured: true, url: postizPublicUrl(), error: e.message }); }
+});
+app.get("/api/social/postiz/drafts", async (_req, res) => {
+  try { const { set } = await linkedPostIds(); res.json({ ok: true, groups: draftGroups(await postiz.posts(), set) }); }
+  catch (e: any) { res.status(502).json({ ok: false, error: e.message }); }
+});
+app.post("/api/social/postiz/link", async (req, res) => {
+  try {
+    const { id, group, user } = req.body;
+    if (!SITE_EDITORS.includes(user?.role)) return res.status(403).json({ error: "Linking a Postiz draft needs an editor or the Digital Officer." });
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (item.status === "Published") return res.status(400).json({ error: "Already published — drafts are linked before the gate, not after." });
+    const { set } = await linkedPostIds();
+    const posts = (await postiz.posts()).filter(p => p.group === group && p.state === "DRAFT" && !set.has(p.id));
+    if (!posts.length) return res.status(400).json({ error: "That draft is gone, already linked, or no longer a draft." });
+    const links = [...parsePostiz(item), ...toLinks(posts)];
+    const updated = await prisma.contentItem.update({ where: { id }, data: { postizJson: JSON.stringify(links) } });
+    await createAuditLog(user?.id, user?.name, "Social Draft Linked", `"${item.title}" ← Postiz draft for ${toLinks(posts).map(l => `${l.channel} (${l.account})`).join(", ")}; releases when the item passes the gate.`);
+    res.json({ success: true, item: updated });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/social/postiz/unlink", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    if (!SITE_EDITORS.includes(user?.role)) return res.status(403).json({ error: "Unlinking needs an editor or the Digital Officer." });
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (item.status === "Published") return res.status(400).json({ error: "Published items keep their record — retract instead." });
+    const updated = await prisma.contentItem.update({ where: { id }, data: { postizJson: "[]" } });
+    await createAuditLog(user?.id, user?.name, "Social Draft Unlinked", `"${item.title}" no longer releases any Postiz draft.`);
+    res.json({ success: true, item: updated });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+/** Called by /api/content/publish once the gate has passed and the audit row is written. */
+async function releaseToPostiz(item: { id: string; title: string; postizJson: string }, user: any) {
+  const links = parsePostiz(item);
+  if (!links.length || !postizConfigured()) return;
+  const next: PostizLink[] = []; const failed: string[] = [];
+  for (const l of links) {
+    if (l.state !== "DRAFT") { next.push(l); continue; }
+    try { await postiz.schedule(l.postId); next.push({ ...l, state: "QUEUE" }); }
+    catch (e: any) { failed.push(`${l.channel} (${l.account}): ${e.message}`); next.push(l); }
+  }
+  await prisma.contentItem.update({ where: { id: item.id }, data: { postizJson: JSON.stringify(next) } }).catch(() => {});
+  const queued = next.filter(l => l.state === "QUEUE").map(l => `${l.channel} (${l.account}) at ${l.publishDate.slice(0, 16).replace("T", " ")}`);
+  await createAuditLog(user?.id, user?.name, "Social Release Requested", `"${item.title}" → Postiz: ${queued.join(", ") || "nothing scheduled"}${failed.length ? `; FAILED ${failed.join("; ")}` : ""}.`);
+  if (failed.length) await digitalTask(`Postiz did not accept the release of "${item.title}"`, failed.join("; "));
+}
+async function pollPostiz() {
+  if (!postizConfigured()) return;
+  try {
+    if (!outsideSeeded) {                                      // remember what earlier boots already reported
+      outsideSeeded = true;
+      const rows = await prisma.auditLog.findMany({ where: { action: "Published Outside the Gate" }, select: { details: true } });
+      for (const r of rows) { const m = r.details.match(/Postiz post (\S+) /); if (m) outsideSeen.add(m[1]); }
+    }
+    const { items, set } = await linkedPostIds();
+    const posts = await postiz.posts();
+    for (const it of items) {
+      const { links, changed, errors } = mergeStates(parsePostiz(it), posts);
+      if (!changed) continue;
+      await prisma.contentItem.update({ where: { id: it.id }, data: { postizJson: JSON.stringify(links) } });
+      for (const e of errors) {
+        await createAuditLog("u-1", "System", "Social Post Failed", `Postiz could not publish "${it.title}" to ${e.channel} (${e.account}).`);
+        await digitalTask(`Postiz failed: ${e.channel} (${e.account}) — "${it.title}"`, "Open Postiz, read the error on the post, fix it and schedule again. The item stays Published in the register.");
+      }
+    }
+    postizOutside = outsideGate(posts, set);
+    for (const p of postizOutside) {
+      if (outsideSeen.has(p.id)) continue;
+      outsideSeen.add(p.id);
+      await createAuditLog("u-1", "System", "Published Outside the Gate", `Postiz post ${p.id} on ${channelOf(p.integration.providerIdentifier)} (${p.integration.name}) went out with no content item behind it${p.releaseURL ? ` — ${p.releaseURL}` : ""}.`);
+    }
+  } catch (e: any) { console.log(`[postiz] poll failed — ${e.message}`); }
+}
+if (!process.env.VERCEL && process.env.POSTIZ_POLL !== "off") {
+  setInterval(pollPostiz, 5 * 60 * 1000).unref();
+  setTimeout(pollPostiz, 45 * 1000).unref();
+}
 
 // ---- Website content (edited in the desk, rendered by the site) ------------------
 // The site's copy lives in JSON files it imports (site.json: hero, programs, team, …;
@@ -7359,24 +7547,38 @@ app.get("/api/document/page/:id/:n", async (req, res) => {
 // Word documents can't render in a browser frame, and a download card turns the handbook
 // library into a filing cabinet. A .docx is a zip of XML, so the text comes out with the
 // stdlib — no converter, no LibreOffice, no new dependency.
-app.get("/api/document/docx-text/:id", async (req, res) => {
-  let cleanup = () => { };
+/**
+ * A Word file as plain text. One implementation, two callers.
+ *
+ * The route below serves it to a person; the help desk's policy corpus calls this
+ * function **in process**. Never through the route: a server that fetches its own HTTP
+ * endpoint deadlocks the moment the event loop is busy serving the outer request, which
+ * is what killed /api/reports/pdf.
+ */
+const DOCX_TO_TEXT =
+  "import sys,zipfile,re,html\n" +
+  "x=zipfile.ZipFile(sys.argv[1]).read('word/document.xml').decode('utf8','ignore')\n" +
+  "x=re.sub(r'</w:p>', '\\n', x)\n" +               // paragraph -> newline
+  "x=re.sub(r'<w:tab[^>]*/>', '\\t', x)\n" +
+  "x=re.sub(r'<[^>]+>', '', x)\n" +                 // strip remaining tags
+  "x=html.unescape(x)\n" +
+  "print(re.sub(r'\\n{3,}', '\\n\\n', x).strip())";
+const PDF_TO_TEXT = "import sys,fitz; d=fitz.open(sys.argv[1]); print('\\n'.join(p.get_text() for p in d))";
+
+async function documentText(id: string, uid = ""): Promise<string> {
+  const d = await docOnDisk(id, uid);
   try {
-    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req));
-    cleanup = d.cleanup;
-    const text = await py(
-      "import sys,zipfile,re,html\n" +
-      "x=zipfile.ZipFile(sys.argv[1]).read('word/document.xml').decode('utf8','ignore')\n" +
-      "x=re.sub(r'</w:p>', '\\n', x)\n" +               // paragraph -> newline
-      "x=re.sub(r'<w:tab[^>]*/>', '\\t', x)\n" +
-      "x=re.sub(r'<[^>]+>', '', x)\n" +                 // strip remaining tags
-      "x=html.unescape(x)\n" +
-      "print(re.sub(r'\\n{3,}', '\\n\\n', x).strip())",
-      [d.file]);
-    res.type("text/plain; charset=utf-8").send(String(text));
+    const isPdf = String(d.doc.mimeType || "").includes("pdf") || /\.pdf$/i.test(String(d.doc.filename || ""));
+    return String(await py(isPdf ? PDF_TO_TEXT : DOCX_TO_TEXT, [d.file]));
+  } finally { d.cleanup(); }
+}
+
+app.get("/api/document/docx-text/:id", async (req, res) => {
+  try {
+    res.type("text/plain; charset=utf-8").send(await documentText(req.params.id, await viewerIdFromReq(req)));
   } catch (err: any) {
     res.status(err.status || 500).json({ error: err.message });
-  } finally { cleanup(); }
+  }
 });
 
 // Document Upload Record archiving — file is written into the vault, DB keeps a pointer

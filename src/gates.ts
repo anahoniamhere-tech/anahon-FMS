@@ -139,6 +139,8 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/social/publish": SITE_EDITORS,
   "/api/social/edit": SITE_EDITORS,
   "/api/social/delete": SITE_EDITORS,
+  "/api/social/postiz/link": SITE_EDITORS,      // a Postiz draft is linked before the gate; the gate itself is /api/content/publish
+  "/api/social/postiz/unlink": SITE_EDITORS,
   "/api/tools/save": TOOL_EDITORS,
   "/api/tools/delete": TOOL_EDITORS,
   "/api/contacts/save": CONTACT_EDITORS,

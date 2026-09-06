@@ -468,6 +468,7 @@ model ContentItem {
   draftsJson          String  @default("[]")     // [{label, kind, text, date, by}] — production drafts the fact-checker verifies
   aiAssisted          Boolean @default(false)    // set automatically when an AI draft is saved; manual toggle for outside tools
   aiDisclosed         Boolean @default(false)    // attestation: watermark/disclaimer on the published piece (golden rule)
+  postizJson          String  @default("[]")     // [{postId, integrationId, channel, network, state, releaseURL, publishDate, preview}] — Postiz drafts this item releases (src/postiz.ts)
   created_at          String
 }
 
