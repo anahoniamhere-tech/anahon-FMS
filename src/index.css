@@ -54,6 +54,19 @@ body::before {
     radial-gradient(640px 420px at -8% 104%, rgba(248, 136, 136, 0.12), transparent 70%);
 }
 
+/* The mark turns while the app loads. It is a map pin, so it must never rotate in
+   the plane — that would stand it on its head. It turns on its vertical axis
+   instead, like a coin. The perspective lives inside the keyframe so the image
+   needs no wrapper. Honours prefers-reduced-motion. */
+@keyframes anahon-turn {
+  from { transform: perspective(800px) rotateY(0deg); }
+  to   { transform: perspective(800px) rotateY(360deg); }
+}
+.anahon-turn { animation: anahon-turn 2.4s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .anahon-turn { animation: none; }
+}
+
 /* Custom continuous focus ring & styles */
 .finance-input {
   background-color: #ffffff;

@@ -662,12 +662,11 @@ export default function App() {
 
   if (authLoading || (fbUser && loading)) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-950">
-        <div className="text-center">
-          <RefreshCw className="mx-auto h-12 w-12 animate-spin text-red-600" />
-          <h2 className="mt-4 font-sans text-lg font-medium text-slate-300">AnaHon financial framework initializing...</h2>
-          <p className="text-xs text-slate-500 font-mono">Verifying secure Firebase Authentication session & active local ledger...</p>
-        </div>
+      // relative z-10 lifts this above the body::before brand glow, which is fixed and
+      // would otherwise tint the white.
+      <div className="relative z-10 flex h-screen items-center justify-center bg-white" role="status" aria-live="polite">
+        <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="anahon-turn h-28 w-auto" />
+        <span className="sr-only">Loading</span>
       </div>
     );
   }
@@ -675,25 +674,20 @@ export default function App() {
   // Show login screen if not authenticated (must be before !state check, since state only loads after auth)
   if (!fbUser) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gradient-to-tr from-slate-950 via-slate-900 to-indigo-950 text-slate-100 font-sans p-6 overflow-y-auto">
-        <div className="w-full max-w-md bg-slate-900/40 backdrop-blur-xl border border-slate-800 rounded-2xl shadow-2xl p-8 space-y-6 relative overflow-hidden">
+      <div className="relative z-10 flex h-screen items-center justify-center bg-white text-slate-900 font-sans p-6 overflow-y-auto">
+        <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-900/5 p-8 space-y-6 relative overflow-hidden">
 
           {/* Header */}
           <div className="text-center space-y-2">
-            <div className="w-14 h-14 rounded-xl bg-red-600 flex items-center justify-center font-bold tracking-wider text-white text-2xl mx-auto shadow-lg shadow-red-600/30">
-              AH
-            </div>
-            <div>
-              <h2 className="text-2xl font-black tracking-tight text-white uppercase font-sans">AnaHon Media Platform</h2>
-              <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Management System</p>
-            </div>
+            <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="mx-auto h-20 w-auto" />
+            <h2 className="text-2xl font-black tracking-tight text-slate-900 uppercase font-sans">AnaHon Media Platform</h2>
           </div>
 
           {/* Auth Tab Selectors */}
-          <div className="flex border-b border-slate-800">
+          <div className="flex border-b border-slate-200">
             <button
               onClick={() => { setAuthTab("signin"); setAuthError(null); }}
-              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${authTab === "signin" ? "text-white" : "text-slate-500 hover:text-slate-300"
+              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${authTab === "signin" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
                 }`}
             >
               Sign In
@@ -703,7 +697,7 @@ export default function App() {
             </button>
             <button
               onClick={() => { setAuthTab("signup"); setAuthError(null); }}
-              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${authTab === "signup" ? "text-white" : "text-slate-500 hover:text-slate-300"
+              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${authTab === "signup" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
                 }`}
             >
               Create Account
@@ -715,8 +709,8 @@ export default function App() {
 
           {/* Error Message Box */}
           {authError && (
-            <div className="p-3 bg-red-950/40 border border-red-800/80 rounded-lg text-xs text-red-300 font-medium leading-relaxed flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-800 font-medium leading-relaxed flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-800 shrink-0" />
               <span>{authError}</span>
             </div>
           )}
@@ -725,14 +719,14 @@ export default function App() {
           <form onSubmit={authTab === "signin" ? handleFirebaseSignIn : handleFirebaseSignUp} className="space-y-4 text-start">
             {authTab === "signup" && (
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("Full Name")}</label>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">{t("Full Name")}</label>
                 <div className="relative">
                   <input
                     type="text"
                     required
                     value={authName}
                     onChange={(e) => setAuthName(e.target.value)}
-                    className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 ps-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-sans"
+                    className="w-full text-sm bg-white border border-slate-300 rounded-lg p-2.5 ps-9 text-slate-900 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-sans"
                     placeholder="Enter your name"
                   />
                   <User className="absolute start-3 top-3 w-4 h-4 text-slate-500" />
@@ -741,14 +735,14 @@ export default function App() {
             )}
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("Email Address")}</label>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">{t("Email Address")}</label>
               <div className="relative">
                 <input
                   type="email"
                   required
                   value={authEmail}
                   onChange={(e) => setAuthEmail(e.target.value)}
-                  className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 ps-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
+                  className="w-full text-sm bg-white border border-slate-300 rounded-lg p-2.5 ps-9 text-slate-900 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
                   placeholder="name@anahon.org"
                 />
                 <Globe className="absolute start-3 top-3 w-4 h-4 text-slate-500" />
@@ -756,14 +750,14 @@ export default function App() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wide">{t("Password")}</label>
+              <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">{t("Password")}</label>
               <div className="relative">
                 <input
                   type="password"
                   required
                   value={authPassword}
                   onChange={(e) => setAuthPassword(e.target.value)}
-                  className="w-full text-sm bg-slate-950/60 border border-slate-800 rounded-lg p-2.5 ps-9 text-slate-100 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
+                  className="w-full text-sm bg-white border border-slate-300 rounded-lg p-2.5 ps-9 text-slate-900 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-mono"
                   placeholder="••••••••"
                 />
                 <Key className="absolute start-3 top-3 w-4 h-4 text-slate-500" />
@@ -781,19 +775,19 @@ export default function App() {
                   <span>Processing...</span>
                 </>
               ) : (
-                <span>{authTab === "signin" ? "Access Management System" : "Establish Profile"}</span>
+                <span>{authTab === "signin" ? "Sign in" : "Create account"}</span>
               )}
             </button>
           </form>
 
           <div className="flex items-center gap-3 text-[10px] text-slate-500 font-mono uppercase tracking-widest">
-            <div className="flex-1 h-px bg-slate-800" /><span>or</span><div className="flex-1 h-px bg-slate-800" />
+            <div className="flex-1 h-px bg-slate-200" /><span>or</span><div className="flex-1 h-px bg-slate-200" />
           </div>
           <button
             type="button"
             onClick={handleGoogleSignIn}
             disabled={authBtnLoading}
-            className="w-full p-3 bg-white hover:bg-slate-100 text-slate-900 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
+            className="w-full p-3 bg-white hover:bg-slate-50 border border-slate-300 text-slate-900 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-50"
           >
             <svg className="w-4 h-4" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.5 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.3l7.8 6C12.3 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4 7.1-10 7.1-17.5z"/><path fill="#FBBC05" d="M10.4 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.8-6A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.7l7.8-6z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.5-5.8c-2.1 1.4-4.9 2.3-8.4 2.3-6.3 0-11.7-4.1-13.6-9.8l-7.8 6C6.5 42.6 14.6 48 24 48z"/></svg>
             <span>Sign in with Google</span>
@@ -805,14 +799,14 @@ export default function App() {
               and the whole block is then dropped by dead-code elimination — it cannot be
               re-enabled by a flag someone forgets to unset in production. */}
           {import.meta.env.DEV && (
-          <div className="pt-4 border-t border-slate-800/80 space-y-2">
+          <div className="pt-4 border-t border-slate-200 space-y-2">
             <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest font-mono text-center">
               Local Development Seed Roles
             </span>
-            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-400 bg-slate-950/35 p-2.5 rounded-lg border border-slate-800">
+            <div className="grid grid-cols-2 gap-2 text-[10px] font-mono text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
               <div className="space-y-1">
                 <span className="block text-slate-500">Super Admin:</span>
-                <span className="block text-slate-300 select-all cursor-pointer hover:text-white" onClick={() => { setAuthEmail("anahoniamhere@gmail.com"); setAuthPassword("password123"); setAuthTab("signin"); }}>
+                <span className="block text-slate-900 select-all cursor-pointer hover:text-[#6D1A1A]" onClick={() => { setAuthEmail("anahoniamhere@gmail.com"); setAuthPassword("password123"); setAuthTab("signin"); }}>
                   anahoniamhere@gmail.com
                 </span>
               </div>
@@ -821,7 +815,7 @@ export default function App() {
                 {/* Real person, real account — fills the address only. Marwan sets and knows
                     his own password; anyone else knowing it would make "Marwan approved this"
                     worth nothing, which is the whole reason the role exists. */}
-                <span className="block text-slate-300 select-all cursor-pointer hover:text-white" onClick={() => { setAuthEmail("marwancheikh315@gmail.com"); setAuthPassword(""); setAuthTab("signin"); }}>
+                <span className="block text-slate-900 select-all cursor-pointer hover:text-[#6D1A1A]" onClick={() => { setAuthEmail("marwancheikh315@gmail.com"); setAuthPassword(""); setAuthTab("signin"); }}>
                   marwancheikh315@gmail.com
                 </span>
               </div>
