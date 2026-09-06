@@ -663,29 +663,22 @@ export default function App() {
   if (authLoading || (fbUser && loading)) {
     return (
       <div className="flex h-screen items-center justify-center bg-white" role="status" aria-live="polite">
-        <div className="flex flex-col items-center" style={{ perspective: "900px" }}>
-          {/* The thickness is a real side face, not a painted one: sixteen solid-colour
-              layers masked to the PNG's alpha sit behind the artwork, 20px deep. Stacked
-              copies of the artwork itself striped at an angle; a single colour cannot. */}
-          <div className="anahon-turn relative h-28 w-28 [transform-style:preserve-3d]">
-            {Array.from({ length: 16 }, (_, i) => (
-              <div
-                key={i}
-                aria-hidden
-                className="anahon-rim"
-                style={{ transform: `translateZ(${(10 - (i / 15) * 20).toFixed(2)}px)` }}
-              />
-            ))}
+        <div className="flex flex-col items-center">
+          {/* The real render: 48 frames of the mark turning, every other frame of the
+              sequence Saad rendered, cropped and downscaled, as one animated WebP. It has
+              an actual side face, which no stack of flat copies ever did. The still frame
+              serves anyone who has asked their system for reduced motion. */}
+          <picture>
+            <source srcSet="/assets/images/anahon_logo_still.png" media="(prefers-reduced-motion: reduce)" />
             <img
-              src="/assets/images/anahon_logo.png"
+              src="/assets/images/anahon_logo_turn.webp"
               alt="AnaHon"
+              width={163}
+              height={240}
               draggable={false}
-              className="absolute inset-0 h-full w-full object-contain"
-              style={{ transform: "translateZ(10.3px)" }}
+              className="h-28 w-auto"
             />
-          </div>
-          {/* The shadow sits outside the rotating box on purpose: a filter or shadow on
-              an ancestor of preserve-3d children flattens the 3D context. */}
+          </picture>
           <div className="mt-5 h-2.5 w-20 rounded-[50%] bg-[#4A1010]/25 blur-md" />
         </div>
         <span className="sr-only">Loading</span>
