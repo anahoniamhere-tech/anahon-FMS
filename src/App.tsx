@@ -1352,11 +1352,11 @@ export default function App() {
         <>
           <div className="fixed inset-0 bg-black/50 z-[96]" onClick={() => setGapsOpen(false)} />
           <div className="fixed inset-y-0 end-0 w-full max-w-2xl z-[97] bg-slate-50 shadow-2xl flex flex-col">
-            <div className="flex items-center gap-3 px-5 py-4 bg-slate-900 text-white shrink-0">
+            <div className="flex items-center gap-3 px-5 py-4 bg-[#6D1A1A] text-white shrink-0">
               <span className="text-lg">📄</span>
               <div className="flex-1">
                 <p className="font-bold text-sm">Missing documents</p>
-                <p className="text-[11px] text-slate-400">Derived live from the register — nothing here is stored</p>
+                <p className="text-[11px] text-slate-300">Derived live from the register — nothing here is stored</p>
               </div>
               <button onClick={() => setGapsOpen(false)} aria-label="Close" className="text-slate-300 hover:text-white text-xl px-2">✕</button>
             </div>
@@ -1455,14 +1455,14 @@ export default function App() {
           <>
             <div className="fixed inset-0 bg-black/70 z-[100]" onClick={() => setDocView(null)} />
             <div className="fixed inset-3 md:inset-8 z-[110] bg-white rounded-xl shadow-2xl flex flex-col overflow-hidden">
-              <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 text-white shrink-0">
+              <div className="flex items-center gap-3 px-4 py-3 bg-[#6D1A1A] text-white shrink-0">
                 <span className="text-lg">📄</span>
                 <p className="flex-1 text-sm font-mono truncate" title={docView.filename}>{docView.filename}</p>
                 <a href={src} download={docView.filename}
-                  className="text-[11px] bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-1.5 transition-colors">⬇ Download</a>
+                  className="text-[11px] bg-white/15 hover:bg-white/25 rounded-lg px-3 py-1.5 transition-colors">⬇ Download</a>
                 {isText && !/\.(txt|md|csv|json)$/i.test(docView.filename) && (
                   <a href={docUrl(`/api/document/${docView.id}/pdf`)} download
-                    className="text-[11px] bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-1.5 transition-colors">⬇ PDF</a>
+                    className="text-[11px] bg-white/15 hover:bg-white/25 rounded-lg px-3 py-1.5 transition-colors">⬇ PDF</a>
                 )}
                 {/* Print the document itself, not the app around it. Same-origin iframe, so
                     its own print dialog gives a clean page with no chrome or sidebar. */}
@@ -1472,9 +1472,9 @@ export default function App() {
                     if (frame?.contentWindow) { frame.contentWindow.focus(); frame.contentWindow.print(); }
                     else window.open(src, "_blank", "noopener");
                   }}
-                  className="text-[11px] bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-1.5 transition-colors">🖨 Print</button>
+                  className="text-[11px] bg-white/15 hover:bg-white/25 rounded-lg px-3 py-1.5 transition-colors">🖨 Print</button>
                 <a href={src} target="_blank" rel="noreferrer"
-                  className="text-[11px] bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-1.5 transition-colors">↗ New tab</a>
+                  className="text-[11px] bg-white/15 hover:bg-white/25 rounded-lg px-3 py-1.5 transition-colors">↗ New tab</a>
                 <button onClick={() => setDocView(null)} aria-label="Close document viewer"
                   className="text-slate-300 hover:text-white text-xl leading-none px-2">✕</button>
               </div>
@@ -1573,7 +1573,7 @@ export default function App() {
           <>
             <div className="fixed inset-0 bg-black/40 z-[80]" onClick={() => setDrawerExpenseId(null)} />
             <aside className="fixed top-0 end-0 bottom-0 w-full max-w-md bg-white z-[90] shadow-2xl overflow-y-auto">
-              <div className="sticky top-0 bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
+              <div className="sticky top-0 bg-[#6D1A1A] text-white px-5 py-4 flex items-center justify-between">
                 <div>
                   <p className="font-mono font-bold">{exp.voucherNo}</p>
                   <p className="text-xs text-slate-300">{exp.title}</p>
