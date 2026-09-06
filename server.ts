@@ -4881,6 +4881,16 @@ app.post("/api/content/correction", async (req, res) => {
   }
 });
 
+// Delete: only work that never reached an audience. A published piece stays — Policy 005's
+// correction rule exists so a reader who saw a claim gets a dated public correction, never a
+// silent removal. The test is status, on purpose: every narrower predicate ("already retracted",
+// "no website URL") is one a future editor could satisfy deliberately, and that is the
+// memory-hole the policy guards against.
+// One exception has ever been taken, by hand and not through this route — content-1788457415056,
+// the 3 Sep 2026 pipeline test: "not for publication" in its own title, no factual claim,
+// published only to the NAS editing instance on the isolated LAN, already retracted, and the
+// only row in the register. Saad instructed it 6 Sep 2026; the 15 audit lines of the test run and
+// a "Test Content Item Removed" line hold the record. Do not turn that exception into a rule here.
 app.post("/api/content/delete", async (req, res) => {
   try {
     const { id, user } = req.body;
