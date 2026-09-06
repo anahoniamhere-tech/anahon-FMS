@@ -149,6 +149,14 @@ export const HELP: HelpEntry[] = [
     },
   },
   {
+    id: "archive-onsite", area: "Website",
+    q: { en: "Is the whole archive on the website?", ar: "هل الأرشيف كله على الموقع؟" },
+    a: {
+      en: "No. Since 6 Sep 2026 the website takes only what is chosen. An archive item appears on the site when it is put there — the switch on its card in the Media archive, or automatically when you pin it into a widget in the Live editor. Everything else stays in the archive, searchable here, invisible there. Taking an item off the website hides it from every list on the site but changes nothing in the archive.",
+      ar: "لا. منذ 6 أيلول 2026 لا يأخذ الموقع إلا ما يُختار. تظهر مادة الأرشيف على الموقع عندما تُوضع فيه — بالمفتاح على بطاقتها في أرشيف الوسائط، أو تلقائياً عندما تثبّتها في عنصر عبر المحرّر المباشر. ما عداها يبقى في الأرشيف، قابلاً للبحث هنا وغير مرئي هناك. إزالة مادة من الموقع تخفيها من كل قوائمه ولا تغيّر شيئاً في الأرشيف.",
+    },
+  },
+  {
     id: "archive-rebuild", area: "Website",
     q: { en: "What does “Publish to website” in the Archive do?", ar: "ماذا يفعل «النشر إلى الموقع» في الأرشيف؟" },
     a: {

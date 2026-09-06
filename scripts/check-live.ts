@@ -57,7 +57,6 @@ ok("pins come first, removals are hidden, the title can be overridden", /\[\.\.\
 ok("the grid is a widget frame and each card names its slug", /class="articles-grid" data-widget-frame="articlesPage"/.test(index) && /data-item=\{article\.data\.slug\}/.test(index));
 ok("the server accepts the key", /\["hero", "articles", "episodes"[^\]]*"articlesPage"[^\]]*\]\.includes\(k\)/.test(server));
 ok("the Live editor labels it", /articlesPage: "Articles page"/.test(widget));
-ok("the Archive form edits it (pins by article, not from the media picker)", /<Widget k="articlesPage"/.test(archive) && /k !== "articlesPage" && <button/.test(archive) && /k === "articlesPage" && \(/.test(archive));
 
 console.log("\nthe Podcasts page has widgets of its own");
 const pod = site("src/components/Podcasts.astro");
@@ -66,7 +65,6 @@ ok("pins lead, removals hide, the featured player follows the curated list", /co
 ok("the list is a widget frame and each episode names its id", /class="eps-list" data-widget-frame="podcastsPage"/.test(pod) && /data-item=\{e\.id\}/.test(pod));
 ok("the server accepts the key", /"articlesPage", "podcastsPage"\]\.includes\(k\)/.test(server));
 ok("the Live editor labels it", /podcastsPage: "Podcasts page"/.test(widget));
-ok("the Archive form edits it (media picker is right for episodes)", /<Widget k="podcastsPage"[^>]*hasPins/.test(archive));
 
 console.log("\none website editor: the page in front, the section beside it");
 ok("the Site content door is gone from the sidebar", !/navKey: "website"/.test(nav) && !/WebsiteTab/.test(app));
@@ -87,6 +85,20 @@ ok("LiveTab opens the WidgetPanel and re-asks after a reload", /d\.type === "wid
 ok("the Sections list starts with the widgets and navigates to their page", /onWidget\(w\)/.test(web) && /const openWidget = \(w: string\)/.test(live) && /WIDGET_PAGE\[w\]\?\.\[pageLang\]/.test(live));
 ok("Save writes pinned = the visible order and keeps removals; Back to automatic clears pins", /pinned: order, removed: \[\.\.\.new Set/.test(widget) && /save\(\{ \.\.\.cfg, pinned: \[\], removed: cfg\.removed \|\| \[\] \}\)/.test(widget) && /post\("\/api\/archive\/home", \{ widgets: \{ \[widget\]: next \} \}\)/.test(widget));
 ok("every widget the site renders has a label, a page and a pool", ["hero", "articles", "episodes", "articlesPage", "podcastsPage"].every(w => new RegExp(`\\b${w}: "`).test(widget) && new RegExp(`\\b${w}: \\{ en:`).test(widget)));
+
+console.log("\nthe website is opt-in: only chosen archive items appear");
+const onsite = site("src/lib/onsite.ts"), archiveTab = text("src/tabs/ArchiveTab.tsx"), builder = readFileSync(new URL("../../archive/scripts/build_library.py", import.meta.url), "utf8");
+ok("one rule: website tag and not hidden", /tags\.includes\('website'\) && !i\.tags\.includes\('hidden'\)/.test(onsite));
+for (const f of ["Home", "Podcasts", "Documentaries", "Library"]) {
+  const c = site(`src/components/${f}.astro`);
+  ok(`${f}.astro filters through onSite`, /import \{ onSite \} from '\.\.\/lib\/onsite'/.test(c) && (/onSite\(i\)/.test(c) || /filter\(onSite\)/.test(c)));
+  ok(`${f}.astro: no bare hidden filter left`, !/!i\.tags\.includes\('hidden'\)\)/.test(c));
+}
+ok("the editing instance shows what the public sees (no PROD-only branch)", !/import\.meta\.env\.PROD \? allLibrary/.test(site("src/components/Library.astro")));
+ok("a pin puts the item on the website (server)", /function markOnSite\(ids: string\[\]\): string\[\]/.test(server) && /const marked = markOnSite\(Object\.values\(prev\)\.flatMap/.test(server));
+ok("the Archive tab switch is the website mark, and the Website home form is gone", /const ONSITE = "website"/.test(archiveTab) && !/UNPUBLISHED|HomeView/.test(archiveTab) && /Put on the website/.test(archiveTab));
+ok("iContent items keep the mark through a rebuild", /'website',\s*#/.test(builder));
+ok("the help page says so, in both languages", /id: "archive-onsite"/.test(help) && /الأرشيف كله على الموقع/.test(help));
 
 console.log("\nevery string the two tabs show has an Arabic twin");
 const keys = new Set<string>();

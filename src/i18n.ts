@@ -573,6 +573,8 @@ export const AR: Record<string, string> = {
   // Website & systems — Live editor and Site content (6 Sep 2026)
   "Articles page": "صفحة المقالات",
   "Podcasts page": "صفحة البودكاست",
+  "on the website": "على الموقع",
+  "Pinning an item puts it on the website.": "تثبيت المادة يضعها على الموقع.",
   "Widgets": "العناصر",
   "pinned": "مثبَّت",
   "automatic": "تلقائي",

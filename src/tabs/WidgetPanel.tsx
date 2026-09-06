@@ -20,7 +20,7 @@ const BY_SLUG = new Set(["articles", "articlesPage"]);                       // 
 
 export type ArchiveItem = { id: string; platform: string; kind: string; title: string; thumb: string; date: string; tags: string[]; series: string };
 export type Article = { slug: string; lang: string; title: string; date: string };
-type Row = { id: string; title: string; thumb?: string; date: string };
+type Row = { id: string; title: string; thumb?: string; date: string; onSite?: boolean };
 const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then(r => r.json());
 
 export function WidgetPanel({ widget, pageItems, items, articles, pageLang, canEdit, t, triggerToast, tell, onBack }: {
@@ -59,7 +59,7 @@ export function WidgetPanel({ widget, pageItems, items, articles, pageLang, canE
     const n = q.trim().toLowerCase();
     if (bySlug) return articles.filter(a => a.lang === pageLang && (!n || a.title.toLowerCase().includes(n))).slice(0, 40).map(a => ({ id: a.slug, title: a.title, date: a.date }));
     const wants = widget === "episodes" || widget === "podcastsPage" ? (i: ArchiveItem) => i.tags.includes("podcast") : () => true;
-    return items.filter(i => wants(i) && (!n || i.title.toLowerCase().includes(n))).slice(0, 40).map(i => ({ id: i.id, title: i.title, thumb: i.thumb, date: i.date }));
+    return items.filter(i => wants(i) && (!n || i.title.toLowerCase().includes(n))).slice(0, 40).map(i => ({ id: i.id, title: i.title, thumb: i.thumb, date: i.date, onSite: i.tags.includes("website") }));
   }, [q, items, articles, widget, pageLang]);
   const shows = SHOWS[widget];
 
@@ -103,11 +103,11 @@ export function WidgetPanel({ widget, pageItems, items, articles, pageLang, canE
               {pool.map(r => { const on = order.includes(r.id); return (
                 <button key={r.id} onClick={() => on ? drop(r.id) : add(r.id)} className={`flex w-full items-center gap-1.5 rounded border p-1 text-start ${on ? "border-red-600 bg-white" : "border-slate-200 bg-white hover:border-red-400"}`}>
                   {r.thumb && <img src={r.thumb} alt="" className="h-8 w-11 shrink-0 rounded object-cover" />}
-                  <span className="min-w-0 flex-1 line-clamp-2 leading-tight" dir="auto">{r.title}</span><span className="shrink-0 text-[10px] text-slate-400">{on ? "✓" : r.date}</span>
+                  <span className="min-w-0 flex-1 line-clamp-2 leading-tight" dir="auto">{r.title}</span><span className="shrink-0 text-[10px] text-slate-400">{on ? "✓" : r.onSite ? t("on the website") : r.date}</span>
                 </button>); })}
               {!pool.length && <p className="p-1 text-slate-400">—</p>}
             </div>
-            <p className="mt-1 text-[10px] text-slate-400">{t("Added items go to the end — move them up, then Save.")}</p>
+            <p className="mt-1 text-[10px] text-slate-400">{t("Added items go to the end — move them up, then Save.")} {bySlug ? "" : t("Pinning an item puts it on the website.")}</p>
           </div>
         )}
       </div>

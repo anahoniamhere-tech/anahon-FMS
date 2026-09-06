@@ -3979,10 +3979,32 @@ app.post("/api/archive/item", async (req, res) => {
       const it = lib.find((i: any) => i.id === id);
       if (it) { it.tags = clean; if (cap) it.title = cap; fs.writeFileSync(f, JSON.stringify(lib, null, 1)); break; }
     }
-    await createAuditLog(user?.id, user?.name, "Archive Item Curated", `${id}: tags [${clean.join(", ")}]${cap ? `, caption "${cap.slice(0, 60)}"` : ""}${clean.includes("hidden") ? " — unpublished" : ""}.`);
+    await createAuditLog(user?.id, user?.name, "Archive Item Curated", `${id}: tags [${clean.join(", ")}]${cap ? `, caption "${cap.slice(0, 60)}"` : ""}${clean.includes("website") ? " — on the website" : " — not on the website"}${clean.includes("hidden") ? " (hidden)" : ""}.`);
     res.json({ success: true, tags: clean, title: cap });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
+
+/** The website is opt-in: an item shows only with the `website` tag. Pinning into a widget is
+ *  one of the two ways to grant it (the other is the Archive tab's switch). Writes the same two
+ *  places /api/archive/item does — the override file and the library JSON the site reads —
+ *  and returns the ids that were newly marked. Article slugs are not library items and pass through. */
+function markOnSite(ids: string[]): string[] {
+  const ovPath = path.join(ARCHIVE_DIR, "tag-overrides.json");
+  const ov = readJsonFile(ovPath, {});
+  const marked: string[] = [];
+  for (const f of [libraryFile(""), libraryFile("icontent")]) {
+    const lib = readJsonFile(f, null); if (!lib) continue;
+    let changed = false;
+    for (const id of ids) {
+      const it = lib.find((i: any) => i.id === id);
+      if (!it || it.tags.includes("website")) continue;
+      it.tags = [...new Set([...it.tags, "website"])]; ov[id] = it.tags; marked.push(id); changed = true;
+    }
+    if (changed) fs.writeFileSync(f, JSON.stringify(lib, null, 1));
+  }
+  if (marked.length) fs.writeFileSync(ovPath, JSON.stringify(ov, null, 1));
+  return marked;
+}
 
 // ---- Tag schema + website home (moved from the site's ⚙ editors, step 2) ----
 const cleanTagList = (a: any) => Array.isArray(a) ? [...new Set(a.map(cleanTag).filter(Boolean))] : [];
@@ -4057,8 +4079,10 @@ app.post("/api/archive/home", async (req, res) => {
         ...(Array.isArray(w.removed) ? { removed: w.removed.map(String) } : {}) };
     }
     fs.writeFileSync(p, JSON.stringify(prev, null, 1) + "\n");
-    await createAuditLog(user?.id, user?.name, "Website Home Curated", Object.keys(widgets || {}).join(", ") + " widget(s) updated.");
-    res.json({ success: true, home: prev, refreshed: await siteRefresh() });
+    // a pinned item is a chosen item: it goes on the website with the pin
+    const marked = markOnSite(Object.values(prev).flatMap((w: any) => w?.pinned || []));
+    await createAuditLog(user?.id, user?.name, "Website Home Curated", Object.keys(widgets || {}).join(", ") + " widget(s) updated." + (marked.length ? ` ${marked.length} item(s) put on the website by pinning: ${marked.join(", ")}.` : ""));
+    res.json({ success: true, home: prev, onSite: marked, refreshed: await siteRefresh() });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
