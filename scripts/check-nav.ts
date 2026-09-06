@@ -61,6 +61,38 @@ ok("App.tsx has no hand-written allowlist left", !/\["dashboard", "projects", "e
 ok("App.tsx redirect reads visibleNav", /allowed = visibleNav\(role\)/.test(app));
 for (const [role, land] of Object.entries(LANDING)) ok(`${role} lands on ${land}, which it can see`, keys(role).includes(land));
 ok("everyone lands on the doors", ALL_ROLES.every(r => LANDING[r] === "doors" && keys(r).includes("doors")), ALL_ROLES.filter(r => LANDING[r] !== "doors").join(","));
+console.log("\na reload keeps the door, and only the door");
+// Negative assertions are tested against the code with comments stripped: this file
+// explains what it does NOT do ("replaceState, never pushState"), and a bare grep over the
+// source finds those words in the prose and fails on the explanation rather than the code.
+const code = app.split("\n").filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+// 6 Sep 2026: reloading on any screen returned to the landing page, because the open door
+// lived only in React state. The address bar already carried one for a single hop (the
+// notification deep link) and now keeps it. The distinction this rests on: a door is where
+// you are standing and survives; a record is an instruction, carried out once.
+ok("the open door is seeded from the address bar, not from a literal",
+  /useState<string>\(\s*\(\) => new URLSearchParams\(window\.location\.search\)\.get\("door"\) \|\| "doors"\s*\)/.test(app));
+ok("and every change to it is written back", /replaceState\(\{\}, "", `\$\{window\.location\.pathname\}\?door=\$\{encodeURIComponent\(activeTab\)\}`\)/.test(app)
+  && /\}, \[activeTab\]\);/.test(app));
+// The old code scrubbed the whole query. Keeping `door` is the fix; keeping `focus` would
+// re-open the same voucher on every later reload, which is the bug the scrub existed for.
+ok("the record is still read once and not written back", /const focus = new URLSearchParams\(window\.location\.search\)\.get\("focus"\);/.test(app)
+  && !/\?door=[^`]*focus=/.test(code));
+ok("nothing was swapped in for the URL — no sessionStorage, no second home for the door",
+  !/sessionStorage/.test(code));
+// pushState would make the phone's Back button walk between doors. A real improvement and
+// a separate decision; today Back still leaves the app, and this must not change that.
+ok("the history is replaced, never pushed", !/pushState|popstate/.test(code));
+// A cold start of the installed app has no query at all: start_url is "/".
+const manifest = JSON.parse(readFileSync(new URL("../public/manifest.webmanifest", import.meta.url), "utf8"));
+ok(`a cold start carries no door (start_url ${manifest.start_url}) and falls back to the landing`,
+  manifest.start_url === "/" && ALL_ROLES.every(r => LANDING[r] === "doors"));
+// The one thing that must still hold: a door in the URL that this role cannot open.
+for (const role of ["Project Officer", "Employee (Self-Service)", "Reporter"]) {
+  ok(`${role}: a hand-typed ?door=banking is still refused and falls back to ${LANDING[role]}`,
+    !keys(role).includes("banking") && keys(role).includes(LANDING[role]));
+}
+
 const arSrc = readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8");
 const labels = NAV.flatMap(s => [s.section, ...s.items.map(i => i.label)]);
 ok("every door and section has an Arabic label", labels.every(l => arSrc.includes(`"${l.replace(/"/g, '\\"')}":`)), labels.filter(l => !arSrc.includes(`"${l}":`)).join(", "));

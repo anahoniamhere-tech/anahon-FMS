@@ -82,7 +82,12 @@ ok("no response is written into the cache", !/cache\.put|caches\.open\([^)]*\)\.
 ok("the notification renders from its payload, fetching nothing", /e\.data\.json\(\)/.test(sw) && !/fetch\(/.test(sw.split('addEventListener("push"')[1] || ""));
 ok("a re-send replaces rather than stacks", /tag: d\.tag/.test(sw));
 ok("the click opens the item's own door", /door=\$\{encodeURIComponent\(item\.door\)\}/.test(server) && /data: \{ url: d\.url \|\| "\/" \}/.test(sw));
-ok("and App.tsx reads that query", /const door = q\.get\("door"\), focus = q\.get\("focus"\)/.test(read("../src/App.tsx")));
+// The deep link carries two things and App.tsx now reads them in two places, because they
+// behave differently on a reload: the door seeds the open tab and stays in the address bar,
+// the record is read once and never written back (6 Sep 2026 — see check-nav.ts).
+const appSrc = read("../src/App.tsx");
+ok("and App.tsx reads the door from that query", /new URLSearchParams\(window\.location\.search\)\.get\("door"\)/.test(appSrc));
+ok("and the record too, once", /new URLSearchParams\(window\.location\.search\)\.get\("focus"\)/.test(appSrc) && /setFocusId\(focus\)/.test(appSrc));
 
 console.log("\nD. the keys, the seats, and a dead device");
 ok("missing keys shut the path, they do not stop the server",

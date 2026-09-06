@@ -122,7 +122,13 @@ export default function App() {
   // Banking ledger view controls (shared: global search pre-fills them)
   const [bankFilterAcc, setBankFilterAcc] = useState<string>("");
   const [bankSearch, setBankSearch] = useState<string>("");
-  const [activeTab, setActiveTab] = useState<string>("doors");
+  // The open door is seeded from the address bar, which is the only place it survives a
+  // reload. No query — a cold start of the installed app, whose start_url is "/" — falls
+  // back to the landing, and the redirect effect below still has the last word, so a stale
+  // or hand-typed door the role cannot open is replaced by LANDING rather than opened.
+  const [activeTab, setActiveTab] = useState<string>(
+    () => new URLSearchParams(window.location.search).get("door") || "doors"
+  );
   // One-click Arabic. Remembered across sessions; flips the page to RTL.
   const [lang, setLang] = useState<string>(() => localStorage.getItem("anahon-lang") || "en");
   const t = (s: string) => tr(lang, s);
@@ -468,17 +474,31 @@ export default function App() {
   }, [state, activeUserId]);
 
   // A notification opens the app at the door its item lives behind: /?door=expenses&
-  // focus=expenses:e-12 (public/sw.js writes it). Read once, then scrubbed from the address
-  // bar so a reload does not keep dragging the person back to the same record. The redirect
-  // effect below still has the last word — a door this role cannot open is not opened.
+  // focus=expenses:e-12 (public/sw.js writes it). The door is read by the seed above; this
+  // reads the record.
+  //
+  // The two are not the same kind of thing, and that is the whole of this. A **record** is
+  // one-shot: "open voucher e-12" is an instruction that has been carried out once the
+  // screen opens it, and leaving it in the address bar means every later reload drags the
+  // person back to the same voucher whatever they went on to do. A **door** is not an
+  // instruction, it is where you are standing — so it survives, and a reload puts you back
+  // on the screen you were reading instead of on the landing page.
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
-    const door = q.get("door"), focus = q.get("focus");
-    if (!door && !focus) return;
-    if (door) setActiveTab(door);
+    const focus = new URLSearchParams(window.location.search).get("focus");
     if (focus) setFocusId(focus);
-    window.history.replaceState({}, "", window.location.pathname);
   }, []);
+
+  // Write down where we are. The address bar is the only place a door survives a reload,
+  // and rewriting it also drops `focus` once the effect above has taken it — which is why
+  // there is no separate scrub. replaceState, never pushState: this is not a new page in
+  // the history, and the phone's Back button leaving the app is a separate decision nobody
+  // has taken. It is declared before the redirect effect, so on a first paint it may write
+  // a door that effect is about to replace — but it re-runs on every activeTab change,
+  // including that replacement, so the value that ends up in the address bar is always the
+  // door actually open and never one the role was bounced off.
+  useEffect(() => {
+    window.history.replaceState({}, "", `${window.location.pathname}?door=${encodeURIComponent(activeTab)}`);
+  }, [activeTab]);
 
   // Self-service staff (Policy 8.5) are routed to the timesheet tab. Lives up here with the
   // other hooks — placing it after the login early-return breaks the Rules of Hooks.
