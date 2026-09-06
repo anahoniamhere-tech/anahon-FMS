@@ -100,6 +100,13 @@ ok("the Archive tab switch is the website mark, and the Website home form is gon
 ok("iContent items keep the mark through a rebuild", /'website',\s*#/.test(builder));
 ok("the help page says so, in both languages", /id: "archive-onsite"/.test(help) && /الأرشيف كله على الموقع/.test(help));
 
+console.log("\nthe site's address follows the FMS's own origin");
+ok("port map: 3100→4321 on the NAS, 8444→8443 over the tailnet", /const SITE_PORT: Record<string, string> = \{ "3100": "4321", "8444": "8443" \};/.test(live));
+ok("same scheme and host, only the port swapped", /`\$\{window\.location\.protocol\}\/\/\$\{window\.location\.hostname\}:\$\{SITE_PORT\[window\.location\.port\]\}`/.test(live));
+ok("SITE_PUBLIC_URL stays the fallback for unknown origins", /const siteUrl = \(derived \|\| String\(state\.siteUrl \|\| ""\)\)/.test(live));
+ok("the postMessage origin gate derives from the same value", /const siteOrigin = siteUrl \? new URL\(siteUrl\)\.origin : "";/.test(live));
+ok("server-to-server calls keep SITE_URL", /fetch\(`\$\{SITE_URL\}\/__build`/.test(server) && /fetch\(`\$\{SITE_URL\}\/__publish`/.test(server) && /fetch\(`\$\{SITE_URL\}\/__refresh`/.test(server));
+
 console.log("\nevery string the two tabs show has an Arabic twin");
 const keys = new Set<string>();
 for (const src of [live, web, widget]) for (const m of src.matchAll(/\bt\("((?:[^"\\]|\\.)*)"\)/g)) keys.add(m[1].replace(/\\'/g, "'"));

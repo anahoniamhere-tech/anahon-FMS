@@ -48,7 +48,15 @@ import type { ArchiveItem, Article } from "./WidgetPanel";
 export default function LiveTab({ state, currentUser, triggerToast, lang, openDoor }: SharedProps) {
   const canEdit = EDIT_ROLES.includes(currentUser?.role);
   const t = (s: string) => tr(lang, s);
-  const siteUrl = String(state.siteUrl || "").replace(/\/$/, "");
+  // The site's editing server sits beside the FMS on every host that serves it: on the NAS
+  // :3100 ↔ :4321, and over the tailnet 8444 ↔ 8443 (tailscale serve). So the address to frame
+  // is the address the FMS is being browsed at, with the port swapped — same host, same scheme —
+  // which is what keeps an https page from framing an http site (blocked as mixed content) and
+  // keeps anahon.local (mDNS, LAN-only) out of the tailnet. SITE_PUBLIC_URL remains the fallback
+  // for any origin this map does not know. Server-to-server calls keep SITE_URL, untouched.
+  const SITE_PORT: Record<string, string> = { "3100": "4321", "8444": "8443" };
+  const derived = typeof window !== "undefined" && SITE_PORT[window.location.port] ? `${window.location.protocol}//${window.location.hostname}:${SITE_PORT[window.location.port]}` : "";
+  const siteUrl = (derived || String(state.siteUrl || "")).replace(/\/$/, "");
   const siteOrigin = siteUrl ? new URL(siteUrl).origin : "";
   const frame = useRef<HTMLIFrameElement>(null);
   const [edit, setEdit] = useState(false);
