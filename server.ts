@@ -2425,7 +2425,10 @@ async function anahonBrainContext(): Promise<string> {
     prisma.engagement.findMany({ orderBy: { startDate: "desc" } }),
     prisma.client.findMany(),
     prisma.quotation.findMany(),
-    prisma.contentItem.findMany({ where: { status: "Published" }, orderBy: { publishedAt: "desc" } }),
+    // Published and still standing. A retracted piece keeps status "Published" — the record
+    // is permanent under Policy 005 — but it has been taken off the website, and offering it
+    // to a funder as track record would be claiming work AnaHon has withdrawn.
+    prisma.contentItem.findMany({ where: { status: "Published", retractedAt: "" }, orderBy: { publishedAt: "desc" } }),
     strategyCorpus()
   ]);
   const donorName = (id: string) => donors.find(d => d.id === id)?.name || id;

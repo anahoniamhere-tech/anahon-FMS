@@ -56,8 +56,10 @@ for (const [label, guard] of [
   ["clients", "if (clients.length) alsoDone.push("],
   ["published content", "if (published.length) alsoDone.push("],
 ] as const) ok(`${label}: no rows, no heading`, brain.includes(guard));
-ok("only content the pipeline actually published is claimed",
-  /contentItem\.findMany\(\{ where: \{ status: "Published" \}/.test(brain));
+// Retract keeps status "Published" on purpose (the record is permanent, Policy 005) and sets
+// retractedAt, so filtering on status alone would offer a funder work AnaHon has withdrawn.
+ok("only content the pipeline published AND has not retracted is claimed",
+  /contentItem\.findMany\(\{ where: \{ status: "Published", retractedAt: "" \}/.test(brain));
 ok("a client with no quotation still reads as a client, not as an empty list",
   /no quotation yet/.test(brain));
 ok("quotations are attached to their own client, not pooled",
