@@ -649,7 +649,6 @@ export const AR: Record<string, string> = {
   "Pages & sections": "الصفحات والأقسام",
   "Navigation, footer & labels": "التصفّح والتذييل والتسميات",
   "Programs & mission": "البرامج والرسالة",
-  "Home widgets (see Archive › Website home)": "عناصر الرئيسية (انظر الأرشيف › واجهة الموقع)",
   "Inline labels (buttons, small headings)": "تسميات مضمّنة (أزرار وعناوين صغيرة)",
   "Home — hero": "الرئيسية — الواجهة",
   "Home — programs strip": "الرئيسية — شريط البرامج",
