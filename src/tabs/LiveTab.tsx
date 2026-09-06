@@ -3,6 +3,7 @@ import { SharedProps } from "./shared";
 import Info from "../Info";
 import { SITE_EDITORS } from "../roles";
 import { tr } from "../i18n";
+import { SectionsPanel, Focus } from "./SitePanel";
 
 /**
  * Live editor — the website itself, framed from its editing server, edited in place.
@@ -11,6 +12,11 @@ import { tr } from "../i18n";
  * library on the right onto any image. Each change is matched to the site's content
  * files (site.json, i18n.json, programs.json, home.json) and written; the preview
  * reloads with the new content. Publish builds the public site and pushes it out.
+ *
+ * Elementor's shape, without Elementor: the page in front, a panel beside it. A click on
+ * text edits it in place AND opens its whole section as a form in the Section panel (the
+ * other language, links, pictures, list order); Sections lists everything the page cannot
+ * show. Since 6 Sep 2026 this is the one website editor — "Site content" was folded in.
  *
  * Two edges, both by design: a published article's words live in the Editorial desk (the
  * page names its record; a click hands it over), and drag-and-drop is a mouse gesture, so
@@ -51,7 +57,9 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
   const [pageLang, setPageLang] = useState<"en" | "ar">("en");
   const [articleId, setArticleId] = useState("");   // the desk record behind the framed page, when it is an article
   const [lib, setLib] = useState<LibItem[]>([]);
-  const [panel, setPanel] = useState<"library" | "pictures">("library");
+  const [panel, setPanel] = useState<"section" | "library" | "pictures">("section");
+  const [focus, setFocus] = useState<Focus>(null);        // the section behind the last clicked text
+  const [device, setDevice] = useState<"desktop" | "tablet" | "phone">("desktop");
   const [items, setItems] = useState<ArchiveItem[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [q, setQ] = useState("");
@@ -75,6 +83,12 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
       if (siteOrigin && e.origin !== siteOrigin) return;
       if (d.type === "ready") { setPath(d.url || "/"); setPageLang(d.lang === "ar" ? "ar" : "en"); setArticleId(String(d.articleId || "")); tell({ type: "edit", on: editRef.current }); return; }
       if (d.type === "article") { if (d.id) openDoor("editorial", String(d.id)); return; }
+      if (d.type === "select") {
+        const r = await post("/api/website/locate", { text: d.text, lang: d.lang }).catch(() => ({ paths: [] }));
+        const first = String((r.paths || [])[0] || ""); const [file, section] = first.split(".");
+        if (file && section) { setFocus({ file, section }); setPanel("section"); }
+        return;
+      }
       if (d.type === "widget") {
         const w = String(d.widget || ""); const id = String(d.id || "");
         if (!WIDGET_LABEL[w] || !id) return;
@@ -129,6 +143,11 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
           ))}
         </div>
         <span className="font-mono text-xs text-slate-500" dir="ltr">{path}</span>
+        <div className="hidden overflow-hidden rounded border border-slate-300 text-xs md:flex">
+          {(["desktop", "tablet", "phone"] as const).map(w => (
+            <button key={w} onClick={() => setDevice(w)} className={`px-2 py-1 ${device === w ? "bg-slate-800 text-white" : "bg-white"}`}>{t(w === "desktop" ? "Desktop" : w === "tablet" ? "Tablet" : "Phone")}</button>
+          ))}
+        </div>
         <div className="flex-1" />
         {canEdit && (
           <label className={`flex cursor-pointer items-center gap-2 rounded px-3 py-1 text-xs font-semibold ${edit ? "bg-red-600 text-white" : "bg-slate-100"}`}>
@@ -150,12 +169,15 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
       )}
       {canEdit && <p className="text-[11px] text-slate-500 md:hidden">{t("On a phone you can tap text to edit it; dropping pictures and library items needs a computer.")}</p>}
       <div className="flex min-h-0 flex-1 gap-2">
-        <iframe ref={frame} src={siteUrl + "/"} title="AnaHon website" className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white" />
+        <div className={`flex min-w-0 flex-1 justify-center ${device === "desktop" ? "" : "bg-slate-200 rounded-lg"}`}>
+          <iframe ref={frame} src={siteUrl + "/"} title="AnaHon website" style={{ maxWidth: device === "tablet" ? 768 : device === "phone" ? 390 : undefined }} className="h-full w-full min-w-0 rounded-lg border border-slate-200 bg-white" />
+        </div>
         {canEdit && (
-          <aside className="hidden w-64 shrink-0 flex-col rounded-lg border border-slate-200 bg-white md:flex">
+          <aside className={`hidden shrink-0 flex-col rounded-lg border border-slate-200 bg-white md:flex ${panel === "section" ? "w-96" : "w-64"}`}>
             <div className="flex border-b text-xs font-semibold">
-              {(["library", "pictures"] as const).map(p => <button key={p} onClick={() => setPanel(p)} className={`flex-1 px-2 py-1.5 ${panel === p ? "bg-slate-800 text-white" : ""}`}>{t(p === "library" ? "Library" : "Pictures")}</button>)}
+              {(["section", "library", "pictures"] as const).map(p => <button key={p} onClick={() => setPanel(p)} className={`flex-1 px-2 py-1.5 ${panel === p ? "bg-slate-800 text-white" : ""}`}>{t(p === "section" ? "Section" : p === "library" ? "Library" : "Pictures")}</button>)}
             </div>
+            {panel === "section" && <SectionsPanel canEdit={canEdit} t={t} triggerToast={triggerToast} siteUrl={siteUrl} focus={focus} />}
             {panel === "library" && (
               <>
                 <div className="space-y-1 border-b p-1.5">

@@ -18,7 +18,7 @@ const ok = (label: string, cond: boolean, detail = "") => {
 const text = (f: string) => readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
 const site = (f: string) => readFileSync(new URL(`../../website/${f}`, import.meta.url), "utf8");
 
-const live = text("src/tabs/LiveTab.tsx"), web = text("src/tabs/WebsiteTab.tsx");
+const live = text("src/tabs/LiveTab.tsx"), web = text("src/tabs/SitePanel.tsx"), gates = text("src/gates.ts"), nav = text("src/nav.tsx");
 const shared = text("src/tabs/shared.ts"), app = text("src/App.tsx"), server = text("server.ts"), help = text("src/help.ts");
 const page = site("src/layouts/ArticlePage.astro"), script = site("src/lib/live-edit.js"), schema = site("src/content.config.ts");
 
@@ -46,7 +46,7 @@ ok("it names the Editorial desk for articles", /Articles are edited in the Edito
 ok("the help entry says the same, in both languages", /Editorial desk — clicking one there opens it/.test(help) && /مكتب التحرير/.test(help.slice(help.indexOf('id: "live-editor"'), help.indexOf('id: "publish-site"'))));
 
 console.log("\nthe phone gets a usable page");
-ok("the library panel is hidden below md", /<aside className="hidden w-64 shrink-0 flex-col[^"]*md:flex"/.test(live));
+ok("the side panel is hidden below md", /<aside className=\{`hidden shrink-0 flex-col[^`]*md:flex \$\{panel === "section" \? "w-96" : "w-64"\}`\}/.test(live));
 ok("the phone is told what it can and cannot do", /md:hidden">\{t\("On a phone you can tap text to edit it/.test(live));
 ok("no physical direction class crept in", !/\b(ml|mr|pl|pr|left|right|border-l|border-r|text-left|text-right)-/.test(live + web));
 
@@ -67,6 +67,17 @@ ok("the list is a widget frame and each episode names its id", /class="eps-list"
 ok("the server accepts the key", /"articlesPage", "podcastsPage"\]\.includes\(k\)/.test(server));
 ok("the Live editor labels it", /podcastsPage: "Podcasts page"/.test(live));
 ok("the Archive form edits it (media picker is right for episodes)", /<Widget k="podcastsPage"[^>]*hasPins/.test(archive));
+
+console.log("\none website editor: the page in front, the section beside it");
+ok("the Site content door is gone from the sidebar", !/navKey: "website"/.test(nav) && !/WebsiteTab/.test(app));
+ok("SitePanel exports the form and the panel", /export function Field\(/.test(web) && /export function SectionsPanel\(/.test(web));
+ok("the Live editor mounts it as the Section tab", /import \{ SectionsPanel, Focus \} from "\.\/SitePanel"/.test(live) && /panel === "section" && <SectionsPanel/.test(live));
+ok("a click on the page reports what was clicked", /send\(\{ type: 'select', text: norm\(n\.nodeValue\), lang/.test(script));
+ok("the server answers where it lives, without writing", /app\.post\("\/api\/website\/locate"/.test(server) && /res\.json\(\{ paths: findInContent\("text", want, lang\) \}\)/.test(server) && !/writeFileSync/.test(server.slice(server.indexOf('app.post("/api/website/locate"'), server.indexOf('app.post("/api/website/edit"'))));
+ok("edit and locate share one walker", /const hits = findInContent\(kind, want, lang, to\);/.test(server));
+ok("the gate knows the route", /"\/api\/website\/locate": SITE_EDITORS/.test(gates));
+ok("the panel opens that section", /d\.type === "select"/.test(live) && /setFocus\(\{ file, section \}\); setPanel\("section"\)/.test(live) && /if \(focus && content\[focus\.file\]\?\.\[focus\.section\] !== undefined\)/.test(web));
+ok("desktop / tablet / phone preview widths", /\["desktop", "tablet", "phone"\] as const/.test(live) && /maxWidth: device === "tablet" \? 768 : device === "phone" \? 390/.test(live));
 
 console.log("\nevery string the two tabs show has an Arabic twin");
 const keys = new Set<string>();

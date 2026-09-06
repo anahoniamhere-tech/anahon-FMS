@@ -78,7 +78,6 @@ import NetworkTab from "./tabs/NetworkTab";
 import ToolsTab from "./tabs/ToolsTab";
 import ArchiveTab from "./tabs/ArchiveTab";
 import SocialTab from "./tabs/SocialTab";
-import WebsiteTab from "./tabs/WebsiteTab";
 import LiveTab from "./tabs/LiveTab";
 import RoleSwitch, { ActingBanner } from "./RoleSwitch";
 import { NAV, visibleNav, LANDING } from "./nav";
@@ -1312,7 +1311,6 @@ export default function App() {
           {activeTab === "tools" && <ToolsTab {...shared} />}
           {activeTab === "archive" && <ArchiveTab {...shared} />}
           {activeTab === "social" && <SocialTab {...shared} />}
-          {activeTab === "website" && <WebsiteTab {...shared} />}
           {activeTab === "live" && <LiveTab {...shared} />}
           {activeTab === "handbooks" && <HandbooksTab {...shared} />}
           {activeTab === "help" && <HelpTab {...shared} />}

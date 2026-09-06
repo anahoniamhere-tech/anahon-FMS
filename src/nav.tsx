@@ -1,7 +1,7 @@
 import React from "react";
 import {
   Activity, Archive, BookOpen, Briefcase, Building, Coins, FileText, FolderGit2, HardDrive,
-  Layers, LayoutGrid, LayoutTemplate, Megaphone, Newspaper, PencilLine, RefreshCw, Share2,
+  Layers, LayoutGrid, Megaphone, Newspaper, PencilLine, RefreshCw, Share2,
   ShieldAlert, Sliders, User, UserCheck, Users,
 } from "lucide-react";
 
@@ -64,7 +64,6 @@ export const NAV: NavSection[] = [
     roles: ["*full", ...EDITORS, ...DIGITAL],
     items: [
       { navKey: "live", label: "Live editor", icon: ic(PencilLine) },
-      { navKey: "website", label: "Site content", icon: ic(LayoutTemplate) },
       { navKey: "archive", label: "Media archive", icon: ic(Archive) },
       { navKey: "tools", label: "Tools", icon: ic(Sliders), roles: ["*full", ...DIGITAL] },
     ],

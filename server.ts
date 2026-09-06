@@ -4238,6 +4238,36 @@ app.post("/api/website/image", async (req, res) => {
 // this image became that". We find the exact string in the content files (scoped to
 // the page's language for text) and replace it wherever it appears, then refresh.
 const langOfPath = (p: string) => /[._\[]en(?=[.\[]|$)/.test(p) ? "en" : /[._\[]ar(?=[.\[]|$)/.test(p) ? "ar" : null;
+/** Every content-file path whose value is exactly `want` (text: whitespace-normalised, scoped to
+ *  the page language). With `to` given, the value is replaced there and the file written. */
+function findInContent(kind: "text" | "image", want: string, lang: string | undefined, to?: string): string[] {
+  const norm = (x: string) => x.replace(/\s+/g, " ").trim();
+  const hits: string[] = [];
+  const walk = (node: any, p: string) => {
+    for (const k of Object.keys(node)) {
+      const v = node[k], path = `${p}.${k}`;
+      if (typeof v === "string") {
+        const match = kind === "text" ? norm(v) === want : v === want;
+        const langOk = kind === "image" || !lang || (langOfPath(path) ?? lang) === lang;
+        if (match && langOk) { if (to !== undefined) node[k] = kind === "text" ? to.trim() : to; hits.push(path); }
+      } else if (v && typeof v === "object") walk(v, path);
+    }
+  };
+  for (const f of Object.values(WEBSITE_FILES)) {
+    const p = path.join(SITE_DIR, "src/data", f);
+    const doc = readJsonFile(p, null); if (!doc) continue;
+    const before = hits.length; walk(doc, f.replace(/\.json$/, ""));
+    if (to !== undefined && hits.length > before) fs.writeFileSync(p, JSON.stringify(doc, null, 1) + "\n");
+  }
+  return hits;
+}
+// Which section does this text belong to? The panel opens it. Reads only.
+app.post("/api/website/locate", (req, res) => {
+  const { text, lang } = req.body;
+  const want = String(text || "").replace(/\s+/g, " ").trim();
+  if (!want) return res.status(400).json({ error: "text required" });
+  res.json({ paths: findInContent("text", want, lang) });
+});
 app.post("/api/website/edit", async (req, res) => {
   try {
     const { kind, from, to, lang, url, user } = req.body;
@@ -4247,23 +4277,7 @@ app.post("/api/website/edit", async (req, res) => {
     const want = kind === "text" ? norm(from) : from;
     if (!want) return res.status(400).json({ error: "nothing to match" });
     if (kind === "image" && !/^(\/|https?:)/.test(to)) return res.status(400).json({ error: "image path must start with / or http" });
-    const hits: string[] = [];
-    const walk = (node: any, p: string) => {
-      for (const k of Object.keys(node)) {
-        const v = node[k], path = `${p}.${k}`;
-        if (typeof v === "string") {
-          const match = kind === "text" ? norm(v) === want : v === want;
-          const langOk = kind === "image" || !lang || (langOfPath(path) ?? lang) === lang;
-          if (match && langOk) { node[k] = kind === "text" ? to.trim() : to; hits.push(path); }
-        } else if (v && typeof v === "object") walk(v, path);
-      }
-    };
-    for (const f of Object.values(WEBSITE_FILES)) {
-      const p = path.join(SITE_DIR, "src/data", f);
-      const doc = readJsonFile(p, null); if (!doc) continue;
-      const before = hits.length; walk(doc, f.replace(/\.json$/, ""));
-      if (hits.length > before) fs.writeFileSync(p, JSON.stringify(doc, null, 1) + "\n");
-    }
+    const hits = findInContent(kind, want, lang, to);
     if (!hits.length) return res.status(404).json({ error: kind === "text"
       ? "This text is part of the page's design, not its content — it can only be changed in the site's code. Articles are edited in the Editorial desk."
       : "This picture is part of the page's design, not its content — it can only be changed in the site's code." });
