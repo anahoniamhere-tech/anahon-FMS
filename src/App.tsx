@@ -662,9 +662,7 @@ export default function App() {
 
   if (authLoading || (fbUser && loading)) {
     return (
-      // relative z-10 lifts this above the body::before brand glow, which is fixed and
-      // would otherwise tint the white.
-      <div className="relative z-10 flex h-screen items-center justify-center bg-white" role="status" aria-live="polite">
+      <div className="flex h-screen items-center justify-center bg-white" role="status" aria-live="polite">
         <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="anahon-turn h-28 w-auto" />
         <span className="sr-only">Loading</span>
       </div>
@@ -674,7 +672,7 @@ export default function App() {
   // Show login screen if not authenticated (must be before !state check, since state only loads after auth)
   if (!fbUser) {
     return (
-      <div className="relative z-10 flex h-screen items-center justify-center bg-white text-slate-900 font-sans p-6 overflow-y-auto">
+      <div className="flex h-screen items-center justify-center bg-white text-slate-900 font-sans p-6 overflow-y-auto">
         <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-900/5 p-8 space-y-6 relative overflow-hidden">
 
           {/* Header */}

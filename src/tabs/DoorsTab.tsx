@@ -62,7 +62,7 @@ export default function DoorsTab({ state, currentUser, t, lang, handleNavClick }
                     key={d.navKey}
                     onClick={() => handleNavClick(d.navKey)}
                     title={c?.owed ? `${c.owed} ${t("waiting")}` : c?.week ? `${c.week} ${t("this week")}` : undefined}
-                    className="flex flex-col items-center gap-2 rounded-2xl bg-white px-2 py-4 text-center shadow-sm transition-[box-shadow,transform] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#6D1A1A]/15"
+                    className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2 py-4 text-center shadow-sm transition-[box-shadow,transform] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[#6D1A1A]/15"
                   >
                     <span className={`relative flex h-13 w-13 items-center justify-center rounded-[14px] ${WELL[s.section] || WELL.Admin} [&>svg]:h-6 [&>svg]:w-6 [&>span]:h-auto [&>span]:w-auto [&>span]:text-2xl [&>span]:leading-none`}>
                       {d.icon}

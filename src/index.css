@@ -36,22 +36,10 @@
 
 body {
   font-family: var(--font-sans);
-  background-color: #F7F1EC; /* brand warm off-white */
+  background-color: #FFFFFF; /* bright white — Saad, 6 Sep 2026 */
   color: #1a1212;
   margin: 0;
   padding: 0;
-}
-
-/* §5 — soft ambient glow: blurred red/coral light, never competing with text */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    radial-gradient(560px 380px at 88% -6%, rgba(226, 59, 59, 0.10), transparent 70%),
-    radial-gradient(640px 420px at -8% 104%, rgba(248, 136, 136, 0.12), transparent 70%);
 }
 
 /* The mark turns while the app loads. It is a map pin, so it must never rotate in
