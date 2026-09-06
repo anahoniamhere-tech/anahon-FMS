@@ -11,6 +11,7 @@ let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
   if (!cond) { failed++; console.error(`  FAIL  ${label}${detail ? " — " + detail : ""}`); } else console.log(`  ok    ${label}`);
 };
+const arSrcHas = (k: string) => readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8").includes(`"${k}":`);
 const keys = (role: string) => visibleNav(role).flatMap(s => s.items.map(i => i.navKey)).sort();
 const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
@@ -61,6 +62,26 @@ ok("App.tsx has no hand-written allowlist left", !/\["dashboard", "projects", "e
 ok("App.tsx redirect reads visibleNav", /allowed = visibleNav\(role\)/.test(app));
 for (const [role, land] of Object.entries(LANDING)) ok(`${role} lands on ${land}, which it can see`, keys(role).includes(land));
 ok("everyone lands on the doors", ALL_ROLES.every(r => LANDING[r] === "doors" && keys(r).includes("doors")), ALL_ROLES.filter(r => LANDING[r] !== "doors").join(","));
+console.log("\nthe masthead is the way back to the doors");
+// 6 Sep 2026: the brand block in both headers is the button home — not a home icon added
+// beside it. On a phone the sidebar is behind the hamburger, so this is the whole
+// difference between the doors being one tap away and two.
+ok("it goes through the sidebar's own handler, never a bare setActiveTab",
+  /const goHome = \(\) => handleNavClick\(LANDING\[/.test(app));
+// A literal "doors" here would silently outlive a change to the landing rule.
+ok("and it targets LANDING, not a tab name written out", !/handleNavClick\("doors"\)/.test(app)
+  && /LANDING\[currentUser\?\.role \|\| ""\]/.test(app));
+ok("both headers are real buttons, not clickable divs",
+  (app.match(/onClick=\{goHome\}/g) || []).length === 2
+  && (app.match(/type="button" onClick=\{goHome\}/g) || []).length === 2);
+ok("each carries a translated label saying where it goes",
+  (app.match(/aria-label=\{t\("Go to the doors"\)\}/g) || []).length === 2
+  && arSrcHas("Go to the doors"));
+// The phone is the surface that needs the touch target; the header there is 64px tall.
+ok("the phone one meets the 44px touch minimum", /\$\{BRAND_BUTTON\} min-h-\[44px\]/.test(app));
+ok("both read as pressable — hover tint and a focus ring", /hover:bg-\[#6D1A1A\]/.test(app)
+  && /focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-\[#6D1A1A\]/.test(app));
+
 console.log("\na reload keeps the door, and only the door");
 // Negative assertions are tested against the code with comments stripped: this file
 // explains what it does NOT do ("replaceState, never pushState"), and a bare grep over the

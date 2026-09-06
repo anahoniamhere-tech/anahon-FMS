@@ -1050,6 +1050,17 @@ export default function App() {
     t => t.status !== "Done" && t.dueDate < new Date().toLocaleDateString("en-CA")
   ).length;
 
+  // The brand block is the way back to the doors. It goes through the same handler the
+  // sidebar uses — never a bare setActiveTab — so the ?door= in the address bar stays
+  // right and a reload lands where the button did. LANDING, not the literal "doors", so
+  // this cannot drift from the landing rule if that rule ever changes.
+  const goHome = () => handleNavClick(LANDING[currentUser?.role || ""] || "doors");
+  // Left active on the doors screen itself: pressing it there is a harmless no-op, and a
+  // greyed-out masthead reads as something broken rather than as something you are on.
+  const BRAND_BUTTON =
+    "flex items-center gap-3 rounded-xl text-start transition-colors cursor-pointer " +
+    "hover:bg-[#6D1A1A]/[0.06] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6D1A1A]";
+
   const shared: SharedProps = {
     state, setState, currentUser, t, lang, rtl, formatUSD, formatIn,
     refreshState, triggerToast, handleNavClick, openDoc,
@@ -1090,13 +1101,14 @@ export default function App() {
 
       {/* Header */}
       <header className="hidden md:flex flex-row items-center justify-between border-b border-slate-200 bg-white px-6 py-3 text-slate-900">
-        <div className="flex items-center gap-3">
-          <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="h-10 w-auto drop-shadow" />
+        <button type="button" onClick={goHome} aria-label={t("Go to the doors")} title={t("Go to the doors")}
+          className={`${BRAND_BUTTON} -ms-2 px-2 py-1`}>
+          <img src="/assets/images/anahon_logo.png" alt="" className="h-10 w-auto drop-shadow" />
           <div>
             <h1 className="text-lg font-bold tracking-tight font-sans">AnaHon Management System</h1>
             <p className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Tripoli Civil Co. Compliance Terminal</p>
           </div>
-        </div>
+        </button>
         {/* Global search — vouchers, projects, vendors, documents, bank, people */}
         {!isSelfService && (
           <div className="relative flex-1 max-w-md mx-6">
@@ -1180,13 +1192,16 @@ export default function App() {
           >
             <span className="text-lg leading-none">{isOpen ? "✕" : "☰"}</span>
           </button>
-          <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="h-9 w-auto drop-shadow" />
-          <div className="flex min-w-0 flex-col">
-            <h1 className="truncate text-xs font-bold tracking-tight font-sans">AnaHon MS</h1>
-            <span className="text-[9px] font-bold font-mono text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 uppercase w-fit max-w-[7.5rem] truncate leading-none mt-0.5">
-              {activeTab}
-            </span>
-          </div>
+          <button type="button" onClick={goHome} aria-label={t("Go to the doors")} title={t("Go to the doors")}
+            className={`${BRAND_BUTTON} min-h-[44px] min-w-0 gap-2 px-1`}>
+            <img src="/assets/images/anahon_logo.png" alt="" className="h-9 w-auto shrink-0 drop-shadow" />
+            <div className="flex min-w-0 flex-col">
+              <h1 className="truncate text-xs font-bold tracking-tight font-sans">AnaHon MS</h1>
+              <span className="text-[9px] font-bold font-mono text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 uppercase w-fit max-w-[7.5rem] truncate leading-none mt-0.5">
+                {activeTab}
+              </span>
+            </div>
+          </button>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {/* The way out to the public site. It lived only in the desktop header, so on a

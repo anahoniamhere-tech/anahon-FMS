@@ -398,6 +398,7 @@ export const AR: Record<string, string> = {
   "Tax": "الضرائب",
   "Travel": "السفر",
   "Doors": "الأبواب",
+  "Go to the doors": "الذهاب إلى الأبواب",
   "Hello {name}, following up on our conversation as we agreed. Would you have a few minutes this week? — AnaHon": "مرحباً {name}، أتابع معك بخصوص حديثنا كما اتفقنا. هل لديك بضع دقائق هذا الأسبوع؟ — أنا هون",
   "Hello {name}, we have paid voucher {voucherNo}, {amount}, on {date}. Please confirm receipt. — AnaHon": "مرحباً {name}، حوّلنا لك سند الصرف {voucherNo} بمبلغ {amount} بتاريخ {date}. نرجو تأكيد الاستلام. — أنا هون",
   "Hello {name}, we have sent you quotation {ref} for {amount}. Tell us if anything should change. — AnaHon": "مرحباً {name}، أرسلنا لك عرض السعر {ref} بقيمة {amount}. أخبرنا إن كان يلزم أي تعديل. — أنا هون",
