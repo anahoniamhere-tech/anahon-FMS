@@ -55,7 +55,9 @@ console.log("\nthe sidebar needs no direction branch");
 ok("the panel is pinned by one class", /fixed top-16 bottom-0 start-0 z-50/.test(app));
 ok("its content-side border is logical", /'translate-x-0 w-64 p-4 border-e'/.test(app));
 ok("the handle sits at one offset", /\$\{isOpen \? 'start-64' : 'start-0'\}/.test(app));
-ok("and is rounded on the content side", /rounded-e-xl border-e bg-slate-800/.test(app));
+// Pins the logical rounding and border, not the colour — this check guards direction,
+// not the palette, and it failed the day the chrome went white.
+ok("and is rounded on the content side", /rounded-e-xl border-e bg-\S+ border-y/.test(app));
 // The one physical thing with no logical twin: transform. It keeps its branch.
 ok("the off-screen slide keeps its branch", /rtl \? "translate-x-full" : "-translate-x-full"/.test(app));
 

@@ -1072,12 +1072,12 @@ export default function App() {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="hidden md:flex flex-row items-center justify-between border-b border-slate-200 bg-slate-900 px-6 py-3 text-white">
+      <header className="hidden md:flex flex-row items-center justify-between border-b border-slate-200 bg-white px-6 py-3 text-slate-900">
         <div className="flex items-center gap-3">
           <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="h-10 w-auto drop-shadow" />
           <div>
             <h1 className="text-lg font-bold tracking-tight font-sans">AnaHon Management System</h1>
-            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-mono">Tripoli Civil Co. Compliance Terminal</p>
+            <p className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Tripoli Civil Co. Compliance Terminal</p>
           </div>
         </div>
         {/* Global search — vouchers, projects, vendors, documents, bank, people */}
@@ -1088,7 +1088,7 @@ export default function App() {
               onChange={e => setGlobalQuery(e.target.value)}
               onKeyDown={e => { if (e.key === "Escape") setGlobalQuery(""); }}
               placeholder="🔍 Search vouchers, projects, vendors, documents, bank…"
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-red-500"
+              className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-red-500"
             />
             {globalQuery.trim().length >= 2 && (
               <div className="absolute top-full mt-1 start-0 end-0 bg-white text-slate-900 rounded-lg shadow-xl border border-slate-200 z-[70] max-h-80 overflow-y-auto">
@@ -1123,7 +1123,7 @@ export default function App() {
         )}
         <div className="flex items-center gap-4">
           {/* Brand date pill (§7): red dot, letter-spaced caps, translucent on dark. */}
-          <span className="hidden lg:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/15 text-[10px] font-bold tracking-[0.15em] text-white/90 uppercase">
+          <span className="hidden lg:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-50 border border-slate-200 text-[10px] font-bold tracking-[0.15em] text-slate-600 uppercase">
             <span className="h-1.5 w-1.5 rounded-full bg-red-500 inline-block" />
             {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase().replace(/ /g, " ")}
           </span>
@@ -1131,19 +1131,19 @@ export default function App() {
           <RoleSwitch currentUser={currentUser} onChange={(r) => { setActingAs(r); refreshState(); }} />
           {state?.siteUrl && (
             <a href={state.siteUrl} target="_blank" rel="noopener"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-600 px-3 py-1 text-xs font-bold text-slate-200 hover:bg-slate-800"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50"
               title={state.siteUrl}><Globe className="w-3.5 h-3.5" /> {t("Website")}</a>
           )}
           <button
             onClick={() => setLang(lang === "ar" ? "en" : "ar")}
             aria-label={lang === "ar" ? "Switch interface to English" : "تحويل الواجهة إلى العربية"}
             title={lang === "ar" ? "Switch to English" : "التبديل إلى العربية"}
-            className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-bold text-slate-700 transition cursor-pointer"
           >
             <Languages className="w-3.5 h-3.5 text-emerald-400" />
             <span>{lang === "ar" ? "English" : "العربية"}</span>
           </button>
-          <button onClick={handleFirebaseSignOut} className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-slate-600 rounded-lg text-xs font-bold text-slate-300 transition cursor-pointer">
+          <button onClick={handleFirebaseSignOut} className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-300 hover:border-slate-400 rounded-lg text-xs font-bold text-slate-700 transition cursor-pointer">
             <UserCheck className="w-3.5 h-3.5 text-red-500" />
             <span>{t("Sign Out")}</span>
           </button>
@@ -1152,21 +1152,21 @@ export default function App() {
       <ActingBanner acting={actingAs} onStop={() => { (window as any).__actingAs = undefined; setActingAs(null); refreshState(); }} />
 
       {/* Mobile Header */}
-      <div className="md:hidden bg-slate-900 border-b border-slate-800 ps-4 pe-5 py-3 flex items-center justify-between text-white relative z-50 h-16">
+      <div className="md:hidden bg-white border-b border-slate-200 ps-4 pe-5 py-3 flex items-center justify-between text-slate-900 relative z-50 h-16">
         <div className="flex min-w-0 items-center gap-3">
           {/* Phones get the conventional menu button; the desktop edge-handle is hidden here. */}
           <button
             onClick={() => setIsOpen(!isOpen)}
             aria-label={isOpen ? "Close menu" : "Open menu"}
             aria-expanded={isOpen}
-            className="flex items-center justify-center h-11 w-11 -ms-1 rounded-lg bg-slate-800 border border-slate-700 hover:bg-slate-700 transition cursor-pointer"
+            className="flex items-center justify-center h-11 w-11 -ms-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 transition cursor-pointer"
           >
             <span className="text-lg leading-none">{isOpen ? "✕" : "☰"}</span>
           </button>
           <img src="/assets/images/anahon_logo.png" alt="AnaHon" className="h-9 w-auto drop-shadow" />
           <div className="flex min-w-0 flex-col">
             <h1 className="truncate text-xs font-bold tracking-tight font-sans">AnaHon MS</h1>
-            <span className="text-[9px] font-bold font-mono text-red-400 bg-red-950/40 px-1.5 py-0.5 rounded border border-red-900/40 uppercase w-fit max-w-[7.5rem] truncate leading-none mt-0.5">
+            <span className="text-[9px] font-bold font-mono text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 uppercase w-fit max-w-[7.5rem] truncate leading-none mt-0.5">
               {activeTab}
             </span>
           </div>
@@ -1182,14 +1182,14 @@ export default function App() {
               rel="noopener"
               title={state.siteUrl}
               aria-label={t("Website")}
-              className="flex items-center justify-center bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px]"
+              className="flex items-center justify-center bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px]"
             >
-              <Globe className="w-4 h-4 text-slate-300" />
+              <Globe className="w-4 h-4 text-slate-700" />
             </a>
           )}
           <button
             onClick={() => setLang(lang === "ar" ? "en" : "ar")}
-            className="flex items-center justify-center px-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px] text-[11px] font-bold text-slate-300"
+            className="flex items-center justify-center px-2.5 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px] text-[11px] font-bold text-slate-300"
             title={lang === "ar" ? "Switch to English" : "التبديل إلى العربية"}
             aria-label={lang === "ar" ? "Switch interface to English" : "تحويل الواجهة إلى العربية"}
           >
@@ -1197,7 +1197,7 @@ export default function App() {
           </button>
           <button 
             onClick={handleFirebaseSignOut} 
-            className="flex items-center justify-center p-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px]"
+            className="flex items-center justify-center p-2.5 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg transition cursor-pointer min-h-[44px] min-w-[44px]"
             title="Sign Out"
           >
             <UserCheck className="w-4 h-4 text-red-500" />
@@ -1209,7 +1209,7 @@ export default function App() {
       <div className="flex flex-1 overflow-hidden relative">
         {isOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden" onClick={() => setIsOpen(false)} />}
         
-        <aside className={`fixed top-16 bottom-0 start-0 z-50 bg-slate-900 border-slate-800 shrink-0 transition-all duration-300 ease-in-out md:relative md:top-0 md:flex md:flex-col overflow-y-auto ${
+        <aside className={`fixed top-16 bottom-0 start-0 z-50 bg-white border-slate-200 shrink-0 transition-all duration-300 ease-in-out md:relative md:top-0 md:flex md:flex-col overflow-y-auto ${
           isOpen
             ? 'translate-x-0 w-64 p-4 border-e'
             : `${rtl ? "translate-x-full" : "-translate-x-full"} md:translate-x-0 md:w-0 md:p-0 md:border-e-0 overflow-hidden`
@@ -1221,11 +1221,11 @@ export default function App() {
                 <p className={`px-3 ${si === 0 ? "pt-1" : "pt-3"} pb-1 text-[9px] font-bold tracking-widest text-slate-500 uppercase select-none`}>{t(sec.section)}</p>
                 {sec.items.map(item => (
                   <button key={item.navKey} onClick={() => handleNavClick(item.navKey)}
-                    className={`flex w-full items-center text-start gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === item.navKey ? "bg-red-600 text-white shadow-sm" : "text-slate-300 hover:bg-slate-800"}`}>
+                    className={`flex w-full items-center text-start gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all ${activeTab === item.navKey ? "bg-red-600 text-white shadow-sm" : "text-slate-700 hover:bg-slate-50"}`}>
                     {item.icon}
                     <span className="text-start flex-1">{t(item.label)}</span>
                     {item.badge === "expenses" && (
-                      <span className="ms-auto bg-slate-800 text-[10px] text-slate-300 px-1.5 py-0.5 rounded-full font-mono shrink-0">
+                      <span className="ms-auto bg-slate-100 text-[10px] text-slate-700 px-1.5 py-0.5 rounded-full font-mono shrink-0">
                         {state.expenses.filter(e => ["Submitted", "Under Finance Review", "Approved"].includes(e.status)).length}
                       </span>
                     )}
@@ -1665,7 +1665,7 @@ export default function App() {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`hidden md:flex fixed top-1/2 -translate-y-1/2 z-[60] h-11 w-8 items-center justify-center rounded-e-xl border-e bg-slate-800 border-y border-slate-700 hover:bg-slate-700 text-white shadow-lg transition-all duration-300 ease-in-out cursor-pointer text-xs font-mono font-bold ${isOpen ? 'start-64' : 'start-0'}`}
+        className={`hidden md:flex fixed top-1/2 -translate-y-1/2 z-[60] h-11 w-8 items-center justify-center rounded-e-xl border-e bg-white border-y border-slate-300 hover:bg-slate-50 text-slate-700 shadow-lg transition-all duration-300 ease-in-out cursor-pointer text-xs font-mono font-bold ${isOpen ? 'start-64' : 'start-0'}`}
         style={{ minWidth: '32px', minHeight: '44px' }}
         title={isOpen ? "Collapse Sidebar" : "Expand Sidebar"}
       >

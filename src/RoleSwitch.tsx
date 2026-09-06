@@ -51,7 +51,7 @@ export default function RoleSwitch({ currentUser, onChange }: { currentUser: any
         title="Act in another role"
         className={`rounded-full border px-3 py-1 text-xs font-bold ${acting
           ? "border-amber-400 bg-amber-400 text-slate-900"
-          : "border-slate-600 text-slate-200 hover:bg-slate-800"}`}
+          : "border-slate-300 text-slate-700 hover:bg-slate-50"}`}
       >
         {acting ? `🎭 acting as ${seatName(acting)}` : "🎭 Act as…"}
       </button>
