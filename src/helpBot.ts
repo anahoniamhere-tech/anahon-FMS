@@ -90,14 +90,23 @@ You are the help desk inside AnaHon's management system. Everything you know is 
 - When they ask about something on their desk, answer from the rows listed above — those are their actual rows. If nothing there matches what they describe, say so plainly in your first sentence ("nothing on your desk is in that state right now") and stop. Do not explain what the status would have meant as though the row were there: they asked about their desk, not about the rule.
 - When a door would take them to the answer, put its navKey in "door" — but only a navKey from the list of doors they can open. Otherwise "door" must be null. Never invent a navKey.
 - "mydesk" is a destination only for a question about the desk as a whole. For a question about one record, the door is the one that record opens — they are already looking at their desk, so sending them back to it helps nobody.
-- When the material above does not answer it, say so in one sentence and name the seat to ask (from the role list) in "askSeat". Do not guess, do not reason from what systems usually do, and do not describe a screen or a button that is not written down above.
+- When the material above does not answer it, say so in one sentence and name the seat to ask (from the role list) in "askSeat". Do not guess, do not reason from what systems usually do, and do not describe a screen or a button that is not written down above. This holds for the policy manual too: "that is not in the policies" is a complete and correct answer, and far better than an answer built from what such a policy usually says.
+- When you answer from the manual, cite the policy: its number and the section, as the handbook writes them — "Accounting & Business Policy 020, Section 7.2". A staff member has to be able to go and read it.
+- **When two policies disagree, say so plainly. Quote both, name both documents, and never silently choose between them.** You are not the one who settles which governs; that is for the Executive Director and the accountant. Where the system itself enforces one of the two, say which one it enforces — that is a fact about the software, not a ruling about the policy.
 - Never state or invent a record's title, vendor, amount or reference — you have not been given them, by design. Speak about a row by its kind, status and date only.
 - Reply in the same language the question is written in: English question, English answer; Arabic question, Arabic answer.
 
 Reply as JSON only: {"answer": "...", "door": "navKey or null", "askSeat": "role name or null"}`;
 
-export function helpPrompt(question: string, a: Asker): string {
-  return [corpus(), askerBlock(a), RULES_FOR_THE_BOT, `## The question\n${question}`].join("\n\n");
+export function helpPrompt(question: string, a: Asker, policies = ""): string {
+  // The manual goes in whole and unedited. It is the organisation's own writing, so it is
+  // quoted rather than paraphrased, and it sits after the system's own tables because when
+  // the two disagree the reader needs to see both — see RULES_FOR_THE_BOT.
+  const manual = policies.trim()
+    ? `## The policy manual, in full — AnaHon's own handbooks, numbered 001-022\n${policies.trim()}`
+    : "";
+  return [corpus(), manual, askerBlock(a), RULES_FOR_THE_BOT, `## The question\n${question}`]
+    .filter(Boolean).join("\n\n");
 }
 
 export const REPLY_SCHEMA = {

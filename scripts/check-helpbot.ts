@@ -86,7 +86,42 @@ ok("it is told to say when no such row is on the desk", /nothing on your desk is
 ok("and not to explain the status as though the row were there", /Do not explain what the status would have meant as though the row were there/.test(RULES_FOR_THE_BOT));
 ok("mydesk is not a destination for a question about one record", /"mydesk" is a destination only for a question about the desk as a whole/.test(RULES_FOR_THE_BOT));
 
-console.log("\nE. the route");
+console.log("\nE. the policies");
+// 6 Sep 2026: the twenty handbooks go in whole, beside the system's own tables.
+const withManual = helpPrompt("q", { role: "Program Director", ownRole: "Program Director",
+  doors: doorsFor("Program Director"), rows: [], today: "2026-09-06" }, "### Accounting Business Policy 020\nthree quotations above USD 300");
+ok("the manual reaches the prompt when there is one", withManual.includes("three quotations above USD 300")
+  && /## The policy manual, in full/.test(withManual));
+ok("and the prompt is unchanged when there is not", !/## The policy manual/.test(
+  helpPrompt("q", { role: "Program Director", ownRole: "Program Director", doors: doorsFor("Program Director"), rows: [], today: "2026-09-06" })));
+// The whole manual, not a chosen slice: the contradiction this feature found sits ACROSS
+// two documents, so any retrieval that fetched "the relevant policy" would have hidden it.
+const srv = read("../server.ts");
+ok("it is extracted whole — no chunking, no keyword pre-selection",
+  /findMany\(\{ where: \{ category: "Handbook" \}/.test(srv) && !/chunk|embedding|similarity/i.test(srv.split("policyCorpus")[1]?.slice(0, 2000) || ""));
+ok("extracted in process, never through the route", /await documentText\(r\.id\)/.test(srv)
+  && !/fetch\([^)]*docx-text/.test(srv));
+ok("cached on the handbooks' own content hashes, so a re-filed policy invalidates it",
+  /rows\.map\(r => `\$\{r\.id\}:\$\{r\.contentHash\}`\)/.test(srv));
+ok("one unreadable handbook does not take the manual down", /could not read \$\{r\.filename\}/.test(srv));
+
+console.log("\nF. what an answer from the manual must do");
+// Each of these is a failure seen for real, not a hypothetical.
+ok("it must cite the policy number and section", /cite the policy: its number and the section/.test(RULES_FOR_THE_BOT));
+ok("two policies that disagree are both quoted, never silently chosen between",
+  /When two policies disagree, say so plainly\. Quote both, name both documents, and never silently choose between them/.test(RULES_FOR_THE_BOT));
+ok("and where the system enforces one of them, it says which",
+  /Where the system itself enforces one of the two, say which one it enforces/.test(RULES_FOR_THE_BOT));
+// It must not settle the contradiction: that is Saad's and the accountant's, and open.
+ok("but it does not rule on which policy governs", /You are not the one who settles which governs/.test(RULES_FOR_THE_BOT));
+ok('"that is not in the policies" is a complete answer', /that is not in the policies. is a complete and correct answer/.test(RULES_FOR_THE_BOT));
+ok("an Arabic question is still answered in Arabic, from English policy text",
+  /same language the question is written in/i.test(RULES_FOR_THE_BOT));
+// The record-level line does not move because the policies arrived.
+ok("safeRows still sends kind/status/verb/door/when and nothing else",
+  Object.keys(safeRows([loaded])[0]).sort().join(",") === "door,kind,status,verb,when");
+
+console.log("\nG. the route");
 const server = read("../server.ts");
 ok("the route reads the role in force, not the account's own",
   /const role = String\(req\.body\?\.user\?\.role \|\| viewer\.role\)/.test(server));
