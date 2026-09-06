@@ -664,21 +664,25 @@ export default function App() {
     return (
       <div className="flex h-screen items-center justify-center bg-white" role="status" aria-live="polite">
         <div className="flex flex-col items-center" style={{ perspective: "900px" }}>
-          {/* The thickness is real, not painted: the same PNG stacked along Z inside a
-              preserve-3d box: 28 copies 0.75px apart, about 20px of depth. Ten copies
-              combed — you could see the gaps. One image, fetched once, drawn at 112px. */}
+          {/* The thickness is a real side face, not a painted one: sixteen solid-colour
+              layers masked to the PNG's alpha sit behind the artwork, 20px deep. Stacked
+              copies of the artwork itself striped at an angle; a single colour cannot. */}
           <div className="anahon-turn relative h-28 w-28 [transform-style:preserve-3d]">
-            {Array.from({ length: 28 }, (_, i) => (
-              <img
+            {Array.from({ length: 16 }, (_, i) => (
+              <div
                 key={i}
-                src="/assets/images/anahon_logo.png"
-                alt={i === 0 ? "AnaHon" : ""}
-                aria-hidden={i > 0}
-                draggable={false}
-                className="absolute inset-0 h-full w-full object-contain"
-                style={{ transform: `translateZ(${(13.5 - i) * 0.75}px)` }}
+                aria-hidden
+                className="anahon-rim"
+                style={{ transform: `translateZ(${(10 - (i / 15) * 20).toFixed(2)}px)` }}
               />
             ))}
+            <img
+              src="/assets/images/anahon_logo.png"
+              alt="AnaHon"
+              draggable={false}
+              className="absolute inset-0 h-full w-full object-contain"
+              style={{ transform: "translateZ(10.3px)" }}
+            />
           </div>
           {/* The shadow sits outside the rotating box on purpose: a filter or shadow on
               an ancestor of preserve-3d children flattens the 3D context. */}

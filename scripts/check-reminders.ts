@@ -39,6 +39,20 @@ console.log("\nrun it again, and again");
   ok("and says so plainly", describePlan(p) === "Nothing to change — the calendar already matches the desk.");
 }
 
+console.log("\nwhen the system's own address changes");
+{
+  // 6 Sep 2026: FMS_PUBLIC_URL moved from http://anahon.local:3100 to the tailnet HTTPS
+  // door. The ledger stores only title and whenDate, so the address inside the body is
+  // not compared and a move does NOT rewrite the events already in someone's calendar.
+  // That is the behaviour, not an oversight: 66 live events would otherwise all be
+  // PATCHed the same night. Each one picks the new address up when its own date or step
+  // changes. Pinned so nobody adds a description comparison without meaning to.
+  const p = planReminders([item()], [row()], "https://anahon-1.tailbcb2b7.ts.net:8444");
+  ok("an address change alone rewrites nothing", planIsEmpty(p));
+  const moved = planReminders([item({ when: "2026-09-17" })], [row()], "https://anahon-1.tailbcb2b7.ts.net:8444");
+  ok("but the next real correction carries the new address", moved.update[0].description.includes("https://anahon-1.tailbcb2b7.ts.net:8444"));
+}
+
 console.log("\nwhen the work moves");
 {
   const p = planReminders([item({ when: "2026-09-17" })], [row()], URL_);

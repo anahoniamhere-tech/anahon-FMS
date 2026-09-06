@@ -56,6 +56,16 @@ body {
   100% { transform: rotateY(-52deg); }
 }
 .anahon-turn { animation: anahon-turn 3.2s ease-in-out infinite; }
+/* The side face. Stacked copies of the artwork striped at an angle — the map texture
+   showed through every layer. A rim is a solid colour masked to the PNG's own alpha, so
+   the stack reads as one smooth surface in the mark's exact silhouette. */
+.anahon-rim {
+  position: absolute;
+  inset: 0;
+  background: #4A1010;
+  -webkit-mask: url(/assets/images/anahon_logo.png) center / contain no-repeat;
+  mask: url(/assets/images/anahon_logo.png) center / contain no-repeat;
+}
 @media (prefers-reduced-motion: reduce) {
   .anahon-turn { animation: none; }
 }
