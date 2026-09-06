@@ -41,9 +41,9 @@ const addedSelf = ["doors", "handbooks", "help", "mydesk"]; // self-service had 
 // Seats placed in phase 2 (they had no login before, so there is no "before" to compare):
 const placed: Record<string, string[]> = {
   "Procurement and Logistics Officer": ["doors", "mydesk", "help", "handbooks", "projects", "network", "procurement", "vendors", "subscriptions", "expenses", "assets", "payroll"],
-  "Digital Officer": ["doors", "mydesk", "help", "handbooks", "social", "postiz", "live", "archive", "tools", "network", "payroll"],
-  "Chief Editor": ["doors", "mydesk", "help", "handbooks", "editorial", "social", "postiz", "live", "archive", "payroll"],
-  "Production Manager": ["doors", "mydesk", "help", "handbooks", "editorial", "social", "postiz", "live", "archive", "payroll"],
+  "Digital Officer": ["doors", "mydesk", "help", "handbooks", "social", "live", "archive", "tools", "network", "payroll"],
+  "Chief Editor": ["doors", "mydesk", "help", "handbooks", "editorial", "social", "live", "archive", "payroll"],
+  "Production Manager": ["doors", "mydesk", "help", "handbooks", "editorial", "social", "live", "archive", "payroll"],
   "Graphic Designer": ["editorial", "help", "handbooks", "mydesk", "doors"],
 };
 for (const [role, want] of Object.entries(placed)) ok(`${role}: ${want.length} doors`, same(keys(role), [...want].sort()), `got ${keys(role).join(",")}`);

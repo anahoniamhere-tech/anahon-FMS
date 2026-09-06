@@ -10,7 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
-import { postiz, postizConfigured, postizPublicUrl, toLinks, mergeStates, outsideGate, draftGroups, channelOf, buildDeskPost, type PostizLink, type PostizPost } from "./src/postiz.js";
+import { graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, type ImageBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
@@ -127,7 +127,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
   "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build",
   "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
-  "/api/social/publish", "/api/social/edit", "/api/social/delete", "/api/social/postiz/link", "/api/social/postiz/unlink", "/api/social/postiz/publish",
+  "/api/social/accounts/remove", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete",
   "/api/tools/save", "/api/tools/delete",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/document/upload", "/api/materials/link",
@@ -137,7 +137,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 const EDITOR_ALLOWED_POSTS = new Set([
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
-  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/delete", "/api/social/edit", "/api/social/publish", "/api/social/postiz/link", "/api/social/postiz/unlink", "/api/social/postiz/publish", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
+  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
 ]);
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
 // Anyone can be given a task, so every working seat may tick its own and put it back;
@@ -235,8 +235,10 @@ app.use((req, res, next) => {
  *   /api/desk.ics        the person's own feed secret, plus the private-network guard
  *   /api/calendar.ics    the shared editorial feed a calendar app subscribes to; private network only
  *   /api/document/ticket answers 401 by itself when nobody is signed in
+ *   /api/social/meta/callback  Meta sends the browser back here after a Page is connected; a random
+ *                        single-use state, bound to whoever pressed Connect, is its credential
  */
-const OPEN_GETS = new Set(["/api/desk.ics", "/api/calendar.ics", "/api/document/ticket"]);
+const OPEN_GETS = new Set(["/api/desk.ics", "/api/calendar.ics", "/api/document/ticket", "/api/social/meta/callback"]);
 
 /**
  * Reads worth remembering.
@@ -586,7 +588,6 @@ async function loadState(viewer?: any) {
   const formattedContent = contentItems.map(c => ({
     ...c,
     channels: JSON.parse(c.channelsJson || "[]"),
-    postiz: JSON.parse(c.postizJson || "[]"),
     checks: JSON.parse(c.checksJson || "{}"),
     factCheckLog: JSON.parse(c.factCheckJson || "[]"),
     corrections: JSON.parse(c.correctionsJson || "[]"),
@@ -4004,7 +4005,7 @@ app.post("/api/content/publish", async (req, res) => {
       `"${item.title}" (${item.contentType}) published to ${channels.join(", ") || "no channel"} — fact-checked tag applied; PM+PD dual approval on record.`);
     // after the audit row is committed — the site reads this database and must not race the write
     if (!channels.length || channels.includes("Website")) void notifySite(id, "publish");
-    void releaseToPostiz(updated, user);                              // linked Postiz drafts go from draft to scheduled — the gate has passed
+    void releaseSocialDrafts(id);                                       // social posts drafted for this item go out now the gate has passed
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -4279,233 +4280,262 @@ app.post("/api/archive/publish", async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// ---- Social desk (moved from the website, 3 Sep 2026) ---------------------------
-// Meta Graph API for the AnaHon Facebook Page and the linked Instagram account.
-//   Facebook   publish · edit text · delete  (+ "unpublished" admin-only posts for tests)
-//   Instagram  publish (public HTTPS image) · delete — captions cannot be edited (Meta)
-// Nothing posts on its own: every write is a deliberate call from the desk.
-const GRAPH = "https://graph.facebook.com/v25.0";
-const META_PAGE_TOKEN = () => (process.env.META_PAGE_TOKEN || "").trim();
-const META_PAGE_ID = () => (process.env.META_PAGE_ID || "").trim();
-async function graph(p: string, { method = "GET", params = {} as Record<string, string>, token = META_PAGE_TOKEN() } = {}) {
-  const url = new URL(GRAPH + p);
-  if (method === "GET") for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  url.searchParams.set("access_token", token);
-  const init: any = { method };
-  if (method !== "GET") { init.body = new URLSearchParams(params); init.headers = { "content-type": "application/x-www-form-urlencoded" }; }
-  const r = await fetch(url, init);
-  const j: any = await r.json().catch(() => ({}));
-  if (j.error) {
-    const e = j.error;
-    const hint = e.code === 190 ? " — token expired or revoked; run: node scripts/meta-token.mjs <explorer-token>"
-      : (e.code === 200 || e.code === 10) ? " — the token lacks pages_manage_posts / instagram_content_publish" : "";
-    throw new Error(`${e.message}${hint}`);
-  }
-  return j;
+// ---- Social desk: Facebook Pages and Instagram, published by the system itself ------------
+// First version 3 Sep 2026 (one Page, a token in .env). Rebuilt 6 Sep 2026 after a day with
+// Postiz proved it added nothing our own client could not do: Pages are now connected through
+// Meta's login dialog (SocialAccount), and posts are rows in a queue (SocialPost) the server
+// drains every minute with retries. A post tied to a content item that has not passed the
+// editorial gate waits as a Draft and is released by /api/content/publish. Nothing posts on its
+// own: every row comes from a deliberate click or the gate, and every state change is audited.
+// The Graph calls live in src/meta.ts; scripts/check-social.ts asserts the pure parts.
+const META_APP_ID = () => (process.env.META_APP_ID || "").trim();
+const META_APP_SECRET = () => (process.env.META_APP_SECRET || "").trim();
+const metaRedirect = () => `${String(process.env.FMS_PUBLIC_URL || "").replace(/\/$/, "")}/api/social/meta/callback`;
+const connectStates = new Map<string, { userId: string; userName: string; expires: number }>();
+const publicAccount = (a: any) => ({ id: a.id, name: a.name, picture: a.picture, igId: a.igId, igUsername: a.igUsername, connectedAt: a.connectedAt, tokenValid: a.tokenValid, tokenCheckedAt: a.tokenCheckedAt });
+async function digitalTask(title: string, notes: string) {
+  const holder = await prisma.user.findFirst({ where: { role: DIGITAL_SEAT, active: true } }).catch(() => null);
+  await prisma.complianceTask.create({ data: { id: `task-${Date.now()}`, title, category: "Social", dueDate: new Date().toISOString().slice(0, 10), status: "Pending", notes, assigneeUserId: holder?.id ?? null, createdBy: "u-1" } }).catch(() => {});
 }
-const needToken = () => { if (!META_PAGE_TOKEN()) throw new Error("No META_PAGE_TOKEN in the FMS .env — generate one with scripts/meta-token.mjs, then add META_PAGE_TOKEN and META_PAGE_ID to the NAS .env and restart."); };
-const igAccountId = async () => (await graph(`/${META_PAGE_ID()}`, { params: { fields: "instagram_business_account" } })).instagram_business_account?.id;
+/** An item's cover on the vault, as bytes for a Facebook photo post. */
+async function coverBytes(ref: string): Promise<ImageBytes | null> {
+  const m = /^cover:(.+)$/.exec(ref); if (!m) return null;
+  const item = await prisma.contentItem.findUnique({ where: { id: m[1] } });
+  if (!item?.coverPath || item.coverPath.includes("..")) return null;
+  const file = path.join(VAULT_ROOT, item.coverPath);
+  if (!fs.existsSync(file)) return null;
+  const ext = path.extname(file).toLowerCase();
+  return { buffer: fs.readFileSync(file), mime: ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : "image/jpeg", name: path.basename(file) };
+}
 
+// Connecting a Page: the desk asks for the dialog address, the browser goes to Meta, Meta sends
+// it back to the callback. The callback carries no sign-in header, so it is in OPEN_GETS and the
+// random single-use state — ten minutes, bound to the person who pressed Connect — is its credential.
+app.get("/api/social/meta/connect", async (req: any, res) => {
+  try {
+    if (!SITE_EDITOR_ROLES.includes(req.dbUser?.role)) return res.status(403).json({ error: "Connecting a Page needs an editor or the Digital Officer." });
+    if (!META_APP_ID() || !META_APP_SECRET()) return res.status(400).json({ error: "META_APP_ID and META_APP_SECRET are missing from the FMS .env." });
+    if (!process.env.FMS_PUBLIC_URL) return res.status(400).json({ error: "FMS_PUBLIC_URL is not set — Meta needs an HTTPS address to send the browser back to." });
+    for (const [k, v] of connectStates) if (v.expires < Date.now()) connectStates.delete(k);
+    const state = crypto.randomBytes(24).toString("hex");
+    connectStates.set(state, { userId: req.dbUser.id, userName: req.dbUser.name, expires: Date.now() + 10 * 60_000 });
+    res.json({ url: connectUrl(META_APP_ID(), metaRedirect(), state, req.query.ig === "1") });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+app.get("/api/social/meta/callback", async (req: any, res) => {
+  const { code, state, error_description } = req.query as Record<string, string>;
+  const who = state ? connectStates.get(state) : undefined;
+  if (state) connectStates.delete(state);
+  const back = (msg: string) => res.redirect(`/?door=social&connect=${encodeURIComponent(msg)}`);
+  if (!who || who.expires < Date.now()) return back("That connection request expired or did not start from this desk — press Connect again.");
+  if (!code) return back(error_description || "Meta did not return a code.");
+  try {
+    const pages = await pagesFromCode(META_APP_ID(), META_APP_SECRET(), metaRedirect(), code);
+    if (!pages.length) return back("Meta returned no Pages — the person connecting must be an admin of the Page.");
+    const now = new Date().toISOString();
+    for (const p of pages) {
+      const data = { ...p, connectedBy: who.userId, connectedAt: now, tokenCheckedAt: now, tokenValid: true };
+      await prisma.socialAccount.upsert({ where: { id: p.id }, create: data, update: data });
+    }
+    await createAuditLog(who.userId, who.userName, "Social Account Connected", `${pages.map(p => `${p.name}${p.igUsername ? ` (+ Instagram @${p.igUsername})` : ""}`).join(", ")} connected through Meta login.`);
+    back(`Connected: ${pages.map(p => p.name).join(", ")}.`);
+  } catch (e: any) { back(e.message); }
+});
 app.get("/api/social/status", async (_req, res) => {
+  const accounts = await prisma.socialAccount.findMany({ orderBy: { connectedAt: "asc" } });
+  const out: any[] = [];
+  for (const a of accounts) {
+    const st: any = await accountStatus(a as any).catch(e => ({ valid: false, error: e.message }));
+    if (a.tokenValid !== !!st.valid) await prisma.socialAccount.update({ where: { id: a.id }, data: { tokenValid: !!st.valid, tokenCheckedAt: new Date().toISOString() } }).catch(() => {});
+    out.push({ ...publicAccount(a), status: st });
+  }
+  res.json({ ok: true, configured: !!(META_APP_ID() && META_APP_SECRET() && process.env.FMS_PUBLIC_URL), redirect: metaRedirect(), accounts: out });
+});
+app.post("/api/social/accounts/remove", async (req, res) => {
   try {
-    needToken();
-    const dbg: any = await graph("/debug_token", { params: { input_token: META_PAGE_TOKEN() } }).then(d => d.data ?? {}).catch(e => ({ error: String(e.message) }));
-    const page: any = META_PAGE_ID() ? await graph(`/${META_PAGE_ID()}`, { params: { fields: "name,fan_count,instagram_business_account{id,username,followers_count}" } }) : {};
-    const igId = page.instagram_business_account?.id;
-    const igQuotaUsed = igId ? await graph(`/${igId}/content_publishing_limit`).then((d: any) => d.data?.[0]?.quota_usage ?? null).catch(() => null) : null;
-    res.json({ ok: true, page: { id: META_PAGE_ID(), name: page.name, followers: page.fan_count }, instagram: page.instagram_business_account ?? null, igQuotaUsed,
-      token: { valid: dbg.is_valid ?? false, expires: dbg.expires_at ? new Date(dbg.expires_at * 1000).toISOString() : "never", scopes: dbg.scopes ?? [],
-        canPublishFB: (dbg.scopes ?? []).includes("pages_manage_posts"), canPublishIG: (dbg.scopes ?? []).includes("instagram_content_publish"), error: dbg.error } });
+    const { id, user } = req.body;
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Removing a Page needs an editor or the Digital Officer." });
+    const a = await prisma.socialAccount.findUnique({ where: { id } });
+    if (!a) return res.status(404).json({ error: "No such account." });
+    const pending = await prisma.socialPost.updateMany({ where: { accountId: id, state: { in: ["Draft", "Queued"] } }, data: { state: "Cancelled", lastError: "The Page was disconnected." } });
+    await prisma.socialAccount.delete({ where: { id } });
+    await createAuditLog(user?.id, user?.name, "Social Account Removed", `${a.name} disconnected${pending.count ? `; ${pending.count} pending post(s) cancelled` : ""}.`);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+app.get("/api/social/list", async (req, res) => {
+  try {
+    const a = await prisma.socialAccount.findUnique({ where: { id: String(req.query.accountId || "") } });
+    if (!a) return res.status(404).json({ ok: false, error: "Pick a connected Page." });
+    res.json({ ok: true, ...(await recentPosts(a as any)) });
   } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
 });
-app.get("/api/social/list", async (_req, res) => {
-  try {
-    needToken();
-    const fb: any = await graph(`/${META_PAGE_ID()}/posts`, { params: { fields: "id,message,created_time,permalink_url,full_picture,is_published", limit: "25" } }).catch(e => ({ error: String(e.message), data: [] }));
-    const igId = await igAccountId().catch(() => null);
-    const ig: any = igId ? await graph(`/${igId}/media`, { params: { fields: "id,caption,media_type,media_url,thumbnail_url,permalink,timestamp", limit: "25" } }).catch(e => ({ error: String(e.message), data: [] })) : { data: [] };
-    res.json({ ok: true, fb: fb.data ?? [], ig: ig.data ?? [], fbError: fb.error, igError: ig.error });
-  } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
+app.get("/api/social/queue", async (_req, res) => {
+  const rows = await prisma.socialPost.findMany({ orderBy: { publishAt: "desc" }, take: 200 });
+  const ids = [...new Set(rows.map(r => r.contentItemId).filter(Boolean))];
+  const items = ids.length ? await prisma.contentItem.findMany({ where: { id: { in: ids } }, select: { id: true, title: true, status: true } }) : [];
+  res.json({ ok: true, rows: rows.map(r => ({ ...r, stats: JSON.parse(r.statsJson || "{}") })), items: Object.fromEntries(items.map(i => [i.id, i])) });
 });
-app.post("/api/social/publish", async (req, res) => {
+// Queue one post per target. Tied to an item that has not passed the gate → Draft, released by
+// /api/content/publish. Tied to a published item, or to no item → Queued for publishAt (now by default).
+app.post("/api/social/queue", async (req, res) => {
   try {
-    const { target, message, link, imageUrl, unpublished, user } = req.body;
-    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Posting to social media needs an editor role." });
-    needToken();
-    if (target === "fb") {
-      if (!String(message || "").trim() && !link) throw new Error("a post needs a message or a link");
-      const params: Record<string, string> = { message: message ?? "" };
-      if (link) params.link = link;
-      if (unpublished) params.published = "false";   // admin-only, invisible to the audience — the safe test
-      const r: any = await graph(`/${META_PAGE_ID()}/feed`, { method: "POST", params });
-      await createAuditLog(user?.id, user?.name, "Social Post Published", `Facebook${unpublished ? " (unpublished, admins only)" : ""}: "${String(message || "").slice(0, 80)}" → ${r.id}`);
-      return res.json({ ok: true, id: r.id, url: `https://facebook.com/${r.id}`, unpublished: !!unpublished });
+    const { targets, message, link, imageUrl, useCover, publishAt, contentItemId, user } = req.body;
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Posting to social media needs an editor or the Digital Officer." });
+    const list: { accountId: string; network: string }[] = Array.isArray(targets) ? targets : [];
+    if (!list.length) return res.status(400).json({ error: "Pick at least one account." });
+    const item = contentItemId ? await prisma.contentItem.findUnique({ where: { id: String(contentItemId) } }) : null;
+    if (contentItemId && !item) return res.status(404).json({ error: "Content item not found." });
+    let image = String(imageUrl || "").trim();
+    if (useCover) {
+      if (!item?.coverPath) return res.status(400).json({ error: "That item has no cover to post." });
+      image = `cover:${item.id}`;
     }
-    if (target === "ig") {
-      const igId = await igAccountId(); if (!igId) throw new Error("no Instagram account linked to this Page");
-      if (!/^https:\/\//.test(imageUrl || "")) throw new Error("Instagram needs a public HTTPS image URL — Meta fetches the file itself");
-      const c: any = await graph(`/${igId}/media`, { method: "POST", params: { image_url: imageUrl, caption: message ?? "" } });
-      const r: any = await graph(`/${igId}/media_publish`, { method: "POST", params: { creation_id: c.id } });
-      await createAuditLog(user?.id, user?.name, "Social Post Published", `Instagram: "${String(message || "").slice(0, 80)}" → ${r.id}`);
-      return res.json({ ok: true, id: r.id });
+    if (image && !/^https:\/\//.test(image) && !image.startsWith("cover:")) return res.status(400).json({ error: "An image must be a public HTTPS address, or the item's cover." });
+    const when = publishAt ? new Date(publishAt) : new Date();
+    if (isNaN(when.getTime())) return res.status(400).json({ error: "That date is not valid." });
+    const accounts = await prisma.socialAccount.findMany({ where: { id: { in: list.map(t => t.accountId) } } });
+    const rows: any[] = [];
+    for (const t of list) {
+      const a = accounts.find(x => x.id === t.accountId);
+      if (!a) return res.status(400).json({ error: "One of the accounts is not connected." });
+      if (t.network === "instagram" && !a.igId) return res.status(400).json({ error: `${a.name} has no Instagram account linked.` });
+      const draft = { network: t.network, message: String(message || ""), link: String(link || ""), imageUrl: image };
+      const plan = planPublish(draft);
+      if (plan.error) return res.status(400).json({ error: `${t.network === "instagram" ? "Instagram" : "Facebook"} (${a.name}): ${plan.error}` });
+      rows.push({ id: `sp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, accountId: a.id, ...draft, contentItemId: item?.id || "",
+        publishAt: when.toISOString(), state: initialState(item), createdBy: user?.id || "", createdAt: new Date().toISOString() });
     }
-    throw new Error("target must be fb or ig");
-  } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
+    for (const r of rows) await prisma.socialPost.create({ data: r });
+    const where = rows.map(r => `${r.network === "instagram" ? "Instagram" : "Facebook"} (${accounts.find(a => a.id === r.accountId)?.name})`).join(", ");
+    const drafted = rows[0].state === "Draft";
+    await createAuditLog(user?.id, user?.name, drafted ? "Social Post Drafted" : "Social Post Queued",
+      `${where}: "${String(message || "").slice(0, 80)}"${item ? ` for "${item.title}"` : ""} — ${drafted ? "waits for the editorial gate" : when.getTime() <= Date.now() + 60_000 ? "now" : `at ${when.toISOString().slice(0, 16).replace("T", " ")}`}.`);
+    if (!drafted) void drainSocialQueue();
+    res.json({ success: true, rows, drafted });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/social/queue/cancel", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Cancelling needs an editor or the Digital Officer." });
+    const r = await prisma.socialPost.findUnique({ where: { id } });
+    if (!r) return res.status(404).json({ error: "No such post." });
+    if (!["Draft", "Queued", "Failed"].includes(r.state)) return res.status(400).json({ error: `A ${r.state.toLowerCase()} post cannot be cancelled.` });
+    await prisma.socialPost.update({ where: { id }, data: { state: "Cancelled" } });
+    await createAuditLog(user?.id, user?.name, "Social Post Cancelled", `${r.network}: "${r.message.slice(0, 80)}"`);
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+app.post("/api/social/queue/retry", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Retrying needs an editor or the Digital Officer." });
+    const r = await prisma.socialPost.findUnique({ where: { id } });
+    if (!r) return res.status(404).json({ error: "No such post." });
+    if (!["Failed", "Cancelled"].includes(r.state)) return res.status(400).json({ error: `Only a failed or cancelled post can be retried; this one is ${r.state.toLowerCase()}.` });
+    await prisma.socialPost.update({ where: { id }, data: { state: "Queued", attempts: 0, lastError: "", publishAt: new Date().toISOString() } });
+    await createAuditLog(user?.id, user?.name, "Social Post Retried", `${r.network}: "${r.message.slice(0, 80)}"`);
+    void drainSocialQueue();
+    res.json({ success: true });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 app.post("/api/social/edit", async (req, res) => {
   try {
-    const { target, postId, message, user } = req.body;
+    const { accountId, target, postId, message, user } = req.body;
     if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing posts needs an editor role." });
-    needToken();
     if (target === "ig") throw new Error("Instagram captions cannot be edited through the API — Meta has never exposed it. Delete and repost, or edit in the app.");
+    const a = await prisma.socialAccount.findUnique({ where: { id: String(accountId || "") } });
+    if (!a) throw new Error("Pick a connected Page.");
     if (!postId) throw new Error("postId required");
-    await graph(`/${postId}`, { method: "POST", params: { message: message ?? "" } });
-    await createAuditLog(user?.id, user?.name, "Social Post Edited", `Facebook ${postId}: "${String(message || "").slice(0, 80)}"`);
+    await graph(`/${postId}`, { method: "POST", token: a.token, params: { message: message ?? "" } });
+    await createAuditLog(user?.id, user?.name, "Social Post Edited", `Facebook (${a.name}) ${postId}: "${String(message || "").slice(0, 80)}"`);
     res.json({ ok: true, id: postId });
   } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
 });
 app.post("/api/social/delete", async (req, res) => {
   try {
-    const { target, postId, confirm, user } = req.body;
+    const { accountId, target, postId, confirm, user } = req.body;
     if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Deleting posts needs an editor role." });
-    needToken();
     if (confirm !== "yes") throw new Error('delete needs confirm:"yes"');
+    const a = await prisma.socialAccount.findUnique({ where: { id: String(accountId || "") } });
+    if (!a) throw new Error("Pick a connected Page.");
     if (!postId) throw new Error("postId required");
-    await graph(`/${postId}`, { method: "DELETE" });
-    await createAuditLog(user?.id, user?.name, "Social Post Deleted", `${target === "ig" ? "Instagram" : "Facebook"} ${postId} deleted.`);
+    await graph(`/${postId}`, { method: "DELETE", token: a.token });
+    await prisma.socialPost.updateMany({ where: { postId: String(postId) }, data: { lastError: "Deleted from the network from the desk." } }).catch(() => {});
+    await createAuditLog(user?.id, user?.name, "Social Post Deleted", `${target === "ig" ? "Instagram" : "Facebook"} (${a.name}) ${postId} deleted.`);
     res.json({ ok: true, deleted: postId });
   } catch (e: any) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
-// ---- Postiz bridge (6 Sep 2026) ----------------------------------------------------
-// Approve in the FMS, publish through Postiz, status flows back. The Digital Officer composes
-// in Postiz and leaves DRAFTS; the desk links a draft group to a content item; passing the
-// gate (/api/content/publish) flips the drafts to scheduled. Postiz cannot call us back (its
-// webhook validator refuses private addresses), so a five-minute poll carries state home and
-// names anything Postiz published with no content item behind it. src/postiz.ts has the helpers.
-const parsePostiz = (item: { postizJson: string }): PostizLink[] => { try { return JSON.parse(item.postizJson || "[]"); } catch { return []; } };
-let postizOutside: PostizPost[] = [];              // last poll's "published outside the gate", shown on the desk
-const outsideSeen = new Set<string>(); let outsideSeeded = false;
-async function linkedPostIds() {
-  const items = await prisma.contentItem.findMany({ where: { NOT: { postizJson: "[]" } }, select: { id: true, title: true, postizJson: true } });
-  const set = new Set<string>(); for (const it of items) for (const l of parsePostiz(it)) set.add(l.postId);
-  return { items, set };
-}
-async function digitalTask(title: string, notes: string) {
-  const holder = await prisma.user.findFirst({ where: { role: DIGITAL_SEAT, active: true } }).catch(() => null);
-  await prisma.complianceTask.create({ data: { id: `task-${Date.now()}`, title, category: "Social", dueDate: new Date().toISOString().slice(0, 10), status: "Pending", notes, assigneeUserId: holder?.id ?? null, createdBy: "u-1" } }).catch(() => {});
-}
-app.get("/api/social/postiz/status", async (_req, res) => {
-  if (!postizConfigured()) return res.json({ ok: false, configured: false, error: "Postiz is not configured — POSTIZ_URL and POSTIZ_API_KEY in the FMS .env, then restart." });
+/* ── The queue ─────────────────────────────────────────────────────────────────
+ * Every minute: publish what is due, one row at a time, claiming it first so two ticks never
+ * post the same thing. A failure schedules a retry (1, 5, 15 minutes); the fourth is final and
+ * opens a task for the Digital Officer. Every fifteen minutes, likes and comments are refreshed
+ * for what went out in the last month.
+ */
+let draining = false;
+async function drainSocialQueue() {
+  if (draining) return; draining = true;
   try {
-    const integrations: any[] = await postiz.integrations();
-    res.json({ ok: true, configured: true, url: postizPublicUrl(),
-      integrations: integrations.map(i => ({ id: i.id, name: i.name, network: i.identifier, channel: channelOf(i.identifier), disabled: !!i.disabled, picture: i.picture })),
-      outside: postizOutside.map(p => ({ id: p.id, account: p.integration.name, channel: channelOf(p.integration.providerIdentifier), publishDate: p.publishDate, releaseURL: p.releaseURL, preview: toLinks([p])[0].preview })) });
-  } catch (e: any) { res.status(502).json({ ok: false, configured: true, url: postizPublicUrl(), error: e.message }); }
-});
-app.get("/api/social/postiz/drafts", async (_req, res) => {
-  try { const { set } = await linkedPostIds(); res.json({ ok: true, groups: draftGroups(await postiz.posts(), set) }); }
-  catch (e: any) { res.status(502).json({ ok: false, error: e.message }); }
-});
-app.post("/api/social/postiz/link", async (req, res) => {
-  try {
-    const { id, group, user } = req.body;
-    if (!SITE_EDITORS.includes(user?.role)) return res.status(403).json({ error: "Linking a Postiz draft needs an editor or the Digital Officer." });
-    const item = await prisma.contentItem.findUnique({ where: { id } });
-    if (!item) return res.status(404).json({ error: "Content item not found." });
-    if (item.status === "Published") return res.status(400).json({ error: "Already published — drafts are linked before the gate, not after." });
-    const { set } = await linkedPostIds();
-    const posts = (await postiz.posts()).filter(p => p.group === group && p.state === "DRAFT" && !set.has(p.id));
-    if (!posts.length) return res.status(400).json({ error: "That draft is gone, already linked, or no longer a draft." });
-    const links = [...parsePostiz(item), ...toLinks(posts)];
-    const updated = await prisma.contentItem.update({ where: { id }, data: { postizJson: JSON.stringify(links) } });
-    await createAuditLog(user?.id, user?.name, "Social Draft Linked", `"${item.title}" ← Postiz draft for ${toLinks(posts).map(l => `${l.channel} (${l.account})`).join(", ")}; releases when the item passes the gate.`);
-    res.json({ success: true, item: updated });
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-app.post("/api/social/postiz/unlink", async (req, res) => {
-  try {
-    const { id, user } = req.body;
-    if (!SITE_EDITORS.includes(user?.role)) return res.status(403).json({ error: "Unlinking needs an editor or the Digital Officer." });
-    const item = await prisma.contentItem.findUnique({ where: { id } });
-    if (!item) return res.status(404).json({ error: "Content item not found." });
-    if (item.status === "Published") return res.status(400).json({ error: "Published items keep their record — retract instead." });
-    const updated = await prisma.contentItem.update({ where: { id }, data: { postizJson: "[]" } });
-    await createAuditLog(user?.id, user?.name, "Social Draft Unlinked", `"${item.title}" no longer releases any Postiz draft.`);
-    res.json({ success: true, item: updated });
-  } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-// Publish from the desk: a Published item, a text, the accounts — Postiz posts it, no composer visit.
-app.post("/api/social/postiz/publish", async (req, res) => {
-  try {
-    const { id, integrationIds, message, link, when, user } = req.body;
-    if (!SITE_EDITORS.includes(user?.role)) return res.status(403).json({ error: "Posting needs an editor or the Digital Officer." });
-    const item = await prisma.contentItem.findUnique({ where: { id } });
-    if (!item) return res.status(404).json({ error: "Content item not found." });
-    if (item.status !== "Published" || item.retractedAt) return res.status(403).json({ error: "Only items that passed the gate (Published, not retracted) can be posted from the desk." });
-    const accounts: any[] = await postiz.integrations();
-    const chosen = accounts.filter(a => (integrationIds || []).includes(a.id) && !a.disabled);
-    if (!chosen.length) return res.status(400).json({ error: "Pick at least one connected account." });
-    const noText = chosen.filter(a => /instagram|tiktok|youtube/.test(a.identifier));
-    if (noText.length) return res.status(400).json({ error: `${noText.map(a => a.name).join(", ")}: this network needs media — compose it in Postiz.` });
-    const body = buildDeskPost({ integrationIds: chosen.map(a => a.id), message: String(message || ""), link, when });
-    const created = await postiz.create(body);
-    const links: PostizLink[] = created.map(c => {
-      const a = chosen.find(x => x.id === c.integration) || {};
-      return { postId: c.postId, integrationId: c.integration, channel: channelOf(a.identifier), network: a.identifier, account: a.name,
-        state: "QUEUE", releaseURL: "", publishDate: body.date, preview: String(message || "").slice(0, 140) };
-    });
-    const updated = await prisma.contentItem.update({ where: { id }, data: { postizJson: JSON.stringify([...parsePostiz(item), ...links]) } });
-    await createAuditLog(user?.id, user?.name, "Social Post Scheduled", `"${item.title}" → ${links.map(l => `${l.channel} (${l.account})`).join(", ")} ${body.type === "now" ? "now" : `at ${body.date.slice(0, 16).replace("T", " ")}`}: "${String(message || "").slice(0, 80)}"`);
-    res.json({ success: true, item: updated, posts: links });
-  } catch (e: any) { res.status(400).json({ error: e.message }); }
-});
-/** Called by /api/content/publish once the gate has passed and the audit row is written. */
-async function releaseToPostiz(item: { id: string; title: string; postizJson: string }, user: any) {
-  const links = parsePostiz(item);
-  if (!links.length || !postizConfigured()) return;
-  const next: PostizLink[] = []; const failed: string[] = [];
-  for (const l of links) {
-    if (l.state !== "DRAFT") { next.push(l); continue; }
-    try { await postiz.schedule(l.postId); next.push({ ...l, state: "QUEUE" }); }
-    catch (e: any) { failed.push(`${l.channel} (${l.account}): ${e.message}`); next.push(l); }
-  }
-  await prisma.contentItem.update({ where: { id: item.id }, data: { postizJson: JSON.stringify(next) } }).catch(() => {});
-  const queued = next.filter(l => l.state === "QUEUE").map(l => `${l.channel} (${l.account}) at ${l.publishDate.slice(0, 16).replace("T", " ")}`);
-  await createAuditLog(user?.id, user?.name, "Social Release Requested", `"${item.title}" → Postiz: ${queued.join(", ") || "nothing scheduled"}${failed.length ? `; FAILED ${failed.join("; ")}` : ""}.`);
-  if (failed.length) await digitalTask(`Postiz did not accept the release of "${item.title}"`, failed.join("; "));
-}
-async function pollPostiz() {
-  if (!postizConfigured()) return;
-  try {
-    if (!outsideSeeded) {                                      // remember what earlier boots already reported
-      outsideSeeded = true;
-      const rows = await prisma.auditLog.findMany({ where: { action: "Published Outside the Gate" }, select: { details: true } });
-      for (const r of rows) { const m = r.details.match(/Postiz post (\S+) /); if (m) outsideSeen.add(m[1]); }
-    }
-    const { items, set } = await linkedPostIds();
-    const posts = await postiz.posts();
-    for (const it of items) {
-      const { links, changed, errors } = mergeStates(parsePostiz(it), posts);
-      if (!changed) continue;
-      await prisma.contentItem.update({ where: { id: it.id }, data: { postizJson: JSON.stringify(links) } });
-      for (const e of errors) {
-        await createAuditLog("u-1", "System", "Social Post Failed", `Postiz could not publish "${it.title}" to ${e.channel} (${e.account}).`);
-        await digitalTask(`Postiz failed: ${e.channel} (${e.account}) — "${it.title}"`, "Open Postiz, read the error on the post, fix it and schedule again. The item stays Published in the register.");
+    const now = new Date();
+    const due = (await prisma.socialPost.findMany({ where: { state: "Queued" }, orderBy: { publishAt: "asc" } })).filter(r => isDue(r, now));
+    for (const row of due) {
+      const claimed = await prisma.socialPost.updateMany({ where: { id: row.id, state: "Queued" }, data: { state: "Publishing" } });
+      if (!claimed.count) continue;
+      const account = await prisma.socialAccount.findUnique({ where: { id: row.accountId } });
+      const label = `${row.network === "instagram" ? "Instagram" : "Facebook"} (${account?.name || row.accountId})`;
+      try {
+        if (!account) throw new Error("The Page this post was queued for is no longer connected.");
+        const r = await publishRow(row as any, account as any, coverBytes);
+        await prisma.socialPost.update({ where: { id: row.id }, data: { state: "Published", postId: r.postId, permalink: r.permalink, publishedAt: new Date().toISOString(), lastError: "" } });
+        await createAuditLog("u-1", "System", "Social Post Published", `${label}: "${row.message.slice(0, 80)}" → ${r.permalink || r.postId}`);
+      } catch (e: any) {
+        const attempts = row.attempts + 1;
+        const next = nextAttemptAt(attempts);
+        await prisma.socialPost.update({ where: { id: row.id }, data: { attempts, lastError: String(e.message).slice(0, 500), state: next ? "Queued" : "Failed", publishAt: next || row.publishAt } });
+        console.log(`[social] ${label} attempt ${attempts} failed — ${e.message}${next ? `; next at ${next}` : "; giving up"}`);
+        if (!next) {
+          await createAuditLog("u-1", "System", "Social Post Failed", `${label}: "${row.message.slice(0, 80)}" — ${String(e.message).slice(0, 200)}`);
+          await digitalTask(`Social post failed: ${account?.name || row.network}`, `"${row.message.slice(0, 120)}" could not be published after ${attempts} attempts: ${e.message}. Fix the cause, then Retry on the Social desk.`);
+        }
       }
     }
-    postizOutside = outsideGate(posts, set);
-    for (const p of postizOutside) {
-      if (outsideSeen.has(p.id)) continue;
-      outsideSeen.add(p.id);
-      await createAuditLog("u-1", "System", "Published Outside the Gate", `Postiz post ${p.id} on ${channelOf(p.integration.providerIdentifier)} (${p.integration.name}) went out with no content item behind it${p.releaseURL ? ` — ${p.releaseURL}` : ""}.`);
-    }
-  } catch (e: any) { console.log(`[postiz] poll failed — ${e.message}`); }
+  } catch (e: any) { console.log(`[social] queue tick failed — ${e.message}`); }
+  finally { draining = false; }
 }
-if (!process.env.VERCEL && process.env.POSTIZ_POLL !== "off") {
-  setInterval(pollPostiz, 5 * 60 * 1000).unref();
-  setTimeout(pollPostiz, 45 * 1000).unref();
+async function refreshSocialStats() {
+  try {
+    const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+    const rows = await prisma.socialPost.findMany({ where: { state: "Published", publishedAt: { gte: since } } });
+    for (const row of rows) {
+      const a = await prisma.socialAccount.findUnique({ where: { id: row.accountId } }); if (!a) continue;
+      const stats = await postStats(row as any, a as any).catch(() => null); if (!stats) continue;
+      await prisma.socialPost.update({ where: { id: row.id }, data: { statsJson: JSON.stringify(stats) } });
+    }
+  } catch (e: any) { console.log(`[social] stats refresh failed — ${e.message}`); }
+}
+/** /api/content/publish passed the gate: the item's drafts go out (never earlier than now). */
+async function releaseSocialDrafts(contentItemId: string) {
+  try {
+    const drafts = await prisma.socialPost.findMany({ where: { contentItemId, state: "Draft" } });
+    if (!drafts.length) return;
+    for (const r of gateRelease(drafts)) await prisma.socialPost.update({ where: { id: r.id }, data: { state: r.state, publishAt: r.publishAt } });
+    await createAuditLog("u-1", "System", "Social Drafts Released", `${drafts.length} social post(s) for content ${contentItemId} released by the editorial gate.`);
+    void drainSocialQueue();
+  } catch (e: any) { console.log(`[social] release failed — ${e.message}`); }
+}
+/** /api/content/retract: nothing still waiting for that item may go out. */
+async function cancelSocialDrafts(contentItemId: string, why: string) {
+  try {
+    const r = await prisma.socialPost.updateMany({ where: { contentItemId, state: { in: ["Draft", "Queued"] } }, data: { state: "Cancelled", lastError: why } });
+    if (r.count) await createAuditLog("u-1", "System", "Social Posts Cancelled", `${r.count} pending social post(s) for content ${contentItemId} cancelled: ${why}.`);
+  } catch (e: any) { console.log(`[social] cancel failed — ${e.message}`); }
+}
+if (!process.env.VERCEL && process.env.SOCIAL_QUEUE !== "off") {
+  setInterval(drainSocialQueue, 60 * 1000).unref();
+  setInterval(refreshSocialStats, 15 * 60 * 1000).unref();
+  setTimeout(drainSocialQueue, 20 * 1000).unref();
 }
 
 // ---- Website content (edited in the desk, rendered by the site) ------------------
@@ -4656,6 +4686,7 @@ app.post("/api/content/retract", async (req, res) => {
     const updated = await prisma.contentItem.update({ where: { id }, data: { retractedAt: new Date().toISOString(), retractReason: String(reason) } });
     await createAuditLog(user?.id, user?.name, "Content Retracted", `"${item.title}" taken off the website: ${reason}`);
     void notifySiteUnpublish(id);
+    void cancelSocialDrafts(id, "the item was retracted");
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

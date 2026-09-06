@@ -468,8 +468,48 @@ model ContentItem {
   draftsJson          String  @default("[]")     // [{label, kind, text, date, by}] — production drafts the fact-checker verifies
   aiAssisted          Boolean @default(false)    // set automatically when an AI draft is saved; manual toggle for outside tools
   aiDisclosed         Boolean @default(false)    // attestation: watermark/disclaimer on the published piece (golden rule)
-  postizJson          String  @default("[]")     // [{postId, integrationId, channel, network, state, releaseURL, publishDate, preview}] — Postiz drafts this item releases (src/postiz.ts)
   created_at          String
+}
+
+// A Facebook Page connected through Meta's login dialog (Social desk, 6 Sep 2026), with the
+// Instagram Business account linked to it. The token is a long-lived Page token; it never
+// leaves the server. One row per Page — several Pages may be connected.
+model SocialAccount {
+  id             String  @id                  // the Page id
+  name           String
+  picture        String  @default("")
+  token          String                       // long-lived Page access token — never sent to the browser
+  igId           String  @default("")         // linked Instagram Business account, if any
+  igUsername     String  @default("")
+  connectedBy    String  @default("")         // User.id of whoever pressed Connect
+  connectedAt    String
+  tokenCheckedAt String  @default("")
+  tokenValid     Boolean @default(true)
+}
+
+// One social post to one account on one network — the queue the server drains every minute.
+// Draft = waits for its content item to pass the editorial gate; Queued = publishes at publishAt;
+// Failed = gave up after the retries in src/meta.ts (BACKOFF_MINUTES); every state change is audited.
+model SocialPost {
+  id            String @id
+  accountId     String                         // SocialAccount.id
+  network       String                         // facebook | instagram
+  contentItemId String @default("")            // the item this post carries, if any (gate + cover)
+  message       String @default("")
+  link          String @default("")
+  imageUrl      String @default("")            // public https URL, or cover:<contentItemId> (bytes from the vault — Facebook only)
+  publishAt     String                         // ISO
+  state         String @default("Queued")      // Draft | Queued | Publishing | Published | Failed | Cancelled
+  attempts      Int    @default(0)
+  lastError     String @default("")
+  postId        String @default("")
+  permalink     String @default("")
+  statsJson     String @default("{}")          // {likes, comments, shares} refreshed every 15 minutes for a month
+  createdBy     String @default("")
+  createdAt     String
+  publishedAt   String @default("")
+
+  @@index([state, publishAt])
 }
 
 // One held editorial meeting (Policy 002 defines both kinds with participants and

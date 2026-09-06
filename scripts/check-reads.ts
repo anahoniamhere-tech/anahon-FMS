@@ -23,7 +23,12 @@ ok("it accepts the sign-in token or a document ticket", /const viewerId = await 
 
 console.log("\nthe exceptions, and only those");
 const open = JSON.parse((server.match(/const OPEN_GETS = new Set\((\[[^\]]*\])\)/) || [])[1] || "[]") as string[];
-ok("exactly three", open.length === 3, open.join(","));
+ok("exactly four", open.length === 4, open.join(","));
+ok("Meta's return address after connecting a Page", open.includes("/api/social/meta/callback"));
+// It carries no sign-in header (Meta redirects the browser), so its credential is the random
+// single-use state minted by /api/social/meta/connect for a signed-in editor; the callback must
+// look it up and refuse without it.
+ok("the callback demands the state it minted", /const who = state \? connectStates\.get\(state\) : undefined;/.test(server) && /if \(!who \|\| who\.expires < Date\.now\(\)\) return back\(/.test(server));
 ok("the person's own feed", open.includes("/api/desk.ics"));
 ok("the legacy shared editorial feed", open.includes("/api/calendar.ics"));
 ok("the ticket route, which refuses by itself", open.includes("/api/document/ticket"));

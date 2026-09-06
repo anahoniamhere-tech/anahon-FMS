@@ -136,12 +136,12 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/archive/schema": ARCHIVE_EDITORS,
   "/api/archive/home": ARCHIVE_EDITORS,
   "/api/archive/publish": SITE_EDITORS,
-  "/api/social/publish": SITE_EDITORS,
+  "/api/social/accounts/remove": SITE_EDITORS,
+  "/api/social/queue": SITE_EDITORS,            // a post tied to an unpublished item waits as a Draft; the gate itself is /api/content/publish
+  "/api/social/queue/cancel": SITE_EDITORS,
+  "/api/social/queue/retry": SITE_EDITORS,
   "/api/social/edit": SITE_EDITORS,
   "/api/social/delete": SITE_EDITORS,
-  "/api/social/postiz/link": SITE_EDITORS,      // a Postiz draft is linked before the gate; the gate itself is /api/content/publish
-  "/api/social/postiz/unlink": SITE_EDITORS,
-  "/api/social/postiz/publish": SITE_EDITORS,     // only for items already Published — the route checks the record
   "/api/tools/save": TOOL_EDITORS,
   "/api/tools/delete": TOOL_EDITORS,
   "/api/contacts/save": CONTACT_EDITORS,
