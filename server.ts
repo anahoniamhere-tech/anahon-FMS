@@ -2363,10 +2363,69 @@ app.post("/api/opportunities/proposal-doc", async (req, res) => {
 // track record assembled from the database — it never invents facts. Donor-specific
 // unknowns come back as [FILL: …] placeholders. AI prefills, humans decide:
 // nothing is saved until the user edits and saves the workspace themselves.
+/**
+ * The four documents that say what AnaHon is trying to do, as one block of text.
+ *
+ * The brain knew the portfolio but not the plan: it could list every project and donor
+ * and had to invent the strategic framing from six one-line programme briefs. A funder
+ * asks how a call fits the organisation's direction, and that answer lives in these four
+ * handbooks — the Strategic Plan and the KPIs say what AnaHon is for and how it measures
+ * itself, the Fundraising and Proposal & Grants policies say what it may accept and how
+ * it applies.
+ *
+ * Named by document id, not by the number in the filename: **two handbooks are numbered
+ * 018** (Fundraising Policy and Sharing Repository Policy), so a regex on the number picks
+ * the wrong paper half the time. Anything not on this list stays out — the whole manual is
+ * 177k characters and belongs to the help desk, not to a proposal.
+ *
+ * Extraction is Home & desk's (`documentText`, in process, never the HTTP route — a server
+ * fetching itself is what killed /api/reports/pdf), and the cache is keyed the same way:
+ * the documents' own content hashes, so re-filing one of them invalidates it and nothing
+ * else does.
+ */
+const STRATEGY_DOC_IDS = [
+  "doc-hb-anahon-strategicplan-strategy-007",            // ANH-DOC-00412 · Strategic Plan 007
+  "doc-hb-anahon-keyperformanceindicators-008",          // ANH-DOC-00408 · KPIs 008
+  "doc-hb-anahon-fundraisingpolicy-018",                 // ANH-DOC-00405 · Fundraising Policy 018
+  "doc-hb-anahon-proposal-grantsmanagement-policy-019"   // ANH-DOC-00409 · Proposal & Grants 019
+];
+
+let strategyCache: { key: string; text: string; chars: number; docs: number } | null = null;
+
+async function strategyCorpus(): Promise<{ text: string; chars: number; docs: number }> {
+  const rows = await prisma.appDoc.findMany({ where: { id: { in: STRATEGY_DOC_IDS } } });
+  const key = rows.map(r => `${r.id}:${r.contentHash}`).join("|");
+  if (strategyCache && strategyCache.key === key) return strategyCache;
+
+  const started = Date.now();
+  const parts: string[] = [];
+  // Listed order, not the database's — the plan reads before the policies that serve it.
+  for (const id of STRATEGY_DOC_IDS) {
+    const r = rows.find(x => x.id === id);
+    if (!r) { console.warn(`[strategy] ${id} is not on file — the brain runs without it`); continue; }
+    try {
+      const text = (await documentText(r.id)).trim();
+      if (text) parts.push(`### ${r.filename.replace(/\.(docx|pdf)$/i, "").replace(/_/g, " ")}\n${text}`);
+    } catch (err: any) {
+      // One unreadable document must not take the brain down; the log names what is missing.
+      console.warn(`[strategy] could not read ${r.filename}: ${String(err?.message).slice(0, 120)}`);
+    }
+  }
+  const text = parts.join("\n\n");
+  strategyCache = { key, text, chars: text.length, docs: parts.length };
+  console.log(`[strategy] extracted ${parts.length}/${STRATEGY_DOC_IDS.length} documents, ${text.length} characters, in ${Date.now() - started} ms`);
+  return strategyCache;
+}
+
 async function anahonBrainContext(): Promise<string> {
-  const [projects, donors] = await Promise.all([
+  const [projects, donors, engagements, clients, quotations, published, strategy] = await Promise.all([
     prisma.project.findMany(),
-    prisma.donor.findMany()
+    prisma.donor.findMany(),
+    prisma.engagement.findMany({ orderBy: { startDate: "desc" } }),
+    prisma.client.findMany(),
+    prisma.quotation.findMany(),
+    prisma.contentItem.findMany({ where: { status: "Published" }, orderBy: { publishedAt: "desc" } }),
+    strategyCorpus()
   ]);
   const donorName = (id: string) => donors.find(d => d.id === id)?.name || id;
   const byStream: Record<string, string[]> = {};
@@ -2377,21 +2436,56 @@ async function anahonBrainContext(): Promise<string> {
     );
   }
   const STREAM_BRIEFS: Record<string, string> = {
-    "AnaHon Platform": "The core independent media platform: journalism and investigative reporting from Tripoli and North Lebanon.",
+    // Was "journalism and investigative reporting from Tripoli and North Lebanon". Neither
+    // the Strategic Plan nor the KPIs claim investigative reporting anywhere; both describe
+    // this stream as podcasts, advocacy platforms (KPIs name كل مسؤول مسؤول) and awareness
+    // campaigns on transparency, human rights and social justice, measured by reach,
+    // engagement and impact on public discourse. The document wins over the code.
+    "AnaHon Platform": "The core independent media platform, based in Tripoli and North Lebanon: podcasts, advocacy platforms and awareness campaigns on transparency, human rights and social justice, produced with journalists and civil-society partners.",
     "iContent Academy": "Training program for content creators ('I Am the Content' 2023 → IContent2 2024 → Voices Unseen 2025 → MADA 2026).",
     "Ahali Al Madina": "Community-led humanitarian & development initiative, active since 2024 in Tripoli and the North.",
     "Roots & Reach": "New community program connecting influencers with the community through events (TED-style talks) — seeking its first funder.",
     "Production": "Earned-income arm: paid media production services for clients (event coverage, podcasts, video production, trainings).",
     "Core / Org-wide": "Organizational backbone funding (operations, systems, business development)."
   };
-  return [
+  // Everything below the projects is optional: a heading with no rows under it reads as an
+  // absence the model then explains away, so an empty table contributes nothing at all.
+  const clientLine = (c: { id: string; name: string }) => {
+    const theirs = quotations.filter(q => q.clientId === c.id);
+    return `${c.name}${theirs.length ? ` — ${theirs.map(q => `${q.quoteNo} "${q.title}" ${q.currency} ${q.amount.toLocaleString()} (${q.status})`).join("; ")}` : " — no quotation yet"}`;
+  };
+  const alsoDone: string[] = [];
+  if (engagements.length) alsoDone.push(
+    `EVENTS AND TRAININGS (attended, delivered or co-hosted):\n` +
+    engagements.map(e => `• ${e.title} — ${e.kind}, ${e.ourPart}${e.org ? `, run by ${e.org}` : ""}${e.place ? `, ${e.place}` : ""}${e.startDate ? `, ${e.startDate}` : ""}${e.stream ? `, ${e.stream}` : ""}${e.outcome ? ` — outcome: ${e.outcome}` : ""}`).join("\n"));
+  if (clients.length) alsoDone.push(
+    `PAYING CLIENTS AND WHAT THEY WERE QUOTED (earned income, not grants):\n` +
+    clients.map(c => `• ${clientLine(c)}`).join("\n"));
+  if (published.length) alsoDone.push(
+    `PUBLISHED CONTENT (editorial pipeline, status Published):\n` +
+    published.map(c => `• "${c.title}" — ${c.contentType}${c.stream ? `, ${c.stream}` : ""}${c.publishedAt ? `, ${c.publishedAt.slice(0, 10)}` : ""}`).join("\n"));
+
+  const context = [
     `ORGANIZATION: AnaHon Media Platform — Lebanese Civil Company 90/2023, registered 12 Oct 2023, Commercial Register Tripoli, MoF no. 3893185. Based in Tripoli, Lebanon. Independent media organization; small team (~4 staff plus per-deliverable contractors). AnaHon is always the sole applicant and implementing body.`,
     `PROGRAMS AND TRACK RECORD (real, from the financial system):`,
     ...Object.entries(STREAM_BRIEFS).map(([s, brief]) =>
       `• ${s}: ${brief}\n  Projects: ${(byStream[s] || ["none yet"]).join("; ")}`),
     `DONOR RELATIONSHIPS: ${donors.map(d => d.name).join(", ")}.`,
+    ...alsoDone,
+    ...(strategy.text ? [
+      `ANAHON'S OWN STRATEGY AND FUNDING POLICIES — the organisation's stated direction, in full. ` +
+      `Judge fit against these, not against a general idea of what a media organisation does, and name the ` +
+      `strategic goal or the KPI you are relying on. Where these documents and the one-line programme ` +
+      `summaries above differ, these documents are correct:\n${strategy.text}`
+    ] : []),
     `RULES: Never invent numbers, achievements, staff, or partnerships not listed above. Where donor-specific or unknown information is needed, write a placeholder like [FILL: number of participants]. Write in clear, direct English suited to grant applications.`
   ].join("\n");
+  // One line per build. Intake and assess are rare, deliberate, paid calls, and the size of
+  // what is sent is the thing that decides both the bill and the wait — so it is recorded
+  // where the work is, with the two additions broken out.
+  const record = alsoDone.join("\n").length;
+  console.log(`[brain] ${context.length} characters (strategy ${strategy.chars} from ${strategy.docs} docs, track record ${record}, rest ${context.length - strategy.chars - record})`);
+  return context;
 }
 
 // One JSON-returning model call, whichever provider has a key. Anthropic wins when
