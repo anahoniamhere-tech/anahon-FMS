@@ -1067,13 +1067,7 @@ export default function App() {
   };
 
   return (
-    // --dock-start is where the content's left edge is: the sidebar's 16rem plus main's
-    // 2rem of padding when it is open, just the padding when it is collapsed. The help
-    // desk reads it, so it follows the sidebar without being handed its state.
-    <div
-      className="flex h-screen flex-col bg-slate-50 text-slate-900 overflow-hidden font-sans"
-      style={{ "--dock-start": isOpen ? "18rem" : "2rem" } as React.CSSProperties}
-    >
+    <div className="flex h-screen flex-col bg-slate-50 text-slate-900 overflow-hidden font-sans">
 
       {/* Toast Alert Header Banner */}
       <AnimatePresence>
@@ -1287,6 +1281,12 @@ export default function App() {
         </aside>
 
         {/* Dynamic Display Panel View */}
+        {/* The content column. It is flex-1 beside the sidebar, so its left edge moves
+            as the sidebar's width animates — and anything positioned against it travels
+            with that animation instead of being told to. `relative` without a z-index
+            makes it a containing block but not a stacking context, so the widget inside
+            keeps competing on z with the rest of the page. */}
+        <div className="relative flex flex-1 flex-col overflow-hidden">
         <main className="flex-1 flex flex-col overflow-y-auto p-4 pb-24 md:p-8 md:pb-8">
 
           {/* Tab Content Dynamic Mounting */}
@@ -1357,6 +1357,17 @@ export default function App() {
           {activeTab === "compliance" && <ComplianceTab {...shared} />}
 
         </main>
+
+          {/* The help desk, on every screen. Answers for the role in force and, where the
+              answer has a door, hands back a button that opens it rather than describing it. */}
+          {currentUser && (
+            <HelpDesk
+              t={t} lang={lang} rtl={rtl}
+              doorLabel={k => t(NAV.flatMap(s => s.items).find(i => i.navKey === k)?.label || k)}
+              onOpenDoor={handleNavClick}
+            />
+          )}
+        </div>
       </div>
 
       {/* Missing-evidence button. Always visible, because a documentation gap you have to go
@@ -1676,15 +1687,6 @@ export default function App() {
         );
       })()}
 
-      {/* The help desk, on every screen. Answers for the role in force and, where the
-          answer has a door, hands back a button that opens it rather than describing it. */}
-      {currentUser && (
-        <HelpDesk
-          t={t} lang={lang} rtl={rtl}
-          doorLabel={k => t(NAV.flatMap(s => s.items).find(i => i.navKey === k)?.label || k)}
-          onOpenDoor={handleNavClick}
-        />
-      )}
 
       {/* Root-Level Floating Sidebar Toggle Handle */}
       <button
