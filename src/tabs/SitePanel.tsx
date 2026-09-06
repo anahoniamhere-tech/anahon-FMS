@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { WIDGET_LABEL } from "./WidgetPanel";
 
 /**
  * The Section panel of the Live editor — every piece of copy the site renders, as a form.
@@ -108,7 +109,7 @@ export function Field({ value, onChange, path, canEdit, t }: { value: any; onCha
 export type Focus = { file: string; section: string } | null;
 
 /** The panel: one section as a form (from a click on the page, or picked from the list). */
-export function SectionsPanel({ canEdit, t, triggerToast, siteUrl, focus }: { canEdit: boolean; t: T; triggerToast: (m: string, k?: "success" | "error") => void; siteUrl: string; focus: Focus }) {
+export function SectionsPanel({ canEdit, t, triggerToast, siteUrl, focus, onWidget }: { canEdit: boolean; t: T; triggerToast: (m: string, k?: "success" | "error") => void; siteUrl: string; focus: Focus; onWidget: (w: string) => void }) {
   useEffect(() => { (window as any).__siteUrl = siteUrl; }, [siteUrl]);
   const [content, setContent] = useState<Record<string, any>>({});
   const [file, setFile] = useState<string>("site");
@@ -136,6 +137,10 @@ export function SectionsPanel({ canEdit, t, triggerToast, siteUrl, focus }: { ca
   if (listing || !section) return (
     <div className="flex-1 overflow-y-auto p-1.5 text-xs">
       <p className="mb-2 text-[11px] text-slate-500">{t("Click anything on the page to open its section here.")}</p>
+      <div className="mb-2">
+        <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{t("Widgets")}</p>
+        {Object.entries(WIDGET_LABEL).map(([w, label]) => <button key={w} onClick={() => onWidget(w)} className="block w-full rounded px-2 py-1 text-start hover:bg-slate-100">{t(label)}</button>)}
+      </div>
       {files.map(f => (
         <div key={f} className="mb-2">
           <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{t(FILE_LABEL[f] || f)}</p>

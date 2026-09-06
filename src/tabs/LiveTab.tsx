@@ -4,6 +4,7 @@ import Info from "../Info";
 import { SITE_EDITORS } from "../roles";
 import { tr } from "../i18n";
 import { SectionsPanel, Focus } from "./SitePanel";
+import { WidgetPanel, WIDGET_LABEL, WIDGET_PAGE } from "./WidgetPanel";
 
 /**
  * Live editor — the website itself, framed from its editing server, edited in place.
@@ -42,9 +43,7 @@ const PAGES: { label: string; en: string; ar: string }[] = [
 ];
 
 type LibItem = { path: string; name: string; size: number; mtime: number };
-type ArchiveItem = { id: string; platform: string; kind: string; title: string; thumb: string; date: string; tags: string[]; series: string };
-type Article = { slug: string; lang: string; title: string; date: string };
-const WIDGET_LABEL: Record<string, string> = { hero: "Home hero slider", episodes: "Latest episodes", articles: "Latest articles", articlesPage: "Articles page", podcastsPage: "Podcasts page" };
+import type { ArchiveItem, Article } from "./WidgetPanel";
 
 export default function LiveTab({ state, currentUser, triggerToast, lang, openDoor }: SharedProps) {
   const canEdit = EDIT_ROLES.includes(currentUser?.role);
@@ -60,6 +59,8 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
   const [panel, setPanel] = useState<"section" | "library" | "pictures">("section");
   const [focus, setFocus] = useState<Focus>(null);        // the section behind the last clicked text
   const [device, setDevice] = useState<"desktop" | "tablet" | "phone">("desktop");
+  const [focusWidget, setFocusWidget] = useState<{ widget: string; items: string[] } | null>(null);   // the widget behind the last click
+  const widgetRef = useRef<string | null>(null); widgetRef.current = focusWidget?.widget || null;
   const [items, setItems] = useState<ArchiveItem[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [q, setQ] = useState("");
@@ -81,7 +82,8 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
     const onMsg = async (e: MessageEvent) => {
       const d = e.data; if (!d || d.anahon !== true) return;
       if (siteOrigin && e.origin !== siteOrigin) return;
-      if (d.type === "ready") { setPath(d.url || "/"); setPageLang(d.lang === "ar" ? "ar" : "en"); setArticleId(String(d.articleId || "")); tell({ type: "edit", on: editRef.current }); return; }
+      if (d.type === "ready") { setPath(d.url || "/"); setPageLang(d.lang === "ar" ? "ar" : "en"); setArticleId(String(d.articleId || "")); tell({ type: "edit", on: editRef.current }); if (widgetRef.current) tell({ type: "widget-items", widget: widgetRef.current }); return; }
+      if (d.type === "widget-select") { const w = String(d.widget || ""); if (WIDGET_LABEL[w]) { setFocusWidget({ widget: w, items: (d.items || []).map(String) }); setPanel("section"); } return; }
       if (d.type === "article") { if (d.id) openDoor("editorial", String(d.id)); return; }
       if (d.type === "select") {
         const r = await post("/api/website/locate", { text: d.text, lang: d.lang }).catch(() => ({ paths: [] }));
@@ -114,6 +116,8 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
   }, [siteOrigin, triggerToast]);
 
   const go = (p: string) => { setPath(p); if (frame.current) frame.current.src = siteUrl + p; };
+  // a widget picked from the Sections list: go to its page (ready asks the page for the list)
+  const openWidget = (w: string) => { const page = WIDGET_PAGE[w]?.[pageLang]; if (!page) return; setFocusWidget({ widget: w, items: [] }); setPanel("section"); if (page !== path) go(page); else tell({ type: "widget-items", widget: w }); };
   const current = PAGES.find(p => p.en === path || p.ar === path);
   const publish = async () => {
     if (!window.confirm(t("Build the public website from what you see here and push it to the host?"))) return;
@@ -177,7 +181,9 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
             <div className="flex border-b text-xs font-semibold">
               {(["section", "library", "pictures"] as const).map(p => <button key={p} onClick={() => setPanel(p)} className={`flex-1 px-2 py-1.5 ${panel === p ? "bg-slate-800 text-white" : ""}`}>{t(p === "section" ? "Section" : p === "library" ? "Library" : "Pictures")}</button>)}
             </div>
-            {panel === "section" && <SectionsPanel canEdit={canEdit} t={t} triggerToast={triggerToast} siteUrl={siteUrl} focus={focus} />}
+            {panel === "section" && (focusWidget
+              ? <WidgetPanel widget={focusWidget.widget} pageItems={focusWidget.items} items={items} articles={articles} pageLang={pageLang} canEdit={canEdit} t={t} triggerToast={triggerToast} tell={tell} onBack={() => setFocusWidget(null)} />
+              : <SectionsPanel canEdit={canEdit} t={t} triggerToast={triggerToast} siteUrl={siteUrl} focus={focus} onWidget={openWidget} />)}
             {panel === "library" && (
               <>
                 <div className="space-y-1 border-b p-1.5">
