@@ -1,7 +1,7 @@
 import React from "react";
 import {
   Activity, Archive, BookOpen, Briefcase, Building, Coins, FileText, FolderGit2, HardDrive,
-  Layers, LayoutGrid, Megaphone, Newspaper, PencilLine, RefreshCw, Share2,
+  Layers, LayoutGrid, Megaphone, Newspaper, PencilLine, RefreshCw, Share2, Send,
   ShieldAlert, Sliders, User, UserCheck, Users,
 } from "lucide-react";
 
@@ -57,6 +57,7 @@ export const NAV: NavSection[] = [
     items: [
       { navKey: "editorial", label: "Editorial desk", icon: ic(Newspaper), roles: ["*full", ...OFFICER, ...CREW, ...EDITORS] },
       { navKey: "social", label: "Social desk", icon: ic(Megaphone), roles: ["*full", ...EDITORS, ...DIGITAL] },
+      { navKey: "postiz", label: "Social platform", icon: ic(Send), roles: ["*full", ...EDITORS, ...DIGITAL] },
     ],
   },
   {

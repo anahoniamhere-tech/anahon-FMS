@@ -319,6 +319,10 @@ export const AR: Record<string, string> = {
   // navigation, eight doors (4 Sep 2026)
   "My Desk": "مكتبي",
   "Social desk": "مكتب التواصل الاجتماعي",
+  "Social platform": "منصة التواصل الاجتماعي",
+  "Compose here and leave posts as drafts; the Social desk releases them through the editorial gate.": "حرّر المنشورات هنا واتركها كمسودّات؛ مكتب التواصل يُطلقها عبر بوّابة التحرير.",
+  "Open in its own tab": "افتح في نافذة مستقلة",
+  "Postiz is reachable only from the office network or the tailnet.": "لا يمكن الوصول إلى Postiz إلا من شبكة المكتب أو الشبكة الخاصة.",
   "Live editor": "المحرّر المباشر",
   "Home": "الرئيسية",
   "Editorial": "التحرير",
