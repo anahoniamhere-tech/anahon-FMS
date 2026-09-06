@@ -1067,7 +1067,13 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50 text-slate-900 overflow-hidden font-sans">
+    // --dock-start is where the content's left edge is: the sidebar's 16rem plus main's
+    // 2rem of padding when it is open, just the padding when it is collapsed. The help
+    // desk reads it, so it follows the sidebar without being handed its state.
+    <div
+      className="flex h-screen flex-col bg-slate-50 text-slate-900 overflow-hidden font-sans"
+      style={{ "--dock-start": isOpen ? "18rem" : "2rem" } as React.CSSProperties}
+    >
 
       {/* Toast Alert Header Banner */}
       <AnimatePresence>
