@@ -31,6 +31,17 @@ const BASIS_PILL: Record<string, string> = {
 };
 const blank = { id: "", platform: "Facebook", periodStart: "", periodEnd: "", followers: "", followersGained: "", reach: "", impressions: "", views: "", interactions: "", basis: "unknown", source: "", note: "" };
 
+/** Which of a platform's totals leads the tile, and which follow it. Reach first because it is
+ *  the figure a funder asks for; a platform with none of them still shows its follower level. */
+const totalPairs = (t: any): [string, number][] =>
+  ([["reach", t.reach], ["impressions", t.impressions], ["views", t.views], ["interactions", t.interactions]] as [string, number][])
+    .filter(([, v]) => v > 0);
+/** A platform whose export gave no total at all still has a follower level, and that is a real
+ *  figure — showing a dash there reads as missing data rather than as what the export contained. */
+const headline = (t: any): [string, number] | undefined =>
+  totalPairs(t)[0] ?? (t.last?.followers != null ? [`followers at ${t.last.periodEnd}`, t.last.followers] : undefined);
+const rest = (t: any) => totalPairs(t).slice(1);
+
 export default function StoredSeries({ role, triggerToast }: { role: string; triggerToast: (m: string, k?: string) => void }) {
   const mayEdit = SITE_EDITORS.includes(role);
   const [rows, setRows] = useState<any[] | null>(null);
@@ -78,10 +89,13 @@ export default function StoredSeries({ role, triggerToast }: { role: string; tri
           {totals.map(([platform, t]) => (
             <div key={platform} className="rounded-lg border border-slate-200 bg-white p-3">
               <div className="text-[11px] uppercase tracking-wide text-slate-500">{platform}</div>
-              <div className="mt-1 text-2xl font-bold text-slate-900" dir="ltr">{n(t.reach || t.impressions || t.views || t.interactions || null)}</div>
+              <div className="mt-1 text-2xl font-bold text-slate-900" dir="ltr">{n(headline(t)?.[1] ?? null)}</div>
               <div className="text-[11px] text-slate-500">
-                {t.reach ? "reach" : t.impressions ? "impressions" : t.views ? "views" : t.interactions ? "interactions" : "no total"}
-                {t.last?.followers != null && <> · {n(t.last.followers)} followers at {t.last.periodEnd}</>}
+                {headline(t)?.[0] || "nothing totalled"}
+                {/* Everything else this platform has, named. The headline is one metric, and on a
+                    platform with several it must not read as the only one AnaHon can claim. */}
+                {rest(t).map(([label, v]) => <span key={label}> · <span dir="ltr">{n(v)}</span> {label}</span>)}
+                {t.last?.followers != null && totalPairs(t).length > 0 && <> · <span dir="ltr">{n(t.last.followers)}</span> followers at <span dir="ltr">{t.last.periodEnd}</span></>}
               </div>
             </div>
           ))}
@@ -141,7 +155,7 @@ export default function StoredSeries({ role, triggerToast }: { role: string; tri
                   {COUNTS.map(([k]) => (
                     <td key={k} className="px-2 py-1.5 tabular-nums text-slate-700" dir="ltr">
                       {n(r[k])}
-                      {k === "reach" && r.reach != null && <span className={`ms-1 rounded px-1 py-0.5 text-[10px] font-bold ${BASIS_PILL[r.basis]}`}>{BASIS[r.basis]}</span>}
+                      {k === "reach" && r.reach != null && <span className={`ms-1 inline-block whitespace-nowrap rounded px-1 py-0.5 text-[10px] font-bold ${BASIS_PILL[r.basis]}`}>{BASIS[r.basis]}</span>}
                     </td>
                   ))}
                   <td className="px-2 py-1.5 text-slate-500">
