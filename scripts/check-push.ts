@@ -75,6 +75,11 @@ ok("and it counts what is owed, not what is merely due this week", /i\.group !==
 ok("a lapsed subscription is renewed silently when permission still stands",
   /Notification\.permission === "granted"/.test(read("../src/tabs/MyDeskTab.tsx")));
 
+// 7 Sep 2026: the missing-paper rule adds standing backlog items with no date. Push
+// carries undated work on purpose, so without this they would each have buzzed a phone.
+ok("the standing backlog is never pushed", /&& !i\.standing\)/.test(server));
+ok("and a standing item is marked as such at the source", /standing: true/.test(read("../src/workflow.ts")));
+
 console.log("\nC. the worker still caches nothing");
 const sw = read("../public/sw.js");
 ok("exactly one file is ever cached", (sw.match(/c\.add\(|cache\.add|addAll/g) || []).length === 1 && sw.includes("c.add(PAGE)"));

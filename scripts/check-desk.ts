@@ -6,7 +6,7 @@
 // that reads a field the trimmed payload does not carry, a seat owed a record on a door
 // it cannot open, a label with no Arabic. Run: npx tsx scripts/check-desk.ts
 import { readFileSync } from "node:fs";
-import { RULES, STATUS_FIELD, TOOL_DESK, CONTACT_DESK, deskItems, Rule } from "../src/workflow.js";
+import { RULES, STATUS_FIELD, TOOL_DESK, CONTACT_DESK, deskItems, missingPaperItems, LIVE_SUPPLIER_PAPERS, Rule } from "../src/workflow.js";
 import { ALL_ROLES, DIRECTORS, FINANCE, MANAGERS, SUPPLIER_EDITORS, CONTENT_EDITORS, PM_SLOT, PD_SLOT, MASTER } from "../src/roles.js";
 import { CONTENT_STATUSES } from "../src/editorialGates.js";
 import { visibleNav } from "../src/nav.js";
@@ -142,67 +142,124 @@ ok("the tick belongs to the task's holder, or the director when it has none",
 ok("only a director writes or removes a task", /isDirector && \(\n?\s*<div className="rounded-xl border border-slate-200 bg-white p-4">\n?\s*\{!taskForm/.test(desk) && /isTask && isDirector && \(/.test(desk));
 
 console.log("\nF. behaviour fixtures");
+// Section F is about turns a record's status creates. The missing-paper rule adds standing
+// items to the same desk (section G), so these read the record half deliberately — an
+// assertion that counts "everything on the desk" would break every time a checklist grows.
+const turns = (me: any, st: any, d: string) => deskItems(me, st, d).filter(i => !i.standing);
+
 const sa = viewer("Super Admin");
 const fin = viewer("Finance Officer");
 const dig = viewer("Digital Officer");
 const exp = (over: any = {}) => ({ id: "e1", voucherNo: "PV-1", title: "Cable", status: "Submitted", requestorId: "u-4", ...over });
 const st = (over: any) => ({ ...baseState(), ...over });
-let r1 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], expenses: [exp()] }), today);
+let r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], expenses: [exp()] }), today);
 ok("Submitted voucher, director seat vacant → Super Admin covers Program Director", r1.length === 1 && r1[0].group === "cover" && same(r1[0].seats, ["Program Director"]), JSON.stringify(r1.map(i => [i.group, i.seats])));
-r1 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }, { id: "u-pd", role: "Program Director", active: true }], expenses: [exp()] }), today);
+r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }, { id: "u-pd", role: "Program Director", active: true }], expenses: [exp()] }), today);
 ok("same voucher with a Program Director in seat → nothing for the Super Admin", r1.length === 0);
-r1 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], expenses: [exp({ requestorId: "u-sa" })] }), today);
+r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], expenses: [exp({ requestorId: "u-sa" })] }), today);
 ok("a voucher I raised never asks me to approve it (§4.3)", r1.length === 0);
-r1 = deskItems(viewer("Reporter"), st({ expenses: [exp({ status: "Returned for Correction", requestorId: "emp-1" })] }), today);
+r1 = turns(viewer("Reporter"), st({ expenses: [exp({ status: "Returned for Correction", requestorId: "emp-1" })] }), today);
 ok("Returned voucher with an Employee-id requester resolves through userEmail → mine", r1.length === 1 && r1[0].group === "mine");
 const ci = (over: any) => ({ id: "c1", title: "Piece", status: "Editorial Review", assigneeUserId: "u-x", factCheckerUserId: "", pmApprovedBy: "", pdApprovedBy: "", dueDate: "", ...over });
-r1 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], contentItems: [ci({ pdApprovedBy: "u-sa" })] }), today);
+r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], contentItems: [ci({ pdApprovedBy: "u-sa" })] }), today);
 ok("Editorial Review: the one who filled the PD slot is not offered the PM slot", !r1.some(i => i.id.endsWith(":pmApprovedBy")));
-r1 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], contentItems: [ci({ pmApprovedBy: "u-other" })] }), today);
+r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], contentItems: [ci({ pmApprovedBy: "u-other" })] }), today);
 ok("Editorial Review: PD slot empty, Program Director and Chief Editor vacant → cover", r1.length === 1 && r1[0].id.endsWith(":pdApprovedBy") && r1[0].group === "cover");
-r1 = deskItems(viewer("Reporter"), st({ contentItems: [ci({ status: "Fact-Check", factCheckerUserId: "u-x", assigneeUserId: "u-y" })] }), today);
+r1 = turns(viewer("Reporter"), st({ contentItems: [ci({ status: "Fact-Check", factCheckerUserId: "u-x", assigneeUserId: "u-y" })] }), today);
 ok("Fact-Check waits on the named checker → mine", r1.length === 1 && r1[0].group === "mine");
 const plus3 = "2026-09-07";
-r1 = deskItems({ id: "u-y", email: "y@x", role: "Reporter" }, st({ contentItems: [ci({ status: "Fact-Check", factCheckerUserId: "u-x", assigneeUserId: "u-z", dueDate: plus3 })] }), today);
+r1 = turns({ id: "u-y", email: "y@x", role: "Reporter" }, st({ contentItems: [ci({ status: "Fact-Check", factCheckerUserId: "u-x", assigneeUserId: "u-z", dueDate: plus3 })] }), today);
 ok("a dated piece on someone else's desk shows under Due this week", r1.length === 1 && r1[0].group === "week" && r1[0].urgency === "week");
 const act = (over: any = {}) => ({ id: "a1", title: "Step", status: "Planned", projectId: "p1", assigneeUserId: "", dueDate: today, ...over });
-r1 = deskItems(viewer("Project Officer"), st({ projectActivities: [act()] }), today);
-const r2 = deskItems(sa, st({ projectActivities: [act()] }), today);
+r1 = turns(viewer("Project Officer"), st({ projectActivities: [act()] }), today);
+const r2 = turns(sa, st({ projectActivities: [act()] }), today);
 ok("unassigned step → the scoped Project Officer's turn, not the Super Admin's cover", r1.length === 1 && r1[0].group === "mine" && !r2.some(i => i.group === "cover"));
-r1 = deskItems(sa, st({ projects: [{ id: "p1", code: "P1", stream: "S", status: "Completed" }], projectActivities: [act()] }), today);
+r1 = turns(sa, st({ projects: [{ id: "p1", code: "P1", stream: "S", status: "Completed" }], projectActivities: [act()] }), today);
 ok("a Planned step on a Completed project is nobody's turn and not due", r1.length === 0);
-r1 = deskItems({ id: "u-y", email: "y@x", role: "Reporter" }, st({ contentItems: [ci({ status: "Fact-Check", factCheckerUserId: "u-x", assigneeUserId: "u-z", dueDate: "2026-08-01" })] }), today);
+r1 = turns({ id: "u-y", email: "y@x", role: "Reporter" }, st({ contentItems: [ci({ status: "Fact-Check", factCheckerUserId: "u-x", assigneeUserId: "u-z", dueDate: "2026-08-01" })] }), today);
 ok("someone else's item more than a week late is not on my desk", r1.length === 0);
-r1 = deskItems({ id: "u-y", email: "y@x", role: "Reporter" }, st({ contentItems: [ci({ status: "Fact-Check", factCheckerUserId: "u-x", assigneeUserId: "u-z", dueDate: "2026-09-01" })] }), today);
+r1 = turns({ id: "u-y", email: "y@x", role: "Reporter" }, st({ contentItems: [ci({ status: "Fact-Check", factCheckerUserId: "u-x", assigneeUserId: "u-z", dueDate: "2026-09-01" })] }), today);
 ok("someone else's item three days late is still Due this week", r1.length === 1 && r1[0].group === "week" && r1[0].urgency === "overdue");
-r1 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], projectActivities: [act()] }), today);
+r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], projectActivities: [act()] }), today);
 ok("unassigned step with no Project Officer → Super Admin covers Program Director", r1.length === 1 && r1[0].group === "cover" && same(r1[0].seats, ["Program Director"]));
-r1 = deskItems(fin, st({ subscriptions: [{ id: "s1", name: "Zoom", status: "Active", nextRenewal: "2026-10-04" }] }), today);
-const r3 = deskItems(fin, st({ subscriptions: [{ id: "s1", name: "Zoom", status: "Active", nextRenewal: "2026-09-09" }] }), today);
+r1 = turns(fin, st({ subscriptions: [{ id: "s1", name: "Zoom", status: "Active", nextRenewal: "2026-10-04" }] }), today);
+const r3 = turns(fin, st({ subscriptions: [{ id: "s1", name: "Zoom", status: "Active", nextRenewal: "2026-09-09" }] }), today);
 ok("subscription renewing in 30 days is absent; in 5 days it is Finance's turn this week", r1.length === 0 && r3.length === 1 && r3[0].group === "mine" && r3[0].urgency === "week");
-r1 = deskItems(dig, st({ tools: [{ id: "t1", name: "Canva", status: "Trialling", reviewBy: "2026-09-05" }] }), today);
-const r4 = deskItems(dig, st({ tools: [{ id: "t1", name: "Canva", status: "Trialling", reviewBy: today }] }), today);
+r1 = turns(dig, st({ tools: [{ id: "t1", name: "Canva", status: "Trialling", reviewBy: "2026-09-05" }] }), today);
+const r4 = turns(dig, st({ tools: [{ id: "t1", name: "Canva", status: "Trialling", reviewBy: today }] }), today);
 ok("a tool review due tomorrow is absent; due today it is the Digital Officer's turn", r1.length === 0 && r4.length === 1 && r4[0].group === "mine");
-r1 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], timesheets: [{ id: "ts1", employeeId: "emp-1", month: "2026-08", status: "Submitted" }] }), today);
+r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], timesheets: [{ id: "ts1", employeeId: "emp-1", month: "2026-08", status: "Submitted" }] }), today);
 ok("a Submitted timesheet for August is due 1 September and overdue on the 4th", r1.length === 1 && r1[0].when === "2026-09-01" && r1[0].urgency === "overdue" && r1[0].title === "Emp One · 2026-08");
 
-r1 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], complianceTasks: [{ id: "k1", title: "File annual return", status: "Pending", dueDate: today, notes: "" }] }), today);
+r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], complianceTasks: [{ id: "k1", title: "File annual return", status: "Pending", dueDate: today, notes: "" }] }), today);
 ok("a Pending statutory task is the master account's own (mine, not cover)", r1.length === 1 && r1[0].group === "mine" && r1[0].seats.length === 0);
-r1 = deskItems(viewer("Reporter"), st({ complianceTasks: [{ id: "k2", title: "Send the receipts", status: "Pending", dueDate: today, notes: "", assigneeUserId: "u-x" }] }), today);
-const r6 = deskItems(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }, { id: "u-x", role: "Reporter", active: true }], complianceTasks: [{ id: "k2", title: "Send the receipts", status: "Pending", dueDate: today, notes: "", assigneeUserId: "u-x" }] }), today);
+r1 = turns(viewer("Reporter"), st({ complianceTasks: [{ id: "k2", title: "Send the receipts", status: "Pending", dueDate: today, notes: "", assigneeUserId: "u-x" }] }), today);
+const r6 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }, { id: "u-x", role: "Reporter", active: true }], complianceTasks: [{ id: "k2", title: "Send the receipts", status: "Pending", dueDate: today, notes: "", assigneeUserId: "u-x" }] }), today);
 ok("a task given to someone is theirs, and the director sees it only as due", r1.length === 1 && r1[0].group === "mine" && r6.length === 1 && r6[0].group === "week");
-r1 = deskItems(viewer("Finance Officer"), st({ complianceTasks: [{ id: "k1", title: "File annual return", status: "Pending", dueDate: today, notes: "" }] }), today);
+r1 = turns(viewer("Finance Officer"), st({ complianceTasks: [{ id: "k1", title: "File annual return", status: "Pending", dueDate: today, notes: "" }] }), today);
 ok("the same task is Due this week for Finance, never theirs to tick", r1.length === 1 && r1[0].group === "week");
 const rev = ci({ status: "Editorial Review", assigneeUserId: "u-z", dueDate: "2026-09-06" });
-r1 = deskItems({ id: "u-y", email: "y@x", role: "Reporter" }, st({ users: [...baseState().users, { id: "u-pm", role: "Production Manager", active: true }, { id: "u-pd", role: "Program Director", active: true }], contentItems: [rev] }), today);
+r1 = turns({ id: "u-y", email: "y@x", role: "Reporter" }, st({ users: [...baseState().users, { id: "u-pm", role: "Production Manager", active: true }, { id: "u-pd", role: "Program Director", active: true }], contentItems: [rev] }), today);
 ok("an Editorial Review piece with two empty slots is listed once under Due this week", r1.length === 1 && r1[0].group === "week");
-r1 = deskItems(viewer("Production Manager"), st({ contentItems: [rev] }), today);
+r1 = turns(viewer("Production Manager"), st({ contentItems: [rev] }), today);
 ok("the Production Manager sees the piece once, as their slot, not again under Due this week", r1.length === 1 && r1[0].group === "mine" && r1[0].id.endsWith(":pmApprovedBy"));
-r1 = deskItems(viewer("Project Officer"), st({ users: [...baseState().users, { id: "u-8", role: "Reporter", active: false }], projectActivities: [act({ assigneeUserId: "u-8" })] }), today);
+r1 = turns(viewer("Project Officer"), st({ users: [...baseState().users, { id: "u-8", role: "Reporter", active: false }], projectActivities: [act({ assigneeUserId: "u-8" })] }), today);
 ok("a step assigned to a deactivated login falls back to the scoped Project Officer", r1.length === 1 && r1[0].group === "mine");
-r1 = deskItems(fin, st({ opportunities: [{ id: "o1", title: "Call", stage: "Prospect", deadline: "2026-09-03", decisionDate: "" }] }), today);
-const r5 = deskItems(fin, st({ opportunities: [{ id: "o1", title: "Call", stage: "Prospect", deadline: "2026-09-10", decisionDate: "" }] }), today);
+r1 = turns(fin, st({ opportunities: [{ id: "o1", title: "Call", stage: "Prospect", deadline: "2026-09-03", decisionDate: "" }] }), today);
+const r5 = turns(fin, st({ opportunities: [{ id: "o1", title: "Call", stage: "Prospect", deadline: "2026-09-10", decisionDate: "" }] }), today);
 ok("a funding call whose deadline passed leaves the desk; one due next week stays", r1.length === 0 && r5.length === 1);
+
+
+console.log("\nG. papers the file is missing");
+// One rule, three checklists, nothing stored. The item exists because a paper is absent,
+// so filing it removes the item for everyone with nothing to tick.
+const docsFor = (partyId: string, category: string) => ({ id: "d-" + partyId + category, partyId, category });
+const hr = viewer("HR / Payroll Officer");
+const plo = viewer("Procurement and Logistics Officer");
+const pd = viewer("Program Director");
+
+let g = missingPaperItems(hr, st({ employees: [{ id: "emp-9", name: "Rita", active: true }], documents: [] }));
+ok("an employee with an empty file owes all three personnel papers", g.length === 3, String(g.length));
+ok("each item names the person and the paper", g.every(i => i.title.startsWith("Rita — ")), g.map(i => i.title).join(" | "));
+ok("they are undated, so they never read as late", g.every(i => i.when === null && i.urgency === "waiting"));
+ok("and marked standing, so no phone buzzes about them", g.every(i => i.standing === true));
+ok("they open the door that holds the file", g.every(i => i.door === "payroll"));
+
+// The whole point of deriving: file the paper and it is gone, with nothing to tick.
+const withCv = st({ employees: [{ id: "emp-9", name: "Rita", active: true }],
+  documents: [docsFor("emp-9", "CV")] });
+ok("filing the CV removes exactly that item and leaves the others",
+  missingPaperItems(hr, withCv).length === 2 && !missingPaperItems(hr, withCv).some(i => i.title.includes("CV")));
+
+// Seats: a standing gap is shown only to the people who can actually file it.
+ok("a Digital Officer is not shown someone else's personnel file",
+  missingPaperItems(dig, st({ employees: [{ id: "emp-9", name: "Rita", active: true }], documents: [] })).length === 0);
+ok("an inactive employee is not chased", missingPaperItems(hr, st({ employees: [{ id: "emp-9", name: "Rita", active: false }], documents: [] })).length === 0);
+
+// Suppliers: the registration row is deliberately staged off until Saad says otherwise.
+const vend = (over: any = {}) => ({ id: "ven-9", name: "Print House", active: true, blocked: false, engageable: false, ...over });
+ok("registration is not live yet — 30 of 30 suppliers are missing it", !LIVE_SUPPLIER_PAPERS.includes("registration"));
+ok("so an ordinary supplier puts nothing on the buying desk",
+  missingPaperItems(plo, st({ vendors: [vend()], documents: [] })).length === 0);
+ok("but a supplier we engage still owes its signed agreement",
+  missingPaperItems(plo, st({ vendors: [vend({ engageable: true })], documents: [] })).length === 1);
+ok("and filing the contract clears it",
+  missingPaperItems(plo, st({ vendors: [vend({ engageable: true })], documents: [docsFor("ven-9", "Contract")] })).length === 0);
+
+// Projects: the four core papers, on the managers' desk.
+const proj = st({ projects: [{ id: "p-9", name: "Asfari", code: "ASF", status: "Active" }], documents: [] });
+// A Program Director is in PERSONNEL_FILE as well as MANAGERS, so their desk carries both
+// kinds — these assertions read the project door alone rather than the whole desk.
+const onProjects = (st2: any) => missingPaperItems(pd, st2).filter(i => i.door === "projects");
+ok("an empty project owes its four core papers on the projects door",
+  onProjects(proj).length === 4 && onProjects(proj).every(i => i.title.startsWith("Asfari — ")),
+  onProjects(proj).map(i => i.title).join(" | "));
+ok("a closed project is not chased",
+  onProjects(st({ projects: [{ id: "p-9", name: "Asfari", status: "Closed" }], documents: [] })).length === 0);
+// Ids must be stable, or a re-read would look like new work every time.
+const twice = missingPaperItems(hr, st({ employees: [{ id: "emp-9", name: "Rita", active: true }], documents: [] }));
+ok("the id is derived from subject and paper, so it is stable across reads",
+  twice.every(i => /^missing:(employees|vendors|projects):emp-9:[a-z]+$/.test(i.id)), twice.map(i => i.id).join(" "));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

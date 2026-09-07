@@ -12,8 +12,11 @@
 import type { DatabaseState } from "./types";
 import {
   DIRECTORS, FINANCE, MANAGERS, SUPPLIER_EDITORS, CONTENT_EDITORS, TOOL_EDITORS, CONTACT_EDITORS,
-  PM_SLOT, PD_SLOT, PLO, MASTER,
+  PM_SLOT, PD_SLOT, PLO, MASTER, PERSONNEL_FILE,
 } from "./roles";
+import { missingPersonnelDocs } from "./personnelDocs";
+import { missingSupplierDocs } from "./supplierDocs";
+import { missingCoreDocs } from "./coreDocs";
 
 type Kind = keyof DatabaseState;
 type State = Partial<DatabaseState>;
@@ -145,6 +148,10 @@ export type DeskItem = {
   when: string | null;               // YYYY-MM-DD
   urgency: Urgency;
   group: "mine" | "cover" | "week";
+  /** A standing gap, not a turn that just arrived: owed since before anyone looked, and
+   *  cleared by filing a paper rather than by acting on a record. Push skips these — see
+   *  pushTurnsFor in server.ts — because a backlog does not buzz a phone. */
+  standing?: true;
   seats: string[];                   // vacant seats covered (group "cover"), else []
   record: any;                       // the record itself (compliance tick + note, activity projectId)
 };
@@ -188,6 +195,86 @@ export function isTurn(rule: Rule, r: any, me: Me, s: State): "mine" | "cover" |
   return held ? null : "cover";                                        // same vacancy rule as /api/roles/seats
 }
 
+/* ── Papers the file is missing ──────────────────────────────────────────────
+ * Three checklists already exist and already agree on a shape — missingPersonnelDocs,
+ * missingSupplierDocs, missingCoreDocs, each `(docs, subject) => {key,label}[]`, each
+ * empty when nothing is owed. This is the one place that turns any of them into desk
+ * items: one item per missing paper, naming the party or the project and the paper.
+ *
+ * Derived, never stored. There is no row to tick and nothing to keep in step: file the
+ * paper and the item is gone for everyone on the next read, which is the same discipline
+ * the rule table above uses for records with a status. It is also why nothing here needs
+ * a migration — the desk is a reading of the data, not a copy of it.
+ *
+ * These carry no date, so they never read as overdue and never reach a calendar. They are
+ * marked `standing` so push skips them: a backlog that has always been incomplete is not
+ * news, and 57 notifications on the day it ships would be the end of notifications.
+ */
+type PaperSource = {
+  seat: readonly string[];
+  door: string;
+  kind: Kind;
+  /** Subjects to check, and what to call each one on the desk. */
+  subjects: (s: State) => { id: string; name: string; record: any }[];
+  missing: (docs: any[], subject: any) => { key: string; label: string }[];
+};
+
+/**
+ * Which supplier papers are live on the desk.
+ *
+ * `registration` is deliberately NOT here yet. Every one of the 30 active suppliers is
+ * missing its registration form — the paper has never been collected, so switching it on
+ * puts 30 identical rows on the buying desk on day one, and a desk nobody can clear is a
+ * desk people stop reading. §7.3 asks for the form "for new vendors", and vendor rows
+ * carry no creation date to separate those (31 of 34 ids are seeded `ven-1`…), so this is
+ * a decision for Saad rather than a heuristic. Add "registration" to switch it on.
+ */
+export const LIVE_SUPPLIER_PAPERS = ["agreement"];
+
+const PAPER_SOURCES: PaperSource[] = [
+  {
+    seat: MANAGERS, door: "projects", kind: "projects",
+    subjects: s => (s.projects || []).filter((p: any) => p.status !== "Closed")
+      .map((p: any) => ({ id: p.id, name: p.name || p.code || p.id, record: p })),
+    missing: (docs, p) => missingCoreDocs(docs, p.id, !!(p.record?.timetableImported)),
+  },
+  {
+    seat: SUPPLIER_EDITORS, door: "vendors", kind: "vendors",
+    subjects: s => (s.vendors || []).map((v: any) => ({ id: v.id, name: v.name || v.id, record: v })),
+    missing: (docs, v) => missingSupplierDocs(docs, v.record).filter(m => LIVE_SUPPLIER_PAPERS.includes(m.key)),
+  },
+  {
+    seat: PERSONNEL_FILE, door: "payroll", kind: "employees",
+    subjects: s => (s.employees || []).filter((e: any) => e.active !== false)
+      .map((e: any) => ({ id: e.id, name: e.name || e.id, record: e })),
+    missing: (docs, e) => missingPersonnelDocs(docs, e.id),
+  },
+];
+
+/** One desk item per missing paper, for the seats that hold the file. */
+export function missingPaperItems(me: Me, s: State): DeskItem[] {
+  const docs = (s.documents as any[]) || [];
+  const out: DeskItem[] = [];
+  for (const src of PAPER_SOURCES) {
+    // Only the seats that can actually file it, and only on a door they can open. A row
+    // owed to a seat the viewer does not hold is not shown at all: unlike a record with a
+    // date, a standing gap has no "due this week" that would justify it on a third desk.
+    if (!src.seat.includes(me.role)) continue;
+    for (const subject of src.subjects(s)) {
+      for (const paper of src.missing(docs, subject)) {
+        out.push({
+          id: `missing:${src.kind}:${subject.id}:${paper.key}`,
+          kind: src.kind, recordId: subject.id, door: src.door,
+          title: `${subject.name} — ${paper.label}`,
+          verb: "File", status: "Missing", when: null, urgency: "waiting",
+          group: "mine", standing: true, seats: [], record: subject.record,
+        });
+      }
+    }
+  }
+  return out;
+}
+
 export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
   const out: DeskItem[] = [];
   for (const rule of RULES) {
@@ -224,6 +311,10 @@ export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
     if (owned.has(k) || seen.has(k)) return false;
     seen.add(k); return true;
   });
+  // The papers no record carries a status for. Appended rather than run through RULES
+  // because the table above keys on (kind, status) and a missing paper has neither — it is
+  // an absence, and there is no row to match.
+  kept.push(...missingPaperItems(me, s));
   const rank = { overdue: 0, week: 1, waiting: 2 };
   return kept.sort((a, b) => rank[a.urgency] - rank[b.urgency] || (a.when || "9999").localeCompare(b.when || "9999") || a.title.localeCompare(b.title));
 }

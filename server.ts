@@ -1389,7 +1389,11 @@ async function pushTurnsFor(viewer: any) {
   // the redirect finds the role cannot see it, and they are bounced to the landing page.
   const canOpen = new Set(doorsFor(viewer.role).map(String));
   const mine = deskItems({ id: viewer.id, email: viewer.email, role: viewer.role }, state as any, localDate())
-    .filter(i => (i.group === "mine" || i.group === "cover") && canOpen.has(i.door));
+    // `standing` items are the missing-paper backlog (src/workflow.ts): owed since before
+    // anyone looked, cleared by filing rather than by acting. Push is for a turn that just
+    // arrived, so they are excluded — otherwise shipping that rule would have buzzed every
+    // phone once per missing paper on the day it deployed.
+    .filter(i => (i.group === "mine" || i.group === "cover") && canOpen.has(i.door) && !i.standing);
   const ledger = await prisma.reminder.findMany({ where: { userId: viewer.id, channel: "push" } });
   // The first run for a person is a seeding run, not fifty-nine buzzes. Everything already
   // sitting on their desk is what the desk screen is for; push is for the moment something
