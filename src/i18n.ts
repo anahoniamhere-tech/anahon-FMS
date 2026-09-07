@@ -335,6 +335,8 @@ export const AR: Record<string, string> = {
   "Media archive": "أرشيف الوسائط",
   "Tools": "الأدوات",
   "Projects & donors": "المشاريع والمانحون",
+  "Every grant AnaHon is implementing, the ones needing attention first.": "كل منحة تنفّذها أنا هون، والأكثر إلحاحاً أولاً.",
+  "Create New Project": "مشروع جديد",
   "Funding pipeline": "مسار التمويل",
   "Clients & quotations": "العملاء وعروض الأسعار",
   "Contacts": "جهات الاتصال",

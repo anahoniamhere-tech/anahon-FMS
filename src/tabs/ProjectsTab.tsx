@@ -48,6 +48,9 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
   const [newProjectStream, setNewProjectStream] = useState("");
 
   // Project timeline step being added/edited (null = form closed).
+  // The create form is revealed, not resident: the landing is the list.
+  const [showCreateProject, setShowCreateProject] = useState(false);
+
   // Finding one paper among sixty: filters this project's document list by reference, name
   // or category.
   const [docFilter, setDocFilter] = useState("");
@@ -744,95 +747,22 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
   return (<>
           {true && (
             <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-bold">{t("Restricted Donor Grants & Sinking Budgets")}</h2>
-                <p className="text-xs text-slate-500">Track designated funding allocations, revised budget versions and project execution timelines.</p>
-              </div>
-
-              {/* Donors Profiles list — not relevant to a requester-only role */}
-              {!isProjectOfficer && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {state.donors.map(d => (
-                  <div key={d.id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Award className="h-5 w-5 text-red-650" />
-                      <h4 className="text-sm font-bold text-slate-900">{d.name}</h4>
-                    </div>
-                    <p className="text-xs text-slate-500">Region Origin: {d.country}</p>
-                    <p className="text-xs text-slate-500">{d.contactEmail}</p>
-                    <div className="mt-3 p-2 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 leading-relaxed italic">
-                      ℹ️ {d.notes}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              )}
-
-              {/* ── All project timelines at a glance ─────────────────────
-                  One place to see what is next across every project, instead of
-                  opening each workspace in turn. */}
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">🗓 Project Timelines</h3>
-                  {ACTIVITY_EDITORS.includes(currentUser.role) && (
-                    <button type="button" onClick={() => generateTimeline(null, true)}
-                      className="text-xs font-medium bg-slate-800 text-white hover:bg-slate-700 rounded-lg px-3 py-2 transition-all"
-                      title="Apply the standard 8-step template to every project, marking steps done where the evidence already exists">
-                      ✨ Build / refresh all timelines
-                    </button>
-                  )}
+              {/* The landing is the list. A create form is not a landing screen — it sits
+                  behind this button, unchanged inside. */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-xl font-bold">{t("Projects & donors")}</h2>
+                  <p className="text-xs text-slate-500">{t("Every grant AnaHon is implementing, the ones needing attention first.")}</p>
                 </div>
-                <p className="text-[11px] text-slate-500">
-                  Standard steps per project — agreement, funds, budget, start, mid-point, end, report, closeout.
-                  Steps are marked done automatically when the evidence is already in the system; a status you set by hand is never overwritten.
-                </p>
-                {(() => {
-                  const rows = requestableProjects.map(p => {
-                    const acts = state.projectActivities.filter(a => a.projectId === p.id);
-                    const open = acts.filter(a => a.status !== "Done" && a.status !== "Cancelled");
-                    const overdue = open.filter(a => a.dueDate && a.dueDate < new Date().toLocaleDateString("en-CA"));
-                    const next = open.filter(a => a.dueDate).sort((x, y) => x.dueDate.localeCompare(y.dueDate))[0];
-                    return { p, total: acts.length, done: acts.filter(a => a.status === "Done").length, overdue: overdue.length, next };
-                  }).filter(r => r.total > 0);
-                  if (!rows.length) return <p className="text-xs text-slate-400 italic">No timelines yet — press the button above to build them from what the system already knows.</p>;
-                  return (
-                    <div className="space-y-1.5">
-                      {rows.sort((a, b) => (b.overdue - a.overdue) || ((a.next?.dueDate || "9999").localeCompare(b.next?.dueDate || "9999"))).map(r => (
-                        <button key={r.p.id} type="button" onClick={() => { setSelectedProjectId(r.p.id); setProjectWorkspaceTab("folder"); }}
-                          className={`w-full text-start flex flex-wrap items-center gap-3 p-2 rounded border text-xs transition-all hover:border-slate-300 ${r.overdue ? "bg-red-50 border-red-200" : "bg-white border-slate-200"}`}>
-                          <span className="font-mono font-bold text-[10px] bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{r.p.code}</span>
-                          <span className="text-slate-600 shrink-0">{r.done}/{r.total} done</span>
-                          {r.overdue > 0 && <span className="text-red-700 font-bold shrink-0">{r.overdue} overdue</span>}
-                          <span className="flex-1 min-w-[160px] text-slate-700">
-                            {r.next ? <>next: <strong>{r.next.title}</strong> <span className="font-mono text-slate-500">{r.next.dueDate}</span></> : <span className="text-emerald-700">all steps closed</span>}
-                          </span>
-                          {(() => {
-                            // The four papers every project must carry, shown here so gaps
-                            // are visible without opening each workspace.
-                            // Same rule as the panel inside the workspace (src/coreDocs.ts).
-                            // It has to be: this line said "papers complete" for Thomson
-                            // Reuters on the strength of a staff contract, which is how the
-                            // gap stayed invisible from the list as well as inside it.
-                            const docs = state.documents.filter(d => d.linkedRecordType === "Project" && d.linkedRecordId === r.p.id);
-                            const hit = (key: string) => !!pickCoreDoc(key, CORE_PATTERNS[key], docs);
-                            const tt = hit("Timetable") || state.projectActivities.some(a => a.projectId === r.p.id && a.source === "imported");
-                            const gaps = [
-                              !hit("Proposal") && "proposal",
-                              !tt && "timetable",
-                              !hit("Budget") && "budget",
-                              !hit("Agreement") && "agreement"
-                            ].filter(Boolean);
-                            return gaps.length
-                              ? <span className="text-[10px] text-amber-700 font-bold shrink-0">missing: {gaps.join(", ")}</span>
-                              : <span className="text-[10px] text-emerald-700 font-bold shrink-0">papers complete</span>;
-                          })()}
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })()}
+                {FINANCE.includes(currentUser.role) && (
+                  <button type="button" onClick={() => setShowCreateProject(v => !v)}
+                    className="min-h-[44px] bg-red-600 text-white text-xs font-medium rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">
+                    {showCreateProject ? `✕ ${t("Cancel")}` : `➕ ${t("Create New Project")}`}
+                  </button>
+                )}
               </div>
 
+              {showCreateProject && (<>
               {/* Add Project Inline form */}
               {FINANCE.includes(currentUser.role) && (
                 <form onSubmit={handleCreateProject} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
@@ -958,6 +888,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                 </form>
               )}
 
+              </>)}
               {/* Active Restricted Projects Section (NEW) */}
               <div className="space-y-4">
                 <h3 className="text-md font-bold text-slate-800 uppercase font-mono flex items-center gap-1.5">
@@ -1956,6 +1887,95 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                   </div>
                 );
               })()}
+
+              <div>
+                <h2 className="text-xl font-bold">{t("Restricted Donor Grants & Sinking Budgets")}</h2>
+                <p className="text-xs text-slate-500">Track designated funding allocations, revised budget versions and project execution timelines.</p>
+              </div>
+
+              {/* Donors Profiles list — not relevant to a requester-only role */}
+              {!isProjectOfficer && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {state.donors.map(d => (
+                  <div key={d.id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Award className="h-5 w-5 text-red-650" />
+                      <h4 className="text-sm font-bold text-slate-900">{d.name}</h4>
+                    </div>
+                    <p className="text-xs text-slate-500">Region Origin: {d.country}</p>
+                    <p className="text-xs text-slate-500">{d.contactEmail}</p>
+                    <div className="mt-3 p-2 bg-slate-50 border border-slate-200 rounded text-[11px] text-slate-600 leading-relaxed italic">
+                      ℹ️ {d.notes}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              )}
+
+              {/* ── All project timelines at a glance ─────────────────────
+                  One place to see what is next across every project, instead of
+                  opening each workspace in turn. */}
+              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">🗓 Project Timelines</h3>
+                  {ACTIVITY_EDITORS.includes(currentUser.role) && (
+                    <button type="button" onClick={() => generateTimeline(null, true)}
+                      className="text-xs font-medium bg-slate-800 text-white hover:bg-slate-700 rounded-lg px-3 py-2 transition-all"
+                      title="Apply the standard 8-step template to every project, marking steps done where the evidence already exists">
+                      ✨ Build / refresh all timelines
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Standard steps per project — agreement, funds, budget, start, mid-point, end, report, closeout.
+                  Steps are marked done automatically when the evidence is already in the system; a status you set by hand is never overwritten.
+                </p>
+                {(() => {
+                  const rows = requestableProjects.map(p => {
+                    const acts = state.projectActivities.filter(a => a.projectId === p.id);
+                    const open = acts.filter(a => a.status !== "Done" && a.status !== "Cancelled");
+                    const overdue = open.filter(a => a.dueDate && a.dueDate < new Date().toLocaleDateString("en-CA"));
+                    const next = open.filter(a => a.dueDate).sort((x, y) => x.dueDate.localeCompare(y.dueDate))[0];
+                    return { p, total: acts.length, done: acts.filter(a => a.status === "Done").length, overdue: overdue.length, next };
+                  }).filter(r => r.total > 0);
+                  if (!rows.length) return <p className="text-xs text-slate-400 italic">No timelines yet — press the button above to build them from what the system already knows.</p>;
+                  return (
+                    <div className="space-y-1.5">
+                      {rows.sort((a, b) => (b.overdue - a.overdue) || ((a.next?.dueDate || "9999").localeCompare(b.next?.dueDate || "9999"))).map(r => (
+                        <button key={r.p.id} type="button" onClick={() => { setSelectedProjectId(r.p.id); setProjectWorkspaceTab("folder"); }}
+                          className={`w-full text-start flex flex-wrap items-center gap-3 p-2 rounded border text-xs transition-all hover:border-slate-300 ${r.overdue ? "bg-red-50 border-red-200" : "bg-white border-slate-200"}`}>
+                          <span className="font-mono font-bold text-[10px] bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{r.p.code}</span>
+                          <span className="text-slate-600 shrink-0">{r.done}/{r.total} done</span>
+                          {r.overdue > 0 && <span className="text-red-700 font-bold shrink-0">{r.overdue} overdue</span>}
+                          <span className="flex-1 min-w-[160px] text-slate-700">
+                            {r.next ? <>next: <strong>{r.next.title}</strong> <span className="font-mono text-slate-500">{r.next.dueDate}</span></> : <span className="text-emerald-700">all steps closed</span>}
+                          </span>
+                          {(() => {
+                            // The four papers every project must carry, shown here so gaps
+                            // are visible without opening each workspace.
+                            // Same rule as the panel inside the workspace (src/coreDocs.ts).
+                            // It has to be: this line said "papers complete" for Thomson
+                            // Reuters on the strength of a staff contract, which is how the
+                            // gap stayed invisible from the list as well as inside it.
+                            const docs = state.documents.filter(d => d.linkedRecordType === "Project" && d.linkedRecordId === r.p.id);
+                            const hit = (key: string) => !!pickCoreDoc(key, CORE_PATTERNS[key], docs);
+                            const tt = hit("Timetable") || state.projectActivities.some(a => a.projectId === r.p.id && a.source === "imported");
+                            const gaps = [
+                              !hit("Proposal") && "proposal",
+                              !tt && "timetable",
+                              !hit("Budget") && "budget",
+                              !hit("Agreement") && "agreement"
+                            ].filter(Boolean);
+                            return gaps.length
+                              ? <span className="text-[10px] text-amber-700 font-bold shrink-0">missing: {gaps.join(", ")}</span>
+                              : <span className="text-[10px] text-emerald-700 font-bold shrink-0">papers complete</span>;
+                          })()}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
 
               {/* Budgets Lines adjustments block */}
               <div className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm">
