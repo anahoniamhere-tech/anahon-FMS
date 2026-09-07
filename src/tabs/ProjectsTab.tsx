@@ -9,6 +9,15 @@ import { ACTIVITY_EDITORS, DIRECTORS, FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
 import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES } from "../coreDocs";
 
+/** The pages of a project's workspace, in the order they are shown. */
+type WorkspaceTab = "overview" | "papers" | "money" | "reconciliation";
+const WORKSPACE_TABS: { key: WorkspaceTab; label: string }[] = [
+  { key: "overview", label: "📌 Where it stands" },
+  { key: "papers", label: "📁 Papers" },
+  { key: "money", label: "💵 Money" },
+  { key: "reconciliation", label: "📊 Monthly Reconciliation Report" }
+];
+
 export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, workspaceRef }: SharedProps) {
   // Whoever holds the Finance Officer seat signs the printed project sheet — never a name in code.
   const financeOfficerName = state.users.find((u: any) => u.role === "Finance Officer" && u.active)?.name || "Finance Officer";
@@ -95,7 +104,8 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
   const [reconMonth, setReconMonth] = useState<string>("2026-05");
 
-  const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<"folder" | "reconciliation">("folder");
+  // The workspace notebook: where the project stands, its papers, its money, the report.
+  const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<WorkspaceTab>("overview");
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -938,7 +948,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                     // Odoo's smart buttons in our idiom: a count is only useful if pressing it
                     // opens the thing it counted. No new navigation — the same two calls the
                     // cards and the timeline list already make.
-                    const openAt = (tab: "folder" | "reconciliation") => (e: React.MouseEvent) => {
+                    const openAt = (tab: WorkspaceTab) => (e: React.MouseEvent) => {
                       e.stopPropagation();
                       setSelectedProjectId(proj.id);
                       setProjectWorkspaceTab(tab);
@@ -993,13 +1003,13 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
                         {/* Three counts, each opening what it counted. */}
                         <div className="flex flex-wrap gap-1.5 mb-3">
-                          <button type="button" onClick={openAt("folder")}
+                          <button type="button" onClick={openAt("papers")}
                             title="Open this project's papers"
                             className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
                             <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{a.docs.length}</span>
                             <span className="block text-[9px] uppercase text-slate-500">{t("papers")}{a.missingDocs > 0 && <span className="text-amber-700 font-bold"> · {a.missingDocs} {t("missing")}</span>}</span>
                           </button>
-                          <button type="button" onClick={openAt("folder")}
+                          <button type="button" onClick={openAt("overview")}
                             title="Open this project's timeline"
                             className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
                             <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{a.open.length}</span>
@@ -1086,31 +1096,31 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                         )}
                       </div>
 
-                      {/* Sub-tab navigation */}
+                      {/* The notebook's tabs. One list, so a page cannot be added to the
+                          workspace without appearing here. */}
                       <div className="flex flex-col sm:flex-row bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-medium font-sans gap-1 sm:gap-0">
-                        <button
-                          type="button"
-                          onClick={() => setProjectWorkspaceTab("folder")}
-                          className={`min-h-[44px] px-4 py-2.5 flex items-center justify-center rounded-md transition-colors ${projectWorkspaceTab === "folder" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                            }`}
-                        >
-                          📁 Folder Explorer (Audit File)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setProjectWorkspaceTab("reconciliation")}
-                          className={`min-h-[44px] px-4 py-2.5 flex items-center justify-center rounded-md transition-colors ${projectWorkspaceTab === "reconciliation" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"
-                            }`}
-                        >
-                          📊 Monthly Reconciliation Report
-                        </button>
+                        {WORKSPACE_TABS.map(tab => (
+                          <button
+                            key={tab.key}
+                            type="button"
+                            onClick={() => setProjectWorkspaceTab(tab.key)}
+                            aria-current={projectWorkspaceTab === tab.key ? "page" : undefined}
+                            className={`min-h-[44px] flex-1 px-3 py-2.5 flex items-center justify-center rounded-md transition-colors ${projectWorkspaceTab === tab.key ? "bg-white text-red-650 shadow-sm font-bold" : "text-slate-600 hover:text-slate-800"
+                              }`}
+                          >
+                            {t(tab.label)}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
-                    {/* Sub-tab 1: Folder Explorer (Section 2.6 Compliance) */}
-                    {projectWorkspaceTab === "folder" && (
-                      <div className="space-y-6">
-
+                                        {/* The workspace notebook. Six sections used to stack down one scroll
+                        behind a single "Folder Explorer" tab; they are grouped here as they
+                        were found — where the project stands, its papers, its money — so the
+                        first screen of a project answers where it is rather than asking you
+                        to scroll. The sections themselves are untouched. */}
+                      {projectWorkspaceTab === "overview" && (
+                        <div className="space-y-6">
                         {/* ── Core project documents ───────────────────────
                             The four papers a project must always carry: what we promised
                             (proposal), when (timetable), for how much (budget), and on what
@@ -1341,8 +1351,12 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             );
                           })()}
                         </div>
+                        </div>
+                      )}
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {projectWorkspaceTab === "papers" && (
+                        <div className="space-y-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
                           {/* Folder A: Project Contracts & MoUs */}
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
@@ -1469,7 +1483,13 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                               </div>
                             )}
                           </div>
+                          </div>
+                        </div>
+                      )}
 
+                      {projectWorkspaceTab === "money" && (
+                        <div className="space-y-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           {/* Folder C: Expense Vouchers & Supporting Invoices */}
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                             <div className="flex justify-between items-center border-b border-slate-200 pb-2">
@@ -1645,9 +1665,10 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             )}
                           </div>
 
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+
 
                     {/* Sub-tab 2: Monthly Project Reconciliation Report (Section 2.5 Compliance) */}
                     {projectWorkspaceTab === "reconciliation" && (() => {
@@ -2011,7 +2032,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                   return (
                     <div className="space-y-1.5">
                       {rows.sort((a, b) => (b.overdue - a.overdue) || ((a.next?.dueDate || "9999").localeCompare(b.next?.dueDate || "9999"))).map(r => (
-                        <button key={r.p.id} type="button" onClick={() => { setSelectedProjectId(r.p.id); setProjectWorkspaceTab("folder"); }}
+                        <button key={r.p.id} type="button" onClick={() => { setSelectedProjectId(r.p.id); setProjectWorkspaceTab("overview"); }}
                           className={`w-full text-start flex flex-wrap items-center gap-3 p-2 rounded border text-xs transition-all hover:border-slate-300 ${r.overdue ? "bg-red-50 border-red-200" : "bg-white border-slate-200"}`}>
                           <span className="font-mono font-bold text-[10px] bg-slate-100 px-1.5 py-0.5 rounded shrink-0">{r.p.code}</span>
                           <span className="text-slate-600 shrink-0">{r.done}/{r.total} done</span>
