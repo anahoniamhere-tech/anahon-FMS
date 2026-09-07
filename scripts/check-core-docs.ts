@@ -165,5 +165,27 @@ ok("a staff contract still does not paper the agreement slot", missingCoreDocs(
 ok("nothing is stored — the same input always gives the same answer",
   JSON.stringify(missingCoreDocs([], "p1")) === JSON.stringify(missingCoreDocs([], "p1")));
 
+console.log("\nJ. a missing-paper desk item lands on the paper");
+// The desk builds the id; this room only reads it. If either side changes the shape the item
+// silently goes back to landing on the door, which is the bug being fixed — so both ends of
+// the string are pinned here, in the two files that have to agree.
+const workflow = readFileSync("src/workflow.ts", "utf8");
+const desk = readFileSync("src/tabs/MyDeskTab.tsx", "utf8");
+ok("the desk still builds the id this room parses",
+  /id: `missing:\$\{src\.kind\}:\$\{subject\.id\}:\$\{paper\.key\}`/.test(workflow));
+ok("the project rows still carry kind \"projects\" and the project as recordId",
+  /kind: "projects"/.test(workflow) && /recordId: subject\.id/.test(workflow));
+ok("pressing one selects that project and hands the id over as focusId",
+  /i\.kind === "projects"\) \{ setSelectedProjectId\(i\.recordId\); setFocusId\(i\.id\); \}/.test(desk));
+ok("this room reads both halves of the id", /\^missing:projects:\(\.\+\):\(\[\^:\]\+\)\$/.test(tab));
+ok("and opens the page that holds the upload for that slot",
+  /setProjectWorkspaceTab\("overview"\);\s*\n\s*setFocusSlot/.test(tab));
+ok("the panel it scrolls to is the one with the uploads", /id="core-project-documents"/.test(tab));
+ok("the named slot is ringed so the upload is obvious",
+  /sl\.key === focusSlot \? "ring-2 ring-amber-500 " : ""/.test(tab));
+ok("focus is handed back after use, so it cannot fire twice", /setFocusId\(null\)/.test(tab));
+ok("nothing here writes or ticks anything — the item clears by the paper being filed",
+  !/complete|tick|dismiss|resolve/i.test((tab.match(/const \[focusSlot[\s\S]*?\}, \[focusId\]\);/) || [""])[0]));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

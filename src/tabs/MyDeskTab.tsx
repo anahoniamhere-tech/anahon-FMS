@@ -197,7 +197,11 @@ export default function MyDeskTab({
     if (i.kind === "expenses") setDrawerExpenseId(i.recordId);                      // App-owned voucher drawer
     if (i.kind === "projectActivities") setSelectedProjectId(i.record.projectId);  // project workspace
     if (i.kind === "contentItems") setFocusId(i.recordId);                          // Editorial desk opens the piece
-    // ponytail: door-level focus for the other doors; wire focusId into a tab when someone asks for it
+    // A missing-paper row knows which project and which paper: its own id carries both, and
+    // Projects & funding reads it to open that project at that slot's upload. Landing on the
+    // door alone is what made the checklist feel like a nag rather than a to-do.
+    if (i.kind === "projects") { setSelectedProjectId(i.recordId); setFocusId(i.id); }
+    // ponytail: door-level focus for the remaining doors; wire focusId into a tab when someone asks for it
     handleNavClick(i.door);
   };
 

@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Activity, Award, Download, Trash2 } from "lucide-react";
 import { Account, AppDoc, Donor, Expense, Procurement, Project, Timesheet } from "../types";
 import { STREAMS } from "../constants";
@@ -18,7 +18,35 @@ const WORKSPACE_TABS: { key: WorkspaceTab; label: string }[] = [
   { key: "reconciliation", label: "📊 Monthly Reconciliation Report" }
 ];
 
-export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, workspaceRef }: SharedProps) {
+export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, workspaceRef, focusId, setFocusId }: SharedProps) {
+  /**
+   * Landing on the paper, not on the door.
+   *
+   * A desk item for a missing core paper carries which project and which paper in its own id
+   * — `missing:projects:<projectId>:<slot>` — and the desk hands that over as `focusId`, the
+   * same channel the Editorial desk uses to open a piece. Pressing one used to arrive on the
+   * projects screen with the project unopened and the upload several scrolls away, which is
+   * most of the reason a checklist stops being read.
+   *
+   * So: open that project, on the page that holds the upload for that slot, scrolled to it,
+   * with the slot ringed. Nothing is stored and nothing is ticked — the item is derived, and
+   * filing the paper is what clears it.
+   */
+  const [focusSlot, setFocusSlot] = useState("");
+  useEffect(() => {
+    if (!focusId) return;
+    const m = /^missing:projects:(.+):([^:]+)$/.exec(focusId);
+    if (m) {
+      setSelectedProjectId(m[1]);
+      setProjectWorkspaceTab("overview");
+      setFocusSlot(m[2]);
+      // The workspace only exists after this render, so the scroll waits for it. A frame is
+      // not enough on a cold tab; a tenth of a second is, and a missed scroll costs nothing.
+      setTimeout(() => document.getElementById("core-project-documents")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+    }
+    setFocusId(null);
+  }, [focusId]);
+
   // Whoever holds the Finance Officer seat signs the printed project sheet — never a name in code.
   const financeOfficerName = state.users.find((u: any) => u.role === "Finance Officer" && u.active)?.name || "Finance Officer";
   /**
@@ -1188,7 +1216,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           }));
                           const missing = slots.filter(sl => !sl.doc && !sl.extra).length;
                           return (
-                            <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-2">
+                            <div id="core-project-documents" className="p-4 bg-white border border-slate-200 rounded-lg space-y-2 scroll-mt-4">
                               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
                                 <h4 className="text-xs font-bold text-slate-700 uppercase font-mono">📑 Core Project Documents</h4>
                                 <span className={`text-[10px] font-bold ${missing ? "text-amber-700" : "text-emerald-700"}`}>
@@ -1197,7 +1225,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                               </div>
                               <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                                 {slots.map(sl => (
-                                  <div key={sl.key} className={`p-2 rounded border text-xs ${sl.doc || sl.extra ? "bg-emerald-50/50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
+                                  <div key={sl.key} className={`p-2 rounded border text-xs ${sl.key === focusSlot ? "ring-2 ring-amber-500 " : ""}${sl.doc || sl.extra ? "bg-emerald-50/50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}>
                                     <p className="text-[10px] font-bold uppercase text-slate-600">{sl.label}</p>
                                     {sl.doc ? (
                                       <a href={withTicket(`/api/document/content/${sl.doc.id}`)} target="_blank" onClick={e => { e.preventDefault(); openDoc(sl.doc); }} rel="noreferrer"
