@@ -1235,6 +1235,36 @@ async function policyCorpus(): Promise<{ text: string; chars: number; docs: numb
   return policyCache;
 }
 
+/**
+ * "Has anything changed?" — the cheap question, so the expensive one is rare.
+ *
+ * /api/state is **985 KB uncompressed** on the live database (measured 7 Sep 2026: 498
+ * documents, 500 audit rows, 432 journal entries, 192 vouchers). Polling that once a
+ * minute per open tab would be a megabyte a minute each, and there is no compression
+ * middleware on this server. So the client polls this instead — a few dozen bytes — and
+ * only pulls the state when the answer differs from what it already has.
+ *
+ * The token is four cheap aggregates rather than the database file's mtime, which was
+ * tried first and does not move reliably on a commit. The audit log carries the weight:
+ * 140 createAuditLog calls across 120 POST routes, so a status change is visible here
+ * even though no row count moves. The counts catch a filing that somehow writes no audit
+ * line. Anything that slips through both is still caught when the person returns to the
+ * tab, because focus re-checks too.
+ */
+app.get("/api/state/version", async (_req, res) => {
+  try {
+    const [audit, latest, docs, expenses] = await Promise.all([
+      prisma.auditLog.count(),
+      prisma.auditLog.findFirst({ orderBy: { timestamp: "desc" }, select: { timestamp: true } }),
+      prisma.appDoc.count(),
+      prisma.expense.count(),
+    ]);
+    res.json({ v: `${audit}:${latest?.timestamp || ""}:${docs}:${expenses}` });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/api/help/ask", async (req, res) => {
   try {
     const question = String(req.body?.question || "").trim();

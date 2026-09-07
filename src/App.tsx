@@ -527,11 +527,65 @@ export default function App() {
       setEurRateInput(data.fxRates.EUR.toString());
       setLbpRateInput(data.fxRates.LBP.toString());
       setLoading(false);
+      // Remember which version this payload is, so the catch-up below does not read our
+      // own action's audit line a minute later and pull the whole state again for it.
+      fetch("/api/state/version").then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.v) stateVersion.current = d.v; }).catch(() => { });
     } catch (err: any) {
       setError(err.message);
       setLoading(false);
     }
   };
+
+  /**
+   * Catch up on what other people did, without anyone reloading.
+   *
+   * One person files a document and the others kept showing their last load until they
+   * acted or reloaded. Three triggers now: coming back to the window, the tab becoming
+   * visible again, and a 60-second tick that runs only while the tab is visible.
+   *
+   * Every one of them asks the cheap question first. /api/state is 985 KB uncompressed
+   * on the live data and there is no compression on this server, so a minute-by-minute
+   * full pull would be a megabyte a minute per open tab; /api/state/version is a few
+   * dozen bytes and the expensive call only happens when it says something moved.
+   *
+   * No guard for open forms is needed and none is added: every tab keeps its draft in
+   * its own useState and nothing derives a form from `state`, so replacing the state
+   * does not touch what someone is typing. A drawer stays open on the fresher record,
+   * which is the point.
+   */
+  const stateVersion = useRef<string | null>(null);
+  const catchingUp = useRef(false);
+
+  const catchUp = async () => {
+    if (catchingUp.current || document.hidden) return;   // never stack, never while hidden
+    catchingUp.current = true;
+    try {
+      const r = await fetch("/api/state/version");
+      if (!r.ok) return;                                  // signed out or server busy: try later
+      const { v } = await r.json();
+      if (!v || v === stateVersion.current) return;
+      if (stateVersion.current === null) { stateVersion.current = v; return; }  // first look
+      stateVersion.current = v;
+      await refreshState();
+    } catch { /* offline or asleep; the next trigger tries again */ }
+    finally { catchingUp.current = false; }
+  };
+
+  useEffect(() => {
+    if (!fbUser) return;                                  // nothing to catch up on when signed out
+    const onVisible = () => { if (!document.hidden) catchUp(); };
+    window.addEventListener("focus", catchUp);
+    document.addEventListener("visibilitychange", onVisible);
+    // A hidden tab must cost nothing: the interval keeps running but every tick returns
+    // at the document.hidden guard above, so no request leaves a backgrounded phone.
+    const t = setInterval(catchUp, 60_000);
+    return () => {
+      window.removeEventListener("focus", catchUp);
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(t);
+    };
+  }, [fbUser]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {

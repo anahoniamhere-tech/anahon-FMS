@@ -17,6 +17,10 @@ const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, 
 
 console.log("\nevery screen App.tsx can render has exactly one door");
 const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+// Negative assertions are tested against the code with comments stripped: App.tsx explains
+// what it does NOT do ("replaceState, never pushState"; "no WebSocket"), and a bare grep
+// over the source finds those words in the prose and fails on the explanation, not the code.
+const code = app.split("\n").filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
 const rendered = [...new Set([...app.matchAll(/activeTab === "([a-z-]+)" && </g)].map(m => m[1]))].sort();
 const listed = [...NAV_KEYS].sort();
 ok(`${rendered.length} screens rendered, ${listed.length} doors listed`, rendered.length === listed.length, `rendered=${rendered.join(",")} listed=${listed.join(",")}`);
@@ -62,6 +66,30 @@ ok("App.tsx has no hand-written allowlist left", !/\["dashboard", "projects", "e
 ok("App.tsx redirect reads visibleNav", /allowed = visibleNav\(role\)/.test(app));
 for (const [role, land] of Object.entries(LANDING)) ok(`${role} lands on ${land}, which it can see`, keys(role).includes(land));
 ok("everyone lands on the doors", ALL_ROLES.every(r => LANDING[r] === "doors" && keys(r).includes("doors")), ALL_ROLES.filter(r => LANDING[r] !== "doors").join(","));
+console.log("\nan open screen catches up on its own");
+// 7 Sep 2026: one person filed a document and the others kept showing their last load.
+// The server was never the problem — the client had no focus listener, no
+// visibilitychange listener and no interval anywhere.
+ok("it refreshes when the window is focused again", /window\.addEventListener\("focus", catchUp\)/.test(app));
+ok("and when the tab becomes visible again", /document\.addEventListener\("visibilitychange", onVisible\)/.test(app));
+ok("plus a 60-second tick", /setInterval\(catchUp, 60_000\)/.test(app));
+ok("all three are torn down again", /removeEventListener\("focus", catchUp\)/.test(app)
+  && /removeEventListener\("visibilitychange", onVisible\)/.test(app) && /clearInterval\(t\)/.test(app));
+// A hidden tab must cost nothing — this is the whole of the phone battery answer.
+ok("nothing is requested while the tab is hidden", /if \(catchingUp\.current \|\| document\.hidden\) return;/.test(app));
+ok("and a slow load cannot stack", /catchingUp\.current = true;/.test(app) && /finally \{ catchingUp\.current = false; \}/.test(app));
+// /api/state is 985 KB uncompressed; the probe is 44 bytes. Polling the wrong one of
+// those once a minute per tab is a megabyte a minute each.
+ok("the cheap question is asked before the expensive one",
+  /const r = await fetch\("\/api\/state\/version"\);/.test(app) && /if \(!v \|\| v === stateVersion\.current\) return;/.test(app));
+ok("the first look only records the version, it does not refetch", /stateVersion\.current === null.*return;/.test(app));
+ok("and a person's own action does not read as someone else's change",
+  /fetch\("\/api\/state\/version"\)[\s\S]{0,160}stateVersion\.current = d\.v/.test(app));
+ok("it does not run at all when nobody is signed in", /if \(!fbUser\) return;/.test(app));
+// Explicitly not built, and the reasons are in the commit: no socket, no polling library,
+// and no notification — web push stays reserved for a person's own turn.
+ok("no WebSocket and no polling library", !/WebSocket|socket\.io|swr|react-query/i.test(code));
+
 console.log("\nthe masthead is the way back to the doors");
 // 6 Sep 2026: the brand block in both headers is the button home — not a home icon added
 // beside it. On a phone the sidebar is behind the hamburger, so this is the whole
@@ -83,10 +111,6 @@ ok("both read as pressable — hover tint and a focus ring", /hover:bg-\[#6D1A1A
   && /focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-\[#6D1A1A\]/.test(app));
 
 console.log("\na reload keeps the door, and only the door");
-// Negative assertions are tested against the code with comments stripped: this file
-// explains what it does NOT do ("replaceState, never pushState"), and a bare grep over the
-// source finds those words in the prose and fails on the explanation rather than the code.
-const code = app.split("\n").filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
 // 6 Sep 2026: reloading on any screen returned to the landing page, because the open door
 // lived only in React state. The address bar already carried one for a single hop (the
 // notification deep link) and now keeps it. The distinction this rests on: a door is where
