@@ -48,6 +48,42 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
   const [newProjectStream, setNewProjectStream] = useState("");
 
   // Project timeline step being added/edited (null = form closed).
+  /**
+   * What needs attention, ranked from what the data can actually answer.
+   *
+   * Alphabetical order tells you nothing. These three signals do, and they are ordered by
+   * how recoverable each one is, not by a weight nobody could explain:
+   *   1. a grant whose end date has passed while it is still open, with money unspent —
+   *      the only one of the three that working harder tomorrow cannot fix, because the
+   *      money goes back;
+   *   2. overdue activities — late work, still catchable;
+   *   3. missing core papers — audit exposure, fixable by filing.
+   * Then the project code, so two equally quiet projects never swap places between renders.
+   */
+  const today = new Date().toLocaleDateString("en-CA");
+  const attentionOf = (proj: any) => {
+    const open = state.projectActivities.filter((a: any) =>
+      a.projectId === proj.id && a.status !== "Done" && a.status !== "Cancelled");
+    const overdue = open.filter((a: any) => a.dueDate && a.dueDate < today).length;
+    const docs = state.documents.filter((d: any) => d.linkedRecordType === "Project" && d.linkedRecordId === proj.id);
+    const importedTimetable = state.projectActivities.some((a: any) => a.projectId === proj.id && a.source === "imported");
+    const missingDocs = ["Proposal", "Timetable", "Budget", "Agreement"].filter(k =>
+      !(k === "Timetable" && importedTimetable) && !pickCoreDoc(k, CORE_PATTERNS[k], docs)).length;
+    const spent = state.budgetLines.filter((bl: any) => bl.projectId === proj.id)
+      .reduce((sum: number, bl: any) => sum + (bl.actualUSD || 0), 0);
+    const unspent = Math.max(0, (proj.budgetUSD || 0) - spent);
+    const lapsed = proj.status !== "Completed" && !!proj.endDate && proj.endDate < today ? unspent : 0;
+    return { open, overdue, docs, missingDocs, spent, unspent, lapsed };
+  };
+  const ranked = requestableProjects
+    .map((p: any) => ({ p, a: attentionOf(p) }))
+    .sort((x: any, y: any) =>
+      (y.a.lapsed > 0 ? 1 : 0) - (x.a.lapsed > 0 ? 1 : 0) ||
+      y.a.lapsed - x.a.lapsed ||
+      y.a.overdue - x.a.overdue ||
+      y.a.missingDocs - x.a.missingDocs ||
+      String(x.p.code).localeCompare(String(y.p.code)));
+
   // The create form is revealed, not resident: the landing is the list.
   const [showCreateProject, setShowCreateProject] = useState(false);
 
@@ -895,7 +931,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                   📁 Active Restricted Projects
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {requestableProjects.map(proj => {
+                  {ranked.map(({ p: proj }) => {
                     const donor = state.donors.find(d => d.id === proj.donorId);
                     const isSelected = selectedProjectId === proj.id;
                     const burnTotal = state.budgetLines
