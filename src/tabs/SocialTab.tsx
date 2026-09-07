@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SharedProps } from "./shared";
 import { SITE_EDITORS } from "../roles";
+import InsightsPanel from "./InsightsPanel";
 
 /**
  * Social desk — the system publishes to the AnaHon Facebook Pages and their Instagram accounts
@@ -112,9 +113,10 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
 
   // ---- recent posts on the network ----
   const [listAccount, setListAccount] = useState(""); const [posts, setPosts] = useState<any>(null);
+  const [view, setView] = useState<"posts" | "insights">("posts");
   const loadPosts = (id: string) => fetch(`/api/social/list?accountId=${encodeURIComponent(id)}`).then(r => r.json()).then(setPosts).catch(() => setPosts({ fb: [], ig: [] }));
   useEffect(() => { if (!listAccount && accounts.length) setListAccount(accounts[0].id); }, [accounts.length]);
-  useEffect(() => { if (listAccount) loadPosts(listAccount); }, [listAccount]);
+  useEffect(() => { if (listAccount && view === "posts") loadPosts(listAccount); }, [listAccount, view]);
   const edit = async (id: string, current: string) => {
     const next = window.prompt("New text for this post:", current); if (next == null || next === current) return;
     const r = await post("/api/social/edit", { accountId: listAccount, target: "fb", postId: id, message: next });
@@ -252,14 +254,18 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
         )}
       </div>
 
-      {/* what is on the network */}
+      {/* what is on the network, and what it did */}
       {accounts.length > 0 && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-bold text-slate-900">On the network</h3>
+            <div className="flex rounded-full bg-slate-100 p-0.5 text-xs font-bold">
+              {(["posts", "insights"] as const).map(v => (
+                <button key={v} onClick={() => setView(v)} className={`rounded-full px-3 py-1 ${view === v ? "bg-slate-900 text-white" : "text-slate-600"}`}>{v === "posts" ? "On the network" : "Figures"}</button>
+              ))}
+            </div>
             <select value={listAccount} onChange={e => setListAccount(e.target.value)} className="rounded border border-slate-300 px-2 py-1 text-xs">{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select>
           </div>
-          {!posts ? <p className="text-xs text-slate-500">Loading…</p> : (
+          {view === "insights" ? <InsightsPanel accountId={listAccount} accountName={accounts.find(a => a.id === listAccount)?.name || ""} /> : !posts ? <p className="text-xs text-slate-500">Loading…</p> : (
             <div className="space-y-2">
               {posts.fbError && <p className="text-xs text-amber-700">Facebook: {posts.fbError}</p>}
               {posts.igError && <p className="text-xs text-amber-700">Instagram: {posts.igError}</p>}

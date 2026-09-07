@@ -10,6 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
+import { pageInsights, pagePosts, igInsights, igPosts } from "./src/insights.js";
 import { graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
@@ -4542,6 +4543,27 @@ app.get("/api/social/media", async (req: any, res) => {
   const docs = await prisma.appDoc.findMany({ where: { category: { in: SOCIAL_MEDIA_CATEGORIES }, OR: [{ mimeType: { startsWith: "video/" } }, { mimeType: { startsWith: "image/" } }] }, orderBy: { created_at: "desc" }, take: 100, select: MEDIA_FIELDS });
   res.json({ ok: true, videos: docs.filter(d => d.mimeType.startsWith("video/")), images: docs.filter(d => d.mimeType.startsWith("image/")) });
 });
+// Everything the networks will say about a Page and its Instagram account. Meta's insights calls are
+// slow and rate-limited, so an answer is kept for fifteen minutes; "refresh" on the desk asks again.
+const insightsCache = new Map<string, { at: number; data: any }>();
+app.get("/api/social/insights", async (req: any, res) => {
+  try {
+    if (!SITE_EDITOR_ROLES.includes(req.dbUser?.role)) return res.status(403).json({ error: "The Pages' figures are the Social desk's." });
+    const a = await prisma.socialAccount.findUnique({ where: { id: String(req.query.accountId || "") } });
+    if (!a) return res.status(404).json({ ok: false, error: "Pick a connected Page." });
+    const days = Math.min(Math.max(Number(req.query.days) || 28, 1), 90);
+    const key = `${a.id}:${days}`;
+    const hit = insightsCache.get(key);
+    if (hit && Date.now() - hit.at < 15 * 60_000 && req.query.refresh !== "1") return res.json({ ok: true, cached: true, ...hit.data });
+    const [page, fb, ig, igp] = await Promise.all([
+      pageInsights(a as any, days), pagePosts(a as any), igInsights(a as any, days), igPosts(a as any)
+    ]);
+    const data = { account: { id: a.id, name: a.name, igUsername: a.igUsername }, days, page, ig, posts: [...(fb.posts || []), ...(igp.posts || [])].sort((x, y) => String(y.date).localeCompare(String(x.date))) };
+    insightsCache.set(key, { at: Date.now(), data });
+    res.json({ ok: true, cached: false, ...data });
+  } catch (e: any) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
 // Queue one post per target. Tied to an item that has not passed the gate → Draft, released by
 // /api/content/publish. Tied to a published item, or to no item → Queued for publishAt (now by default).
 app.post("/api/social/queue", async (req, res) => {
