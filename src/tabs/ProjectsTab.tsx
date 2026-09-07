@@ -772,14 +772,18 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           {(() => {
                             // The four papers every project must carry, shown here so gaps
                             // are visible without opening each workspace.
+                            // Same rule as the panel inside the workspace (src/coreDocs.ts).
+                            // It has to be: this line said "papers complete" for Thomson
+                            // Reuters on the strength of a staff contract, which is how the
+                            // gap stayed invisible from the list as well as inside it.
                             const docs = state.documents.filter(d => d.linkedRecordType === "Project" && d.linkedRecordId === r.p.id);
-                            const hit = (re: RegExp) => docs.some(d => re.test(`${d.category} ${d.filename}`.toLowerCase()));
-                            const tt = hit(/timetable|timeline|work ?plan|year plan/) || state.projectActivities.some(a => a.projectId === r.p.id && a.source === "imported");
+                            const hit = (key: string) => !!pickCoreDoc(key, CORE_PATTERNS[key], docs);
+                            const tt = hit("Timetable") || state.projectActivities.some(a => a.projectId === r.p.id && a.source === "imported");
                             const gaps = [
-                              !hit(/proposal|concept note/) && "proposal",
+                              !hit("Proposal") && "proposal",
                               !tt && "timetable",
-                              !hit(/budget/) && "budget",
-                              !hit(/agreement|contract|grant offer/) && "agreement"
+                              !hit("Budget") && "budget",
+                              !hit("Agreement") && "agreement"
                             ].filter(Boolean);
                             return gaps.length
                               ? <span className="text-[10px] text-amber-700 font-bold shrink-0">missing: {gaps.join(", ")}</span>

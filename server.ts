@@ -20,6 +20,7 @@ import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
 import { canonEmail } from "./src/email.js";
+import { pickCoreDoc, CORE_PATTERNS } from "./src/coreDocs.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
@@ -3433,6 +3434,11 @@ async function buildTimelineFor(projectId: string) {
   ]);
   const docText = docs.map(d => `${d.category} ${d.filename}`.toLowerCase());
   const has = (re: RegExp) => docText.some(t => re.test(t));
+  // The same rule the Projects screen uses (src/coreDocs.ts). It matters here too: this
+  // template marked "Signed grant agreement on file" done on the strength of a staff
+  // contract, because both the milestone and the panel tested one pattern against category
+  // and filename joined together.
+  const hasCore = (key: string) => !!pickCoreDoc(key, CORE_PATTERNS[key], docs);
   const spent = lines.reduce((sum, l) => sum + (l.actualUSD || 0), 0);
   const burn = project.budgetUSD > 0 ? spent / project.budgetUSD : 0;
   const received = deposits.reduce((sum, d) => sum + d.amount, 0);
@@ -3448,7 +3454,7 @@ async function buildTimelineFor(projectId: string) {
 
   const template = [
     { key: "agreement", title: "Signed grant agreement on file", kind: "Milestone", due: project.startDate,
-      done: has(/agreement|contract|grant offer/), evidence: "a signed agreement is registered against the project" },
+      done: hasCore("Agreement"), evidence: "a signed agreement is registered against the project" },
     { key: "funds", title: "First funds received", kind: "Payment", due: project.startDate,
       done: received > 0, evidence: `${deposits.length} deposit(s) totalling ${received.toFixed(2)} linked to this project` },
     { key: "budget", title: "Budget lines registered", kind: "Milestone", due: project.startDate,

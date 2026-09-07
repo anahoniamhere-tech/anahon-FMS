@@ -6,6 +6,7 @@
 // "Contract" whose names read "Service agreement", seven FPU attachments all filed as
 // "Grant Agreement", and a budget filed as a Financial Report.
 // Run: npx tsx scripts/check-core-docs.ts
+import { readFileSync } from "node:fs";
 import { pickCoreDoc, CORE_PATTERNS, CORE_CATEGORIES, NEVER_CORE, normCategory } from "../src/coreDocs.js";
 
 let failed = 0;
@@ -106,6 +107,18 @@ ok("a document with no date is not mistaken for the newest", pick("Budget", [
   d("ANH-DOC-00020", "Budget", "budget old.xlsx", ""),
   d("ANH-DOC-00021", "Budget", "budget new.xlsx", "2026-05-01T00:00:00Z"),
 ])?.refNo === "ANH-DOC-00021");
+
+console.log("\nG. the three surfaces that read these papers agree");
+// The panel inside the project workspace was the reported bug, but the project list's
+// "missing: …" summary and the generated timeline's "Signed grant agreement on file"
+// milestone tested the same over-broad pattern, so a staff contract satisfied all three.
+const tab = readFileSync("src/tabs/ProjectsTab.tsx", "utf8");
+const server = readFileSync("server.ts", "utf8");
+ok("the workspace panel asks the shared rule", /const pick = \(key: string\) => pickCoreDoc\(key, CORE_PATTERNS\[key\], projDocsAll\)/.test(tab));
+ok("so does the project list's missing-papers line", /const hit = \(key: string\) => !!pickCoreDoc\(key, CORE_PATTERNS\[key\], docs\)/.test(tab));
+ok("so does the timeline milestone on the server", /done: hasCore\("Agreement"\)/.test(server));
+ok("no surface still joins category and filename against the old agreement pattern",
+  !/agreement\|contract\|grant offer/.test(tab + server));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
