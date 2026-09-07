@@ -90,6 +90,26 @@ ok("neither prompt tells the model to be encouraging, positive or optimistic",
   prompts.length > 200 && !/(be|sound|stay) (encouraging|positive|optimistic)|emphasis\w* the strengths|make the case for|avoid discouraging/i.test(prompts));
 ok("the assess prompt still asks for real risks", /real risks \(capacity, deadline, compliance/.test(prompts));
 
+console.log("\nH. the free path answers in the shape the callers read");
+// 7 Sep 2026: Saad could not enter a British Council call. The server's Anthropic key is
+// invalid, so every askJson lands on Gemini — and that branch sent no schema at all, so the
+// route read title/fit/rationale out of an object the model had shaped as it pleased.
+const gemini = (server.match(/if \(process\.env\.GEMINI_API_KEY\) \{[\s\S]*?parseModelJson\(r\.text \|\| "\{\}"\);/) || [""])[0];
+ok("the Gemini branch is given the same schema Claude gets",
+  /\.\.\.\(schema \? \{ responseJsonSchema: schema \} : \{\}\)/.test(gemini));
+ok("in responseJsonSchema, not the older narrower responseSchema field",
+  !/responseSchema:/.test(gemini));
+ok("it still asks for JSON as well, so a schemaless caller is unchanged",
+  /responseMimeType: "application\/json"/.test(gemini));
+ok("and the fence-stripping salvage is still the last resort", /parseModelJson\(r\.text/.test(gemini));
+ok("no caller's schema was rewritten to suit one provider — askJson still takes one schema",
+  /async function askJson\(\s*\n?\s*prompt: string, schema: Record<string, any>/.test(server));
+ok("the help desk's own provider choice is untouched",
+  /\.\.\.\(prefer === "gemini" \? \{ thinkingConfig: \{ thinkingBudget: 0 \} \} : \{\}\)/.test(gemini));
+// The key that sends every call down this path in the first place.
+ok("anthropicKey() still only judges a key by its shape, never by whether the API took it",
+  /if \(!k\.startsWith\("sk-ant-"\) \|\| k\.length < 40\)/.test(server));
+
 console.log("\nG. the size of what is sent is recorded");
 ok("every build logs its character count and the two additions", /\[brain\] \$\{context\.length\} characters/.test(brain));
 ok("the extraction logs its own cost once, when cold", /\[strategy\] extracted/.test(corpus));

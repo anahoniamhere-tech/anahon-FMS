@@ -2630,6 +2630,23 @@ async function askJson(
       contents: [{ role: "user", parts }],
       config: {
         responseMimeType: "application/json",
+        // The same schema Claude is given, in the field Gemini reads standard JSON Schema
+        // from. Without it this branch asked only for "some JSON" and returned whatever
+        // shape the model felt like: with the server's Anthropic key invalid, every call
+        // lands here, and the funnel's intake came back as opportunityName / fitAssessment
+        // where the route reads title / fit / rationale, while assess answered
+        // fit: "Excellent", which is not in the enum. A feature that looked broken to the
+        // person using it was a schema never being sent.
+        //
+        // No conversion: `responseJsonSchema` (the field to use since @google/genai 1.9 —
+        // `responseSchema` is the older, narrower dialect) takes the vocabulary all nine
+        // callers already use. Verified against the live free tier before relying on it,
+        // including the two schemas that use union types (`type: ["string", "null"]` in the
+        // help desk's reply, `type: ["object", "null"]` nested in the editorial brainstorm),
+        // because those are where two dialects would have parted company. So no caller's
+        // schema changes shape, and parseModelJson below still strips a fence for a model
+        // that ignores the instruction anyway.
+        ...(schema ? { responseJsonSchema: schema } : {}),
         // Only for the caller that chose this provider on purpose — today that is the help
         // desk, reading a 45k-token prompt at a chat box where the wait is the whole cost.
         // Measured on the same question against the same corpus: ~27 s with thinking on
