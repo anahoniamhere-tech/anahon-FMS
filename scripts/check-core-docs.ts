@@ -187,5 +187,23 @@ ok("focus is handed back after use, so it cannot fire twice", /setFocusId\(null\
 ok("nothing here writes or ticks anything — the item clears by the paper being filed",
   !/complete|tick|dismiss|resolve/i.test((tab.match(/const \[focusSlot[\s\S]*?\}, \[focusId\]\);/) || [""])[0]));
 
+console.log("\nK. a finished grant is still reachable from its own door");
+// requestableProjects drops Completed and Closed so a settled budget cannot take a new charge.
+// It was also feeding the Projects screen's list, which made five finished grants unreachable
+// from the door whose whole job is to hold them — while the desk still asked for their papers.
+const app = readFileSync("src/App.tsx", "utf8");
+ok("the picker list is derived from the door's list, so the two cannot drift",
+  /const requestableProjects = visibleProjects\.filter\(p => p\.status !== "Completed" && p\.status !== "Closed"\)/.test(app));
+ok("the door's list keeps the Project Officer scope",
+  /const visibleProjects = officerProjectIds[\s\S]{0,120}officerProjectIds\.has\(p\.id\)/.test(app));
+ok("the screen ranks every project it may see, not the picker list", /const ranked = visibleProjects/.test(tab));
+ok("finished grants get their own section rather than disappearing",
+  /const done = ranked\.filter\(\(r: any\) => r\.p\.status === "Completed" \|\| r\.p\.status === "Closed"\)/.test(tab)
+  && /<details/.test(tab) && /Completed grants/.test(tab));
+ok("they are drawn by the same card as the live ones", (tab.match(/\.map\(projectCard\)/g) || []).length === 2);
+ok("the papers-still-to-file list now covers them too, so it agrees with the desk",
+  /const owed = ranked\.filter\(r => r\.a\.missing\.length\)/.test(tab));
+ok("the portfolio timeline view deliberately stays on live grants", /const rows = requestableProjects\.map/.test(tab));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

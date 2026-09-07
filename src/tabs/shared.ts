@@ -55,6 +55,8 @@ export interface SharedProps {
   selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
   // A record another screen asked to open (My Desk → Editorial desk). The tab clears it once used.
+  /** Every project the viewer may see, any status — the Projects door's own list. */
+  visibleProjects: any[];
   focusId: string | null;
   setFocusId: (id: string | null) => void;
   // Open another door, optionally on one record (Live editor → Editorial desk). The redirect

@@ -18,7 +18,7 @@ const WORKSPACE_TABS: { key: WorkspaceTab; label: string }[] = [
   { key: "reconciliation", label: "📊 Monthly Reconciliation Report" }
 ];
 
-export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, workspaceRef, focusId, setFocusId }: SharedProps) {
+export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, visibleProjects, workspaceRef, focusId, setFocusId }: SharedProps) {
   /**
    * Landing on the paper, not on the door.
    *
@@ -112,7 +112,10 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
     const lapsed = proj.status !== "Completed" && !!proj.endDate && proj.endDate < today ? unspent : 0;
     return { open, overdue, docs, missing, missingDocs, spent, unspent, lapsed };
   };
-  const ranked = requestableProjects
+  // The door lists every project the viewer may see. `requestableProjects` is the PICKER list
+  // — it drops completed grants so a settled budget cannot take a new charge — and using it
+  // here is what made five finished grants unreachable from their own door.
+  const ranked = visibleProjects
     .map((p: any) => ({ p, a: attentionOf(p) }))
     .sort((x: any, y: any) =>
       (y.a.lapsed > 0 ? 1 : 0) - (x.a.lapsed > 0 ? 1 : 0) ||
@@ -120,6 +123,110 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
       y.a.overdue - x.a.overdue ||
       y.a.missingDocs - x.a.missingDocs ||
       String(x.p.code).localeCompare(String(y.p.code)));
+
+  /**
+   * One project card, drawn for the live grants and again inside the completed drawer.
+   * A plain function rather than a component so React keeps the same element identity in
+   * both places and nothing remounts when a project moves between the two lists.
+   */
+  const projectCard = ({ p: proj, a }: any) => {
+                    const donor = state.donors.find(d => d.id === proj.donorId);
+                    const isSelected = selectedProjectId === proj.id;
+                    const burnPercent = Math.min(100, Math.round((a.spent / (proj.budgetUSD || 1)) * 100));
+                    // Odoo's smart buttons in our idiom: a count is only useful if pressing it
+                    // opens the thing it counted. No new navigation — the same two calls the
+                    // cards and the timeline list already make.
+                    const openAt = (tab: WorkspaceTab) => (e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      setSelectedProjectId(proj.id);
+                      setProjectWorkspaceTab(tab);
+                    };
+                    const lapsed = proj.status !== "Completed" && !!proj.endDate && proj.endDate < today;
+
+                    return (
+                      <div
+                        key={proj.id}
+                        onClick={() => setSelectedProjectId(selectedProjectId === proj.id ? null : proj.id)}
+                        className={`p-5 bg-white border rounded-xl shadow-sm cursor-pointer transition-all duration-200 ${isSelected ? "ring-2 ring-red-600 border-transparent bg-red-50/10" : "border-slate-200 hover:border-slate-300 hover:shadow-md"
+                          }`}
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] bg-red-50 text-red-700 font-mono font-bold px-2 py-0.5 rounded uppercase">
+                              {proj.code}
+                            </span>
+                            {FINANCE.includes(currentUser.role) && (
+                              <button
+                                onClick={(e) => handleDeleteProject(e, proj.id)}
+                                className="text-slate-400 hover:text-red-650 p-1 transition-colors rounded hover:bg-slate-100"
+                                title="Delete Project"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${proj.status === "Active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"
+                            }`}>
+                            {proj.status}
+                          </span>
+                        </div>
+                        {lapsed && (
+                          <p className="text-[10px] font-bold text-amber-700 mb-1">
+                            ⏳ ended {proj.endDate} and still open
+                          </p>
+                        )}
+                        <h4 className="text-sm font-bold text-slate-900 font-sans mb-1">{proj.name}</h4>
+                        <p className="text-xs text-slate-500 mb-1">{t("Donor Partner")}: {donor?.name || "Restricted Donor"}</p>
+                        <p className="text-[10px] text-slate-400 mb-3">🏛 {proj.stream || "— program unassigned"}</p>
+
+                        <div className="space-y-1 mb-3">
+                          <div className="flex justify-between text-[10px] text-slate-500">
+                            <span>Burn Rate</span>
+                            <span>{burnPercent}%</span>
+                          </div>
+                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                            <div className="bg-red-600 h-full transition-all duration-300" style={{ width: `${burnPercent}%` }} />
+                          </div>
+                        </div>
+
+                        {/* Three counts, each opening what it counted. */}
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          <button type="button" onClick={openAt("papers")}
+                            title="Open this project's papers"
+                            className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
+                            <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{a.docs.length}</span>
+                            <span className="block text-[9px] uppercase text-slate-500">{t("papers")}{a.missingDocs > 0 && <span className="text-amber-700 font-bold"> · {a.missingDocs} {t("missing")}</span>}</span>
+                          </button>
+                          <button type="button" onClick={openAt("overview")}
+                            title="Open this project's timeline"
+                            className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
+                            <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{a.open.length}</span>
+                            <span className="block text-[9px] uppercase text-slate-500">{t("due")}{a.overdue > 0 && <span className="text-red-700 font-bold"> · {a.overdue} {t("overdue")}</span>}</span>
+                          </button>
+                          <button type="button" onClick={openAt("reconciliation")}
+                            title="Open the monthly reconciliation report"
+                            className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
+                            <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{burnPercent}%</span>
+                            <span className="block text-[9px] uppercase text-slate-500">{t("spent")}</span>
+                          </button>
+                        </div>
+
+                        <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-xs">
+                          <div>
+                            <span className="block text-[9px] text-slate-400 uppercase">Grants pool</span>
+                            <strong className="text-slate-800 font-mono">{formatUSD(proj.budgetUSD)}</strong>
+                          </div>
+                          <span className="text-red-650 font-bold hover:underline flex items-center gap-0.5">
+                            {isSelected ? "Close Workspace ✕" : "Open Workspace 📂"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+  };
+
+  const live = ranked.filter((r: any) => r.p.status !== "Completed" && r.p.status !== "Closed");
+  const done = ranked.filter((r: any) => r.p.status === "Completed" || r.p.status === "Closed");
+  const owedInDone = done.reduce((n: number, r: any) => n + r.a.missing.length, 0);
 
   // The create form is revealed, not resident: the landing is the list.
   const [showCreateProject, setShowCreateProject] = useState(false);
@@ -966,104 +1073,28 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
               {/* Active Restricted Projects Section (NEW) */}
               <div className="space-y-4">
                 <h3 className="text-md font-bold text-slate-800 uppercase font-mono flex items-center gap-1.5">
-                  📁 Active Restricted Projects
+                  📁 {t("Active grants")}
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {ranked.map(({ p: proj, a }) => {
-                    const donor = state.donors.find(d => d.id === proj.donorId);
-                    const isSelected = selectedProjectId === proj.id;
-                    const burnPercent = Math.min(100, Math.round((a.spent / (proj.budgetUSD || 1)) * 100));
-                    // Odoo's smart buttons in our idiom: a count is only useful if pressing it
-                    // opens the thing it counted. No new navigation — the same two calls the
-                    // cards and the timeline list already make.
-                    const openAt = (tab: WorkspaceTab) => (e: React.MouseEvent) => {
-                      e.stopPropagation();
-                      setSelectedProjectId(proj.id);
-                      setProjectWorkspaceTab(tab);
-                    };
-                    const lapsed = proj.status !== "Completed" && !!proj.endDate && proj.endDate < today;
-
-                    return (
-                      <div
-                        key={proj.id}
-                        onClick={() => setSelectedProjectId(selectedProjectId === proj.id ? null : proj.id)}
-                        className={`p-5 bg-white border rounded-xl shadow-sm cursor-pointer transition-all duration-200 ${isSelected ? "ring-2 ring-red-600 border-transparent bg-red-50/10" : "border-slate-200 hover:border-slate-300 hover:shadow-md"
-                          }`}
-                      >
-                        <div className="flex justify-between items-start mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] bg-red-50 text-red-700 font-mono font-bold px-2 py-0.5 rounded uppercase">
-                              {proj.code}
-                            </span>
-                            {FINANCE.includes(currentUser.role) && (
-                              <button
-                                onClick={(e) => handleDeleteProject(e, proj.id)}
-                                className="text-slate-400 hover:text-red-650 p-1 transition-colors rounded hover:bg-slate-100"
-                                title="Delete Project"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                          </div>
-                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${proj.status === "Active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"
-                            }`}>
-                            {proj.status}
-                          </span>
-                        </div>
-                        {lapsed && (
-                          <p className="text-[10px] font-bold text-amber-700 mb-1">
-                            ⏳ ended {proj.endDate} and still open
-                          </p>
-                        )}
-                        <h4 className="text-sm font-bold text-slate-900 font-sans mb-1">{proj.name}</h4>
-                        <p className="text-xs text-slate-500 mb-1">{t("Donor Partner")}: {donor?.name || "Restricted Donor"}</p>
-                        <p className="text-[10px] text-slate-400 mb-3">🏛 {proj.stream || "— program unassigned"}</p>
-
-                        <div className="space-y-1 mb-3">
-                          <div className="flex justify-between text-[10px] text-slate-500">
-                            <span>Burn Rate</span>
-                            <span>{burnPercent}%</span>
-                          </div>
-                          <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                            <div className="bg-red-600 h-full transition-all duration-300" style={{ width: `${burnPercent}%` }} />
-                          </div>
-                        </div>
-
-                        {/* Three counts, each opening what it counted. */}
-                        <div className="flex flex-wrap gap-1.5 mb-3">
-                          <button type="button" onClick={openAt("papers")}
-                            title="Open this project's papers"
-                            className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
-                            <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{a.docs.length}</span>
-                            <span className="block text-[9px] uppercase text-slate-500">{t("papers")}{a.missingDocs > 0 && <span className="text-amber-700 font-bold"> · {a.missingDocs} {t("missing")}</span>}</span>
-                          </button>
-                          <button type="button" onClick={openAt("overview")}
-                            title="Open this project's timeline"
-                            className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
-                            <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{a.open.length}</span>
-                            <span className="block text-[9px] uppercase text-slate-500">{t("due")}{a.overdue > 0 && <span className="text-red-700 font-bold"> · {a.overdue} {t("overdue")}</span>}</span>
-                          </button>
-                          <button type="button" onClick={openAt("reconciliation")}
-                            title="Open the monthly reconciliation report"
-                            className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
-                            <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{burnPercent}%</span>
-                            <span className="block text-[9px] uppercase text-slate-500">{t("spent")}</span>
-                          </button>
-                        </div>
-
-                        <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-xs">
-                          <div>
-                            <span className="block text-[9px] text-slate-400 uppercase">Grants pool</span>
-                            <strong className="text-slate-800 font-mono">{formatUSD(proj.budgetUSD)}</strong>
-                          </div>
-                          <span className="text-red-650 font-bold hover:underline flex items-center gap-0.5">
-                            {isSelected ? "Close Workspace ✕" : "Open Workspace 📂"}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {live.map(projectCard)}
                 </div>
+
+                {/* Completed grants keep their file, so they keep their card — folded away
+                    because the work is done, not hidden because the record stopped mattering.
+                    A native <details>, so it opens with a keyboard and needs no state. */}
+                {done.length > 0 && (
+                  <details className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <summary className="min-h-[44px] cursor-pointer list-none px-4 py-3 text-xs font-bold uppercase font-mono text-slate-700 hover:bg-slate-50 rounded-xl flex items-center justify-between gap-2">
+                      <span>✅ {t("Completed grants")}</span>
+                      <span className="font-normal text-[10px] text-slate-500" dir="ltr">
+                        {done.length}{owedInDone > 0 ? ` · ${owedInDone} ${t("papers still owed")}` : ""}
+                      </span>
+                    </summary>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-4 pt-0">
+                      {done.map(projectCard)}
+                    </div>
+                  </details>
+                )}
               </div>
 
               {/* ── Papers still to file ─────────────────────────────
@@ -2097,6 +2128,10 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                   Steps are marked done automatically when the evidence is already in the system; a status you set by hand is never overwritten.
                 </p>
                 {(() => {
+                  // Live grants only, on purpose: this answers "what is next across the
+                  // portfolio", and a finished grant's unticked closeout steps would fill it
+                  // with work nobody is going to do. The completed grants keep their own
+                  // timelines inside their workspaces.
                   const rows = requestableProjects.map(p => {
                     const acts = state.projectActivities.filter(a => a.projectId === p.id);
                     const open = acts.filter(a => a.status !== "Done" && a.status !== "Cancelled");

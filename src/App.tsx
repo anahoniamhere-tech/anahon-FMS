@@ -1004,10 +1004,17 @@ export default function App() {
         ...(state?.projects || []).filter(p => officerScopeStream && p.stream === officerScopeStream).map(p => p.id)
       ])
     : null;
+  // Every project this account may see, whatever its status. The Projects door lists these:
+  // a grant does not stop existing when it ends, and its audit file is exactly what a closed
+  // project gets opened for.
+  const visibleProjects = officerProjectIds
+    ? (state?.projects || []).filter(p => officerProjectIds.has(p.id))
+    : (state?.projects || []);
   // Closed projects keep their history but stop accepting new charges — a completed
-  // grant's budget is settled, so it must not appear in any project picker.
-  const requestableProjects = (officerProjectIds ? (state?.projects || []).filter(p => officerProjectIds.has(p.id)) : (state?.projects || []))
-    .filter(p => p.status !== "Completed" && p.status !== "Closed");
+  // grant's budget is settled, so it must not appear in any project PICKER. This list is
+  // for pickers; it was doing double duty as the Projects screen's own list, which is how
+  // five completed grants became unreachable from their own door.
+  const requestableProjects = visibleProjects.filter(p => p.status !== "Completed" && p.status !== "Closed");
 
 
 
@@ -1146,7 +1153,7 @@ export default function App() {
     state, setState, currentUser, t, lang, rtl, formatUSD, formatIn,
     refreshState, triggerToast, handleNavClick, openDoc,
     bankFilterAcc, setBankFilterAcc, bankSearch, setBankSearch,
-    requestableProjects, isProjectOfficer, isSelfService, phoneAccess,
+    requestableProjects, visibleProjects, isProjectOfficer, isSelfService, phoneAccess,
     contractFor, setContractFor, contractParty, setContractParty,
     contractForm, setContractForm, contractBusy, handleGenerateContract,
     partyFileFor, setPartyFileFor, renderPartyFile,
