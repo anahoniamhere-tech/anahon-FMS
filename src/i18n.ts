@@ -36,7 +36,7 @@ export const AR: Record<string, string> = {
   "Register Client": "تسجيل عميل",
   "New Quotation": "عرض سعر جديد",
   "Collapse Sidebar": "طيّ القائمة",
-  "Resricted Donor Grants & Sinking Budgets": "منح المانحين المقيّدة والموازنات",
+  "Restricted Donor Grants & Sinking Budgets": "منح المانحين المقيّدة والموازنات",
   "AnaHon Programs & Funding Funnel": "برامج أناهون وقمع التمويل",
   "Production Stream — Clients & Quotations": "قطاع الإنتاج — العملاء وعروض الأسعار",
   "Official Procurement & Disbursement Vouchers": "سندات الصرف والمشتريات",

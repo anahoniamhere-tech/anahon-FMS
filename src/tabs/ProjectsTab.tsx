@@ -12,6 +12,20 @@ import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES } from "../coreDocs";
 export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, workspaceRef }: SharedProps) {
   // Whoever holds the Finance Officer seat signs the printed project sheet — never a name in code.
   const financeOfficerName = state.users.find((u: any) => u.role === "Finance Officer" && u.active)?.name || "Finance Officer";
+  /**
+   * Who reviews and co-signs the monthly reconciliation report.
+   *
+   * It printed "Farah Shami (Executive Director)", hardcoded, on a document that goes to a
+   * donor. Nobody by that name is on the team — the string is the placeholder text from the
+   * payroll form. It is now found the way the Finance Officer beside it is found: by the role
+   * the system uses. "Program Director" is a permission key and stays one; the title printed
+   * on a donor-facing page is the one the organisation actually uses. With that seat vacant
+   * the master account covers it, as it does everywhere else here, and with neither on file
+   * the slot names no one rather than inventing a signatory.
+   */
+  const coSignerName =
+    state.users.find((u: any) => u.role === "Program Director" && u.active)?.name ||
+    state.users.find((u: any) => u.role === "Super Admin" && u.active)?.name || "";
 
   // New Project form states
   const [newProjectName, setNewProjectName] = useState("");
@@ -731,7 +745,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
           {true && (
             <div className="space-y-6">
               <div>
-                <h2 className="text-xl font-bold">{t("Resricted Donor Grants & Sinking Budgets")}</h2>
+                <h2 className="text-xl font-bold">{t("Restricted Donor Grants & Sinking Budgets")}</h2>
                 <p className="text-xs text-slate-500">Track designated funding allocations, revised budget versions and project execution timelines.</p>
               </div>
 
@@ -1923,7 +1937,9 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         </div>
                                         <div>
                                           <span className="block text-xs font-bold text-slate-800 uppercase font-sans">Reviewed & Co-Signed By</span>
-                                          <span className="block text-[10px] text-slate-500 uppercase font-mono">Farah Shami (Executive Director)</span>
+                                          <span className="block text-[10px] text-slate-500 uppercase font-mono">
+                                            {coSignerName ? `${coSignerName} (Executive Director)` : "Executive Director — no one on file to sign"}
+                                          </span>
                                         </div>
                                       </div>
                                     </div>
