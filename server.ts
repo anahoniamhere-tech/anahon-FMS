@@ -3084,9 +3084,21 @@ app.post("/api/materials/link", async (req, res) => {
 
 // Rename a document and edit its description. The display name and note are
 // metadata — the file on disk keeps its vault path, so nothing breaks downstream.
+/**
+ * The categories a filed document can be moved into, and the only ones.
+ *
+ * The category was set once at upload and could never be corrected, which left real papers
+ * in the wrong slot with no way back: TRF's current budget is filed as a "Financial Report"
+ * and SKF's own proposal as an "Agreement", and re-uploading them under the right category
+ * is refused as a duplicate by the content hash. So re-filing exists — but only into the
+ * four core project categories. Deliberately not free text: free text is how Contract and
+ * Contracts, Agreement and Grant Agreement came to mean the same thing.
+ */
+const REFILE_CATEGORIES = ["Proposal", "Timetable", "Budget", "Grant Agreement"];
+
 app.post("/api/documents/meta", async (req, res) => {
   try {
-    const { id, filename, note, user } = req.body;
+    const { id, filename, note, category, user } = req.body;
     const doc = await prisma.appDoc.findUnique({ where: { id } });
     if (!doc) return res.status(404).json({ error: "Document not found." });
     if (!CONTENT_EDITOR_ROLES.includes(user?.role) && !["Finance Officer", "Project Officer"].includes(user?.role)) {
@@ -3094,12 +3106,35 @@ app.post("/api/documents/meta", async (req, res) => {
     }
     const name = String(filename ?? doc.filename).trim();
     if (!name) return res.status(400).json({ error: "Give the document a name." });
+    let refiled: { category?: string } = {};
+    if (category !== undefined && String(category) !== doc.category) {
+      if (!REFILE_CATEGORIES.includes(String(category))) {
+        return res.status(400).json({ error: `A document can only be re-filed as: ${REFILE_CATEGORIES.join(", ")}.` });
+      }
+      // A personnel paper's category decides who may read it, so it is out of reach here —
+      // in either direction. Moving a payslip would be a permission change wearing the
+      // clothes of a tidy-up.
+      if (isPersonnelDoc(doc) || isPersonnelDoc({ category: String(category) })) {
+        return res.status(403).json({ error: "Personnel documents cannot be re-filed here — their category decides who may read them." });
+      }
+      if (doc.linkedRecordType !== "Project") {
+        return res.status(400).json({ error: "Only a document filed against a project carries one of these categories." });
+      }
+      refiled = { category: String(category) };
+    }
     const updated = await prisma.appDoc.update({ where: { id }, data: {
       filename: name.slice(0, 200),
+      ...refiled,
       ...(note !== undefined ? { note: String(note).slice(0, 500) } : {})
     } });
-    await createAuditLog(user?.id, user?.name, "Document Renamed",
-      `${doc.refNo || doc.id}: "${doc.filename}" → "${updated.filename}"${note ? ` (note updated)` : ""}.`);
+    if (refiled.category) {
+      await createAuditLog(user?.id, user?.name, "Document Re-filed",
+        `${doc.refNo || doc.id} "${doc.filename}" moved from category "${doc.category}" to "${updated.category}".`);
+    }
+    if (updated.filename !== doc.filename || note !== undefined) {
+      await createAuditLog(user?.id, user?.name, "Document Renamed",
+        `${doc.refNo || doc.id}: "${doc.filename}" → "${updated.filename}"${note ? ` (note updated)` : ""}.`);
+    }
     res.json({ success: true, document: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

@@ -86,3 +86,11 @@ export const CORE_PATTERNS: Record<string, RegExp> = {
   Budget: /budget/,
   Agreement: /agreement|grant offer/
 };
+
+/**
+ * The categories a filed document can be moved into — the four core slots and nothing else.
+ * The same list the server enforces on /api/documents/meta. Deliberately not free text:
+ * free text is how Contract/Contracts and Agreement/Grant Agreement came to mean one thing
+ * under two names, and the panel above reads exactly these four.
+ */
+export const REFILE_CATEGORIES = ["Proposal", "Timetable", "Budget", "Grant Agreement"];

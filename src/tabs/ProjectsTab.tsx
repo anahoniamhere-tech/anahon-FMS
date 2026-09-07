@@ -5,9 +5,9 @@ import { Account, AppDoc, Donor, Expense, Procurement, Project, Timesheet } from
 import { STREAMS } from "../constants";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
-import { ACTIVITY_EDITORS, DIRECTORS, FINANCE } from "../roles";
+import { ACTIVITY_EDITORS, DIRECTORS, FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
-import { pickCoreDoc, CORE_PATTERNS } from "../coreDocs";
+import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES } from "../coreDocs";
 
 export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, workspaceRef }: SharedProps) {
   // Whoever holds the Finance Officer seat signs the printed project sheet — never a name in code.
@@ -146,6 +146,25 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
       });
       if (!res.ok) throw new Error((await res.json()).error || "Failed to amend reference");
       triggerToast(`Reference amended: ${refNo}`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  /** Move a filed paper into the right core category. The category is what the core-documents
+   *  panel trusts, and it used to be unchangeable after upload — so a budget filed as a
+   *  Financial Report stayed one forever, and re-uploading it is refused as a duplicate. */
+  const refileDoc = async (doc: AppDoc, category: string) => {
+    if (!category || category === doc.category) return;
+    try {
+      const res = await fetch("/api/documents/meta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: doc.id, filename: doc.filename, category, user: currentUser })
+      });
+      if (!res.ok) throw new Error((await res.json()).error || "Failed to re-file the document");
+      triggerToast(`${doc.refNo || doc.filename} re-filed as ${category}.`);
       refreshState();
     } catch (err: any) {
       triggerToast(err.message, "error");
@@ -1346,6 +1365,24 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         </button>
                                       )}
                                       <span className="text-slate-700 truncate">📄 {doc.filename} ({doc.sizeStr})</span>
+                                      {/* What this paper is filed as — and, for the people who
+                                          keep a project's papers, the way to correct it. Only
+                                          the four core categories are offered: the panel above
+                                          reads them, and a free-text box is what produced
+                                          Contract/Contracts and Agreement/Grant Agreement. */}
+                                      {MANAGERS.includes(currentUser.role) ? (
+                                        <select
+                                          value={REFILE_CATEGORIES.includes(doc.category) ? doc.category : ""}
+                                          onChange={e => refileDoc(doc, e.target.value)}
+                                          aria-label={`Filed as, for ${doc.filename}`}
+                                          title="What this document is filed as — changing it is audit-logged"
+                                          className="text-[9px] font-mono bg-slate-50 border border-slate-200 rounded px-1 py-0.5 text-slate-600 shrink-0">
+                                          <option value="">{doc.category || "uncategorised"}</option>
+                                          {REFILE_CATEGORIES.filter(c => c !== doc.category).map(c => <option key={c} value={c}>file as {c}</option>)}
+                                        </select>
+                                      ) : (
+                                        <span className="text-[9px] font-mono text-slate-400 shrink-0">{doc.category}</span>
+                                      )}
                                     </span>
                                     <a
                                       href={withTicket(`/api/document/content/${doc.id}`)}

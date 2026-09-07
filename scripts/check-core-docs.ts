@@ -7,7 +7,7 @@
 // "Grant Agreement", and a budget filed as a Financial Report.
 // Run: npx tsx scripts/check-core-docs.ts
 import { readFileSync } from "node:fs";
-import { pickCoreDoc, CORE_PATTERNS, CORE_CATEGORIES, NEVER_CORE, normCategory } from "../src/coreDocs.js";
+import { pickCoreDoc, CORE_PATTERNS, CORE_CATEGORIES, NEVER_CORE, normCategory, REFILE_CATEGORIES } from "../src/coreDocs.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -119,6 +119,28 @@ ok("so does the project list's missing-papers line", /const hit = \(key: string\
 ok("so does the timeline milestone on the server", /done: hasCore\("Agreement"\)/.test(server));
 ok("no surface still joins category and filename against the old agreement pattern",
   !/agreement\|contract\|grant offer/.test(tab + server));
+
+console.log("\nH. re-filing a paper into the right category");
+// The category was set once at upload and could never be corrected, so a budget filed as a
+// Financial Report stayed one — and re-uploading it under the right category is refused as
+// a duplicate by the content hash. Re-filing exists now, and is deliberately narrow.
+ok("only the four core categories can be chosen", REFILE_CATEGORIES.length === 4);
+ok("every one of them fills a slot", REFILE_CATEGORIES.every(c =>
+  Object.values(CORE_CATEGORIES).some(list => list.includes(normCategory(c)))));
+ok("no category that is refused everywhere can be chosen",
+  !REFILE_CATEGORIES.some(c => NEVER_CORE.some(n => normCategory(c).startsWith(n))));
+ok("one spelling going forward — 'Agreement' is readable but 'Grant Agreement' is what gets written",
+  REFILE_CATEGORIES.includes("Grant Agreement") && !REFILE_CATEGORIES.includes("Agreement")
+  && CORE_CATEGORIES.Agreement.includes("agreement"));
+ok("the server enforces the same list, not a copy that can drift",
+  /const REFILE_CATEGORIES = \["Proposal", "Timetable", "Budget", "Grant Agreement"\]/.test(server));
+ok("a personnel paper cannot be moved in or out of a project category",
+  /isPersonnelDoc\(doc\) \|\| isPersonnelDoc\(\{ category: String\(category\) \}\)/.test(server));
+ok("and only a project's own document can be re-filed", /doc\.linkedRecordType !== "Project"/.test(server));
+ok("the move is audit-logged with both categories named",
+  /"Document Re-filed"[\s\S]{0,140}moved from category/.test(server));
+ok("the screen offers it to a subset of the roles the route accepts — no button that 403s",
+  /MANAGERS\.includes\(currentUser\.role\) \? \(/.test(tab));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
