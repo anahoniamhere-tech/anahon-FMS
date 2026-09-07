@@ -7,7 +7,7 @@
 // "Grant Agreement", and a budget filed as a Financial Report.
 // Run: npx tsx scripts/check-core-docs.ts
 import { readFileSync } from "node:fs";
-import { pickCoreDoc, CORE_PATTERNS, CORE_CATEGORIES, NEVER_CORE, normCategory, REFILE_CATEGORIES } from "../src/coreDocs.js";
+import { pickCoreDoc, CORE_PATTERNS, CORE_CATEGORIES, NEVER_CORE, normCategory, REFILE_CATEGORIES, CORE_SLOTS, missingCoreDocs } from "../src/coreDocs.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -141,6 +141,29 @@ ok("the move is audit-logged with both categories named",
   /"Document Re-filed"[\s\S]{0,140}moved from category/.test(server));
 ok("the screen offers it to a subset of the roles the route accepts — no button that 403s",
   /MANAGERS\.includes\(currentUser\.role\) \? \(/.test(tab));
+
+console.log("\nI. what a project still owes — the shape the desk will read");
+// Same shape as missingPersonnelDocs and missingSupplierDocs on purpose: Home & desk turns
+// all three into desk items with ONE rule, and a third shape would mean a third branch.
+// Nothing is stored, so filing the paper removes the item everywhere at once.
+const proj = (id: string, rows: any[]) => rows.map(r => ({ ...r, linkedRecordType: "Project", linkedRecordId: id }));
+ok("a project with nothing on file owes all four", missingCoreDocs([], "p1").length === 4);
+ok("each one carries a key and a label, like the other two lists",
+  missingCoreDocs([], "p1").every(m => typeof m.key === "string" && typeof m.label === "string" && m.label.length > 2));
+ok("the keys are the slots, so an upload knows where it goes",
+  missingCoreDocs([], "p1").map(m => m.key).join() === CORE_SLOTS.map(s => s.key).join());
+ok("a filed paper stops being owed", !missingCoreDocs(
+  proj("p1", [d("ANH-DOC-1", "Budget", "b.xlsx", "2026-01-01")]), "p1").some(m => m.key === "Budget"));
+ok("an imported donor timetable excuses the timetable slot",
+  !missingCoreDocs([], "p1", true).some(m => m.key === "Timetable")
+  && missingCoreDocs([], "p1", false).some(m => m.key === "Timetable"));
+ok("another project's papers do not count", missingCoreDocs(
+  proj("p2", [d("ANH-DOC-2", "Budget", "b.xlsx", "2026-01-01")]), "p1").length === 4);
+ok("a staff contract still does not paper the agreement slot", missingCoreDocs(
+  proj("p1", [d("ANH-DOC-3", "Contract", "Service agreement Saad.pdf", "2026-01-01")]), "p1")
+  .some(m => m.key === "Agreement"));
+ok("nothing is stored — the same input always gives the same answer",
+  JSON.stringify(missingCoreDocs([], "p1")) === JSON.stringify(missingCoreDocs([], "p1")));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

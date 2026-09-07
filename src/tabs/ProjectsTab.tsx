@@ -7,7 +7,7 @@ import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { ACTIVITY_EDITORS, DIRECTORS, FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
-import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES } from "../coreDocs";
+import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES, CORE_SLOTS, missingCoreDocs } from "../coreDocs";
 
 /** The pages of a project's workspace, in the order they are shown. */
 type WorkspaceTab = "overview" | "papers" | "money" | "reconciliation";
@@ -76,13 +76,13 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
     const overdue = open.filter((a: any) => a.dueDate && a.dueDate < today).length;
     const docs = state.documents.filter((d: any) => d.linkedRecordType === "Project" && d.linkedRecordId === proj.id);
     const importedTimetable = state.projectActivities.some((a: any) => a.projectId === proj.id && a.source === "imported");
-    const missingDocs = ["Proposal", "Timetable", "Budget", "Agreement"].filter(k =>
-      !(k === "Timetable" && importedTimetable) && !pickCoreDoc(k, CORE_PATTERNS[k], docs)).length;
+    const missing = missingCoreDocs(state.documents as any, proj.id, importedTimetable);
+    const missingDocs = missing.length;
     const spent = state.budgetLines.filter((bl: any) => bl.projectId === proj.id)
       .reduce((sum: number, bl: any) => sum + (bl.actualUSD || 0), 0);
     const unspent = Math.max(0, (proj.budgetUSD || 0) - spent);
     const lapsed = proj.status !== "Completed" && !!proj.endDate && proj.endDate < today ? unspent : 0;
-    return { open, overdue, docs, missingDocs, spent, unspent, lapsed };
+    return { open, overdue, docs, missing, missingDocs, spent, unspent, lapsed };
   };
   const ranked = requestableProjects
     .map((p: any) => ({ p, a: attentionOf(p) }))
@@ -1038,6 +1038,55 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                 </div>
               </div>
 
+              {/* ── Papers still to file ─────────────────────────────
+                  One place to work through what every project is still missing, instead of
+                  opening each workspace to find out. The same answer the cards count and the
+                  desk asks for (missingCoreDocs), so the three can never disagree, and the
+                  same upload the panel uses — filing a paper here removes it from this list,
+                  from the card's count and from the desk, because none of them is stored. */}
+              {(() => {
+                const owed = ranked.filter(r => r.a.missing.length);
+                if (!owed.length) {
+                  return (
+                    <p className="text-[11px] font-bold text-emerald-700">
+                      ✓ {t("Every project carries its four core papers.")}
+                    </p>
+                  );
+                }
+                return (
+                  <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <h3 className="text-xs font-bold text-amber-800 uppercase font-mono">📋 {t("Papers still to file")}</h3>
+                      <span className="text-[10px] text-amber-700 font-mono" dir="ltr">
+                        {owed.reduce((n, r) => n + r.a.missing.length, 0)} · {owed.length} {t("projects")}
+                      </span>
+                    </div>
+                    {owed.map(({ p: proj, a }) => (
+                      <div key={proj.id} className="flex flex-wrap items-center gap-2 text-xs">
+                        <button type="button" onClick={() => { setSelectedProjectId(proj.id); setProjectWorkspaceTab("overview"); }}
+                          className="font-mono font-bold text-[10px] bg-white border border-amber-200 px-1.5 py-0.5 rounded shrink-0 hover:border-amber-400">
+                          {proj.code}
+                        </button>
+                        {a.missing.map(m => (
+                          ACTIVITY_EDITORS.includes(currentUser.role) ? (
+                            <label key={m.key} className="min-h-[44px] md:min-h-0 inline-flex items-center gap-1 rounded border border-amber-300 bg-white px-2 py-1 text-[11px] text-amber-900 cursor-pointer hover:bg-amber-100">
+                              ＋ {t(m.label)}
+                              <input type="file" className="hidden" accept=".pdf,.docx,.xlsx,.xlsm,image/*"
+                                onChange={ev => handleCoreDocUpload(ev, proj.id, m.key)} />
+                            </label>
+                          ) : (
+                            <span key={m.key} className="rounded border border-amber-200 bg-white px-2 py-1 text-[11px] text-amber-900">{t(m.label)}</span>
+                          )
+                        ))}
+                      </div>
+                    ))}
+                    <p className="text-[10px] text-amber-800">
+                      {t("Filing one here removes it from this list, from the project's count and from the desk — nothing to tick.")}
+                    </p>
+                  </div>
+                );
+              })()}
+
               {/* Project Workspace Control Panel (NEW) */}
               {selectedProjectId && (() => {
                 const activeProject = state.projects.find(p => p.id === selectedProjectId);
@@ -1132,12 +1181,11 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           // newest of whatever fits — the rule and the reasons live in
                           // src/coreDocs.ts, where they can be tested against the real rows.
                           const pick = (key: string) => pickCoreDoc(key, CORE_PATTERNS[key], projDocsAll);
-                          const slots = [
-                            { key: "Proposal", label: "Proposal", doc: pick("Proposal"), extra: "" },
-                            { key: "Timetable", label: "Activity timetable", doc: pick("Timetable"), extra: hasImportedTimetable ? "imported into the timeline below" : "" },
-                            { key: "Budget", label: "Approved budget", doc: pick("Budget"), extra: "" },
-                            { key: "Agreement", label: "Signed agreement", doc: pick("Agreement"), extra: "" }
-                          ];
+                          const slots = CORE_SLOTS.map(s => ({
+                            ...s,
+                            doc: pick(s.key),
+                            extra: s.key === "Timetable" && hasImportedTimetable ? "imported into the timeline below" : ""
+                          }));
                           const missing = slots.filter(sl => !sl.doc && !sl.extra).length;
                           return (
                             <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-2">

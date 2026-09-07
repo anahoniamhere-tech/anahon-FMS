@@ -94,3 +94,43 @@ export const CORE_PATTERNS: Record<string, RegExp> = {
  * under two names, and the panel above reads exactly these four.
  */
 export const REFILE_CATEGORIES = ["Proposal", "Timetable", "Budget", "Grant Agreement"];
+
+/**
+ * The four slots, named once. The panel labels them, the list counts them and the desk
+ * asks for them, so the wording lives here rather than in three places that drift.
+ */
+export const CORE_SLOTS: { key: string; label: string }[] = [
+  { key: "Proposal", label: "Proposal" },
+  { key: "Timetable", label: "Activity timetable" },
+  { key: "Budget", label: "Approved budget" },
+  { key: "Agreement", label: "Signed agreement" }
+];
+
+/**
+ * Which of the four papers a project is still missing.
+ *
+ * Deliberately the same shape and the same name pattern as `missingPersonnelDocs` and
+ * `missingSupplierDocs` — `{ key, label }[]`, empty when nothing is owed — because Home &
+ * desk turns all three into desk items with one rule, and a third shape would mean a third
+ * branch. Where those two answer "is this person or supplier properly papered", this one
+ * answers "does this grant carry what every donor audit asks for first".
+ *
+ * `hasImportedTimetable` excuses the timetable slot: a donor timetable imported into the
+ * project's own timeline is the paper, in a more useful form than a spreadsheet nobody
+ * opens. The panel has always treated it that way and the desk must agree.
+ *
+ * Nothing is stored. The answer is computed from the documents each time it is asked, so
+ * filing the paper removes the item everywhere it appeared, for everyone, with nothing to
+ * tick and nothing left behind to go stale.
+ */
+export function missingCoreDocs(
+  docs: (CoreDoc & { linkedRecordType?: string; linkedRecordId?: string })[],
+  projectId: string,
+  hasImportedTimetable = false
+): { key: string; label: string }[] {
+  const mine = docs.filter(d => d.linkedRecordType === "Project" && d.linkedRecordId === projectId);
+  return CORE_SLOTS
+    .filter(s => !(s.key === "Timetable" && hasImportedTimetable))
+    .filter(s => !pickCoreDoc(s.key, CORE_PATTERNS[s.key], mine))
+    .map(({ key, label }) => ({ key, label }));
+}
