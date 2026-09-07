@@ -34,6 +34,10 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
   const [newProjectStream, setNewProjectStream] = useState("");
 
   // Project timeline step being added/edited (null = form closed).
+  // Finding one paper among sixty: filters this project's document list by reference, name
+  // or category.
+  const [docFilter, setDocFilter] = useState("");
+
   const [activityForm, setActivityForm] = useState<any | null>(null);
 
   const [reconMonth, setReconMonth] = useState<string>("2026-05");
@@ -1330,7 +1334,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                             <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                               <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
-                                📂 1. Contracts, MoUs & Co-funding splits
+                                📂 1. Project papers — every document filed against this project
                               </h4>
                               {FINANCE.includes(currentUser.role) && (
                                 <label className="text-[10px] text-red-650 hover:text-red-700 font-bold cursor-pointer inline-flex items-center min-h-[44px] px-2">
@@ -1346,10 +1350,32 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             </div>
 
                             {projDocs.length === 0 ? (
-                              <p className="text-[11px] text-slate-400 italic py-2">No uploaded contracts or MoU PDFs found in this project archive.</p>
-                            ) : (
-                              <div className="space-y-1.5 max-h-40 overflow-y-auto">
-                                {projDocs.map(doc => (
+                              <p className="text-[11px] text-slate-400 italic py-2">No documents are filed against this project yet.</p>
+                            ) : (() => {
+                              // This list holds every paper on the project — 60 of them on
+                              // TRF — and it used to be an unlabelled 160px box with no way
+                              // to search it, so finding one document by its reference meant
+                              // scrolling past everything else.
+                              const needle = docFilter.trim().toLowerCase();
+                              const shown = needle
+                                ? projDocs.filter(d => `${d.refNo || ""} ${d.filename} ${d.category}`.toLowerCase().includes(needle))
+                                : projDocs;
+                              return (
+                              <div className="space-y-1.5">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <input type="search" value={docFilter} onChange={e => setDocFilter(e.target.value)}
+                                    placeholder="filter by reference, name or category — e.g. ANH-DOC-00313"
+                                    aria-label="Filter this project's documents"
+                                    className="finance-input flex-1 min-w-[200px] text-[11px] py-1" />
+                                  <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                                    {needle ? `${shown.length} of ${projDocs.length}` : `${projDocs.length} documents`}
+                                  </span>
+                                </div>
+                                {shown.length === 0 && (
+                                  <p className="text-[11px] text-slate-400 italic py-2">Nothing on this project matches "{docFilter}".</p>
+                                )}
+                                <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                                {shown.map(doc => (
                                   <div key={doc.id} className="flex justify-between items-center text-xs p-2 bg-white border border-slate-100 rounded shadow-inner">
                                     <span className="flex items-center gap-1.5 truncate max-w-xs">
                                       {doc.refNo && (
@@ -1394,8 +1420,10 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                     </a>
                                   </div>
                                 ))}
+                                </div>
                               </div>
-                            )}
+                              );
+                            })()}
                           </div>
 
                           {/* Folder B: Procurement & Bidding Files */}
