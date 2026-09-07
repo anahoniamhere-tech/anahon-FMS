@@ -66,6 +66,21 @@ ok("App.tsx has no hand-written allowlist left", !/\["dashboard", "projects", "e
 ok("App.tsx redirect reads visibleNav", /allowed = visibleNav\(role\)/.test(app));
 for (const [role, land] of Object.entries(LANDING)) ok(`${role} lands on ${land}, which it can see`, keys(role).includes(land));
 ok("everyone lands on the doors", ALL_ROLES.every(r => LANDING[r] === "doors" && keys(r).includes("doors")), ALL_ROLES.filter(r => LANDING[r] !== "doors").join(","));
+console.log("\nthe sidebar remembers whether it is open");
+// 7 Sep 2026: Saad is deciding whether the sidebar earns its place now that the doors
+// screen is home. The choice used to reset on every reload, so "try working without it"
+// was not something he could actually do.
+ok("the open state is seeded from localStorage", /localStorage\.getItem\("anahon-sidebar-open"\)/.test(app));
+ok("and written back when it changes", /localStorage\.setItem\("anahon-sidebar-open", isOpen \? "1" : "0"\)/.test(app));
+ok("a blocked store still renders — both sides are wrapped", (app.match(/} catch \{ \/\* storage blocked|} catch \{ \/\* nothing to do/g) || []).length === 2);
+// On a phone this same element is the drawer over the content: restoring it open would
+// put the black overlay across the screen on load.
+ok("the phone is never written to, and always starts closed",
+  /if \(!wide\) return false;/.test(app) && /window\.innerWidth < 768\) return;   \/\/ never from the phone drawer/.test(app));
+ok("the width default survives as the fallback", /return wide;/.test(app));
+// The sidebar itself is untouched — it still reads the same nav data everything else does.
+ok("the sidebar still renders from visibleNav", /visibleNav\(currentUser\?\.role \|\| ""\)\.map/.test(app));
+
 console.log("\nan open screen catches up on its own");
 // 7 Sep 2026: one person filed a document and the others kept showing their last load.
 // The server was never the problem — the client had no focus listener, no

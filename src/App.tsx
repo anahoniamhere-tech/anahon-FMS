@@ -415,7 +415,34 @@ export default function App() {
   // Project Workspace states
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
-  const [isOpen, setIsOpen] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth >= 768 : true);
+  /**
+   * Whether the sidebar column is open — remembered per browser, on desktop only.
+   *
+   * Saad is asking whether the sidebar is still needed now that the doors screen is home.
+   * He could not answer that before: the choice reset on every reload, so collapsing it
+   * lasted until the next page load. Now it sticks, and a week of working without it is
+   * an actual experiment rather than a decision made from an armchair.
+   *
+   * Not remembered on a phone, deliberately. There this same element is the drawer over
+   * the content, and restoring it open would put a black overlay across the screen on
+   * every load. A phone always starts closed, which is what the width default already did.
+   */
+  const [isOpen, setIsOpen] = useState<boolean>(() => {
+    const wide = typeof window !== 'undefined' && window.innerWidth >= 768;
+    if (!wide) return false;
+    try {
+      const stored = localStorage.getItem("anahon-sidebar-open");
+      if (stored === "1") return true;
+      if (stored === "0") return false;
+    } catch { /* storage blocked or full: the width default below still renders */ }
+    return wide;
+  });
+
+  // One place rather than in each toggle, so the two of them cannot drift apart.
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.innerWidth < 768) return;   // never from the phone drawer
+    try { localStorage.setItem("anahon-sidebar-open", isOpen ? "1" : "0"); } catch { /* nothing to do */ }
+  }, [isOpen]);
 
   const workspaceRef = useRef<HTMLDivElement | null>(null);
 
