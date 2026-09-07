@@ -7,6 +7,7 @@ import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { ACTIVITY_EDITORS, DIRECTORS, FINANCE } from "../roles";
 import { withTicket } from "../docTicket";
+import { pickCoreDoc, CORE_PATTERNS } from "../coreDocs";
 
 export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, workspaceRef }: SharedProps) {
   // Whoever holds the Finance Officer seat signs the printed project sheet — never a name in code.
@@ -1076,12 +1077,15 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                         {(() => {
                           const projDocsAll = state.documents.filter(d => d.linkedRecordType === "Project" && d.linkedRecordId === selectedProjectId);
                           const hasImportedTimetable = state.projectActivities.some(a => a.projectId === selectedProjectId && a.source === "imported");
-                          const match = (re: RegExp) => projDocsAll.find(d => re.test(`${d.category} ${d.filename}`.toLowerCase()));
+                          // Category first, filename only when no category fits, and the
+                          // newest of whatever fits — the rule and the reasons live in
+                          // src/coreDocs.ts, where they can be tested against the real rows.
+                          const pick = (key: string) => pickCoreDoc(key, CORE_PATTERNS[key], projDocsAll);
                           const slots = [
-                            { key: "Proposal", label: "Proposal", re: /proposal|concept note/, doc: match(/proposal|concept note/), extra: "" },
-                            { key: "Timetable", label: "Activity timetable", re: /timetable|timeline|work ?plan|year plan/, doc: match(/timetable|timeline|work ?plan|year plan/), extra: hasImportedTimetable ? "imported into the timeline below" : "" },
-                            { key: "Budget", label: "Approved budget", re: /budget/, doc: match(/budget/), extra: "" },
-                            { key: "Agreement", label: "Signed agreement", re: /agreement|contract|grant offer/, doc: match(/agreement|contract|grant offer/), extra: "" }
+                            { key: "Proposal", label: "Proposal", doc: pick("Proposal"), extra: "" },
+                            { key: "Timetable", label: "Activity timetable", doc: pick("Timetable"), extra: hasImportedTimetable ? "imported into the timeline below" : "" },
+                            { key: "Budget", label: "Approved budget", doc: pick("Budget"), extra: "" },
+                            { key: "Agreement", label: "Signed agreement", doc: pick("Agreement"), extra: "" }
                           ];
                           const missing = slots.filter(sl => !sl.doc && !sl.extra).length;
                           return (
