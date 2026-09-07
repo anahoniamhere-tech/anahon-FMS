@@ -931,13 +931,19 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                   📁 Active Restricted Projects
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {ranked.map(({ p: proj }) => {
+                  {ranked.map(({ p: proj, a }) => {
                     const donor = state.donors.find(d => d.id === proj.donorId);
                     const isSelected = selectedProjectId === proj.id;
-                    const burnTotal = state.budgetLines
-                      .filter(bl => bl.projectId === proj.id)
-                      .reduce((sum, bl) => sum + (bl.actualUSD || 0), 0);
-                    const burnPercent = Math.min(100, Math.round((burnTotal / (proj.budgetUSD || 1)) * 100));
+                    const burnPercent = Math.min(100, Math.round((a.spent / (proj.budgetUSD || 1)) * 100));
+                    // Odoo's smart buttons in our idiom: a count is only useful if pressing it
+                    // opens the thing it counted. No new navigation — the same two calls the
+                    // cards and the timeline list already make.
+                    const openAt = (tab: "folder" | "reconciliation") => (e: React.MouseEvent) => {
+                      e.stopPropagation();
+                      setSelectedProjectId(proj.id);
+                      setProjectWorkspaceTab(tab);
+                    };
+                    const lapsed = proj.status !== "Completed" && !!proj.endDate && proj.endDate < today;
 
                     return (
                       <div
@@ -966,6 +972,11 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             {proj.status}
                           </span>
                         </div>
+                        {lapsed && (
+                          <p className="text-[10px] font-bold text-amber-700 mb-1">
+                            ⏳ ended {proj.endDate} and still open
+                          </p>
+                        )}
                         <h4 className="text-sm font-bold text-slate-900 font-sans mb-1">{proj.name}</h4>
                         <p className="text-xs text-slate-500 mb-1">Donor Partner: {donor?.name || "Restricted Donor"}</p>
                         <p className="text-[10px] text-slate-400 mb-3">🏛 {proj.stream || "— program unassigned"}</p>
@@ -978,6 +989,28 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
                             <div className="bg-red-600 h-full transition-all duration-300" style={{ width: `${burnPercent}%` }} />
                           </div>
+                        </div>
+
+                        {/* Three counts, each opening what it counted. */}
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          <button type="button" onClick={openAt("folder")}
+                            title="Open this project's papers"
+                            className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
+                            <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{a.docs.length}</span>
+                            <span className="block text-[9px] uppercase text-slate-500">{t("papers")}{a.missingDocs > 0 && <span className="text-amber-700 font-bold"> · {a.missingDocs} {t("missing")}</span>}</span>
+                          </button>
+                          <button type="button" onClick={openAt("folder")}
+                            title="Open this project's timeline"
+                            className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
+                            <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{a.open.length}</span>
+                            <span className="block text-[9px] uppercase text-slate-500">{t("due")}{a.overdue > 0 && <span className="text-red-700 font-bold"> · {a.overdue} {t("overdue")}</span>}</span>
+                          </button>
+                          <button type="button" onClick={openAt("reconciliation")}
+                            title="Open the monthly reconciliation report"
+                            className="min-h-[44px] md:min-h-0 flex-1 rounded border border-slate-200 bg-slate-50 px-2 py-1.5 text-start hover:border-slate-300 hover:bg-slate-100 transition-colors">
+                            <span className="block font-mono text-sm font-bold text-slate-800" dir="ltr">{burnPercent}%</span>
+                            <span className="block text-[9px] uppercase text-slate-500">{t("spent")}</span>
+                          </button>
                         </div>
 
                         <div className="border-t border-slate-100 pt-3 flex justify-between items-center text-xs">
