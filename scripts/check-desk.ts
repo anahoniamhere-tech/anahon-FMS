@@ -254,6 +254,25 @@ const onProjects = (st2: any) => missingPaperItems(pd, st2).filter(i => i.door =
 ok("an empty project owes its four core papers on the projects door",
   onProjects(proj).length === 4 && onProjects(proj).every(i => i.title.startsWith("Asfari — ")),
   onProjects(proj).map(i => i.title).join(" | "));
+// 8 Sep 2026: the timetable slot was excused by `p.record.timetableImported`, a field that
+// exists on no model — so it read undefined every time and MADA-2026 was asked for a
+// timetable it had already imported. The signal is the activity rows, as the screen has
+// always had it. This fixture is the difference between 19 project papers and 20.
+const imported = st({
+  projects: [{ id: "p-9", name: "Asfari", status: "Active" }],
+  projectActivities: [{ id: "a-1", projectId: "p-9", source: "imported" }],
+  documents: [],
+});
+ok("an imported timetable excuses the timetable slot",
+  onProjects(imported).length === 3 && !onProjects(imported).some(i => i.title.includes("timetable")),
+  onProjects(imported).map(i => i.title).join(" | "));
+ok("and a manually entered activity does not excuse it",
+  onProjects(st({ projects: [{ id: "p-9", name: "Asfari", status: "Active" }],
+    projectActivities: [{ id: "a-1", projectId: "p-9", source: "manual" }], documents: [] })).length === 4);
+ok("nor does another project's import",
+  onProjects(st({ projects: [{ id: "p-9", name: "Asfari", status: "Active" }],
+    projectActivities: [{ id: "a-1", projectId: "p-other", source: "imported" }], documents: [] })).length === 4);
+
 ok("a closed project is not chased",
   onProjects(st({ projects: [{ id: "p-9", name: "Asfari", status: "Closed" }], documents: [] })).length === 0);
 // Ids must be stable, or a re-read would look like new work every time.

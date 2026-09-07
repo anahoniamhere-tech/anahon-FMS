@@ -216,7 +216,8 @@ type PaperSource = {
   kind: Kind;
   /** Subjects to check, and what to call each one on the desk. */
   subjects: (s: State) => { id: string; name: string; record: any }[];
-  missing: (docs: any[], subject: any) => { key: string; label: string }[];
+  /** State is passed too: a slot can be excused by something that is not on the record. */
+  missing: (docs: any[], subject: any, s: State) => { key: string; label: string }[];
 };
 
 /**
@@ -236,7 +237,13 @@ const PAPER_SOURCES: PaperSource[] = [
     seat: MANAGERS, door: "projects", kind: "projects",
     subjects: s => (s.projects || []).filter((p: any) => p.status !== "Closed")
       .map((p: any) => ({ id: p.id, name: p.name || p.code || p.id, record: p })),
-    missing: (docs, p) => missingCoreDocs(docs, p.id, !!(p.record?.timetableImported)),
+    // A timetable that arrived as imported activity rows excuses the document slot. The
+    // signal is the activity rows, never a field on the project: `timetableImported` was
+    // written here on 7 Sep and exists in neither schema.prisma nor types.ts, so it read
+    // undefined every time and the desk asked for a timetable that was already imported.
+    // This is the same `source === "imported"` test the Projects screen has always used.
+    missing: (docs, p, s) => missingCoreDocs(docs, p.id,
+      (((s as any).projectActivities as any[]) || []).some(a => a.projectId === p.id && a.source === "imported")),
   },
   {
     seat: SUPPLIER_EDITORS, door: "vendors", kind: "vendors",
@@ -261,7 +268,7 @@ export function missingPaperItems(me: Me, s: State): DeskItem[] {
     // date, a standing gap has no "due this week" that would justify it on a third desk.
     if (!src.seat.includes(me.role)) continue;
     for (const subject of src.subjects(s)) {
-      for (const paper of src.missing(docs, subject)) {
+      for (const paper of src.missing(docs, subject, s)) {
         out.push({
           id: `missing:${src.kind}:${subject.id}:${paper.key}`,
           kind: src.kind, recordId: subject.id, door: src.door,
