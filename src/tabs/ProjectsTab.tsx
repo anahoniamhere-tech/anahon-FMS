@@ -977,7 +977,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                               </button>
                             )}
                           </div>
-                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${proj.status === "Active" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${proj.status === "Active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"
                             }`}>
                             {proj.status}
                           </span>
@@ -988,7 +988,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           </p>
                         )}
                         <h4 className="text-sm font-bold text-slate-900 font-sans mb-1">{proj.name}</h4>
-                        <p className="text-xs text-slate-500 mb-1">Donor Partner: {donor?.name || "Restricted Donor"}</p>
+                        <p className="text-xs text-slate-500 mb-1">{t("Donor Partner")}: {donor?.name || "Restricted Donor"}</p>
                         <p className="text-[10px] text-slate-400 mb-3">🏛 {proj.stream || "— program unassigned"}</p>
 
                         <div className="space-y-1 mb-3">
