@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SharedProps } from "./shared";
 import { SITE_EDITORS } from "../roles";
 import InsightsPanel from "./InsightsPanel";
+import StoredSeries from "./StoredSeries";
 
 /**
  * Social desk — the system publishes to the AnaHon Facebook Pages and their Instagram accounts
@@ -294,6 +295,10 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
           )}
         </div>
       )}
+
+      {/* The long record. Outside the block above on purpose: YouTube and TikTok have no
+          connected Page, and the lifetime figures must show even with nothing connected at all. */}
+      <StoredSeries role={currentUser?.role} triggerToast={triggerToast} />
     </div>
   );
 }

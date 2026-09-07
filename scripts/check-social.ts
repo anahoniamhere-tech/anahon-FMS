@@ -2,6 +2,7 @@
 // Run: npx tsx scripts/check-social.ts
 import assert from "node:assert";
 import { nextAttemptAt, isDue, gateRelease, composeText, planPublish, initialState, connectUrl, BACKOFF_MINUTES, hintFor, isFinalError, isPending, GraphError, MAX_VIDEO_BYTES, VIDEO_MIMES, MAX_IMAGE_BYTES, IMAGE_MIMES, graph } from "../src/meta";
+import { periodCount, periodTotals } from "../src/insights";
 
 const now = new Date("2026-09-06T12:00:00.000Z");
 
@@ -92,3 +93,30 @@ assert.deepStrictEqual(await graph("/x"), { id: "1_2" });
 globalThis.fetch = realFetch;
 
 console.log("check-social: all asserts passed");
+
+// ---- the stored series ----------------------------------------------------------------------
+// A figure the export did not give must stay null. This is the assert that keeps a "—" from
+// turning into a "0" in a funder's proposal.
+assert.strictEqual(periodCount(""), null);
+assert.strictEqual(periodCount(undefined), null);
+assert.strictEqual(periodCount(null), null);
+assert.strictEqual(periodCount(0), 0, "an explicit zero is a real figure and is kept");
+assert.strictEqual(periodCount("11221433"), 11221433);
+assert.strictEqual(periodCount(-5), 0, "a negative count is not a thing");
+assert.strictEqual(periodCount("3.6"), 4);
+assert.strictEqual(periodCount("not a number"), 0);
+
+// Reach adds up across periods; followers is a level and is the latest one, never a sum.
+const series = [
+  { platform: "Instagram", periodEnd: "2023-12-31", reach: 1_119_545, followers: 10_000 },
+  { platform: "Instagram", periodEnd: "2024-03-31", reach: 500_000, followers: 12_000 },
+  { platform: "YouTube", periodEnd: "2023-12-31", views: 67_786, followers: null },
+];
+const t = Object.fromEntries(periodTotals(series));
+assert.strictEqual(t.Instagram.reach, 1_619_545, "reach adds across periods");
+assert.strictEqual(t.Instagram.last!.followers, 12_000, "followers is the latest level, not 22,000");
+assert.strictEqual(t.YouTube.views, 67_786);
+assert.strictEqual(t.YouTube.last, null, "a platform that reports no followers has no level to show");
+assert.strictEqual(periodTotals(series)[0][0], "Instagram", "biggest platform first");
+
+console.log("check-social: stored-series asserts passed");

@@ -10,7 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
-import { pageInsights, pagePosts, igInsights, igPosts } from "./src/insights.js";
+import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
@@ -129,7 +129,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
   "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build",
   "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
-  "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete",
+  "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete",
   "/api/tools/save", "/api/tools/delete",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/document/upload", "/api/materials/link",
@@ -139,7 +139,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 const EDITOR_ALLOWED_POSTS = new Set([
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
-  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
+  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
 ]);
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
 // Anyone can be given a task, so every working seat may tick its own and put it back;
@@ -4562,6 +4562,58 @@ app.get("/api/social/insights", async (req: any, res) => {
     insightsCache.set(key, { at: Date.now(), data });
     res.json({ ok: true, cached: false, ...data });
   } catch (e: any) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
+// ---- the stored series ---------------------------------------------------------------------
+// Meta answers at most 93 days (insights.ts windowFor), so "what has this platform done since
+// 2021" cannot be asked of the API at all. These rows are typed in by hand or off an export and
+// the live pull never touches them: the two answer different questions and must not overwrite
+// each other. Aggregates only — Policy 024 (draft) wants no personal data here, and there is none.
+// Read by anyone signed in: these are the figures AnaHon puts in front of funders, not the Page
+// tokens and queues the other social routes guard.
+app.get("/api/social/periods", async (_req, res) => {
+  const rows = await prisma.socialPeriod.findMany({ orderBy: [{ periodStart: "asc" }, { platform: "asc" }] });
+  res.json({ ok: true, rows });
+});
+const PERIOD_COUNTS = ["followers", "followersGained", "reach", "impressions", "views", "interactions"] as const;
+app.post("/api/social/periods/save", async (req, res) => {
+  try {
+    const b = req.body || {}, user = b.user;
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "The stored figures are the Social desk's." });
+    const platform = String(b.platform || "").trim();
+    const periodStart = String(b.periodStart || "").trim(), periodEnd = String(b.periodEnd || "").trim();
+    if (!platform) return res.status(400).json({ error: "Name the platform." });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart) || !/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) {
+      return res.status(400).json({ error: "Both dates are needed, as YYYY-MM-DD." });
+    }
+    if (periodEnd < periodStart) return res.status(400).json({ error: "The period ends before it starts." });
+    if (!String(b.source || "").trim()) return res.status(400).json({ error: "Say where the figure came from — a figure with no source cannot be quoted to a funder." });
+    const counts = Object.fromEntries(PERIOD_COUNTS.map(k => [k, periodCount(b[k])]));
+    if (PERIOD_COUNTS.every(k => counts[k] == null)) return res.status(400).json({ error: "Fill in at least one figure." });
+    const data = {
+      platform, periodStart, periodEnd, ...counts,
+      basis: ["organic", "includes paid", "unknown"].includes(b.basis) ? b.basis : "unknown",
+      source: String(b.source).trim(), note: String(b.note || "").trim()
+    };
+    const id = String(b.id || "");
+    const row = id && await prisma.socialPeriod.findUnique({ where: { id } })
+      ? await prisma.socialPeriod.update({ where: { id }, data })
+      : await prisma.socialPeriod.create({ data: { ...data, id: `sp-${Date.now()}`, recordedById: user?.id || "", recordedBy: user?.name || "", created_at: new Date().toISOString() } });
+    await createAuditLog(user?.id, user?.name, id ? "Social Period Updated" : "Social Period Recorded",
+      `${row.platform} ${row.periodStart} → ${row.periodEnd} (${row.source}).`);
+    res.json({ success: true, row });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+app.post("/api/social/periods/delete", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "The stored figures are the Social desk's." });
+    const row = await prisma.socialPeriod.findUnique({ where: { id: String(id || "") } });
+    if (!row) return res.status(404).json({ error: "No such row." });
+    await prisma.socialPeriod.delete({ where: { id: row.id } });
+    await createAuditLog(user?.id, user?.name, "Social Period Removed", `${row.platform} ${row.periodStart} → ${row.periodEnd} (${row.source}).`);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // Queue one post per target. Tied to an item that has not passed the gate → Draft, released by

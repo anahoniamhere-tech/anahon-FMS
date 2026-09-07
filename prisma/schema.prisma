@@ -647,3 +647,38 @@ model PushSubscription {
 
   @@index([userId])
 }
+
+// What a platform has done over a stretch of time — the long series the live Meta pull cannot give.
+//
+// Meta refuses any page-insights window longer than 93 days (src/insights.ts `windowFor`), so
+// "how is this month going" is the only question the API can answer. Lifetime figures were being
+// quoted to funders out of PDFs in Google Drive. One row here is one platform over one period,
+// typed in by hand or off an export, and the live pull NEVER writes to this table.
+//
+// Aggregates only — no person, no post, nothing identifying (Data Protection Policy 024, draft).
+// Audience geography is a sentence in `note`, not a model: it is read by someone writing a
+// proposal, never summed.
+//
+// Every count is nullable on purpose. A platform that does not report a metric (YouTube has no
+// "reach") must read "—", never 0: a zero in a funder's proposal is a claim, an absence is not.
+// `followers` is the total at the end of the period; `followersGained` is new followers in it —
+// two columns because the seed exports carry both kinds and one column would silently mix a
+// stock with a flow.
+model SocialPeriod {
+  id              String  @id
+  platform        String                        // Facebook | Instagram | YouTube | TikTok, or a named combination the export did not split
+  periodStart     String                        // YYYY-MM-DD
+  periodEnd       String
+  followers       Int?                          // total at periodEnd
+  followersGained Int?                          // new during the period
+  reach           Int?
+  impressions     Int?
+  views           Int?
+  interactions    Int?
+  basis           String  @default("unknown")   // organic | includes paid | unknown — a reach figure means nothing without it
+  source          String  @default("")          // the export or screen this was read off
+  note            String  @default("")          // anything the columns cannot hold, in words
+  recordedById    String  @default("")
+  recordedBy      String  @default("")
+  created_at      String
+}

@@ -49,6 +49,31 @@ export function windowFor(days: number, now = new Date()) {
   const since = new Date(until.getTime() - d * 86_400_000);
   return { days: d, since: since.toISOString().slice(0, 10), until: until.toISOString().slice(0, 10) };
 }
+// ---- the stored series (7 Sep 2026) ---------------------------------------------------------
+// windowFor above is why this exists: Meta will not answer past 93 days, so the long record is
+// typed in instead. These two rules are here rather than in the route and the component because
+// they are the two that would put a wrong number in front of a funder, and check-social pins them.
+
+/** A figure the export did not give stays null. "" and undefined must NEVER become 0: an empty
+ *  cell says the platform does not report it, a zero says the work reached nobody. */
+export const periodCount = (v: any) => (v === "" || v == null ? null : Math.max(Math.round(Number(v)) || 0, 0));
+
+export type PeriodRow = { platform: string; periodEnd: string; followers?: number | null; reach?: number | null; impressions?: number | null; views?: number | null; interactions?: number | null };
+/** Per platform across everything stored: reach, impressions, views and interactions add up over
+ *  periods; followers is a level, so it is the latest one, never a sum. Summing followers across
+ *  three exports is how an organisation ends up claiming three times the audience it has. */
+export function periodTotals(rows: PeriodRow[]) {
+  const by = new Map<string, { reach: number; impressions: number; views: number; interactions: number; last: PeriodRow | null }>();
+  for (const r of rows || []) {
+    const t = by.get(r.platform) || { reach: 0, impressions: 0, views: 0, interactions: 0, last: null };
+    t.reach += Number(r.reach) || 0; t.impressions += Number(r.impressions) || 0;
+    t.views += Number(r.views) || 0; t.interactions += Number(r.interactions) || 0;
+    if (r.followers != null && (!t.last || r.periodEnd > t.last.periodEnd)) t.last = r;
+    by.set(r.platform, t);
+  }
+  return [...by.entries()].sort((a, b) => (b[1].reach + b[1].impressions + b[1].views) - (a[1].reach + a[1].impressions + a[1].views));
+}
+
 /** Facebook counts reactions in an object; the desk wants one number and the pieces. */
 export const sumValues = (o: any): number => Object.values(o || {}).reduce<number>((t, v) => t + (Number(v) || 0), 0);
 
