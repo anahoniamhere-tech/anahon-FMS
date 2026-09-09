@@ -38,7 +38,7 @@ export const CONTAINER_TIMEOUT_MS = 30 * 60_000;
 
 export type SocialPostRow = {
   id: string; accountId: string; network: string; contentItemId: string; message: string; link: string;
-  imageUrl: string; videoRef: string; asReel: boolean; containerId: string;
+  imageUrl: string; imagesJson: string; videoRef: string; asReel: boolean; containerId: string;
   publishAt: string; state: string; attempts: number; lastError: string;
   postId: string; permalink: string; statsJson: string; createdBy: string; createdAt: string; publishedAt: string;
 };
@@ -67,26 +67,53 @@ export function gateRelease<T extends Pick<SocialPostRow, "state" | "publishAt">
 
 export const composeText = (message: string, link: string) => [message.trim(), link.trim()].filter(Boolean).join("\n\n");
 
-export type Plan = { kind: "fb-feed" | "fb-photo" | "fb-video" | "fb-reel" | "ig-image" | "ig-reel"; error?: string };
-type PlanInput = Pick<SocialPostRow, "network" | "message" | "link" | "imageUrl"> & Partial<Pick<SocialPostRow, "videoRef" | "asReel">>;
+/** Instagram publishes 2..10 carousel items; Facebook is looser, and the same cap keeps them alike. */
+export const CAROUSEL_MIN = 2;
+export const CAROUSEL_MAX = 10;
+/**
+ * The images this post carries, in order.
+ *
+ * One accessor so there is a single source of truth at read time: a carousel fills imagesJson, an
+ * ordinary post fills imageUrl, and every existing row (imagesJson "[]") keeps working untouched.
+ */
+export function imagesOf(row: { imageUrl?: string; imagesJson?: string }): string[] {
+  let list: unknown = [];
+  try { list = JSON.parse(row.imagesJson || "[]"); } catch { list = []; }
+  const many = (Array.isArray(list) ? list : []).map(x => String(x || "").trim()).filter(Boolean);
+  if (many.length) return many;
+  const one = String(row.imageUrl || "").trim();
+  return one ? [one] : [];
+}
+
+export type Plan = { kind: "fb-feed" | "fb-photo" | "fb-carousel" | "fb-video" | "fb-reel" | "ig-image" | "ig-carousel" | "ig-reel"; error?: string };
+type PlanInput = Pick<SocialPostRow, "network" | "message" | "link" | "imageUrl"> & Partial<Pick<SocialPostRow, "videoRef" | "asReel" | "imagesJson">>;
 /** What publishing this row means on its network, and why it cannot happen if it cannot. */
 export function planPublish(row: PlanInput): Plan {
   const text = composeText(row.message, row.link);
   const video = row.videoRef || "";
-  if (video && row.imageUrl) return { kind: "fb-feed", error: "One media per post — a video or an image, not both." };
+  const images = imagesOf(row);
+  if (video && images.length) return { kind: "fb-feed", error: "One media per post — a video or an image, not both." };
   if (video) {
     if (!/^doc:.+/.test(video)) return { kind: "fb-video", error: "A video must be a file in the vault — upload it from the desk." };
     if (row.network === "instagram") return { kind: "ig-reel" };
     if (row.network === "facebook") return { kind: row.asReel ? "fb-reel" : "fb-video" };
     return { kind: "fb-video", error: `Unknown network ${row.network}.` };
   }
+  const carousel = images.length >= CAROUSEL_MIN;
+  if (images.length > CAROUSEL_MAX) {
+    return { kind: row.network === "instagram" ? "ig-carousel" : "fb-carousel",
+             error: `A carousel takes at most ${CAROUSEL_MAX} images; this one has ${images.length}.` };
+  }
   if (row.network === "instagram") {
-    if (!row.imageUrl) return { kind: "ig-image", error: "Instagram needs an image or a video." };
-    if (!/^https:\/\//.test(row.imageUrl)) return { kind: "ig-image", error: "Instagram needs a public HTTPS image address — Meta fetches the file itself, so an uploaded image or an item's cover on the vault cannot go to Instagram until the media has a public address. A video from the vault can: it is uploaded as a Reel." };
-    return { kind: "ig-image" };
+    const kind = carousel ? "ig-carousel" : "ig-image";
+    if (!images.length) return { kind, error: "Instagram needs an image or a video." };
+    // Meta fetches every carousel child itself, exactly as it fetches a single image.
+    if (images.some(u => !/^https:\/\//.test(u))) return { kind, error: "Instagram needs a public HTTPS image address — Meta fetches the file itself, so an uploaded image or an item's cover on the vault cannot go to Instagram until the media has a public address. A video from the vault can: it is uploaded as a Reel." };
+    return { kind };
   }
   if (row.network === "facebook") {
-    if (row.imageUrl) return { kind: "fb-photo" };
+    if (carousel) return { kind: "fb-carousel" };
+    if (images.length) return { kind: "fb-photo" };
     if (!text) return { kind: "fb-feed", error: "A Facebook post needs a message or a link." };
     return { kind: "fb-feed" };
   }
@@ -267,18 +294,59 @@ export async function publishRow(row: SocialPostRow, a: SocialAccountRow, media:
     return { containerId };
   }
 
+  if (plan.kind === "ig-carousel") {
+    if (!a.igId) throw new Error("No Instagram account is linked to this Page.");
+    // Instagram builds a carousel from child containers: one per image, then a parent that names
+    // them. planPublish has already refused anything that is not a public HTTPS address, because
+    // Meta fetches each child itself exactly as it fetches a single image.
+    const children: string[] = [];
+    for (const url of imagesOf(row)) {
+      const c: any = await graph(`/${a.igId}/media`, { method: "POST", token: a.token, params: { image_url: url, is_carousel_item: "true" } });
+      children.push(String(c.id));
+    }
+    const parent: any = await graph(`/${a.igId}/media`, { method: "POST", token: a.token, params: { media_type: "CAROUSEL", children: children.join(","), caption: text } });
+    return publishContainer(String(parent.id), a);
+  }
+  if (plan.kind === "fb-carousel") {
+    // Facebook has no carousel object: it is a feed post with several photos attached, each
+    // uploaded unpublished first. Vault bytes are fine here — only Instagram must fetch for itself.
+    const ids: string[] = [];
+    for (const ref of imagesOf(row)) {
+      let r: any;
+      if (/^https?:\/\//.test(ref)) {
+        r = await graph(`/${a.id}/photos`, { method: "POST", token: a.token, params: { url: ref, published: "false" } });
+      } else {
+        const bytes = await media(ref);
+        if (!bytes) throw new Error(`The image "${ref}" could not be read from the vault.`);
+        if (!IMAGE_MIMES.includes(bytes.mime)) throw new Error(`Not an image Facebook accepts (${bytes.mime}) — JPEG, PNG or WebP.`);
+        if (bytes.size > MAX_IMAGE_BYTES) throw new Error(`The image is ${Math.round(bytes.size / 1048576)} MB; the limit is ${MAX_IMAGE_BYTES / 1048576} MB.`);
+        const form = new FormData();
+        form.set("source", new Blob([bytes.buffer], { type: bytes.mime }), bytes.name);
+        r = await graph(`/${a.id}/photos`, { method: "POST", token: a.token, form, params: { published: "false" } });
+      }
+      ids.push(String(r.id));
+    }
+    // Only the feed post itself is wrapped in committing(): the unpublished uploads above leave
+    // nothing on the Page if they half-fail, but this is the call that can publish and time out.
+    const params: Record<string, string> = { message: text };
+    ids.forEach((id, i) => { params[`attached_media[${i}]`] = JSON.stringify({ media_fbid: id }); });
+    const r: any = await committing(graph(`/${a.id}/feed`, { method: "POST", token: a.token, params }));
+    const postId = String(r.id);
+    return { postId, permalink: await fbPermalink(postId, a.token, `https://facebook.com/${postId}`) };
+  }
   if (plan.kind === "ig-image") {
     if (!a.igId) throw new Error("No Instagram account is linked to this Page.");
-    const c: any = await graph(`/${a.igId}/media`, { method: "POST", token: a.token, params: { image_url: row.imageUrl, caption: text } });
+    const c: any = await graph(`/${a.igId}/media`, { method: "POST", token: a.token, params: { image_url: imagesOf(row)[0], caption: text } });
     return publishContainer(String(c.id), a);
   }
   if (plan.kind === "fb-photo") {
     let r: any;
-    if (/^https?:\/\//.test(row.imageUrl)) {
-      r = await committing(graph(`/${a.id}/photos`, { method: "POST", token: a.token, params: { url: row.imageUrl, message: text } }));
+    const only = imagesOf(row)[0] || "";
+    if (/^https?:\/\//.test(only)) {
+      r = await committing(graph(`/${a.id}/photos`, { method: "POST", token: a.token, params: { url: only, message: text } }));
     } else {
-      const bytes = await media(row.imageUrl);
-      if (!bytes) throw new Error(`The image "${row.imageUrl}" could not be read from the vault.`);
+      const bytes = await media(only);
+      if (!bytes) throw new Error(`The image "${only}" could not be read from the vault.`);
       if (!IMAGE_MIMES.includes(bytes.mime)) throw new Error(`Not an image Facebook accepts (${bytes.mime}) — JPEG, PNG or WebP.`);
       if (bytes.size > MAX_IMAGE_BYTES) throw new Error(`The image is ${Math.round(bytes.size / 1048576)} MB; the limit is ${MAX_IMAGE_BYTES / 1048576} MB.`);
       const form = new FormData();

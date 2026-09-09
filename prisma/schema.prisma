@@ -432,7 +432,15 @@ model FxRates {
 model ContentItem {
   id                  String  @id
   title               String
-  contentType         String  @default("Post")   // CONTENT_TYPES — Policy 002 "infographics, reels, …"
+  contentType         String  @default("Post")   // CONTENT_TYPES — Policy 002 "infographics, reels, …" (the FORMAT)
+  // Policy 002 "Content Types": News | Commercial | Opinion, each of which the policy requires be
+  // CLEARLY LABELLED on the published piece — "News", "Sponsored"/"Advertisement"/"Paid Content",
+  // "Opinion"/"Editorial"/"Commentary". Distinct from contentType above, which is the format.
+  // Empty until chosen; publishBlockers refuses to publish an unlabelled piece.
+  contentLabel        String  @default("")
+  // Commercial only: "Maintain transparency about any commercial relationships or sponsorships
+  // associated with the content" (Policy 002). Who paid for it, or what the relationship is.
+  sponsorDisclosure   String  @default("")
   stream              String  @default("")       // programme (STREAMS) — POs own their programme's content
   channelsJson        String  @default("[]")     // subset of CONTENT_CHANNELS (Policy 002 channels)
   brief               String  @default("")
@@ -498,6 +506,10 @@ model SocialPost {
   message       String @default("")
   link          String @default("")
   imageUrl      String @default("")            // public https URL, or cover:<contentItemId> (bytes from the vault — Facebook only)
+  // A carousel: the ordered images, 2..CAROUSEL_MAX of them, same ref shapes as imageUrl. Empty
+  // for an ordinary single-image post, which keeps using imageUrl — imagesOf() reads whichever
+  // is set, so one accessor is the only source of truth at read time.
+  imagesJson    String @default("[]")
   videoRef      String @default("")            // doc:<AppDoc.id> — a video in the vault, uploaded as bytes (Facebook video/Reel, Instagram Reel)
   asReel        Boolean @default(false)        // Facebook: post the video as a Reel rather than a Page video (Instagram is always a Reel)
   containerId   String @default("")            // Instagram container awaiting FINISHED while the row is Publishing

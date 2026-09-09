@@ -16,7 +16,7 @@
  * them, so the map teaches the rule instead of inviting someone to drag it away.
  */
 import { RULES, type Rule, type DeskItem } from "./workflow";
-import { CONTENT_STATUSES, CONTENT_CHECKS, publishBlockers, type ContentGateFields } from "./editorialGates";
+import { CONTENT_STATUSES, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, type ContentGateFields } from "./editorialGates";
 
 /** The one collection this map draws. Everything else in RULES belongs to another door. */
 export const MAP_KIND = "contentItems";
@@ -83,6 +83,10 @@ function pieceAt(i: number, extra: Partial<ContentGateFields> = {}): ContentGate
     pmApprovedBy: i > APPROVALS_AT ? "pm-person" : "",
     pdApprovedBy: i > APPROVALS_AT ? "pd-person" : "",
     legalFlag: false, legalReviewedBy: "",
+    // Policy 002's News/Commercial/Opinion label is a standing requirement, not a station's job:
+    // it is chosen on the piece at any point, exactly like the seven standards. So the synthetic
+    // piece carries one and standingRequirements() surfaces the rule instead.
+    contentLabel: CONTENT_LABELS[0][0], sponsorDisclosure: "",
     checksJson: "{}", aiAssisted: false, aiDisclosed: false,
     ...extra,
   };
@@ -119,8 +123,15 @@ const blockersAt = (i: number) =>
 export function standingRequirements() {
   const clean = publishBlockers(pieceAt(CONTENT_STATUSES.length - 1));
   const flagged = publishBlockers(pieceAt(CONTENT_STATUSES.length - 1, { legalFlag: true, aiAssisted: true }));
+  const last = CONTENT_STATUSES.length - 1;
   return {
     standards: CONTENT_CHECKS.map(([, label, sentence]) => ({ label, sentence })),
+    // Asked of the gate rather than restated: what it says about a piece with no label, and about
+    // a commercial piece that has not disclosed who paid for it.
+    labelling: [
+      ...publishBlockers(pieceAt(last, { contentLabel: "" })).filter(b => !clean.includes(b)),
+      ...publishBlockers(pieceAt(last, { contentLabel: "Commercial" })).filter(b => !clean.includes(b)),
+    ],
     conditional: flagged.filter(b => !clean.includes(b)),
   };
 }

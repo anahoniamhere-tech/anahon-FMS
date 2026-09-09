@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SharedProps } from "./shared";
 import { SITE_EDITORS } from "../roles";
 import { socialPostBlockers, socialRendition, CAPTION_KIND } from "../editorialGates";
+import { CAROUSEL_MIN, CAROUSEL_MAX } from "../meta";
 import InsightsPanel from "./InsightsPanel";
 import StoredSeries from "./StoredSeries";
 
@@ -56,8 +57,13 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
   const items: any[] = useMemo(() => ((state as any)?.contentItems || []).filter((i: any) => !i.retractedAt), [state]);
   const [targets, setTargets] = useState<string[]>([]);          // "accountId|network"
   const [message, setMessage] = useState(""); const [link, setLink] = useState("");
-  const [media, setMedia] = useState<Media>("none"); const [imageUrl, setImageUrl] = useState(""); const [imageId, setImageId] = useState("");
+  const [media, setMedia] = useState<Media>("none"); const [imageUrl, setImageUrl] = useState("");
   const [videoId, setVideoId] = useState(""); const [asReel, setAsReel] = useState(false);
+  // The ordered images of the post: one is a photo, two or more is a carousel. Each entry is a
+  // public https address or a vault image id — the server checks both exactly as before.
+  const [pics, setPics] = useState<{ v: string; label: string }[]>([]);
+  const addPic = (v: string, label: string) => setPics(p =>
+    p.length >= CAROUSEL_MAX || p.some(x => x.v === v) ? p : [...p, { v, label }]);
   const [library, setLibrary] = useState<{ videos: any[]; images: any[] } | null>(null); const [uploading, setUploading] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null); const imgRef = useRef<HTMLInputElement>(null);
   const [itemId, setItemId] = useState(""); const [when, setWhen] = useState(""); const [busy, setBusy] = useState(false);
@@ -89,19 +95,22 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
     const r = await fetch(`/api/social/media?name=${encodeURIComponent(f.name)}&item=${encodeURIComponent(itemId)}`, { method: "POST", headers: { "content-type": type }, body: f })
       .then(async res => { try { return await res.json(); } catch { return { error: res.status === 413 ? `The server refused the size (over ${capMb} MB)` : `Upload failed (HTTP ${res.status})` }; } }).catch(e => ({ error: e.message }));
     setUploading(0);
-    if (r.success) { triggerToast(r.duplicate ? "That file was already in the vault — reused" : `Uploaded ${r.doc.filename} (${r.doc.sizeStr})`); if (kind === "video") setVideoId(r.doc.id); else { setImageId(r.doc.id); setImageUrl(""); } loadLibrary(); }
+    if (r.success) { triggerToast(r.duplicate ? "That file was already in the vault — reused" : `Uploaded ${r.doc.filename} (${r.doc.sizeStr})`); if (kind === "video") setVideoId(r.doc.id); else addPic(r.doc.id, r.doc.filename); loadLibrary(); }
     else triggerToast(r.error || "Upload failed", "error");
   };
   const igChosen = targets.some(t => t.endsWith("|instagram")); const fbChosen = targets.some(t => t.endsWith("|facebook"));
   const willDraft = item && item.status !== "Published";
-  const hasMedia = media === "cover" ? !!item?.coverPath : media === "image" ? !!(imageUrl || imageId) : media === "video" ? !!videoId : false;
+  const hasMedia = media === "cover" ? !!item?.coverPath : media === "image" ? pics.length > 0 : media === "video" ? !!videoId : false;
+  const isCarousel = media === "image" && pics.length >= CAROUSEL_MIN;
+  // Instagram fetches every image itself, so a carousel of vault images cannot go there.
+  const igNeedsPublic = igChosen && media === "image" && pics.some(p => !/^https:\/\//.test(p.v));
   // Policy 002 covers these channels too: a post carries a piece, and the gate decides when it
   // goes. The same function the server refuses with, so the button and the 403 cannot disagree.
   const gate = socialPostBlockers(item || null);
   const rendition = socialRendition(item || null);
   const edited = !!item && message.trim() !== rendition.text.trim();
   const canSend = !gate.length && targets.length > 0 && !busy && !uploading && (message.trim() || link.trim() || hasMedia) && (media === "none" || hasMedia)
-    && !(igChosen && media !== "video" && media !== "image") && !(igChosen && media === "image" && !!imageId);   // Instagram takes no image bytes, only an address
+    && !(igChosen && media !== "video" && media !== "image") && !igNeedsPublic;   // Instagram takes no image bytes, only an address
   const queueIt = async () => {
     const names = targetOptions.filter(o => targets.includes(o.key)).map(o => o.label).join(", ");
     const timing = willDraft ? "when the item passes the editorial gate" : when ? `at ${when.replace("T", " ")}` : "now";
@@ -109,12 +118,12 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
     setBusy(true);
     const r = await post("/api/social/queue", {
       targets: targets.map(t => { const [accountId, network] = t.split("|"); return { accountId, network }; }),
-      message, link: link || undefined, imageUrl: media === "image" && !imageId ? imageUrl : undefined, imageRef: media === "image" && imageId ? imageId : undefined, useCover: media === "cover",
+      message, link: link || undefined, images: media === "image" ? pics.map(p => p.v) : undefined, useCover: media === "cover",
       videoRef: media === "video" ? videoId : undefined, asReel: media === "video" && asReel,
       publishAt: when ? new Date(when).toISOString() : undefined, contentItemId: itemId || undefined
     }).catch(e => ({ error: e.message }));
     setBusy(false);
-    if (r.success) { triggerToast(r.drafted ? "Drafted — it goes out when the item passes the gate" : when ? "Scheduled" : media === "video" ? (igChosen ? "Uploading to the networks — Instagram takes a few minutes to process a Reel" : "Uploading to Facebook — the queue reports when it is live") : "Publishing — the queue reports within a minute"); setMessage(""); setLink(""); setImageUrl(""); setImageId(""); setVideoId(""); setMedia("none"); setItemId(""); setWhen(""); loadQueue(); }
+    if (r.success) { triggerToast(r.drafted ? "Drafted — it goes out when the item passes the gate" : when ? "Scheduled" : media === "video" ? (igChosen ? "Uploading to the networks — Instagram takes a few minutes to process a Reel" : "Uploading to Facebook — the queue reports when it is live") : "Publishing — the queue reports within a minute"); setMessage(""); setLink(""); setImageUrl(""); setPics([]); setVideoId(""); setMedia("none"); setItemId(""); setWhen(""); loadQueue(); }
     else triggerToast(r.error || "Could not queue the post", "error");
   };
   const act = async (route: string, id: string, ok: string) => {
@@ -216,16 +225,36 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
           {media === "image" && (
             <div className="space-y-2 rounded border border-slate-200 p-2">
               <div className="flex flex-wrap items-center gap-2">
-                <select value={imageId} onChange={e => { setImageId(e.target.value); if (e.target.value) setImageUrl(""); }} dir="ltr" className="min-w-[16rem] flex-1 rounded border border-slate-300 px-2 py-1">
-                  <option value="">{library == null ? "loading the vault's images…" : library.images.length ? "choose an image in the vault…" : "no images in the vault yet"}</option>
+                <select value="" onChange={e => { const v = library?.images.find(x => x.id === e.target.value); if (v) addPic(v.id, v.filename); }} dir="ltr" className="min-w-[16rem] flex-1 rounded border border-slate-300 px-2 py-1">
+                  <option value="">{library == null ? "loading the vault's images…" : library.images.length ? "add an image from the vault…" : "no images in the vault yet"}</option>
                   {(library?.images || []).map(v => <option key={v.id} value={v.id}>{`${v.filename} · ${v.sizeStr} · ${v.created_at.slice(0, 10)}${v.refNo ? ` · ${v.refNo}` : ""}`}</option>)}
                 </select>
                 <input ref={imgRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) uploadMedia(f, "image"); e.target.value = ""; }} />
                 <button type="button" onClick={() => imgRef.current?.click()} disabled={!!uploading} className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40">{uploading ? `Uploading ${Math.max(1, Math.round(uploading / 1048576))} MB…` : "Upload an image"}</button>
                 <span className="text-slate-400">or</span>
-                <input value={imageUrl} onChange={e => { setImageUrl(e.target.value); if (e.target.value) setImageId(""); }} dir="ltr" placeholder="a public https:// address" className="min-w-[14rem] flex-1 rounded border border-slate-300 px-2 py-1" />
+                <input value={imageUrl} onChange={e => setImageUrl(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && imageUrl.trim()) { e.preventDefault(); addPic(imageUrl.trim(), imageUrl.trim()); setImageUrl(""); } }}
+                  dir="ltr" placeholder="a public https:// address" className="min-w-[14rem] flex-1 rounded border border-slate-300 px-2 py-1" />
+                <button type="button" disabled={!imageUrl.trim()} onClick={() => { addPic(imageUrl.trim(), imageUrl.trim()); setImageUrl(""); }}
+                  className="rounded border border-slate-300 px-3 py-1 font-bold disabled:opacity-40">add</button>
               </div>
-              <p className="text-slate-500">JPEG, PNG or WebP up to <span dir="ltr">{MAX_IMAGE_MB} MB</span>. An uploaded image reaches Facebook; Instagram only takes a public address, because Meta fetches the file itself.</p>
+              {pics.length > 0 && (
+                <ol className="space-y-1">
+                  {pics.map((p, i) => (
+                    <li key={p.v} className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-1">
+                      <span className="w-4 shrink-0 text-slate-400" dir="ltr">{i + 1}</span>
+                      <span className="min-w-0 flex-1 truncate" dir="auto" title={p.v}>{p.label}</span>
+                      {i > 0 && <button type="button" onClick={() => setPics(a => { const b = [...a]; [b[i - 1], b[i]] = [b[i], b[i - 1]]; return b; })} className="text-slate-500" title="earlier">↑</button>}
+                      <button type="button" onClick={() => setPics(a => a.filter(x => x.v !== p.v))} className="text-red-700 underline">remove</button>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <p className="text-slate-500">
+                JPEG, PNG or WebP up to <span dir="ltr">{MAX_IMAGE_MB} MB</span> each. One image is a photo;{" "}
+                <span dir="ltr">{CAROUSEL_MIN}</span>–<span dir="ltr">{CAROUSEL_MAX}</span> is a carousel, published in the order above.
+                An uploaded image reaches Facebook; Instagram only takes a public address, because Meta fetches every image itself.
+              </p>
             </div>
           )}
           {media === "video" && (
@@ -243,7 +272,8 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
             </div>
           )}
           {igChosen && media !== "video" && media !== "image" && <p className="text-amber-700">Instagram needs an image or a video. An image must be a public HTTPS address (Meta fetches the file itself); a video from the vault works, as a Reel.</p>}
-          {igChosen && (media === "cover" || (media === "image" && imageId)) && <p className="text-amber-700">An image on the vault reaches Facebook only — Instagram needs a public image address.</p>}
+          {igChosen && (media === "cover" || igNeedsPublic) && <p className="text-amber-700">An image on the vault reaches Facebook only — Instagram needs a public image address.</p>}
+          {isCarousel && <p className="text-slate-500">A carousel of <span dir="ltr">{pics.length}</span> images{fbChosen ? " — on Facebook a post with several photos" : ""}{igChosen ? " — on Instagram a swipeable carousel" : ""}.</p>}
 
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-1 text-slate-600">when <input type="datetime-local" value={when} min={toLocalInput(new Date())} onChange={e => setWhen(e.target.value)} dir="ltr" disabled={!!willDraft} className="rounded border border-slate-300 px-1 py-0.5 disabled:opacity-40" /> <span className="text-slate-400">(empty = now)</span></label>
@@ -267,7 +297,9 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
                   <span className="text-slate-500" dir="ltr">{fmtWhen(r.state === "Published" ? r.publishedAt : r.publishAt)}</span>
                   {it && <span className="text-slate-500" dir="auto">for “{it.title.slice(0, 40)}”</span>}
                   <span className="min-w-0 flex-1 truncate" dir="auto" title={r.message}>{r.message || r.link}</span>
-                  {r.videoRef ? <span className="text-slate-400" title={r.asReel || r.network === "instagram" ? "Reel" : "video"}>🎬{r.asReel || r.network === "instagram" ? " Reel" : ""}</span> : r.imageUrl && <span className="text-slate-400">📷</span>}
+                  {r.videoRef ? <span className="text-slate-400" title={r.asReel || r.network === "instagram" ? "Reel" : "video"}>🎬{r.asReel || r.network === "instagram" ? " Reel" : ""}</span>
+                    : (JSON.parse(r.imagesJson || "[]").length > 1) ? <span className="text-slate-400" title="carousel">🖼 <span dir="ltr">{JSON.parse(r.imagesJson).length}</span></span>
+                    : r.imageUrl && <span className="text-slate-400">📷</span>}
                   {r.state === "Published" && (r.stats?.likes != null) && <span className="text-slate-500" dir="ltr">♥ {r.stats.likes} · 💬 {r.stats.comments}{r.stats.shares != null ? ` · ↗ ${r.stats.shares}` : ""}</span>}
                   {r.permalink && <a href={r.permalink} target="_blank" rel="noopener" className="text-slate-500 underline">open ↗</a>}
                   {r.lastError && r.state !== "Published" && <span dir="ltr" className="text-red-700" title={r.lastError}>{r.lastError.slice(0, 90)}{r.attempts ? ` (attempt ${r.attempts})` : ""}</span>}

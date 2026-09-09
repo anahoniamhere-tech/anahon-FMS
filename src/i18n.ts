@@ -616,7 +616,7 @@ export const AR: Record<string, string> = {
   "Never the author of the piece.": "ليس كاتب القطعة أبداً.",
   "No one person may hold more than one of these approvals.": "لا يجوز لشخص واحد أن يشغل أكثر من واحدة من هذه الموافقات.",
   // Policy 002 content types + carousels (9 Sep 2026)
-  "Label": "التصنيف",
+  "Content label": "تصنيف المحتوى",
   "choose": "اختر",
   "News": "أخبار",
   "Commercial": "محتوى تجاري",

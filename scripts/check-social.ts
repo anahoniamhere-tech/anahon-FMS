@@ -1,7 +1,7 @@
 // Social desk self-check — pure asserts on src/meta.ts, no network, no database.
 // Run: npx tsx scripts/check-social.ts
 import assert from "node:assert";
-import { nextAttemptAt, isDue, gateRelease, composeText, planPublish, initialState, connectUrl, BACKOFF_MINUTES, hintFor, isFinalError, isPending, GraphError, MAX_VIDEO_BYTES, VIDEO_MIMES, MAX_IMAGE_BYTES, IMAGE_MIMES, graph } from "../src/meta";
+import { imagesOf, CAROUSEL_MIN, CAROUSEL_MAX, nextAttemptAt, isDue, gateRelease, composeText, planPublish, initialState, connectUrl, BACKOFF_MINUTES, hintFor, isFinalError, isPending, GraphError, MAX_VIDEO_BYTES, VIDEO_MIMES, MAX_IMAGE_BYTES, IMAGE_MIMES, graph } from "../src/meta";
 import { periodCount, periodTotals } from "../src/insights";
 
 const now = new Date("2026-09-06T12:00:00.000Z");
@@ -120,3 +120,33 @@ assert.strictEqual(t.YouTube.last, null, "a platform that reports no followers h
 assert.strictEqual(periodTotals(series)[0][0], "Instagram", "biggest platform first");
 
 console.log("check-social: stored-series asserts passed");
+
+// ---- carousels (9 Sep 2026) -------------------------------------------------------------------
+// imagesOf is the single source of truth: a carousel fills imagesJson, an ordinary post fills
+// imageUrl, and every row written before this existed keeps working.
+assert.deepStrictEqual(imagesOf({ imageUrl: "https://x/a.jpg", imagesJson: "[]" }), ["https://x/a.jpg"], "a legacy row still has its image");
+assert.deepStrictEqual(imagesOf({ imageUrl: "", imagesJson: "[]" }), [], "no image is no image");
+assert.deepStrictEqual(imagesOf({ imageUrl: "https://x/a.jpg", imagesJson: '["https://x/b.jpg","https://x/c.jpg"]' }),
+  ["https://x/b.jpg", "https://x/c.jpg"], "the list wins when it is set");
+assert.deepStrictEqual(imagesOf({ imagesJson: "not json" } as any), [], "a corrupt list is no images, never a crash");
+assert.deepStrictEqual(imagesOf({ imagesJson: '["  ", "https://x/a.jpg"]' } as any), ["https://x/a.jpg"], "blank entries are dropped");
+
+const P = "https://x.org/p.jpg", Q = "https://x.org/q.jpg";
+const plan = (network: string, imagesJson: string, extra: any = {}) =>
+  planPublish({ network, message: "m", link: "", imageUrl: "", imagesJson, ...extra } as any);
+assert.strictEqual(plan("facebook", JSON.stringify([P, Q])).kind, "fb-carousel");
+assert.strictEqual(plan("instagram", JSON.stringify([P, Q])).kind, "ig-carousel");
+assert.strictEqual(plan("facebook", JSON.stringify([P])).kind, "fb-photo", "one image is a photo, not a carousel");
+assert.strictEqual(plan("instagram", JSON.stringify([P])).kind, "ig-image");
+assert.strictEqual(plan("facebook", JSON.stringify(["doc:1", "doc:2"])).error, undefined,
+  "Facebook takes vault bytes in a carousel");
+assert.match(plan("instagram", JSON.stringify([P, "doc:2"])).error!, /public HTTPS/,
+  "Instagram fetches every child itself, so one vault image spoils the carousel");
+assert.match(plan("facebook", JSON.stringify(Array(CAROUSEL_MAX + 1).fill(P))).error!, new RegExp(`at most ${CAROUSEL_MAX}`));
+assert.strictEqual(plan("facebook", JSON.stringify(Array(CAROUSEL_MAX).fill(0).map((_, i) => `${P}?${i}`))).error, undefined,
+  `${CAROUSEL_MAX} images is still allowed`);
+assert.match(plan("facebook", JSON.stringify([P, Q]), { videoRef: "doc:9" }).error!, /One media per post/,
+  "a video and a carousel together is still refused");
+assert.ok(CAROUSEL_MIN === 2 && CAROUSEL_MAX === 10, "Instagram publishes 2..10 carousel items");
+
+console.log("check-social: carousel asserts passed");

@@ -3,7 +3,7 @@
 // Run: npx tsx scripts/check-editorial-gates.ts
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { CONTENT_CHECKS, CONTENT_STATUSES, publishBlockers, socialPostBlockers, socialRendition, CAPTION_KIND } from "../src/editorialGates";
+import { CONTENT_CHECKS, CONTENT_STATUSES, CONTENT_LABELS, publishBlockers, socialPostBlockers, socialRendition, CAPTION_KIND, labelWord, labelNeedsMarking } from "../src/editorialGates";
 import { RULES } from "../src/workflow";
 import { editorialStations, PUBLISHABLE_STATUS, livePositions, stationStanding, MAP_KIND } from "../src/editorialMap";
 
@@ -15,6 +15,10 @@ const good = {
   pdApprovedBy: "u-pd",
   legalFlag: false,
   legalReviewedBy: "",
+  // Policy 002 requires every piece to be labelled News/Commercial/Opinion (9 Sep 2026), so a
+  // "fully satisfied" item now carries one — an unlabelled piece is asserted separately below.
+  contentLabel: "News",
+  sponsorDisclosure: "",
   checksJson: JSON.stringify(allChecks)
 };
 
@@ -191,6 +195,44 @@ assert.ok(/setMessage\(socialRendition\(/.test(socialSrc),
   "SocialTab must fill the message from socialRendition(), not from title + brief");
 assert.ok(!/setMessage\(`\$\{it\.title\}/.test(socialSrc),
   "the old title+brief assembly must be gone from the composer");
+
+/* ── Policy 002 "Content Types": News / Commercial / Opinion ──────────────────
+ * The policy defines three kinds of content and requires each be CLEARLY LABELLED and
+ * distinguishable from the others. Until 9 Sep 2026 the FMS had no field for it at all, so
+ * sponsored content could not be marked as sponsored anywhere.
+ */
+assert.deepStrictEqual(CONTENT_LABELS.map(([k]) => k), ["News", "Commercial", "Opinion"],
+  "the three content types Policy 002 defines");
+for (const [, , sentence] of CONTENT_LABELS) assert.match(sentence, /Policy 002/, "each label cites the policy");
+
+const labelled = (contentLabel: string, sponsorDisclosure = "") => ({ ...good, contentLabel, sponsorDisclosure });
+assert.match(publishBlockers({ ...good, contentLabel: "" })[0], /content label/,
+  "an unlabelled piece may not be published");
+assert.deepStrictEqual(publishBlockers(labelled("News")), [], "a labelled piece publishes");
+assert.deepStrictEqual(publishBlockers(labelled("Opinion")), [], "opinion needs no disclosure");
+assert.match(publishBlockers(labelled("Commercial"))[0], /who paid for it/,
+  "commercial content must disclose the relationship (Policy 002 transparency)");
+assert.deepStrictEqual(publishBlockers(labelled("Commercial", "Paid by the Municipality")), [],
+  "commercial content with its disclosure publishes");
+assert.deepStrictEqual(publishBlockers(labelled("Commercial", "   ")).length, 1, "a blank disclosure is no disclosure");
+assert.match(publishBlockers({ ...good, contentLabel: "Sponsored" })[0], /not a content label/,
+  "the label word is not the label — only the three types are accepted");
+
+// The mark rides in the caption: on a social account there is no design or placement to carry it.
+assert.strictEqual(labelWord("Commercial"), "Sponsored");
+assert.strictEqual(labelWord("Opinion"), "Opinion");
+assert.strictEqual(labelWord("News"), "News");
+assert.strictEqual(labelWord(""), "");
+assert.ok(labelNeedsMarking("Commercial") && labelNeedsMarking("Opinion"), "these two must be told apart from editorial");
+assert.ok(!labelNeedsMarking("News") && !labelNeedsMarking(""), "News is what the audience already assumes");
+const cap = [d(CAPTION_KIND, "the caption")];
+assert.strictEqual(socialRendition({ title: "T", drafts: cap, contentLabel: "Commercial" }).text, "Sponsored: the caption");
+assert.strictEqual(socialRendition({ title: "T", drafts: cap, contentLabel: "Opinion" }).text, "Opinion: the caption");
+assert.strictEqual(socialRendition({ title: "T", drafts: cap, contentLabel: "News" }).text, "the caption");
+assert.strictEqual(socialRendition({ title: "T", drafts: [d(CAPTION_KIND, "Sponsored: already said")], contentLabel: "Commercial" }).text,
+  "Sponsored: already said", "an editor who wrote the mark themselves is not marked twice");
+assert.strictEqual(socialRendition({ title: "T", brief: "B", contentLabel: "Commercial" }).text, "Sponsored: T\n\nB",
+  "an improvised text is marked too");
 
 console.log("check-editorial-gates: all assertions passed —",
   `${5 + cases.length + CONTENT_CHECKS.length} gate scenarios (Policies 002 & 005 + transparency rule)`,

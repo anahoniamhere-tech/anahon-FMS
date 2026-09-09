@@ -51,6 +51,31 @@ export function socialPostBlockers(item: { status: string; retractedAt: string }
   return [];
 }
 
+/**
+ * Policy 002 "Content Types" — the label the published piece must carry.
+ *
+ * NOT the same as CONTENT_TYPES above, which is the format (Article, Reel, Podcast…). The policy
+ * defines three kinds of content and requires each be distinguishable from the others:
+ *   News       — "Clearly label all news articles, reports, and broadcasts as 'News'"
+ *   Commercial — "Clearly identify all commercial content with labels such as 'Sponsored',
+ *                 'Advertisement', or 'Paid Content'" and "maintain transparency about any
+ *                 commercial relationships or sponsorships associated with the content"
+ *   Opinion    — "Clearly label all opinion content with headings such as 'Opinion',
+ *                 'Editorial', or 'Commentary'"
+ * Until 9 Sep 2026 the system could not record this at all, so sponsored content could not be
+ * marked as sponsored anywhere in the FMS.
+ */
+export const CONTENT_LABELS: [key: string, word: string, policySentence: string][] = [
+  ["News", "News", "Clearly label all news articles, reports, and broadcasts as \"News\" (Policy 002 — Content Types)"],
+  ["Commercial", "Sponsored", "Clearly identify all commercial content with labels such as \"Sponsored\", \"Advertisement\" or \"Paid Content\", and maintain transparency about the commercial relationship (Policy 002 — Content Types)"],
+  ["Opinion", "Opinion", "Clearly label all opinion content with headings such as \"Opinion\", \"Editorial\" or \"Commentary\" (Policy 002 — Content Types)"],
+];
+/** The label word a published piece carries in front of its text; "" for an unlabelled piece. */
+export const labelWord = (contentLabel: string) =>
+  CONTENT_LABELS.find(([k]) => k === contentLabel)?.[1] || "";
+/** News is what the audience assumes; the other two must be told apart from it on the piece itself. */
+export const labelNeedsMarking = (contentLabel: string) => contentLabel === "Commercial" || contentLabel === "Opinion";
+
 /** A production draft on a piece: the renditions the fact-checker verifies (schema draftsJson). */
 export type ContentDraft = { label: string; kind: string; text: string; date: string; by: string };
 /** The draft kind that carries a piece's social rendition. One of the kinds the desk already offers. */
@@ -76,14 +101,25 @@ export type Rendition = {
  * has none, the improvised text is still offered — an editor must be able to work — but it is
  * reported as improvised so nobody mistakes it for the verified rendition.
  */
-export function socialRendition(item: { title?: string; brief?: string; drafts?: ContentDraft[] } | null): Rendition {
+export function socialRendition(
+  item: { title?: string; brief?: string; drafts?: ContentDraft[]; contentLabel?: string } | null
+): Rendition {
   const caption = [...(item?.drafts || [])].reverse()
     .find(d => d && d.kind === CAPTION_KIND && String(d.text || "").trim());
-  if (caption) return { text: String(caption.text).trim(), source: "caption", draft: caption };
-  return {
-    text: [item?.title, item?.brief].filter(Boolean).join("\n\n").trim(),
-    source: "improvised",
-  };
+  const body = caption
+    ? String(caption.text).trim()
+    : [item?.title, item?.brief].filter(Boolean).join("\n\n").trim();
+  // Policy 002: commercial and opinion content must be distinguishable from editorial content
+  // "in terms of design, placement, and labeling". On a social account there is no design and no
+  // placement — the caption is all there is — so the label goes in front of the words. News is
+  // what an audience already assumes of a media platform and is not marked here.
+  // Prepended into the visible text, never silently at send time: the editor sees it and may
+  // reword it before it goes.
+  const mark = labelNeedsMarking(item?.contentLabel || "") ? labelWord(item!.contentLabel!) : "";
+  const text = mark && body && !body.startsWith(mark) ? `${mark}: ${body}` : body;
+  return caption
+    ? { text, source: "caption", draft: caption }
+    : { text, source: "improvised" };
 }
 
 export type ContentGateFields = {
@@ -94,6 +130,8 @@ export type ContentGateFields = {
   legalFlag: boolean;
   legalReviewedBy: string;
   checksJson: string;
+  contentLabel?: string;
+  sponsorDisclosure?: string;
   aiAssisted?: boolean;
   aiDisclosed?: boolean;
 };
@@ -112,6 +150,12 @@ export function publishBlockers(c: ContentGateFields): string[] {
   if (!c.pdApprovedBy) blockers.push("Programs Director approval missing (Policy 002).");
   if (c.pmApprovedBy && c.pdApprovedBy && c.pmApprovedBy === c.pdApprovedBy)
     blockers.push("Both approvals are by the same person — Policy 002 requires the Production Manager AND the Programs Director.");
+  // Policy 002 requires every piece to be labelled News / Commercial / Opinion, and a commercial
+  // piece to disclose the relationship behind it. An unlabelled piece cannot be published.
+  if (!c.contentLabel) blockers.push("No content label — say whether this is News, Commercial or Opinion (Policy 002: each content type must be clearly labelled).");
+  else if (!CONTENT_LABELS.some(([k]) => k === c.contentLabel)) blockers.push(`"${c.contentLabel}" is not a content label Policy 002 defines (News, Commercial, Opinion).`);
+  else if (c.contentLabel === "Commercial" && !String(c.sponsorDisclosure || "").trim())
+    blockers.push("Commercial content must say who paid for it or what the relationship is (Policy 002: maintain transparency about any commercial relationships or sponsorships).");
   if (c.legalFlag && !c.legalReviewedBy)
     blockers.push("Flagged for legal implications but no legal review recorded (Policy 002).");
   // The golden transparency rule: AI-assisted content publishes only with its label.

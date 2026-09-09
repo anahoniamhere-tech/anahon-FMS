@@ -9,9 +9,9 @@ import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
-import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers, socialPostBlockers } from "./src/editorialGates.js";
+import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
-import { graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
+import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
@@ -3806,11 +3806,15 @@ async function contentManageBlock(req: any, stream: string): Promise<string | nu
 app.post("/api/content/save", async (req, res) => {
   try {
     const { id, title, contentType, stream, channels, brief, assigneeUserId, dueDate,
+            contentLabel, sponsorDisclosure,
             assignedMeetingDate, reviewedMeetingDate, checks, legalFlag, materials,
             aiAssisted, aiDisclosed, user } = req.body;
     if (!title) return res.status(400).json({ error: "Give the content item a title." });
     const block = await contentManageBlock(req, stream || "");
     if (block) return res.status(403).json({ error: block });
+    if (contentLabel && !CONTENT_LABELS.some(([k]) => k === contentLabel)) {
+      return res.status(400).json({ error: `"${contentLabel}" is not a content label Policy 002 defines (News, Commercial, Opinion).` });
+    }
     if (contentType && !CONTENT_TYPES.includes(contentType)) {
       return res.status(400).json({ error: `Content type must be one of: ${CONTENT_TYPES.join(", ")} (Policy 002).` });
     }
@@ -3855,6 +3859,10 @@ app.post("/api/content/save", async (req, res) => {
     const data = {
       title,
       contentType: contentType || "Post",
+      // Policy 002's News/Commercial/Opinion label. Validated here as well as at the gate so a
+      // bad value cannot be stored at all; publishBlockers is what refuses an EMPTY one.
+      ...(contentLabel !== undefined ? { contentLabel: String(contentLabel || "") } : {}),
+      ...(sponsorDisclosure !== undefined ? { sponsorDisclosure: String(sponsorDisclosure || "").trim() } : {}),
       stream: stream || "",
       channelsJson: JSON.stringify(chan),
       brief: brief || "",
@@ -4620,7 +4628,7 @@ app.post("/api/social/periods/delete", async (req, res) => {
 // /api/content/publish. Tied to a published item, or to no item → Queued for publishAt (now by default).
 app.post("/api/social/queue", async (req, res) => {
   try {
-    const { targets, message, link, imageUrl, imageRef, useCover, videoRef, asReel, publishAt, contentItemId, user } = req.body;
+    const { targets, message, link, imageUrl, imageRef, images, useCover, videoRef, asReel, publishAt, contentItemId, user } = req.body;
     if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Posting to social media needs an editor or the Digital Officer." });
     const list: { accountId: string; network: string }[] = Array.isArray(targets) ? targets : [];
     if (!list.length) return res.status(400).json({ error: "Pick at least one account." });
@@ -4653,6 +4661,26 @@ app.post("/api/social/queue", async (req, res) => {
     try {
       if (imageRef) image = await vaultMedia(imageRef, "image");
     } catch (e: any) { return res.status(400).json({ error: e.message }); }
+    // A carousel: an ordered list, each entry either a public address or a vault image, checked by
+    // exactly the same rules as the single image above — a crafted request must not reach a vault
+    // document through the list that it could not reach through imageRef.
+    let imageList: string[] = [];
+    if (Array.isArray(images) && images.length) {
+      if (images.length > CAROUSEL_MAX) return res.status(400).json({ error: `A carousel takes at most ${CAROUSEL_MAX} images; this one has ${images.length}.` });
+      try {
+        for (const raw of images) {
+          const ref = String(raw || "").trim();
+          if (!ref) continue;
+          if (/^https?:\/\//.test(ref)) {
+            if (!/^https:\/\//.test(ref)) return res.status(400).json({ error: "An image address must start with https://." });
+            imageList.push(ref);
+          } else {
+            imageList.push(await vaultMedia(ref, "image"));
+          }
+        }
+      } catch (e: any) { return res.status(400).json({ error: e.message }); }
+      if (imageList.length) image = imageList[0];      // the single field stays the first image, for every reader that knows only it
+    }
     let video = "";
     if (videoRef) {
       try { video = await vaultMedia(videoRef, "video"); } catch (e: any) { return res.status(400).json({ error: e.message }); }
@@ -4665,7 +4693,7 @@ app.post("/api/social/queue", async (req, res) => {
       const a = accounts.find(x => x.id === t.accountId);
       if (!a) return res.status(400).json({ error: "One of the accounts is not connected." });
       if (t.network === "instagram" && !a.igId) return res.status(400).json({ error: `${a.name} has no Instagram account linked.` });
-      const draft = { network: t.network, message: String(message || ""), link: String(link || ""), imageUrl: image, videoRef: video, asReel: !!asReel };
+      const draft = { network: t.network, message: String(message || ""), link: String(link || ""), imageUrl: image, imagesJson: JSON.stringify(imageList), videoRef: video, asReel: !!asReel };
       const plan = planPublish(draft);
       if (plan.error) return res.status(400).json({ error: `${t.network === "instagram" ? "Instagram" : "Facebook"} (${a.name}): ${plan.error}` });
       rows.push({ id: `sp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`, accountId: a.id, ...draft, contentItemId: item?.id || "",
@@ -4675,7 +4703,7 @@ app.post("/api/social/queue", async (req, res) => {
     const where = rows.map(r => `${r.network === "instagram" ? "Instagram" : "Facebook"} (${accounts.find(a => a.id === r.accountId)?.name})`).join(", ");
     const drafted = rows[0].state === "Draft";
     await createAuditLog(user?.id, user?.name, drafted ? "Social Post Drafted" : "Social Post Queued",
-      `${where}: "${String(message || "").slice(0, 80)}"${video ? (asReel ? " with a video as a Reel" : " with a video") : image ? " with a photo" : ""}${item ? ` for "${item.title}"` : ""} — ${drafted ? "waits for the editorial gate" : when.getTime() <= Date.now() + 60_000 ? "now" : `at ${when.toISOString().slice(0, 16).replace("T", " ")}`}.`);
+      `${where}: "${String(message || "").slice(0, 80)}"${video ? (asReel ? " with a video as a Reel" : " with a video") : imageList.length > 1 ? ` with a carousel of ${imageList.length} images` : image ? " with a photo" : ""}${item ? ` for "${item.title}"` : ""} — ${drafted ? "waits for the editorial gate" : when.getTime() <= Date.now() + 60_000 ? "now" : `at ${when.toISOString().slice(0, 16).replace("T", " ")}`}.`);
     if (!drafted) void drainSocialQueue();
     res.json({ success: true, rows, drafted });
   } catch (e: any) { res.status(500).json({ error: e.message }); }

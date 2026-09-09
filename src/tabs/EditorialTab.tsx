@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Newspaper, ShieldAlert, CheckCircle2 } from "lucide-react";
 import { ContentItem } from "../types";
 import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "../constants";
+import { CONTENT_LABELS } from "../editorialGates";
 import { SharedProps } from "./shared";
 import Info from "../Info";
 import { CONTENT_EDITORS, CREW } from "../roles";
@@ -173,6 +174,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
   const saveItem = (item: ContentItem, patch: any, ok?: string) =>
     post("/api/content/save", {
       id: item.id, title: item.title, contentType: item.contentType, stream: item.stream,
+      contentLabel: (item as any).contentLabel || "", sponsorDisclosure: (item as any).sponsorDisclosure || "",
       channels: item.channels, brief: item.brief, assigneeUserId: item.assigneeUserId,
       dueDate: item.dueDate, reviewedMeetingDate: item.reviewedMeetingDate,
       checks: item.checks, legalFlag: item.legalFlag, materials: item.materials,
@@ -859,7 +861,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
         <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
           {!form ? (
             <span className="flex flex-wrap gap-2">
-              <button onClick={() => setForm({ title: "", contentType: "Post", stream: "", channels: [], assigneeUserId: "", dueDate: "", brief: "", legalFlag: false, materials: [] })}
+              <button onClick={() => setForm({ title: "", contentType: "Post", contentLabel: "", sponsorDisclosure: "", stream: "", channels: [], assigneeUserId: "", dueDate: "", brief: "", legalFlag: false, materials: [] })}
                 className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded px-4 py-2.5 shadow">
                 + {t("New Assignment")}
               </button>
@@ -884,6 +886,25 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                     {CONTENT_TYPES.map(ct => <option key={ct} value={ct}>{ct}</option>)}
                   </select>
                 </div>
+                {/* Policy 002 "Content Types" — the label the published piece must carry. Distinct
+                    from Type above, which is the format. The publish gate refuses an empty one. */}
+                <div>
+                  <span className="block text-slate-600 font-bold mb-1">{t("Content label")}</span>
+                  <select value={form.contentLabel || ""} onChange={e => setForm({ ...form, contentLabel: e.target.value })} className="finance-input w-full">
+                    <option value="">— {t("choose")} —</option>
+                    {CONTENT_LABELS.map(([k]) => <option key={k} value={k}>{t(k)}</option>)}
+                  </select>
+                  <span className="block text-[10px] text-slate-400 mt-0.5" dir="auto">
+                    {CONTENT_LABELS.find(([k]) => k === form.contentLabel)?.[2] || t("Policy 002 requires every piece to be labelled.")}
+                  </span>
+                </div>
+                {form.contentLabel === "Commercial" && (
+                  <div className="md:col-span-2">
+                    <span className="block text-slate-600 font-bold mb-1">{t("Who paid for it")}</span>
+                    <input value={form.sponsorDisclosure || ""} onChange={e => setForm({ ...form, sponsorDisclosure: e.target.value })}
+                      placeholder={t("the sponsor, or the commercial relationship behind this piece")} className="finance-input w-full" dir="auto" />
+                  </div>
+                )}
                 <div>
                   <span className="block text-slate-600 font-bold mb-1">{t("Program")}</span>
                   <select value={form.stream} onChange={e => setForm({ ...form, stream: e.target.value })} className="finance-input w-full">

@@ -221,6 +221,9 @@ export default function EditorialMap({ state, currentUser, t, rtl }: { state: an
           {requirements.standards.map(r => (
             <li key={r.label} dir="auto"><b className="text-slate-800">{r.label}</b> <span className="text-slate-500">— {r.sentence}</span></li>
           ))}
+          {requirements.labelling.map(c => (
+            <li key={c} className="text-slate-700" dir="auto">{c}</li>
+          ))}
           {requirements.conditional.map(c => (
             <li key={c} className="text-amber-800" dir="auto">{c}</li>
           ))}
