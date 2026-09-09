@@ -75,7 +75,11 @@ ok("the phone header carries Act as", /<RoleSwitch compact currentUser=\{current
 ok("as an icon, not the desktop pill", /compact \? "\ud83c\udfad"/.test(roleSwitch));
 ok("at the touch minimum", /flex h-11 w-11 items-center justify-center rounded-lg border text-lg/.test(roleSwitch));
 // The panel is 384px wide; a 375px phone is narrower than that.
-ok("its panel fits a phone", /w-\[min\(22rem,calc\(100vw-2rem\)\)\] max-h-\[70vh\]/.test(roleSwitch));
+// `absolute end-0` lines the panel up with the trigger, and on a phone the trigger is in
+// the middle of the header — the panel ran off the left edge and cut every seat name.
+ok("its panel is pinned to the screen, not to the button",
+  /fixed inset-x-4 top-\[4\.5rem\] z-50 max-h-\[70vh\] overflow-y-auto/.test(roleSwitch));
+ok("and the desktop one still hangs off the trigger", /absolute end-0 z-50 mt-2 w-96/.test(roleSwitch));
 // It renders nothing for anyone else, which is why a sixth control is affordable at all.
 ok("and it costs nobody else a pixel", /if \(!isSuperAdmin\) return null;/.test(roleSwitch));
 // Display & appearance measured and pinned this header's spacing in check-rtl.ts (pe-5,

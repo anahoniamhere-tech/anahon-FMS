@@ -70,7 +70,14 @@ export default function RoleSwitch({ currentUser, onChange, compact = false }: {
       {!compact && <Info id="acting-as" />}
 
       {open && (
-        <div className={`absolute end-0 z-50 mt-2 rounded-lg border border-slate-200 bg-white p-3 text-slate-800 shadow-xl ${compact ? "w-[min(22rem,calc(100vw-2rem))] max-h-[70vh] overflow-y-auto" : "w-96"}`}>
+        <div className={compact
+          // Anchored to the viewport, not to the button. `absolute end-0` lines the panel's
+          // right edge up with the TRIGGER's right edge — and on a phone that trigger sits
+          // in the middle of the header, so a 22rem panel ran 117px off the left of the
+          // screen and every seat name was cut. Fixed inset-x pins it to both margins
+          // instead, under the 64px header, and the width follows the screen.
+          ? "fixed inset-x-4 top-[4.5rem] z-50 max-h-[70vh] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 text-slate-800 shadow-xl"
+          : "absolute end-0 z-50 mt-2 w-96 rounded-lg border border-slate-200 bg-white p-3 text-slate-800 shadow-xl"}>
           <p className="mb-2 text-xs text-slate-500">
             Pick a seat to stand in. Every action you take is recorded against your own name
             <em> and</em> the seat, so the record never suggests two people were involved.
