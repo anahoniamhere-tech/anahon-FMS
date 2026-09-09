@@ -1278,6 +1278,14 @@ export default function App() {
           </button>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {/* Standing in for a vacant seat, from the phone.
+              Saad tests the editorial desk by wearing the seats nobody fills yet, and every
+              action taken that way is written into the audit log under his own name AND the
+              seat — which is the whole reason to use this rather than a second account.
+              It rendered only in the desktop header, so on a phone the seats were
+              unreachable. RoleSwitch returns null for anyone who is not a Super Admin, so
+              this costs width on exactly one person's phone. */}
+          <RoleSwitch compact currentUser={currentUser} onChange={(r) => { setActingAs(r); refreshState(); }} />
           {/* The way out to the public site. It lived only in the desktop header, so on a
               phone — where the app is installed and has no address bar — there was no way
               to reach the website at all. Same guard and same target as the desktop one. */}

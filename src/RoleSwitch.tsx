@@ -19,7 +19,11 @@ const SEAT_LABEL: Record<string, string> = {
 const seatName = (role: string) => SEAT_LABEL[role] || role;
 type ActingLog = { id: string; userName: string; action: string; details: string; timestamp: string; actingAs: string | null };
 
-export default function RoleSwitch({ currentUser, onChange }: { currentUser: any; onChange: (role: string | null) => void }) {
+export default function RoleSwitch({ currentUser, onChange, compact = false }: {
+  currentUser: any; onChange: (role: string | null) => void;
+  /** Icon only, 44px, for the phone header — where a pill reading "🎭 Act as…" does not fit. */
+  compact?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [seats, setSeats] = useState<Seat[]>([]);
   const [acting, setActing] = useState<string | null>(() => (window as any).__actingAs || null);
@@ -49,16 +53,24 @@ export default function RoleSwitch({ currentUser, onChange }: { currentUser: any
       <button
         onClick={() => setOpen(o => !o)}
         title="Act in another role"
-        className={`rounded-full border px-3 py-1 text-xs font-bold ${acting
-          ? "border-amber-400 bg-amber-400 text-slate-900"
-          : "border-slate-300 text-slate-700 hover:bg-slate-50"}`}
+        aria-label={acting ? `Acting as ${seatName(acting)}` : "Act in another role"}
+        aria-expanded={open}
+        className={compact
+          // The phone header has room for one more 44px control and no more, so this says
+          // what it is with the mask alone. Which seat you are wearing is not lost: the
+          // amber ActingBanner sits under the header the whole time you are standing in one.
+          ? `flex h-11 w-11 items-center justify-center rounded-lg border text-lg leading-none ${acting
+            ? "border-amber-400 bg-amber-400" : "border-slate-300 bg-white hover:bg-slate-50"}`
+          : `rounded-full border px-3 py-1 text-xs font-bold ${acting
+            ? "border-amber-400 bg-amber-400 text-slate-900"
+            : "border-slate-300 text-slate-700 hover:bg-slate-50"}`}
       >
-        {acting ? `🎭 acting as ${seatName(acting)}` : "🎭 Act as…"}
+        {compact ? "🎭" : acting ? `🎭 acting as ${seatName(acting)}` : "🎭 Act as…"}
       </button>
-      <Info id="acting-as" />
+      {!compact && <Info id="acting-as" />}
 
       {open && (
-        <div className="absolute end-0 z-50 mt-2 w-96 rounded-lg border border-slate-200 bg-white p-3 text-slate-800 shadow-xl">
+        <div className={`absolute end-0 z-50 mt-2 rounded-lg border border-slate-200 bg-white p-3 text-slate-800 shadow-xl ${compact ? "w-[min(22rem,calc(100vw-2rem))] max-h-[70vh] overflow-y-auto" : "w-96"}`}>
           <p className="mb-2 text-xs text-slate-500">
             Pick a seat to stand in. Every action you take is recorded against your own name
             <em> and</em> the seat, so the record never suggests two people were involved.

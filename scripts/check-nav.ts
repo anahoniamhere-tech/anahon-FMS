@@ -66,6 +66,24 @@ ok("App.tsx has no hand-written allowlist left", !/\["dashboard", "projects", "e
 ok("App.tsx redirect reads visibleNav", /allowed = visibleNav\(role\)/.test(app));
 for (const [role, land] of Object.entries(LANDING)) ok(`${role} lands on ${land}, which it can see`, keys(role).includes(land));
 ok("everyone lands on the doors", ALL_ROLES.every(r => LANDING[r] === "doors" && keys(r).includes("doors")), ALL_ROLES.filter(r => LANDING[r] !== "doors").join(","));
+console.log("\nthe phone can stand in for a seat");
+// 9 Sep 2026: RoleSwitch rendered only in the desktop header, so from a phone the vacant
+// seats were unreachable — and Saad tests the editorial chain by wearing them, with every
+// action written into the audit log under his own name AND the seat.
+const roleSwitch = readFileSync(new URL("../src/RoleSwitch.tsx", import.meta.url), "utf8");
+ok("the phone header carries Act as", /<RoleSwitch compact currentUser=\{currentUser\}/.test(app));
+ok("as an icon, not the desktop pill", /compact \? "\ud83c\udfad"/.test(roleSwitch));
+ok("at the touch minimum", /flex h-11 w-11 items-center justify-center rounded-lg border text-lg/.test(roleSwitch));
+// The panel is 384px wide; a 375px phone is narrower than that.
+ok("its panel fits a phone", /w-\[min\(22rem,calc\(100vw-2rem\)\)\] max-h-\[70vh\]/.test(roleSwitch));
+// It renders nothing for anyone else, which is why a sixth control is affordable at all.
+ok("and it costs nobody else a pixel", /if \(!isSuperAdmin\) return null;/.test(roleSwitch));
+// Display & appearance measured and pinned this header's spacing in check-rtl.ts (pe-5,
+// gap-2, max-w-[7.5rem], shrink-0). Tightening any of it to buy room for this button
+// belongs to them, so nothing here touches it — the button is added at their geometry.
+ok("Display's pinned spacing is left alone", /ps-4 pe-5 py-3 flex items-center justify-between/.test(app)
+  && /max-w-\[7\.5rem\] truncate/.test(app) && /flex shrink-0 items-center gap-2/.test(app));
+
 console.log("\nthe phone can search too");
 // 9 Sep 2026, found by Saad in the installed app: the global search lived inside the
 // desktop header's `hidden md:flex`, so on a phone it did not exist at all. The phone's
