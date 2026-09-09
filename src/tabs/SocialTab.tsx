@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SharedProps } from "./shared";
 import { SITE_EDITORS } from "../roles";
-import { socialPostBlockers } from "../editorialGates";
+import { socialPostBlockers, socialRendition, CAPTION_KIND } from "../editorialGates";
 import InsightsPanel from "./InsightsPanel";
 import StoredSeries from "./StoredSeries";
 
@@ -70,7 +70,10 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
     setItemId(id); const it = items.find(i => i.id === id);
     if (media === "cover" && !it?.coverPath) setMedia("none");             // the cover pill must never stay lit for an item without one
     if (!it) return;
-    setMessage(`${it.title}\n\n${it.brief || ""}`.trim()); setLink(it.websiteUrl || "");
+    // The caption the desk wrote and the fact-checker saw — not a fresh one typed here.
+    // The website address rides along as the "read more" link (composeText appends it on both
+    // networks; Instagram shows it as plain text, which is the usual practice).
+    setMessage(socialRendition(it).text); setLink(it.websiteUrl || "");
     if (it.coverPath && media === "none") setMedia("cover");
   };
   // Upload a video or an image into the vault; the server files it and hands back the document.
@@ -95,6 +98,8 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
   // Policy 002 covers these channels too: a post carries a piece, and the gate decides when it
   // goes. The same function the server refuses with, so the button and the 403 cannot disagree.
   const gate = socialPostBlockers(item || null);
+  const rendition = socialRendition(item || null);
+  const edited = !!item && message.trim() !== rendition.text.trim();
   const canSend = !gate.length && targets.length > 0 && !busy && !uploading && (message.trim() || link.trim() || hasMedia) && (media === "none" || hasMedia)
     && !(igChosen && media !== "video" && media !== "image") && !(igChosen && media === "image" && !!imageId);   // Instagram takes no image bytes, only an address
   const queueIt = async () => {
@@ -182,6 +187,21 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
             </select>
           </div>
           {gate.length > 0 && <p className="rounded bg-amber-50 p-2 text-amber-900">{gate[0]}</p>}
+          {item && rendition.source === "caption" && (
+            <p className="text-slate-500">
+              Caption from the piece{rendition.draft?.label ? ` — “${rendition.draft.label}”` : ""}
+              {rendition.draft?.by ? `, by ${rendition.draft.by}` : ""}
+              {rendition.draft?.date ? <> on <span dir="ltr">{rendition.draft.date}</span></> : null}.
+              {edited && <b className="text-amber-800"> Edited here — this is no longer the text on the piece.</b>}
+            </p>
+          )}
+          {item && rendition.source === "improvised" && (
+            <p className="rounded bg-amber-50 p-2 text-amber-900">
+              This piece has no {CAPTION_KIND} draft, so the text below was assembled from its title and brief —
+              nobody wrote or checked it as a caption. Add a {CAPTION_KIND} draft on the Editorial desk and it will
+              be verified with the piece.
+            </p>
+          )}
           {willDraft && <p className="text-amber-700">This item has not passed the editorial gate (it is {item.status}). The post is kept as a draft and goes out the moment the item is published.</p>}
           <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} dir="auto" placeholder="What are you posting?" className="w-full rounded border border-slate-300 p-2" />
           <input value={link} onChange={e => setLink(e.target.value)} dir="ltr" placeholder="Link (optional) — https://anahon.org/…" className="w-full rounded border border-slate-300 px-2 py-1" />

@@ -3,7 +3,7 @@
 // Run: npx tsx scripts/check-editorial-gates.ts
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { CONTENT_CHECKS, CONTENT_STATUSES, publishBlockers, socialPostBlockers } from "../src/editorialGates";
+import { CONTENT_CHECKS, CONTENT_STATUSES, publishBlockers, socialPostBlockers, socialRendition, CAPTION_KIND } from "../src/editorialGates";
 import { RULES } from "../src/workflow";
 import { editorialStations, PUBLISHABLE_STATUS, livePositions, stationStanding, MAP_KIND } from "../src/editorialMap";
 
@@ -160,6 +160,37 @@ assert.ok(guarded.length >= 2,
   `both /api/social/queue and /api/social/queue/retry must call socialPostBlockers — found ${guarded.length}`);
 assert.ok(/const gate = socialPostBlockers\(item\);[\s\S]{0,200}?res\.status\(403\)/.test(serverSrc),
   "the guard must refuse with 403, not merely compute a list");
+
+/* ── The caption that goes out is the one the desk verified ───────────────────
+ * A caption is published content under Policy 002, and the fact-checker verifies the piece's
+ * drafts. So the composer must send the Caption draft, not retype one. Before 9 Sep 2026 it
+ * assembled title + brief and never looked at the drafts.
+ */
+const d = (kind: string, text: string, label = "", date = "2026-09-09") => ({ kind, text, label, date, by: "X" });
+const piece = (drafts: any[]) => ({ title: "T", brief: "B", drafts });
+
+assert.deepStrictEqual(socialRendition(piece([d(CAPTION_KIND, "the checked caption")])),
+  { text: "the checked caption", source: "caption", draft: d(CAPTION_KIND, "the checked caption") },
+  "a Caption draft is what goes out");
+assert.strictEqual(socialRendition(piece([d(CAPTION_KIND, "older"), d(CAPTION_KIND, "newer")])).text, "newer",
+  "the newest Caption wins — drafts are appended, so the last is the current one");
+assert.strictEqual(socialRendition(piece([d("Article Draft", "the whole article")])).source, "improvised",
+  "an article draft is not a caption");
+assert.strictEqual(socialRendition(piece([d(CAPTION_KIND, "   ")])).source, "improvised",
+  "an empty Caption is not a caption");
+assert.strictEqual(socialRendition(piece([d("Script", "s"), d(CAPTION_KIND, "cap"), d("Carousel", "c")])).text, "cap",
+  "the Caption is picked out from among the other renditions");
+const improvised = socialRendition(piece([]));
+assert.strictEqual(improvised.source, "improvised");
+assert.strictEqual(improvised.text, "T\n\nB", "with no Caption, title and brief are still offered to work from");
+assert.strictEqual(socialRendition(null).source, "improvised", "no piece, no caption");
+assert.strictEqual(socialRendition({ title: "T", brief: "" }).text, "T", "an empty brief adds no blank lines");
+// The composer must read the rule, not assemble its own text.
+const socialSrc = readFileSync(new URL("../src/tabs/SocialTab.tsx", import.meta.url), "utf8");
+assert.ok(/setMessage\(socialRendition\(/.test(socialSrc),
+  "SocialTab must fill the message from socialRendition(), not from title + brief");
+assert.ok(!/setMessage\(`\$\{it\.title\}/.test(socialSrc),
+  "the old title+brief assembly must be gone from the composer");
 
 console.log("check-editorial-gates: all assertions passed —",
   `${5 + cases.length + CONTENT_CHECKS.length} gate scenarios (Policies 002 & 005 + transparency rule)`,

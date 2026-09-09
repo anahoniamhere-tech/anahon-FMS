@@ -51,6 +51,41 @@ export function socialPostBlockers(item: { status: string; retractedAt: string }
   return [];
 }
 
+/** A production draft on a piece: the renditions the fact-checker verifies (schema draftsJson). */
+export type ContentDraft = { label: string; kind: string; text: string; date: string; by: string };
+/** The draft kind that carries a piece's social rendition. One of the kinds the desk already offers. */
+export const CAPTION_KIND = "Caption";
+
+export type Rendition = {
+  text: string;
+  /** "caption" = the text the desk wrote and the fact-checker saw. "improvised" = assembled here
+   *  from the title and brief, which nobody checked as a caption. */
+  source: "caption" | "improvised";
+  draft?: ContentDraft;
+};
+
+/**
+ * What a piece says on a social account.
+ *
+ * Policy 002 treats a caption as published content, and the fact-checker verifies the piece's
+ * drafts — so the text that goes to Facebook or Instagram should be the Caption draft that was
+ * written and checked with the piece, not something retyped in the composer afterwards. Until
+ * 9 Sep 2026 the composer assembled title + brief and ignored the Caption entirely.
+ *
+ * The newest Caption wins (drafts are appended, so the last one is the current one). When a piece
+ * has none, the improvised text is still offered — an editor must be able to work — but it is
+ * reported as improvised so nobody mistakes it for the verified rendition.
+ */
+export function socialRendition(item: { title?: string; brief?: string; drafts?: ContentDraft[] } | null): Rendition {
+  const caption = [...(item?.drafts || [])].reverse()
+    .find(d => d && d.kind === CAPTION_KIND && String(d.text || "").trim());
+  if (caption) return { text: String(caption.text).trim(), source: "caption", draft: caption };
+  return {
+    text: [item?.title, item?.brief].filter(Boolean).join("\n\n").trim(),
+    source: "improvised",
+  };
+}
+
 export type ContentGateFields = {
   status: string;
   factCheckPassedAt: string;
