@@ -3,7 +3,7 @@
 // Run: npx tsx scripts/check-editorial-gates.ts
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
-import { CONTENT_CHECKS, CONTENT_STATUSES, publishBlockers } from "../src/editorialGates";
+import { CONTENT_CHECKS, CONTENT_STATUSES, publishBlockers, socialPostBlockers } from "../src/editorialGates";
 import { RULES } from "../src/workflow";
 import { editorialStations, PUBLISHABLE_STATUS, livePositions, stationStanding, MAP_KIND } from "../src/editorialMap";
 
@@ -136,6 +136,30 @@ assert.strictEqual(stationStanding(twoSlot, [{ id: "u1", name: "X", role: twoSlo
   "an inactive account must not count as holding a seat");
 assert.strictEqual(stationStanding(twoSlot, [{ id: "u1", name: "X", role: twoSlot.seats[0], active: true }]).understaffed, true,
   "one person cannot fill two slots that must be two different people");
+
+/* ── Policy 002 covers the social channels too ────────────────────────────────
+ * Until 9 Sep 2026 a social post could name no piece, and went out immediately: no fact-check,
+ * no dual approval, no standards, no legal review, no AI disclosure. Policy 002 names
+ * "WhatsApp, Facebook, Instagram, YouTube, WEBSITE" as AnaHon's own channels and requires ALL
+ * content to be reviewed and approved before publication, so that path was a policy bypass.
+ */
+assert.strictEqual(socialPostBlockers(null).length, 1, "a post with no piece behind it must be refused");
+assert.match(socialPostBlockers(null)[0], /Policy 002/, "and the refusal must say which policy");
+assert.deepStrictEqual(socialPostBlockers({ status: "Published", retractedAt: "" }), [],
+  "a published piece may be promoted");
+assert.strictEqual(socialPostBlockers({ status: "Fact-Check", retractedAt: "" }).length, 0,
+  "a piece still in the pipeline is NOT refused — it yields a Draft that the gate releases");
+assert.strictEqual(socialPostBlockers({ status: "Published", retractedAt: "2026-09-03T18:28:56Z" }).length, 1,
+  "a retracted piece may not be promoted again");
+// The rule must never be satisfiable by an empty-ish item: these are the shapes a caller controls.
+for (const bad of [null, undefined as any]) assert.ok(socialPostBlockers(bad).length, "no falsy item may pass");
+// Both doors into the queue enforce it: creating a post and retrying one.
+const serverSrc = readFileSync(new URL("../server.ts", import.meta.url), "utf8");
+const guarded = serverSrc.split("\n").filter(l => l.includes("socialPostBlockers("));
+assert.ok(guarded.length >= 2,
+  `both /api/social/queue and /api/social/queue/retry must call socialPostBlockers — found ${guarded.length}`);
+assert.ok(/const gate = socialPostBlockers\(item\);[\s\S]{0,200}?res\.status\(403\)/.test(serverSrc),
+  "the guard must refuse with 403, not merely compute a list");
 
 console.log("check-editorial-gates: all assertions passed —",
   `${5 + cases.length + CONTENT_CHECKS.length} gate scenarios (Policies 002 & 005 + transparency rule)`,

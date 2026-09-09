@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
-import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "./src/editorialGates.js";
+import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers, socialPostBlockers } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
@@ -4626,6 +4626,10 @@ app.post("/api/social/queue", async (req, res) => {
     if (!list.length) return res.status(400).json({ error: "Pick at least one account." });
     const item = contentItemId ? await prisma.contentItem.findUnique({ where: { id: String(contentItemId) } }) : null;
     if (contentItemId && !item) return res.status(404).json({ error: "Content item not found." });
+    // Policy 002 covers the social channels too — see socialPostBlockers. The gate below
+    // (initialState) still decides WHEN it goes; this decides whether it may exist at all.
+    const gate = socialPostBlockers(item);
+    if (gate.length) return res.status(403).json({ error: gate[0] });
     let image = String(imageUrl || "").trim();
     // The client may only ever name a public address. cover: and doc: are set below, by us, after their own checks —
     // validating the derived value instead would let a crafted request name any vault document.
@@ -4697,6 +4701,10 @@ app.post("/api/social/queue/retry", async (req, res) => {
     if (!["Failed", "Cancelled"].includes(r.state)) return res.status(400).json({ error: `Only a failed or cancelled post can be retried; this one is ${r.state.toLowerCase()}.` });
     if (!(await prisma.socialAccount.findUnique({ where: { id: r.accountId } }))) return res.status(400).json({ error: "That Page is no longer connected." });
     const item = r.contentItemId ? await prisma.contentItem.findUnique({ where: { id: r.contentItemId } }) : null;
+    // Retry is the second door into the queue: a post made before this rule existed (or whose
+    // piece was retracted since) must not be revived past the gate it never passed.
+    const gate = socialPostBlockers(item);
+    if (gate.length) return res.status(403).json({ error: gate[0] });
     const state = initialState(item);                                         // back behind the gate when its item is unpublished or retracted — exactly as at creation
     const w = await prisma.socialPost.updateMany({ where: { id, state: { in: ["Failed", "Cancelled"] } }, data: { state, attempts: 0, lastError: "", containerId: "", publishAt: new Date().toISOString() } });
     if (!w.count) return res.status(409).json({ error: "That post changed state meanwhile — reload." });

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { SharedProps } from "./shared";
 import { SITE_EDITORS } from "../roles";
+import { socialPostBlockers } from "../editorialGates";
 import InsightsPanel from "./InsightsPanel";
 import StoredSeries from "./StoredSeries";
 
@@ -91,7 +92,10 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
   const igChosen = targets.some(t => t.endsWith("|instagram")); const fbChosen = targets.some(t => t.endsWith("|facebook"));
   const willDraft = item && item.status !== "Published";
   const hasMedia = media === "cover" ? !!item?.coverPath : media === "image" ? !!(imageUrl || imageId) : media === "video" ? !!videoId : false;
-  const canSend = targets.length > 0 && !busy && !uploading && (message.trim() || link.trim() || hasMedia) && (media === "none" || hasMedia)
+  // Policy 002 covers these channels too: a post carries a piece, and the gate decides when it
+  // goes. The same function the server refuses with, so the button and the 403 cannot disagree.
+  const gate = socialPostBlockers(item || null);
+  const canSend = !gate.length && targets.length > 0 && !busy && !uploading && (message.trim() || link.trim() || hasMedia) && (media === "none" || hasMedia)
     && !(igChosen && media !== "video" && media !== "image") && !(igChosen && media === "image" && !!imageId);   // Instagram takes no image bytes, only an address
   const queueIt = async () => {
     const names = targetOptions.filter(o => targets.includes(o.key)).map(o => o.label).join(", ");
@@ -173,10 +177,11 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
               <label key={o.key} className="flex items-center gap-1"><input type="checkbox" checked={targets.includes(o.key)} onChange={e => setTargets(e.target.checked ? [...targets, o.key] : targets.filter(t => t !== o.key))} /> {o.label}</label>
             ))}
             <select value={itemId} onChange={e => pickItem(e.target.value)} className="ms-auto rounded border border-slate-300 px-2 py-1">
-              <option value="">no content item</option>
+              <option value="">— pick the piece —</option>
               {items.map((i: any) => <option key={i.id} value={i.id}>{i.title.slice(0, 60)} ({i.status})</option>)}
             </select>
           </div>
+          {gate.length > 0 && <p className="rounded bg-amber-50 p-2 text-amber-900">{gate[0]}</p>}
           {willDraft && <p className="text-amber-700">This item has not passed the editorial gate (it is {item.status}). The post is kept as a draft and goes out the moment the item is published.</p>}
           <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5} dir="auto" placeholder="What are you posting?" className="w-full rounded border border-slate-300 p-2" />
           <input value={link} onChange={e => setLink(e.target.value)} dir="ltr" placeholder="Link (optional) — https://anahon.org/…" className="w-full rounded border border-slate-300 px-2 py-1" />

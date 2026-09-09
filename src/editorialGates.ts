@@ -31,6 +31,26 @@ export const CONTENT_CHECKS: [key: string, label: string, policySentence: string
   ["solutionsFocused",   "Solutions focus, multiple perspectives",     "Focus on solution journalism with multiple approaches and perspectives (Policy 002 — Positive Journalism)"]
 ];
 
+/**
+ * Why this post may not go to a social account; empty ⇒ it may.
+ *
+ * Policy 002 names AnaHon's own channels — "WhatsApp, Facebook, Instagram, YouTube, WEBSITE" —
+ * and then requires that ALL content pass editorial review and carry the Production Manager AND
+ * Programs Director approvals BEFORE publication. There is no channel exemption in it: a caption
+ * on Instagram is published content exactly as an article on the website is.
+ *
+ * Until 9 Sep 2026 `contentItemId` was optional on /api/social/queue, so a post with no piece
+ * behind it was queued immediately — no fact-check, no dual approval, no standards, no legal
+ * review, no AI disclosure. This is the guard that closes that. It does NOT decide *when* a post
+ * goes out: a piece still in the pipeline yields a Draft that the gate releases on publish
+ * (src/meta.ts initialState). It only refuses a post that no piece is answerable for.
+ */
+export function socialPostBlockers(item: { status: string; retractedAt: string } | null): string[] {
+  if (!item) return ["Every post carries a piece from the editorial register — Policy 002 covers Facebook and Instagram exactly as it covers the website, and all content is reviewed and approved before it is published. Create or pick the piece, and the post goes out when the piece is cleared."];
+  if (item.retractedAt) return ["That piece has been retracted — its posts were cancelled and it may not be promoted again (Policy 005)."];
+  return [];
+}
+
 export type ContentGateFields = {
   status: string;
   factCheckPassedAt: string;
