@@ -80,6 +80,7 @@ import ArchiveTab from "./tabs/ArchiveTab";
 import SocialTab from "./tabs/SocialTab";
 import LiveTab from "./tabs/LiveTab";
 import RoleSwitch, { ActingBanner } from "./RoleSwitch";
+import { searchHits, SearchHits } from "./globalSearch";
 import { NAV, visibleNav, LANDING } from "./nav";
 import { deskItems, localToday } from "./workflow";
 import { withTicket, refreshDocTicket } from "./docTicket";
@@ -1149,6 +1150,13 @@ export default function App() {
     "flex items-center gap-3 rounded-xl text-start transition-colors cursor-pointer " +
     "hover:bg-[#6D1A1A]/[0.06] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6D1A1A]";
 
+  // What a search hit needs to open the thing it names. Built once and given to both the
+  // desktop header and the doors screen, so the two can never answer differently.
+  const searchNav = {
+    formatUSD, setSearchTerm, handleNavClick, setSelectedProjectId, openDoc,
+    setBankSearch, setBankFilterAcc,
+  };
+
   const shared: SharedProps = {
     state, setState, currentUser, t, lang, rtl, formatUSD, formatIn,
     refreshState, triggerToast, handleNavClick, openDoc,
@@ -1159,6 +1167,7 @@ export default function App() {
     partyFileFor, setPartyFileFor, renderPartyFile,
     eurRateInput, setEurRateInput, lbpRateInput, setLbpRateInput,
     searchTerm, setSearchTerm, setDrawerExpenseId, handleVoucherDocUpload,
+    globalQuery, setGlobalQuery, searchNav,
     selectedProjectId, setSelectedProjectId, workspaceRef,
     focusId, setFocusId,
     openDoor: (door: string, focus?: string) => { if (focus) setFocusId(focus); setActiveTab(door); },
@@ -1209,31 +1218,8 @@ export default function App() {
             />
             {globalQuery.trim().length >= 2 && (
               <div className="absolute top-full mt-1 start-0 end-0 bg-white text-slate-900 rounded-lg shadow-xl border border-slate-200 z-[70] max-h-80 overflow-y-auto">
-                {(() => {
-                  const q = globalQuery.toLowerCase();
-                  type Hit = { k: string; label: string; sub: string; go: () => void };
-                  const hits: Hit[] = [];
-                  state.expenses.filter(e => (e.voucherNo + " " + e.title + " " + e.purpose).toLowerCase().includes(q)).slice(0, 4)
-                    .forEach(e => hits.push({ k: "Voucher", label: `${e.voucherNo} — ${e.title}`, sub: formatUSD(e.convertedAmount), go: () => { setSearchTerm(e.voucherNo); handleNavClick("expenses"); } }));
-                  state.projects.filter(p => (p.code + " " + p.name).toLowerCase().includes(q)).slice(0, 3)
-                    .forEach(p => hits.push({ k: "Project", label: `${p.code} — ${p.name}`, sub: p.status, go: () => { setSelectedProjectId(p.id); handleNavClick("projects"); } }));
-                  state.vendors.filter(v => v.name.toLowerCase().includes(q)).slice(0, 3)
-                    .forEach(v => hits.push({ k: "Vendor", label: v.name, sub: v.category, go: () => handleNavClick("vendors") }));
-                  state.documents.filter(d => d.filename.toLowerCase().includes(q)).slice(0, 3)
-                    .forEach(d => hits.push({ k: "Document", label: d.filename, sub: d.category, go: () => openDoc(d) }));
-                  state.bankTransactions.filter(t => t.description.toLowerCase().includes(q)).slice(0, 3)
-                    .forEach(t => hits.push({ k: "Bank", label: t.description.slice(0, 64), sub: `${t.date} · ${t.type}`, go: () => { setBankSearch(globalQuery); setBankFilterAcc(""); handleNavClick("banking"); } }));
-                  state.employees.filter(emp => emp.name.toLowerCase().includes(q)).slice(0, 2)
-                    .forEach(emp => hits.push({ k: "Employee", label: emp.name, sub: emp.position, go: () => handleNavClick("payroll") }));
-                  if (!hits.length) return <p className="px-3 py-2.5 text-xs text-slate-500">No matches for “{globalQuery}”.</p>;
-                  return hits.map((h, i) => (
-                    <button key={i} onClick={() => { h.go(); setGlobalQuery(""); }} className="w-full text-start px-3 py-2 hover:bg-slate-50 border-b border-slate-100 last:border-0 flex items-center gap-2">
-                      <span className="text-[9px] font-bold uppercase w-16 shrink-0 text-slate-400">{h.k}</span>
-                      <span className="text-xs font-medium flex-1 truncate">{h.label}</span>
-                      <span className="text-[10px] text-slate-400 shrink-0">{h.sub}</span>
-                    </button>
-                  ));
-                })()}
+                <SearchHits hits={searchHits(globalQuery, state, searchNav)} query={globalQuery} t={t}
+                  onPick={h => { h.go(); setGlobalQuery(""); }} />
               </div>
             )}
           </div>

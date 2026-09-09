@@ -66,6 +66,27 @@ ok("App.tsx has no hand-written allowlist left", !/\["dashboard", "projects", "e
 ok("App.tsx redirect reads visibleNav", /allowed = visibleNav\(role\)/.test(app));
 for (const [role, land] of Object.entries(LANDING)) ok(`${role} lands on ${land}, which it can see`, keys(role).includes(land));
 ok("everyone lands on the doors", ALL_ROLES.every(r => LANDING[r] === "doors" && keys(r).includes("doors")), ALL_ROLES.filter(r => LANDING[r] !== "doors").join(","));
+console.log("\nthe phone can search too");
+// 9 Sep 2026, found by Saad in the installed app: the global search lived inside the
+// desktop header's `hidden md:flex`, so on a phone it did not exist at all. The phone's
+// search is on the doors screen because the phone header measurably cannot hold a fourth
+// button — at 375px it truncates "AnaHon MS" and cuts the door badge mid-word.
+const doors = readFileSync(new URL("../src/tabs/DoorsTab.tsx", import.meta.url), "utf8");
+ok("the doors screen carries a search field", /value=\{globalQuery\}/.test(doors) && /onChange=\{e => setGlobalQuery/.test(doors));
+ok("and it is the phone's, so the desktop keeps its header one", /className="mt-3 md:hidden"/.test(doors));
+// One search, not two: both callers read the same query and the same hit builder.
+ok("both surfaces call the same searchHits", /searchHits\(globalQuery, state, searchNav\)/.test(app)
+  && /searchHits\(globalQuery, state, searchNav\)/.test(doors));
+ok("and render the same result list", /<SearchHits/.test(app) && /<SearchHits/.test(doors));
+ok("the header no longer builds its own hits", !/const hits: Hit\[\] = \[\];/.test(app));
+// Picking one navigates and clears in a single action, so the list closes itself.
+ok("a result navigates and closes at once", (doors.match(/h\.go\(\); setGlobalQuery\(""\)/g) || []).length === 1
+  && (app.match(/h\.go\(\); setGlobalQuery\(""\)/g) || []).length === 1);
+ok("Escape clears it and lets the keyboard go", /e\.key === "Escape"\) \{ setGlobalQuery\(""\); searchRef\.current\?\.blur\(\); \}/.test(doors));
+ok("there is a visible clear, at 44px", /aria-label=\{t\("Clear search"\)\}/.test(doors) && /h-11 w-11 -translate-y-1\/2/.test(doors));
+ok("the field itself meets the touch minimum", /min-h-\[44px\] w-full rounded-xl/.test(doors));
+ok("self-service is not offered a search it cannot use", /\{!isSelfService && \(/.test(doors));
+
 console.log("\nthe sidebar remembers whether it is open");
 // 7 Sep 2026: Saad is deciding whether the sidebar earns its place now that the doors
 // screen is home. The choice used to reset on every reload, so "try working without it"

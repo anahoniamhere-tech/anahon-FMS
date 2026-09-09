@@ -1,4 +1,5 @@
 import { DatabaseState, Project } from "../types";
+import type { SearchNav } from "../globalSearch";
 
 // Props every tab component receives from App via {...shared}.
 // One interface for all tabs; each tab destructures the subset it uses.
@@ -47,6 +48,13 @@ export interface SharedProps {
   // Global header search term — expenses voucher list also filters by it
   searchTerm: string;
   setSearchTerm: (v: string) => void;
+  // The global search query and the actions its hits need. The desktop keeps its search in
+  // the header; the phone's lives on the doors screen, because a fourth header button
+  // truncates the brand block at 375px (measured — see src/globalSearch.tsx). Both read
+  // this one query, so there is one search and not two.
+  globalQuery: string;
+  setGlobalQuery: (v: string) => void;
+  searchNav: SearchNav;
   // Opens the App-owned voucher detail drawer
   setDrawerExpenseId: (id: string | null) => void;
   // Upload a document against a voucher — used by expenses list and the drawer

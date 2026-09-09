@@ -1,4 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
+import { Search, X } from "lucide-react";
+import { searchHits, SearchHits } from "../globalSearch";
 import { SharedProps } from "./shared";
 import { deskItems, localToday } from "../workflow";
 import { visibleNav } from "../nav";
@@ -25,7 +27,7 @@ const WELL: Record<string, string> = {
 };
 const BADGE = "absolute -end-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold ring-2 ring-white";
 
-export default function DoorsTab({ state, currentUser, t, lang, handleNavClick }: SharedProps) {
+export default function DoorsTab({ state, currentUser, t, lang, rtl, handleNavClick, isSelfService, globalQuery, setGlobalQuery, searchNav }: SharedProps) {
   const today = localToday();
   const sections = useMemo(() => visibleNav(currentUser?.role || ""), [currentUser]);
   // The same reading My Desk makes: only rows on doors this person can open, then counted
@@ -42,12 +44,57 @@ export default function DoorsTab({ state, currentUser, t, lang, handleNavClick }
     return m;
   }, [state, currentUser, today, sections]);
 
+  const hits = searchHits(globalQuery, state, searchNav);
+  const searchRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className="rounded-2xl bg-white/60 p-4">
       <h2 className="flex items-center gap-2 text-xl font-bold text-slate-900">
         {t("All of AnaHon, one desk.")}
         <Info id="doors" lang={lang} />
       </h2>
+
+      {/* Search, on the phone only.
+          The desktop keeps its search in the header; this header cannot hold it. Measured
+          at 375px: a fourth right-hand button leaves the two groups flush and truncates
+          "AnaHon MS" to "AnaHo…" with the door badge cut mid-word, which would break the
+          brand button that is the way home.
+          It is an ordinary field in the page rather than a sheet or a dropdown, and that is
+          the point: the keyboard takes half a phone screen, and a fixed surface then fights
+          it for the remaining half. A field in normal flow just scrolls. */}
+      {!isSelfService && (
+        <div className="mt-3 md:hidden">
+          <div className="relative">
+            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={searchRef}
+              value={globalQuery}
+              onChange={e => setGlobalQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === "Escape") { setGlobalQuery(""); searchRef.current?.blur(); } }}
+              type="search"
+              enterKeyHint="search"
+              placeholder={t("Search vouchers, projects, suppliers, documents…")}
+              aria-label={t("Search vouchers, projects, suppliers, documents…")}
+              className="min-h-[44px] w-full rounded-xl border border-slate-300 bg-white ps-9 pe-11 text-sm text-slate-900 placeholder-slate-400 focus:border-[#6D1A1A] focus:outline-none"
+            />
+            {globalQuery && (
+              <button
+                onClick={() => { setGlobalQuery(""); searchRef.current?.focus(); }}
+                aria-label={t("Clear search")}
+                className="absolute end-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          {globalQuery.trim().length >= 2 && (
+            <div className="mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+              <SearchHits hits={hits} query={globalQuery} t={t}
+                onPick={h => { h.go(); setGlobalQuery(""); }} />
+            </div>
+          )}
+        </div>
+      )}
       {sections.map(s => {
         const tiles = s.items.filter(d => d.navKey !== "doors");
         if (!tiles.length) return null;
