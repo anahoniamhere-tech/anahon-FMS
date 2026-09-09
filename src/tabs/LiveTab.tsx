@@ -34,7 +34,6 @@ const PAGES: { label: string; en: string; ar: string }[] = [
   { label: "Podcasts", en: "/podcasts/", ar: "/ar/بودكاست/" },
   { label: "Documentaries", en: "/documentaries/", ar: "/ar/documentaries/" },
   { label: "Library", en: "/library/", ar: "/ar/library/" },
-  { label: "Team", en: "/team/", ar: "/ar/team-2/" },
   { label: "Transparency", en: "/transparency/", ar: "/ar/transparency/" },
   { label: "Contact", en: "/contact/", ar: "/ar/تواصل-معنا/" },
   { label: "iContent", en: "/icontent/", ar: "/ar/icontent/" },

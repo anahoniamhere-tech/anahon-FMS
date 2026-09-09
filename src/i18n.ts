@@ -753,7 +753,6 @@ export const AR: Record<string, string> = {
   "Home — incubator": "الرئيسية — الحاضنة",
   "Home — academy": "الرئيسية — الأكاديمية",
   "Newsletter band": "شريط النشرة البريدية",
-  "Our Team page": "صفحة فريقنا",
   "FAQ (contact page)": "الأسئلة الشائعة (صفحة التواصل)",
   "Navigation · footer · labels": "التصفّح · التذييل · التسميات",
   "Mission": "الرسالة",

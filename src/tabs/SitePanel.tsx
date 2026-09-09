@@ -20,7 +20,7 @@ export const FILE_LABEL: Record<string, string> = { site: "Pages & sections", i1
 export const SECTION_LABEL: Record<string, string> = {
   labels: "Inline labels (buttons, small headings)",
   hero: "Home — hero", programs: "Home — programs strip", hosts: "Podcasts — hosts", shows: "Podcasts — shows", stats: "Home — numbers",
-  incubator: "Home — incubator", academy: "Home — academy", newsletter: "Newsletter band", team: "Our Team page", faq: "FAQ (contact page)",
+  incubator: "Home — incubator", academy: "Home — academy", newsletter: "Newsletter band", faq: "FAQ (contact page)",
   ui: "Navigation · footer · labels", mission: "Mission", orgRegistration: "Registration details", register: "Funding register",
 };
 export const humanize = (k: string) => (SECTION_LABEL[k] || k).replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ");
