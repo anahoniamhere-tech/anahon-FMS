@@ -6,6 +6,7 @@ import { SharedProps } from "./shared";
 import Info from "../Info";
 import { CONTENT_EDITORS, CREW } from "../roles";
 import { withTicket } from "../docTicket";
+import EditorialMap from "./EditorialMap";
 
 // Editorial pipeline (Policies 002 & 005). The tab renders the register and the
 // buttons; every rule lives server-side — the same publishBlockers() the server
@@ -22,7 +23,7 @@ const STATUS_STYLE: Record<string, string> = {
 
 const EDITOR_ROLES = CONTENT_EDITORS;
 
-export default function EditorialTab({ state, currentUser, t, refreshState, triggerToast, phoneAccess, openDoc, lang, focusId, setFocusId }: SharedProps) {
+export default function EditorialTab({ state, currentUser, t, rtl, refreshState, triggerToast, phoneAccess, openDoc, lang, focusId, setFocusId }: SharedProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [openId, setOpenId] = useState<string | null>(null);
   // My Desk hands over the piece to open; consumed once so a later visit starts closed.
@@ -450,6 +451,12 @@ export default function EditorialTab({ state, currentUser, t, refreshState, trig
           Policies 002 & 005, enforced: named independent fact-checker, dual approval (Production Manager + Programs Director),
           legal review when flagged, public dated corrections. The server refuses what the policy refuses.
         </p>
+      </div>
+
+      {/* Stage 1 of the visual builder: the chain, drawn live from workflow.ts + editorialGates.ts.
+          Read-only by design — see src/editorialMap.ts. */}
+      <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
+        <EditorialMap state={state} currentUser={currentUser} t={t} rtl={rtl} />
       </div>
 
       {/* Weekly editorial meeting — derived agenda + held-meeting record (Policy 002) */}
