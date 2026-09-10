@@ -54,7 +54,11 @@ mkdir -p "$PULL/workbench/site" "$PULL/workbench/archive-catalogue" "$PULL/workb
 # The server's .env (API keys, Google refresh token, VAPID pair): mode 600 on the NAS, so rsync as admin cannot read it.
 ssh -o BatchMode=yes "$NAS" "sudo -n cat $SRC/src/.env" > "$PULL/workbench/fms.env" && chmod 600 "$PULL/workbench/fms.env" || echo "  WARNING: src/.env NOT pulled (sudo -n cat failed)"
 for d in content data uploads images; do rsync -a --delete -e "ssh -o BatchMode=yes" "$NAS:$SITE/.zfs/snapshot/$SNAP_SITE/$d/" "$PULL/workbench/site/$d/" 2>/dev/null || true; done
-rsync -a --delete --exclude 'archive/raw' -e "ssh -o BatchMode=yes" "$NAS:$ARCH/.zfs/snapshot/$SNAP_ARCH/" "$PULL/workbench/archive-catalogue/" 2>/dev/null || true
+# 'imports' is bulk media copied off external drives (3.3 TB after the Lexar import on
+# 7 Sep 2026, ~7 TB once Anahon001 lands). It is NOT catalogue. Without this exclude the
+# nightly run dragged it onto a 460 GB laptop and every backup since 8 Sep died with
+# 'tar: Write error'. NOTE: it therefore has NO off-box copy — see anahon-usb-import.
+rsync -a --delete --exclude 'archive/raw' --exclude 'imports' -e "ssh -o BatchMode=yes" "$NAS:$ARCH/.zfs/snapshot/$SNAP_ARCH/" "$PULL/workbench/archive-catalogue/" 2>/dev/null || true
 [ -d "$MEMORY" ] && rsync -a --delete "$MEMORY/" "$PULL/workbench/claude-memory/"
 [ -d "$DOCS" ] && rsync -a --delete "$DOCS/" "$PULL/workbench/documents/"
 echo "  workbench: $(du -sh "$PULL/workbench" | cut -f1) (site content $SNAP_SITE, archive catalogue $SNAP_ARCH, memory, documents, .env)"

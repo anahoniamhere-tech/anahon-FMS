@@ -62,6 +62,7 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
   // The ordered images of the post: one is a photo, two or more is a carousel. Each entry is a
   // public https address or a vault image id — the server checks both exactly as before.
   const [pics, setPics] = useState<{ v: string; label: string }[]>([]);
+  const [publishing, setPublishing] = useState("");        // the vault image being copied onto the website
   const addPic = (v: string, label: string) => setPics(p =>
     p.length >= CAROUSEL_MAX || p.some(x => x.v === v) ? p : [...p, { v, label }]);
   const [library, setLibrary] = useState<{ videos: any[]; images: any[] } | null>(null); const [uploading, setUploading] = useState(0);
@@ -111,6 +112,17 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
   const edited = !!item && message.trim() !== rendition.text.trim();
   const canSend = !gate.length && targets.length > 0 && !busy && !uploading && (message.trim() || link.trim() || hasMedia) && (media === "none" || hasMedia)
     && !(igChosen && media !== "video" && media !== "image") && !igNeedsPublic;   // Instagram takes no image bytes, only an address
+  // Instagram fetches every image itself, so a vault image has to exist at a public address first.
+  // The website is that address; this copies it there, rebuilds, and swaps the entry for the URL.
+  const makePublic = async (docId: string) => {
+    setPublishing(docId);
+    const r = await post("/api/social/image-public", { docId }).finally(() => setPublishing(""));
+    if (r.ok && r.url) {
+      setPics(a => a.map(x => x.v === docId ? { v: r.url, label: r.url.split("/").pop() || r.url } : x));
+      triggerToast(r.rebuilt ? `On the website now (site rebuilt in ${r.seconds ?? "?"}s)` : "Already on the website");
+    } else triggerToast(r.error || "Could not publish that image", "error");
+  };
+
   const queueIt = async () => {
     const names = targetOptions.filter(o => targets.includes(o.key)).map(o => o.label).join(", ");
     const timing = willDraft ? "when the item passes the editorial gate" : when ? `at ${when.replace("T", " ")}` : "now";
@@ -244,6 +256,13 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
                     <li key={p.v} className="flex items-center gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-1">
                       <span className="w-4 shrink-0 text-slate-400" dir="ltr">{i + 1}</span>
                       <span className="min-w-0 flex-1 truncate" dir="auto" title={p.v}>{p.label}</span>
+                      {!/^https:\/\//.test(p.v) && (
+                        <button type="button" onClick={() => makePublic(p.v)} disabled={!!publishing}
+                          title="Copy it onto the website so Instagram can fetch it"
+                          className="whitespace-nowrap rounded border border-slate-300 px-2 py-0.5 font-bold disabled:opacity-40">
+                          {publishing === p.v ? "publishing…" : "make public"}
+                        </button>
+                      )}
                       {i > 0 && <button type="button" onClick={() => setPics(a => { const b = [...a]; [b[i - 1], b[i]] = [b[i], b[i - 1]]; return b; })} className="text-slate-500" title="earlier">↑</button>}
                       <button type="button" onClick={() => setPics(a => a.filter(x => x.v !== p.v))} className="text-red-700 underline">remove</button>
                     </li>
@@ -272,7 +291,12 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
             </div>
           )}
           {igChosen && media !== "video" && media !== "image" && <p className="text-amber-700">Instagram needs an image or a video. An image must be a public HTTPS address (Meta fetches the file itself); a video from the vault works, as a Reel.</p>}
-          {igChosen && (media === "cover" || igNeedsPublic) && <p className="text-amber-700">An image on the vault reaches Facebook only — Instagram needs a public image address.</p>}
+          {igChosen && (media === "cover" || igNeedsPublic) && (
+            <p className="text-amber-700">
+              An image on the vault reaches Facebook only — Instagram needs a public image address.
+              {igNeedsPublic && <> Press <b>make public</b> beside each one: it copies the image onto the website and uses that address.</>}
+            </p>
+          )}
           {isCarousel && <p className="text-slate-500">A carousel of <span dir="ltr">{pics.length}</span> images{fbChosen ? " — on Facebook a post with several photos" : ""}{igChosen ? " — on Instagram a swipeable carousel" : ""}.</p>}
 
           <div className="flex flex-wrap items-center gap-3">

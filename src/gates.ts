@@ -146,6 +146,8 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // The stored series (7 Sep 2026) — typed in, never written by the live Meta pull.
   "/api/social/periods/save": SITE_EDITORS,
   "/api/social/periods/delete": SITE_EDITORS,
+  // A vault image copied onto the website so Meta can fetch it (Instagram fetches for itself).
+  "/api/social/image-public": SITE_EDITORS,
   "/api/tools/save": TOOL_EDITORS,
   "/api/tools/delete": TOOL_EDITORS,
   "/api/contacts/save": CONTACT_EDITORS,

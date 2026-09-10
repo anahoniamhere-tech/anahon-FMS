@@ -169,3 +169,27 @@ assert.ok(/file is missing from the vault/.test(srv),
   "a document whose bytes are gone must say so, not 'upload it here first'");
 
 console.log("check-social: media-library asserts passed");
+
+// ---- a vault image made fetchable by Meta -----------------------------------------------------
+// Instagram fetches every image itself, so /api/social/image-public copies a vault image onto the
+// website and returns its address. Two things must hold, and both are about not lying to an editor.
+const pub = srv.slice(srv.indexOf('app.post("/api/social/image-public"'), srv.indexOf('// ---- the stored series'));
+assert.ok(pub.length > 200, "the image-public route must exist");
+// 1. It must refuse to build a URL on an address Meta cannot reach.
+assert.ok(/\^https:\\\/\\\//.test(pub) || /https:\\\/\\\//.test(pub),
+  "it must require SITE_PUBLIC_URL to be https:// before handing out an address");
+assert.ok(/SITE_PUBLIC_URL/.test(pub), "…read from SITE_PUBLIC_URL, not invented");
+// 2. It must not report an address that does not answer yet: the site is a static build, so a file
+//    in public/uploads is not live until Astro rebuilds and push.sh rsyncs dist/.
+assert.ok(/__build/.test(pub), "it must rebuild the site after copying the file");
+assert.ok(/method: "HEAD"/.test(pub), "…and check the address actually answers before calling it live");
+assert.ok(/502/.test(pub), "…and fail loudly when it does not");
+// The same guards the post route uses: category, personnel, real bytes.
+for (const guard of ["SOCIAL_MEDIA_CATEGORIES", "isPersonnelDoc", "existsSync", "looksLikeMedia"]) {
+  assert.ok(pub.includes(guard), `image-public must apply the same ${guard} guard the post route does`);
+}
+// Deterministic naming: publishing the same image twice must not litter the site with copies.
+assert.ok(/contentHash/.test(pub), "the published filename must derive from the content, not the clock");
+assert.ok(!/Date\.now\(\)/.test(pub), "…so no timestamp in the name");
+
+console.log("check-social: image-public asserts passed");

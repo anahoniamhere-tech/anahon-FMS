@@ -129,7 +129,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
   "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build",
   "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
-  "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete",
+  "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete", "/api/social/image-public",
   "/api/tools/save", "/api/tools/delete",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/document/upload", "/api/materials/link",
@@ -139,7 +139,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 const EDITOR_ALLOWED_POSTS = new Set([
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
-  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
+  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete", "/api/social/image-public", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
 ]);
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
 // Anyone can be given a task, so every working seat may tick its own and put it back;
@@ -4579,6 +4579,58 @@ app.get("/api/social/insights", async (req: any, res) => {
     insightsCache.set(key, { at: Date.now(), data });
     res.json({ ok: true, cached: false, ...data });
   } catch (e: any) { res.status(502).json({ ok: false, error: e.message }); }
+});
+
+// ---- a vault image, made fetchable by Meta ---------------------------------------------------
+// Instagram fetches every image itself, so a picture in the vault cannot go there: the vault has no
+// public address. The website does. This copies one vault image into the site's public/uploads and
+// hands back its address on SITE_PUBLIC_URL.
+//
+// It does NOT hand back a URL that is not yet live. The site is a static build: a file dropped into
+// public/uploads only reaches the VPS when Astro rebuilds and push.sh rsyncs dist/. So this builds,
+// then checks the address actually answers, and says so — an editor who is told "public" and then
+// watches Meta fail on a 404 has been told a lie.
+app.post("/api/social/image-public", async (req, res) => {
+  try {
+    const { docId, user } = req.body;
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Publishing an image needs an editor or the Digital Officer." });
+    const base = String(process.env.SITE_PUBLIC_URL || "").replace(/\/$/, "");
+    if (!/^https:\/\//.test(base)) {
+      return res.status(400).json({ error: `The site's public address is "${base || "not set"}". Meta fetches images over HTTPS from the open internet, so SITE_PUBLIC_URL must be a public https:// address before a vault image can go to Instagram.` });
+    }
+    const d = await prisma.appDoc.findUnique({ where: { id: String(docId || "") } });
+    const file = d ? vaultPathFromPointer(d.base64 || "") : null;
+    if (!d || isPersonnelDoc(d) || !SOCIAL_MEDIA_CATEGORIES.includes(d.category) || !file) {
+      return res.status(400).json({ error: "That image is not one the desk may post — upload it here first." });
+    }
+    if (!fs.existsSync(file)) return res.status(400).json({ error: "That image is in the register but its file is missing from the vault, so there is nothing to publish. Upload it again." });
+    if (!IMAGE_MIMES.includes(d.mimeType)) return res.status(400).json({ error: `That file is ${d.mimeType}, not an image the networks accept — JPEG, PNG or WebP.` });
+    if (!looksLikeMedia(readHead(file), d.mimeType)) return res.status(400).json({ error: "That file is not a JPEG, PNG or WebP inside, whatever its name." });
+
+    // Deterministic name: the same image published twice lands on the same address instead of
+    // littering the site with copies, and re-running this is free.
+    const ext = d.mimeType.includes("png") ? "png" : d.mimeType.includes("webp") ? "webp" : "jpg";
+    const stem = (d.filename || "image").replace(/\.[^.]+$/, "").toLowerCase().replace(/[^\w\u0600-\u06FF]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || "image";
+    const hash = (d.contentHash || crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex")).slice(0, 8);
+    const fname = `${stem}-${hash}.${ext}`;
+    const url = `${base}/uploads/website/${fname}`;
+
+    const liveNow = await fetch(url, { method: "HEAD" }).then(r => r.ok).catch(() => false);
+    const dir = path.join(SITE_DIR, "public/uploads/website");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(file, path.join(dir, fname));
+    if (liveNow) return res.json({ ok: true, url, live: true, rebuilt: false });   // already out there: nothing to build
+
+    // Astro copies public/ into dist/ at build time and push.sh rsyncs dist/ to the VPS.
+    const b: any = await fetch(`${SITE_URL}/__build`, { method: "POST" }).then(r => r.json()).catch(e => ({ ok: false, error: e.message }));
+    const live = await fetch(url, { method: "HEAD" }).then(r => r.ok).catch(() => false);
+    await createAuditLog(user?.id, user?.name, "Image Published to the Website",
+      `"${d.filename}" → ${url}${live ? "" : " — NOT reachable yet"}${b.error ? ` (build: ${b.error})` : ""}`);
+    if (!live) {
+      return res.status(502).json({ error: `The image was copied to the website but ${url} does not answer yet${b.seconds ? ` (build took ${b.seconds}s)` : ""}${b.error ? `: ${b.error}` : ", so the build or the deploy did not carry it"}. Press Publish on the Live editor and try again.`, url });
+    }
+    res.json({ ok: true, url, live: true, rebuilt: true, seconds: b.seconds });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 // ---- the stored series ---------------------------------------------------------------------
