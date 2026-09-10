@@ -8239,6 +8239,15 @@ app.post("/api/document/upload", async (req, res) => {
     const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
     const dupe = await prisma.appDoc.findFirst({ where: { contentHash } });
     if (dupe) {
+      // A signed receipt that is already on file for another reason must still be marked
+      // as the signed copy — otherwise the log keeps saying the money is unproven while
+      // the proof sits in the vault. Dedupe collapses the bytes, not the fact.
+      if (signedReceipt && !dupe.receiptSigned) {
+        await prisma.appDoc.update({ where: { id: dupe.id }, data: { receiptNo, receiptSigned: true } });
+        await createAuditLog(user?.id, user?.name, "Signed Receipt Filed",
+          `${dupe.refNo || dupe.id} was already on file byte-for-byte — marked as the signed copy of ${receiptNo}.`);
+        return res.json({ success: true, document: dupe, doc: dupe, duplicate: true, receiptNo });
+      }
       await createAuditLog(user?.id, user?.name, "Document Already On File",
         `${filename || safeName} matches ${dupe.refNo || dupe.id} byte-for-byte — existing document reused.`);
       return res.json({ success: true, document: dupe, doc: dupe, duplicate: true });

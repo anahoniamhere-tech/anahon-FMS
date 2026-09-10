@@ -56,6 +56,10 @@ assert.ok(/receiptNo\n?\s*\}\)|receiptNo,/.test(server), "the issued receipt mus
 // …and only the people who may issue a receipt may file its signed copy.
 assert.ok(/signedReceipt[\s\S]{0,300}RECEIPT_ISSUERS/.test(server), "filing a signed receipt must be restricted like issuing one");
 
+// F2 — a signed scan already on file byte-for-byte must still be marked signed,
+// or the log keeps calling the money unproven while the proof sits in the vault.
+assert.ok(/if \(signedReceipt && !dupe\.receiptSigned\)/.test(server), "dedupe must not swallow the signed-copy fact");
+
 // G — the attach control is no longer hardcoded to the quotation category.
 const tab = fs.readFileSync("src/tabs/ProductionTab.tsx", "utf8");
 assert.ok(tab.includes("receiptNo ? RECEIPT_CATEGORY : \"Quotation (Signed)\""), "the attach control must be able to file a receipt as a receipt");
