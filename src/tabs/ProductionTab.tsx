@@ -630,14 +630,22 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                 const canSettle = MANAGERS.includes(currentUser.role) && !["Rejected", "Expired"].includes(q.status);
                                 return (
                                   <div className="space-y-1">
-                                    {tranches.map(tx => (
-                                      <div key={tx.id} className="text-[10px] font-bold text-emerald-700">
-                                        🏦 <span dir="ltr">{tx.date} · {formatIn(tx.amount, state.bankAccounts.find(ba => ba.id === tx.bankAccountId)?.currency || q.currency)}</span>
+                                    {tranches.map(tx => {
+                                      // Say where the money actually landed. Off-bank settlements
+                                      // (OMT / BOB / Whish / cash) are recorded on a Petty-Cash-type
+                                      // evidence account, not in a bank — the house pattern — so a
+                                      // bank icon on one of those claims a deposit that never happened.
+                                      const acct = state.bankAccounts.find(ba => ba.id === tx.bankAccountId);
+                                      const inBank = acct?.type === "Bank";
+                                      return (
+                                      <div key={tx.id} className="text-[10px] font-bold text-emerald-700" title={acct?.name || ""}>
+                                        {inBank ? "🏦" : "💵"} <span dir="ltr">{tx.date} · {formatIn(tx.amount, acct?.currency || q.currency)}</span>
                                         {FINANCE.includes(currentUser.role) && (
                                           <button onClick={() => linkQuotePayment(q, tx.id, true)} className="ms-1 text-slate-400 hover:text-red-600" title="Remove this deposit" aria-label={`Remove deposit of ${tx.date} from ${q.quoteNo}`}>✕</button>
                                         )}
                                       </div>
-                                    ))}
+                                      );
+                                    })}
                                     {left > 0 ? (
                                       <span className="inline-flex items-center gap-1">
                                         <span className={`text-[10px] ${paid > 0 ? "font-bold text-amber-700" : "text-slate-400"}`}>

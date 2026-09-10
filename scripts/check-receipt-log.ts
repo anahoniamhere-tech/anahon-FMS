@@ -73,4 +73,9 @@ assert.ok(/d\.category === "Quotation \(Signed\)"/.test(tab), "a receipt filed a
 assert.ok(tab.includes('t("signed quote")'), "the quotation row's chip must say it is a signed QUOTATION");
 assert.ok(!/>✓signed</.test(tab), "the unlabelled signed chip must be gone");
 
+// H — a cash settlement must not wear a bank icon: off-bank money sits on a
+// Petty-Cash-type evidence account, and 🏦 there claims a deposit that never happened.
+assert.ok(/acct\?\.type === "Bank"/.test(tab), "the tranche icon must follow the account type");
+assert.ok(!/🏦 <span dir="ltr">\{tx\.date\}/.test(tab), "the hardcoded bank icon on tranches must be gone");
+
 console.log("✓ check-receipt-log: series numbers from the receipts, one row per receipt, signed copy tracked");
