@@ -17,7 +17,7 @@ import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITOR
 import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
-import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo } from "./src/receipts.js";
+import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -8190,6 +8190,16 @@ app.post("/api/document/upload", async (req, res) => {
     // filed as a second row so the log still shows one entry per receipt. Receipting money
     // stays in the same hands that issue it.
     const signedReceipt = category === RECEIPT_CATEGORY && !!receiptNo;
+
+    // A signed receipt filed as a signed quotation is money evidence in the wrong drawer:
+    // the receipt log goes on saying the payment is unproven, and the quotation shows a
+    // second "signed" copy it never had. The quotation row's attach control cannot tell
+    // them apart, so the name does — and the refusal says where the file belongs.
+    // ponytail: filename heuristic, tighten if receipts ever stop carrying RC-nnn.
+    if (category === "Quotation (Signed)" && parseReceiptNo(filename || "")) {
+      const looksLike = receiptNoOf({ filename } as any);
+      return res.status(400).json({ error: `${filename} looks like receipt ${looksLike} — attach it on that receipt's own row in the receipt log below, not here, or the payment keeps reading as unproven.` });
+    }
     if (signedReceipt) {
       if (!RECEIPT_ISSUERS.includes(user?.role)) {
         return res.status(403).json({ error: `Only ${RECEIPT_ISSUERS.join(", ")} may file a signed receipt.` });

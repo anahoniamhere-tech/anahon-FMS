@@ -667,14 +667,14 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                 const signed = (state.documents || []).filter((d: any) => d.linkedRecordType === "Quotation" && d.linkedRecordId === q.id && d.category === "Quotation (Signed)");
                                 return (
                                   <>
-                                    <label className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100 cursor-pointer inline-block" title="Attach the signed copy returned by the client">
+                                    <label className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100 cursor-pointer inline-block" title={t("Attach the signed QUOTATION returned by the client — a signed receipt goes on its own row in the receipt log below")}>
                                       📎
                                       <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) attachSignedCopy(q, f); e.currentTarget.value = ""; }} />
                                     </label>
                                     {signed.map((d: any) => (
                                       <button key={d.id} onClick={() => openDoc({ id: d.id, filename: d.filename, mimeType: d.mimeType })}
                                         className="text-emerald-700 hover:text-emerald-900 p-1 text-[10px] font-bold transition-colors rounded hover:bg-emerald-50"
-                                        title={`Signed copy on file — ${d.refNo || d.filename}`}>✓signed</button>
+                                        title={`The client's signed quotation — ${d.refNo || d.filename}`}>✓ {t("signed quote")}</button>
                                     ))}
                                   </>
                                 );

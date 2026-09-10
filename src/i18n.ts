@@ -3,6 +3,8 @@
 // records stay in the language they were entered in.
 export const AR: Record<string, string> = {
   // receipt log (Clients & quotations)
+  "signed quote": "عرض موقّع",
+  "Attach the signed QUOTATION returned by the client — a signed receipt goes on its own row in the receipt log below": "أرفق عرض السعر الموقّع من العميل — الإيصال الموقّع يوضع في صفّه الخاص في سجل الإيصالات أدناه",
   "without the signed copy on file": "بدون النسخة الموقعة",
   "Client name is required.": "error",
   "A quotation needs a client and a title.": "error",

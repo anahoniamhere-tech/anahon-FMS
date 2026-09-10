@@ -60,10 +60,17 @@ assert.ok(/signedReceipt[\s\S]{0,300}RECEIPT_ISSUERS/.test(server), "filing a si
 // or the log keeps calling the money unproven while the proof sits in the vault.
 assert.ok(/if \(signedReceipt && !dupe\.receiptSigned\)/.test(server), "dedupe must not swallow the signed-copy fact");
 
+// F3 — a receipt cannot be filed as a signed quotation. This is the mistake that
+// actually happened on 10 Sep: both signed receipts went in through the quotation row.
+assert.ok(/category === "Quotation \(Signed\)" && parseReceiptNo\(filename/.test(server), "a file named as a receipt must be refused as a signed quotation");
+
 // G — the attach control is no longer hardcoded to the quotation category.
 const tab = fs.readFileSync("src/tabs/ProductionTab.tsx", "utf8");
 assert.ok(tab.includes("receiptNo ? RECEIPT_CATEGORY : \"Quotation (Signed)\""), "the attach control must be able to file a receipt as a receipt");
 assert.ok(tab.includes("receiptLog("), "the quotations door must show the receipt log");
 assert.ok(/d\.category === "Quotation \(Signed\)"/.test(tab), "a receipt filed against a quotation is not a signed quotation");
+// Two chips reading the same bare word "signed" is what confused Saad — say which is which.
+assert.ok(tab.includes('t("signed quote")'), "the quotation row's chip must say it is a signed QUOTATION");
+assert.ok(!/>✓signed</.test(tab), "the unlabelled signed chip must be gone");
 
 console.log("✓ check-receipt-log: series numbers from the receipts, one row per receipt, signed copy tracked");
