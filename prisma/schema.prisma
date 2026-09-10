@@ -290,6 +290,11 @@ model AppDoc {
   partyId          String?
   contentHash      String @default("") // sha256 of the bytes — the same file never files twice
   note             String @default("") // editable description shown in the materials library
+  // Receipt series (Cash Receipt only). The number lives on the record, not just in the
+  // filename, so the series can be listed and continued without parsing filenames.
+  receiptNo        String?
+  // True on the client's signed scan: the same receipt, same number, second row on disk.
+  receiptSigned    Boolean @default(false)
 }
 
 model AuditLog {

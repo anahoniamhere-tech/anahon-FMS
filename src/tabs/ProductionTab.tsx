@@ -7,6 +7,7 @@ import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import { FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
 import { outstandingOn, paidOn } from "../quoteTranches";
+import { RECEIPT_CATEGORY, receiptLog, receiptNoOf } from "../receipts";
 
 export default function ProductionTab({ currentUser, formatIn, formatUSD, openDoc, refreshState, state, t, triggerToast }: SharedProps) {
   // Production stream: client / quotation being added-edited (null = form closed)
@@ -24,7 +25,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
   const saveClient = async (e: FormEvent) => {
     e.preventDefault();
     if (!clientForm?.name) {
-      triggerToast("Client name is required.", "error");
+      triggerToast("Client name is required.");
       return;
     }
     try {
@@ -45,7 +46,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
   const saveQuotation = async (e: FormEvent) => {
     e.preventDefault();
     if (!quoteForm?.clientId || !quoteForm?.title) {
-      triggerToast("A quotation needs a client and a title.", "error");
+      triggerToast("A quotation needs a client and a title.");
       return;
     }
     try {
@@ -84,7 +85,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
   /** Attach the client's SIGNED copy to a quotation. The generated document is what we
    *  sent; this is what came back with signatures and stamp on it — the thing that turns
    *  a quotation into a booked job, and the only acceptance evidence an auditor accepts. */
-  const attachSignedCopy = async (q: Quotation, file: File) => {
+  const attachSignedCopy = async (q: Quotation, file: File, receiptNo?: string) => {
     try {
       const base64 = await new Promise<string>((resolve, reject) => {
         const r = new FileReader();
@@ -97,7 +98,10 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
         body: JSON.stringify({
           filename: file.name, mimeType: file.type || "application/octet-stream",
           sizeStr: `${Math.max(1, Math.round(file.size / 1024))} KB`, base64,
-          category: "Quotation (Signed)",
+          // The signed scan of a receipt is that same receipt — same category, same number,
+          // so it never shows up as a second receipt in the log.
+          category: receiptNo ? RECEIPT_CATEGORY : "Quotation (Signed)",
+          ...(receiptNo ? { receiptNo } : {}),
           linkedRecordType: "Quotation", linkedRecordId: q.id, user: currentUser
         })
       });
@@ -105,7 +109,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
       if (!res.ok) throw new Error(data.error || "Upload failed");
       triggerToast(data.duplicate
         ? `Already on file as ${data.doc?.refNo || "an existing document"} — not stored twice.`
-        : `Signed copy filed against ${q.quoteNo}.`);
+        : receiptNo ? `Signed ${receiptNo} filed.` : `Signed copy filed against ${q.quoteNo}.`);
       refreshState();
     } catch (err: any) { triggerToast(err.message, "error"); }
   };
@@ -660,7 +664,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                 <Download className="h-3.5 w-3.5 inline" />
                               </a>
                               {(() => {
-                                const signed = (state.documents || []).filter((d: any) => d.linkedRecordType === "Quotation" && d.linkedRecordId === q.id);
+                                const signed = (state.documents || []).filter((d: any) => d.linkedRecordType === "Quotation" && d.linkedRecordId === q.id && d.category === "Quotation (Signed)");
                                 return (
                                   <>
                                     <label className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100 cursor-pointer inline-block" title="Attach the signed copy returned by the client">
@@ -728,6 +732,88 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                   💡 When an accepted quote is delivered and invoiced, the client's payment arrives on the BLOM
                   statement and books as service income (4200) — same route as the SKF service payments.
                 </p>
+
+                {/* ── The receipt log ──────────────────────────────────────────────────
+                    The second half of the pair: the quotation log above says what we offered,
+                    this says what we took money for. One row per receipt number — a quotation
+                    settled in tranches carries several, and the signed scan of a receipt is the
+                    same receipt, so it changes the last column instead of adding a row.
+                    "Signed copy" is the column that matters: for a cash payment the signed
+                    receipt is the only proof of settlement. */}
+                {(() => {
+                  const rows = receiptLog((state.documents || []) as any);
+                  const unsigned = rows.filter(r => !r.signed).length;
+                  return (
+                    <div className="space-y-2 pt-4 border-t border-slate-200">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">🧾 {t("Receipt log")}</h4>
+                        <span className={`text-[11px] font-bold ${unsigned ? "text-amber-700" : "text-slate-400"}`}>
+                          {rows.length === 0 ? t("no receipts issued")
+                            : unsigned ? `${unsigned} ${t("without the signed copy on file")}`
+                            : t("every receipt has its signed copy on file")}
+                        </span>
+                      </div>
+                      <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                        <table className="w-full text-xs">
+                          <thead className="bg-slate-50 text-slate-500 uppercase text-[10px]">
+                            <tr>
+                              <th className="p-3 text-start">{t("Receipt №")}</th>
+                              <th className="p-3 text-start">{t("Date")}</th>
+                              <th className="p-3 text-start">{t("Client")}</th>
+                              <th className="p-3 text-start">{t("Amount")}</th>
+                              <th className="p-3 text-start">{t("Method")}</th>
+                              <th className="p-3 text-start">{t("Against quotation")}</th>
+                              <th className="p-3 text-start">{t("Signed copy")}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {rows.map(r => {
+                              const q = state.quotations.find(x => x.id === r.quotationId);
+                              const cl = q ? state.clients.find(c => c.id === q.clientId) : null;
+                              // Amount and method live in the receipt's own filename/body; the
+                              // filename carries the figure, which is enough to list it here.
+                              const doc: any = (state.documents || []).find((d: any) => d.id === r.docId);
+                              const amt = Number(/_(\d+(?:\.\d+)?)\.html$/.exec(doc?.filename || "")?.[1] || 0);
+                              return (
+                                <tr key={r.receiptNo} className="hover:bg-slate-50">
+                                  <td className="p-3 font-mono font-bold text-slate-700" dir="ltr">{r.receiptNo}</td>
+                                  <td className="p-3 text-slate-500" dir="ltr">{r.date.slice(0, 10)}</td>
+                                  <td className="p-3 text-slate-700">{cl?.name || "—"}</td>
+                                  <td className="p-3 font-mono text-slate-700" dir="ltr">{amt ? formatIn(amt, q?.currency || "USD") : "—"}</td>
+                                  <td className="p-3 text-slate-500">{doc?.note || "—"}</td>
+                                  <td className="p-3 font-mono text-slate-500">{q?.quoteNo || "—"}</td>
+                                  <td className="p-3 whitespace-nowrap">
+                                    <button onClick={() => openDoc({ id: r.docId, filename: r.receiptNo, mimeType: "text/html" })}
+                                      className="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100" title={t("Open the receipt")}
+                                      aria-label={`Open ${r.receiptNo}`}>📄</button>
+                                    {r.signed ? (
+                                      <button onClick={() => r.signedDocId && openDoc({ id: r.signedDocId, filename: r.receiptNo, mimeType: "application/pdf" })}
+                                        className="text-emerald-700 hover:text-emerald-900 p-1 text-[10px] font-bold rounded hover:bg-emerald-50"
+                                        title={t("Signed receipt on file")}>✓ {t("on file")}</button>
+                                    ) : q ? (
+                                      <label className="text-amber-700 hover:text-amber-900 p-1 text-[10px] font-bold rounded hover:bg-amber-50 cursor-pointer inline-block min-h-[44px] leading-[2.4]"
+                                        title={t("Attach the receipt signed by both sides")}>
+                                        📎 {t("attach signed")}
+                                        <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) attachSignedCopy(q, f, r.receiptNo); e.currentTarget.value = ""; }} />
+                                      </label>
+                                    ) : (
+                                      <span className="text-[10px] text-slate-400">{t("quotation deleted")}</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                            {rows.length === 0 && (
+                              <tr><td colSpan={7} className="p-4 text-center text-slate-400 italic">
+                                {t("No receipts yet — issue one with 🧾 on a quotation once the client has paid.")}
+                              </td></tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
   );

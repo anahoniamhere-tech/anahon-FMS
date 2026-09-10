@@ -582,7 +582,7 @@ export async function nextDocRef(prisma: any): Promise<string> {
 
 export async function archive(prisma: any, o: {
   docId: string; projectCode: string; category: string; filename: string; html: string;
-  linkedRecordType: string; linkedRecordId: string; partyId?: string;
+  linkedRecordType: string; linkedRecordId: string; partyId?: string; receiptNo?: string; note?: string;
 }) {
   // A document keeps its reference for life — regeneration reuses it, only a
   // brand-new registration draws the next number.
@@ -610,6 +610,8 @@ export async function archive(prisma: any, o: {
     linkedRecordType: o.linkedRecordType,
     linkedRecordId: o.linkedRecordId,
     partyId: o.partyId || null,
+    ...(o.receiptNo ? { receiptNo: o.receiptNo } : {}),
+    ...(o.note ? { note: o.note } : {}),
     created_at: new Date().toISOString(),
   };
   await prisma.appDoc.upsert({ where: { id: o.docId }, update: data, create: { id: o.docId, ...data } });

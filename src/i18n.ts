@@ -2,6 +2,24 @@
 // Main navigation and primary actions only — data, documents and financial
 // records stay in the language they were entered in.
 export const AR: Record<string, string> = {
+  // receipt log (Clients & quotations)
+  "without the signed copy on file": "بدون النسخة الموقعة",
+  "Client name is required.": "error",
+  "A quotation needs a client and a title.": "error",
+  "Receipt log": "سجل الإيصالات",
+  "no receipts issued": "لم تصدر إيصالات",
+  "every receipt has its signed copy on file": "كل إيصال لديه نسخته الموقعة",
+  "Receipt №": "رقم الإيصال",
+  "Date": "التاريخ",
+  "Against quotation": "مقابل عرض السعر",
+  "Signed copy": "النسخة الموقعة",
+  "Open the receipt": "افتح الإيصال",
+  "Signed receipt on file": "الإيصال الموقع محفوظ",
+  "on file": "محفوظ",
+  "Attach the receipt signed by both sides": "أرفق الإيصال الموقع من الطرفين",
+  "attach signed": "أرفق الموقع",
+  "quotation deleted": "حُذف عرض السعر",
+  "No receipts yet — issue one with 🧾 on a quotation once the client has paid.": "لا إيصالات بعد — أصدر إيصالاً بالضغط على 🧾 بعد دفع العميل.",
   // sections
   "Overview": "نظرة عامة",
   "Registers": "السجلات",

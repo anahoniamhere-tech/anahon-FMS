@@ -366,6 +366,10 @@ export interface AppDoc {
   contentHash?: string;
   /** Editable description shown in the materials library. */
   note?: string;
+  /** Receipt series number (Cash Receipt only) — RC-nnn/year, stored on the record. */
+  receiptNo?: string | null;
+  /** True on the client's signed scan: the same receipt, never a second entry in the log. */
+  receiptSigned?: boolean;
   created_at: string;
 }
 

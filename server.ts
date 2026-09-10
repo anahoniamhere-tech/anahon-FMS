@@ -17,6 +17,7 @@ import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITOR
 import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
+import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo } from "./src/receipts.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -771,7 +772,9 @@ async function loadState(viewer?: any) {
       partyId: d.partyId,
       created_at: d.created_at,
       contentHash: d.contentHash,
-      note: d.note
+      note: d.note,
+      receiptNo: d.receiptNo,
+      receiptSigned: d.receiptSigned
     })),
     auditLogs,
     auditLogTotal: auditTotal,
@@ -6212,10 +6215,16 @@ app.post("/api/quotations/issue-receipt", async (req, res) => {
     const amt = Number(amount) || quote.amount;
     if (amt <= 0) return res.status(400).json({ error: "Receipt amount must be positive." });
 
-    // Number the series from what is already on file. No counter to drift out of step.
-    const issued = await prisma.appDoc.count({ where: { category: "Cash Receipt" } });
+    // Number the series from the receipts themselves — the highest RC issued that year,
+    // plus one. Counting documents in a folder would drift the moment one is deleted or
+    // refiled, and a receipt series with a hole in it is an audit finding.
     const when = date || localDate();
-    const receiptNo = `RC-${String(issued + 1).padStart(3, "0")}/${when.slice(0, 4)}`;
+    const priorReceipts = await prisma.appDoc.findMany({
+      where: { category: RECEIPT_CATEGORY },
+      select: { id: true, filename: true, category: true, linkedRecordId: true, receiptNo: true, receiptSigned: true, created_at: true }
+    });
+    const receiptNo = nextReceiptNo(priorReceipts, Number(when.slice(0, 4)));
+    const seq = parseReceiptNo(receiptNo)!.seq;
 
     const html = cashReceiptHtml({
       receiptNo, date: when, method: method || "Cash",
@@ -6224,11 +6233,13 @@ app.post("/api/quotations/issue-receipt", async (req, res) => {
       againstQuoteNo: quote.quoteNo, againstTitle: quote.title, receivedBy: taker
     });
 
-    const docId = `doc-rc-${quote.id}-${issued + 1}`;
+    const docId = `doc-rc-${quote.id}-${seq}`;
     const filename = `${when.slice(0, 4)}_RECEIPT_${receiptNo.replace("/", "-")}_${client.name.replace(/\s+/g, "")}_${amt}.html`;
     await archive(prisma, {
-      docId, projectCode: "GENERAL", category: "Cash Receipt", filename, html,
-      linkedRecordType: "Quotation", linkedRecordId: quote.id
+      docId, projectCode: "GENERAL", category: RECEIPT_CATEGORY, filename, html,
+      linkedRecordType: "Quotation", linkedRecordId: quote.id, receiptNo,
+      // How the money came in, on the record — the log lists it without opening the file.
+      note: method || "Cash"
     });
     await createAuditLog(user?.id, user?.name, "Cash Receipt Issued",
       `Receipt ${receiptNo} issued for quotation ${quote.quoteNo} (${client.name}), ${quote.currency} ${amt} by ${method || "Cash"}, received by ${taker}. Filed as ${filename}. Enter ${receiptNo} as the signed receipt number when recording the settlement.`);
@@ -8173,7 +8184,18 @@ app.get("/api/document/docx-text/:id", async (req, res) => {
 // Document Upload Record archiving — file is written into the vault, DB keeps a pointer
 app.post("/api/document/upload", async (req, res) => {
   try {
-    const { filename, mimeType, sizeStr, base64, category, linkedRecordType, linkedRecordId, user, partyId } = req.body;
+    const { filename, mimeType, sizeStr, base64, category, linkedRecordType, linkedRecordId, user, partyId, receiptNo } = req.body;
+
+    // A signed receipt is the same receipt that was issued, carrying the same number —
+    // filed as a second row so the log still shows one entry per receipt. Receipting money
+    // stays in the same hands that issue it.
+    const signedReceipt = category === RECEIPT_CATEGORY && !!receiptNo;
+    if (signedReceipt) {
+      if (!RECEIPT_ISSUERS.includes(user?.role)) {
+        return res.status(403).json({ error: `Only ${RECEIPT_ISSUERS.join(", ")} may file a signed receipt.` });
+      }
+      if (!parseReceiptNo(receiptNo)) return res.status(400).json({ error: "A signed receipt must name the receipt it is a copy of (RC-nnn/year)." });
+    }
 
     // A personnel document belongs to a person, not to a project. It is filed under
     // PERSONNEL/<name> so an HR file is one folder on disk, and only the people entitled
@@ -8241,6 +8263,7 @@ app.post("/api/document/upload", async (req, res) => {
         linkedRecordId: personnel ? partyId : (linkedRecordId || "exp-1"),
         partyId: partyId || null,
         contentHash,
+        ...(signedReceipt ? { receiptNo, receiptSigned: true } : {}),
         created_at: new Date().toISOString()
       }
     });
