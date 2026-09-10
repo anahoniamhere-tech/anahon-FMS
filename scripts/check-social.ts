@@ -150,3 +150,22 @@ assert.match(plan("facebook", JSON.stringify([P, Q]), { videoRef: "doc:9" }).err
 assert.ok(CAROUSEL_MIN === 2 && CAROUSEL_MAX === 10, "Instagram publishes 2..10 carousel items");
 
 console.log("check-social: carousel asserts passed");
+
+// ---- the media library only offers media that still has bytes ---------------------------------
+// A document row outlives its file: on 9 Sep 2026, 14 of the 18 image documents in the vault
+// pointed at files that were gone from both the NAS and the Mac mirror. The picker listed them,
+// so an editor could choose an image that could not be posted and then read a refusal telling
+// them to "upload it here first" — about a file they had just picked out of the library.
+import { readFileSync } from "node:fs";
+const srv = readFileSync(new URL("../server.ts", import.meta.url), "utf8");
+const mediaRoute = srv.slice(srv.indexOf('app.get("/api/social/media"'), srv.indexOf('app.get("/api/social/insights"'));
+assert.ok(/vaultPathFromPointer/.test(mediaRoute) && /existsSync/.test(mediaRoute),
+  "the media library must offer only documents whose bytes are still in the vault");
+assert.ok(/base64:\s*true/.test(mediaRoute), "…which means it has to read the pointer to check");
+assert.ok(/\.map\(\(\{ base64, \.\.\.d \}\) => d\)/.test(mediaRoute),
+  "…and the pointer must be stripped before the list reaches the browser");
+// The refusal must name the real cause rather than sending someone in a circle.
+assert.ok(/file is missing from the vault/.test(srv),
+  "a document whose bytes are gone must say so, not 'upload it here first'");
+
+console.log("check-social: media-library asserts passed");

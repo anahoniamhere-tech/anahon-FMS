@@ -4548,8 +4548,17 @@ app.post("/api/social/media", express.raw({ type: ["video/*", "image/*"], limit:
 });
 app.get("/api/social/media", async (req: any, res) => {
   if (!SITE_EDITOR_ROLES.includes(req.dbUser?.role)) return res.status(403).json({ error: "The vault's media is the Social desk's." });
-  const docs = await prisma.appDoc.findMany({ where: { category: { in: SOCIAL_MEDIA_CATEGORIES }, OR: [{ mimeType: { startsWith: "video/" } }, { mimeType: { startsWith: "image/" } }] }, orderBy: { created_at: "desc" }, take: 100, select: MEDIA_FIELDS });
-  res.json({ ok: true, videos: docs.filter(d => d.mimeType.startsWith("video/")), images: docs.filter(d => d.mimeType.startsWith("image/")) });
+  const rows = await prisma.appDoc.findMany({ where: { category: { in: SOCIAL_MEDIA_CATEGORIES }, OR: [{ mimeType: { startsWith: "video/" } }, { mimeType: { startsWith: "image/" } }] }, orderBy: { created_at: "desc" }, take: 100, select: { ...MEDIA_FIELDS, base64: true } });
+  // Only media whose BYTES are still there. A document row outlives its file — 14 of the 18 image
+  // documents pointed at files missing from the vault on 9 Sep 2026 — and offering one of those in
+  // the picker means an editor chooses an image that cannot be posted, then reads a refusal that
+  // blames the wrong thing. The same resolution the post route uses, so the list and the route
+  // agree about what is postable.
+  const docs = rows.filter(d => { const f = vaultPathFromPointer(d.base64 || ""); return !!f && fs.existsSync(f); })
+    .map(({ base64, ...d }) => d);                                   // the pointer never goes to the browser
+  const gone = rows.length - docs.length;
+  if (gone) console.log(`[social] media library: ${gone} of ${rows.length} documents have no file in the vault and were not offered`);
+  res.json({ ok: true, videos: docs.filter(d => d.mimeType.startsWith("video/")), images: docs.filter(d => d.mimeType.startsWith("image/")), missing: gone });
 });
 // Everything the networks will say about a Page and its Instagram account. Meta's insights calls are
 // slow and rate-limited, so an answer is kept for fifteen minutes; "refresh" on the desk asks again.
@@ -4653,7 +4662,11 @@ app.post("/api/social/queue", async (req, res) => {
     const vaultMedia = async (docId: string, kind: "video" | "image") => {
       const d = await prisma.appDoc.findUnique({ where: { id: String(docId) } });
       const file = d ? vaultPathFromPointer(d.base64 || "") : null;
-      if (!d || isPersonnelDoc(d) || !SOCIAL_MEDIA_CATEGORIES.includes(d.category) || !file || !fs.existsSync(file)) throw new Error(`That ${kind} is not one the desk may post — upload it here first.`);
+      if (!d || isPersonnelDoc(d) || !SOCIAL_MEDIA_CATEGORIES.includes(d.category) || !file) throw new Error(`That ${kind} is not one the desk may post — upload it here first.`);
+      // Separated from the catch-all above: the record exists and is allowed, but its bytes are
+      // gone from the vault. Telling someone to "upload it here first" when they just picked it
+      // out of the library sends them in a circle.
+      if (!fs.existsSync(file)) throw new Error(`That ${kind} is in the register but its file is missing from the vault, so there is nothing to send. Upload it again.`);
       if (!(kind === "video" ? VIDEO_MIMES : IMAGE_MIMES).includes(d.mimeType)) throw new Error(kind === "video" ? `That file is ${d.mimeType}, not a video the networks accept. ${VIDEO_SPEC}.` : `That file is ${d.mimeType}, not an image the networks accept — JPEG, PNG or WebP.`);
       if (!looksLikeMedia(readHead(file), d.mimeType)) throw new Error(`That file is not a ${kind === "video" ? "MP4/MOV" : "JPEG, PNG or WebP"} inside, whatever its name.`);
       return `doc:${d.id}`;
