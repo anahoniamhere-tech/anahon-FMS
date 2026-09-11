@@ -118,6 +118,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/content/brainstorm": NEWSROOM,
   "/api/content/produce": NEWSROOM,
   "/api/content/research": NEWSROOM,
+  "/api/content/preview": NEWSROOM,             // rehearsals only — the route refuses a real piece
   "/api/content/approve": CONTENT_EDITORS,             // the route keeps the two slots apart
   "/api/content/return": CONTENT_EDITORS,
   "/api/content/legal-record": CONTENT_EDITORS,

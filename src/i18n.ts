@@ -768,6 +768,10 @@ export const AR: Record<string, string> = {
   "PD approval seat": "مقعد موافقة مدير البرنامج",
   "Fact-checker seat": "مقعد المدقِّق",
   "Rehearsal published — nothing left the FMS": "نُشرت البروفة — لم يخرج شيء من النظام",
+  "Preview on the editing site": "معاينة على موقع التحرير",
+  "See it exactly as the website would show it — on the internal editing site only, never on anahon.online.": "شاهدها كما سيعرضها الموقع تماماً — على موقع التحرير الداخلي فقط، ولا تصل إلى anahon.online أبداً.",
+  "Open the FMS on the office network or the tailnet to preview on the editing site.": "افتح النظام على شبكة المكتب أو عبر Tailscale لمعاينة القطعة على موقع التحرير.",
+  "Preview failed": "تعذّرت المعاينة",
   // Policy 002 content types + carousels (9 Sep 2026)
   "Content label": "تصنيف المحتوى",
   "choose": "اختر",

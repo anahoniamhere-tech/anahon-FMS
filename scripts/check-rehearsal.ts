@@ -110,4 +110,30 @@ ok(/!c\.rehearsal && c\.publishedAt/.test(tab), "a rehearsal is not counted as p
 ok(/!i\.rehearsal/.test(read("../src/tabs/SocialTab.tsx")), "the social composer never offers a rehearsal");
 ok(/filter\(\(c: any\) => !c\.rehearsal\)/.test(read("../src/tabs/EditorialMap.tsx")), "the map counts real pieces only");
 
+/* ── 9. the preview never leaves the editing site ───────────────────────────── */
+const route = server.slice(server.indexOf('app.post("/api/content/preview"'), server.indexOf('app.post("/api/content/delete"'));
+ok(route.length > 200, "the preview route exists");
+ok(/if \(!item\.rehearsal\) return res\.status\(400\)/.test(route), "a real piece is refused a preview — it reaches the site by being published");
+ok(/\$\{SITE_URL\}\/__preview/.test(route), "it asks the editing site (SITE_URL), never the public one");
+ok(/itemAudit\(item, user, "Rehearsal Previewed"/.test(route), "…and the preview is audit-logged and marked");
+ok(/"\/api\/content\/preview": NEWSROOM/.test(read("../src/gates.ts")), "the route has a gate entry");
+const page = read("../../website/src/pages/preview/[id].astro");
+ok(/if \(!import\.meta\.env\.DEV\) return \[\];/.test(page),
+  "the preview page returns NO paths in a production build — nothing under /preview/ can reach dist/, the only folder pushed");
+ok(/getCollection\('previews'\)/.test(page) && /preview=\{true\}/.test(page), "…reads only the previews collection and wears the banner");
+const cfg = read("../../website/src/content.config.ts");
+ok(/base: '\.\/src\/content\/previews'/.test(cfg) && /collections = \{ articles, previews \}/.test(cfg), "previews is its own collection, not articles");
+const lib = read("../../website/scripts/editorial-lib.mjs");
+const prev = lib.slice(lib.indexOf("export function previewOne("), lib.indexOf("export function unpublishOne("));
+ok(/if \(!item\.rehearsal\) throw/.test(prev), "the bridge refuses to preview a real piece");
+ok(/src\/content\/previews/.test(prev) && !/content\/articles/.test(prev), "…writes only into previews, never articles");
+ok(!/copyCover\(/.test(prev), "…and never copies a cover into public/, which IS built and pushed");
+ok(/unlinkSync/.test(prev), "…and prunes a preview whose rehearsal has been deleted");
+ok(/path: `\/preview\/\$\{item\.id\}\/`/.test(prev),
+  "…and hands back an address ending in / — the site sets trailingSlash: 'always', and without it the page answers 404");
+const astroCfg = read("../../website/astro.config.mjs");
+ok(/server\.middlewares\.use\('\/__preview'/.test(astroCfg), "the editing site answers /__preview");
+ok(/'astro:server:setup'\(\{ server, refreshContent \}\)/.test(astroCfg) && /await refreshContent\?\.\(\{\}\);/.test(astroCfg),
+  "…and re-runs the content loaders after writing, or the dev server never sees the new preview (it answered 404 without this)");
+
 console.log(`check-rehearsal: all ${n} assertions passed — rehearsals compare seats and stay inside; real pieces compare people.`);

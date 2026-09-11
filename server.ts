@@ -104,6 +104,7 @@ const CREW_ALLOWED_POSTS = new Set([
   "/api/content/return",           // the named checker sends work back
   "/api/content/produce",          // the assignee drafts their own piece in the studio
   "/api/content/research",
+  "/api/content/preview",          // a rehearsal shown on the internal editing site (any seat may be worn in a walk-through)
   "/api/content/draft-save",
   "/api/content/draft-delete",
   "/api/document/upload",          // reference material gathered while producing
@@ -140,7 +141,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 // Chief Editor and Production Manager: the editorial pipeline and site work, nothing financial.
 const EDITOR_ALLOWED_POSTS = new Set([
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
-  "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
+  "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/preview", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
   "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete", "/api/social/image-public", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
 ]);
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
@@ -5216,6 +5217,24 @@ app.post("/api/content/correction", async (req, res) => {
 // published only to the NAS editing instance on the isolated LAN, already retracted, and the
 // only row in the register. Saad instructed it 6 Sep 2026; the 15 audit lines of the test run and
 // a "Test Content Item Removed" line hold the record. Do not turn that exception into a rule here.
+// Preview: a REHEARSAL shown on the internal editing site exactly as the website would show it —
+// never on anahon.online. The site renders it into its own `previews` collection, whose page returns
+// no paths in a production build, so it can never be listed, built into dist/ or pushed by push.sh.
+// A real piece is refused: it reaches the website one way only, by being published.
+app.post("/api/content/preview", async (req, res) => {
+  try {
+    const { id, user } = req.body;
+    const item = await prisma.contentItem.findUnique({ where: { id } });
+    if (!item) return res.status(404).json({ error: "Content item not found." });
+    if (!item.rehearsal) return res.status(400).json({ error: "Only a rehearsal is previewed here — a real piece reaches the website by being published." });
+    const r = await fetch(`${SITE_URL}/__preview`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) });
+    const j: any = await r.json().catch(() => ({ ok: false, error: `site answered ${r.status}` }));
+    if (!j.ok) return res.status(502).json({ error: `The editing site could not render the preview: ${j.error || r.status}` });
+    await itemAudit(item, user, "Rehearsal Previewed", `"${item.title}" shown on the internal editing site at ${j.path}.`);
+    res.json({ ok: true, path: j.path });
+  } catch (err: any) { res.status(502).json({ error: `The editing site is unreachable at ${SITE_URL}: ${err.message}` }); }
+});
+
 app.post("/api/content/delete", async (req, res) => {
   try {
     const { id, user } = req.body;

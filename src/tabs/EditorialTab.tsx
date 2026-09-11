@@ -141,6 +141,23 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
   const seat: string = (window as any).__actingAs || currentUser.role;
   const seatEditor = EDITOR_ROLES.includes(seat);
   const isMaster = currentUser.role === "Super Admin";
+  // The internal editing site sits beside the FMS on every host that serves it — the Live editor's
+  // rule: :3100 ↔ :4321 on the office network, :8444 ↔ :8443 over the tailnet. A rehearsal preview
+  // opens there, and never on anahon.online. The window opens before the request so no popup
+  // blocker mistakes it for an unprompted tab.
+  const SITE_PORT: Record<string, string> = { "3100": "4321", "8444": "8443" };
+  const previewOnSite = async (id: string) => {
+    const port = SITE_PORT[window.location.port];
+    if (!port) { triggerToast(t("Open the FMS on the office network or the tailnet to preview on the editing site."), "error"); return; }
+    const w = window.open("", "_blank");
+    const r = await fetch("/api/content/preview", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id }) })
+      .then(x => x.json()).catch(e => ({ error: e.message }));
+    const url = `${window.location.protocol}//${window.location.hostname}:${port}${r.path}`;
+    if (!r.ok || !r.path) { w?.close(); triggerToast(r.error || t("Preview failed"), "error"); return; }
+    // A blocked pop-up returns null from window.open, and the preview would silently never
+    // appear. Open it in this tab instead — Back returns to the desk.
+    if (w) w.location.href = url; else window.location.assign(url);
+  };
   const canManage = isEditor || currentUser.role === "Project Officer"; // server scope-checks POs
 
   const nameOf = (id: string) => state.users.find(u => u.id === id)?.name || "—";
@@ -1480,6 +1497,8 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                         <p className="font-bold"><span className="inline-flex items-center gap-1 align-middle">{ic(Drama, "h-3 w-3")}{t("REHEARSAL")}</span> — {t("Rehearsal — walk the whole chain alone, taking each step in a different seat with Act as…. Publishing it never leaves the FMS.")}</p>
                         <p className="mt-1">{t("You are standing in")}: <b>{seat}</b></p>
                         <p className="mt-0.5">{t("Seats so far")}: {t("author seat")} <b>{item.assigneeAs || "—"}</b> · {t("fact-checker seat")} <b>{item.factCheckerAs || "—"}</b> · {t("PM approval seat")} <b>{item.pmApprovedAs || "—"}</b> · {t("PD approval seat")} <b>{item.pdApprovedAs || "—"}</b></p>
+                        <button onClick={() => previewOnSite(item.id)} title={t("See it exactly as the website would show it — on the internal editing site only, never on anahon.online.")}
+                          className="mt-1.5 rounded bg-amber-600 px-3 py-1 font-bold text-white hover:bg-amber-700">👁 {t("Preview on the editing site")}</button>
                       </div>
                     )}
                     {/* Actions — status × role, server re-checks everything */}
