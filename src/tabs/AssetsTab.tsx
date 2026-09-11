@@ -70,6 +70,8 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   const [stickersOpen, setStickersOpen] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [stickerMm, setStickerMm] = useState<number>(DEFAULT_STICKER_MM);
+  // Print after scan: every item registered since this screen opened, printed in one go.
+  const [justReceived, setJustReceived] = useState<string[]>([]);
 
   const assets = state.fixedAssets || [];
   const receiving = SUPPLIER_EDITORS.includes(currentUser.role);
@@ -157,13 +159,14 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "The item could not be registered.");
       const { id, tag } = data.asset;
+      setJustReceived(prev => [...prev, id]);
       // Photos are filed after the item exists, because they are filed against it. A photo
       // that fails leaves the item registered and says so — it can be added from the card.
       const filed = await Promise.all([
         labelPhoto ? fileOn(id, { ...labelPhoto, filename: `${tag}_label${extOf(labelPhoto)}` }, "Equipment Label") : true,
         itemPhoto ? fileOn(id, { ...itemPhoto, filename: `${tag}_item${extOf(itemPhoto)}` }, "Equipment Photo") : true,
       ]);
-      if (filed.every(Boolean)) triggerToast(`${t("Received")} — ${tag}. ${t("Write it on the sticker.")}`);
+      if (filed.every(Boolean)) triggerToast(`${t("Received")} — ${tag}. ${t("Added to the stickers to print below.")}`);
       else triggerToast(`${t("Received")} — ${tag}. ${t("A photo did not upload; add it from the item's card.")}`, "error");
       setF({ ...BLANK, custodian: currentUser?.name || "" });
       setLabelPhoto(null);
@@ -453,6 +456,23 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
             {saving ? t("Registering…") : t("Register as received")}
           </button>
         </form>
+      )}
+
+      {/* Print after scan: scan the whole lot, then print every one of them on A4 in one go —
+          one tiny sticker per sheet would waste the sheet. */}
+      {receiving && justReceived.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+          <span className="text-xs font-bold text-emerald-900">
+            🏷 {t("{n} received just now — print their stickers when you have scanned the lot.").replace("{n}", String(justReceived.length))}
+          </span>
+          <select aria-label={t("Sticker size")} value={stickerMm} onChange={e => setStickerMm(Number(e.target.value))} className="finance-input min-h-[44px] bg-white text-xs md:min-h-0">
+            {STICKER_SIZES.map(mm => <option key={mm} value={mm}>{t("QR {n} cm").replace("{n}", String(mm / 10))}</option>)}
+          </select>
+          <a href={withTicket(`/api/assets/stickers?size=${stickerMm}&ids=${justReceived.map(encodeURIComponent).join(",")}`)} target="_blank" rel="noreferrer" className={btn}>
+            🖨 {t("Print {n} stickers").replace("{n}", String(justReceived.length))}
+          </a>
+          <button type="button" onClick={() => setJustReceived([])} className={btnGhost}>{t("Done — clear the list")}</button>
+        </div>
       )}
 
       {assets.length === 0 && (

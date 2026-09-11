@@ -574,6 +574,10 @@ export const AR: Record<string, string> = {
   "repair logged": "سُجّل الإصلاح",
   "still out": "ما زالت مُعارة",
   "— not paid on a payment request —": "— لم تُدفع بطلب دفع —",
+  // Print after scan
+  "{n} received just now — print their stickers when you have scanned the lot.": "{n} استُلمت الآن — اطبع ملصقاتها بعد مسح الدفعة كلها.",
+  "Done — clear the list": "تمّ — امسح القائمة",
+  "Added to the stickers to print below.": "أُضيفت إلى الملصقات المعدّة للطباعة أدناه.",
   "Message the client": "راسل العميل",
   "Message": "راسل",
   "Opens WhatsApp — you write it and press Send.": "يفتح واتساب — أنت من يكتب ويضغط إرسال.",

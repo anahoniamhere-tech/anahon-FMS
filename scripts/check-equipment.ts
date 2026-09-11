@@ -247,6 +247,11 @@ ok("the test strip is one item at 1, 1.2, 1.5 and 2 cm, captioned",
 ok("the screen picks which items to print, the size, and the strip — every link carries the sign-in ticket",
   tab.includes("withTicket(`/api/assets/stickers?size=${stickerMm}&ids=") && tab.includes("withTicket(`/api/assets/stickers?strip=1&ids=") && /STICKER_SIZES\.map/.test(tab));
 
+// Saad, 11 Sep: "scan all the equipment, print A4 sheets, cut the QRs, stick them on."
+ok("print after scan: everything registered since the screen opened is one button away, on one sheet",
+  /setJustReceived\(prev => \[\.\.\.prev, id\]\)/.test(tab)
+  && tab.includes("withTicket(`/api/assets/stickers?size=${stickerMm}&ids=${justReceived.map(encodeURIComponent).join(\",\")}`)"));
+
 console.log("\nO. the Equipment screen speaks Arabic");
 const keysUsed = [...tab.matchAll(/\bt\("((?:[^"\\]|\\.)*)"\)/g)].map(m => m[1]);
 const missingAr = [...new Set(keysUsed)].filter(k => !i18n.includes(`"${k}":`));
