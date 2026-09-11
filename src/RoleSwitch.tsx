@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
+import { Drama } from "lucide-react";
 import Info from "./Info";
+import { ic } from "./nav";
 
 /**
  * Standing in for a vacant seat.
@@ -21,7 +23,7 @@ type ActingLog = { id: string; userName: string; action: string; details: string
 
 export default function RoleSwitch({ currentUser, onChange, compact = false }: {
   currentUser: any; onChange: (role: string | null) => void;
-  /** Icon only, 44px, for the phone header — where a pill reading "🎭 Act as…" does not fit. */
+  /** Icon only, 44px, for the phone header — where a pill reading "Act as…" does not fit. */
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -65,7 +67,8 @@ export default function RoleSwitch({ currentUser, onChange, compact = false }: {
             ? "border-amber-400 bg-amber-400 text-slate-900"
             : "border-slate-300 text-slate-700 hover:bg-slate-50"}`}
       >
-        {compact ? "🎭" : acting ? `🎭 acting as ${seatName(acting)}` : "🎭 Act as…"}
+        {compact ? ic(Drama)
+          : <span className="inline-flex items-center gap-1.5">{ic(Drama)}{acting ? `acting as ${seatName(acting)}` : "Act as…"}</span>}
       </button>
       {!compact && <Info id="acting-as" />}
 
@@ -139,7 +142,7 @@ export function ActingBanner({ acting, onStop }: { acting: string | null; onStop
   if (!acting) return null;
   return (
     <div className="flex items-center justify-center gap-3 bg-amber-400 px-4 py-1.5 text-xs font-bold text-slate-900">
-      🎭 You are acting as {SEAT_LABEL[acting] || acting}. Everything you do is being recorded under your own name and this seat.
+      {ic(Drama)}You are acting as {SEAT_LABEL[acting] || acting}. Everything you do is being recorded under your own name and this seat.
       <button onClick={onStop} className="rounded bg-slate-900 px-2 py-0.5 text-[11px] font-semibold text-amber-300">Stop</button>
     </div>
   );

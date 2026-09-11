@@ -72,7 +72,7 @@ console.log("\nthe phone can stand in for a seat");
 // action written into the audit log under his own name AND the seat.
 const roleSwitch = readFileSync(new URL("../src/RoleSwitch.tsx", import.meta.url), "utf8");
 ok("the phone header carries Act as", /<RoleSwitch compact currentUser=\{currentUser\}/.test(app));
-ok("as an icon, not the desktop pill", /compact \? "\ud83c\udfad"/.test(roleSwitch));
+ok("as an icon, not the desktop pill", /compact \? ic\(Drama\)/.test(roleSwitch));
 ok("at the touch minimum", /flex h-11 w-11 items-center justify-center rounded-lg border text-lg/.test(roleSwitch));
 // The panel is 384px wide; a 375px phone is narrower than that.
 // `absolute end-0` lines the panel up with the trigger, and on a phone the trigger is in

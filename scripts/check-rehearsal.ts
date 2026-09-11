@@ -105,7 +105,7 @@ ok(deskItems(me, st(false), "2026-09-11").some(i => i.kind === "contentItems"), 
 const tab = read("../src/tabs/EditorialTab.tsx");
 // [\s\S] not [^>]: the button's onClick is an arrow function, and its `=>` contains a ">".
 ok(/\{isMaster && \([\s\S]{0,300}?rehearsal: true/.test(tab), "New rehearsal is offered to the master account only");
-ok(/🎭 \{t\("REHEARSAL"\)\}/.test(tab), "a rehearsal wears its band");
+ok(/\{ic\(Drama, "h-3 w-3"\)\}\{t\("REHEARSAL"\)\}/.test(tab), "a rehearsal wears its band");
 ok(/!c\.rehearsal && c\.publishedAt/.test(tab), "a rehearsal is not counted as published this week");
 ok(/!i\.rehearsal/.test(read("../src/tabs/SocialTab.tsx")), "the social composer never offers a rehearsal");
 ok(/filter\(\(c: any\) => !c\.rehearsal\)/.test(read("../src/tabs/EditorialMap.tsx")), "the map counts real pieces only");
