@@ -28,6 +28,11 @@ const fmtWhen = (iso: string) => iso ? iso.slice(0, 16).replace("T", " ") : "";
 const toLocalInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 const MAX_VIDEO_MB = 300; const MAX_IMAGE_MB = 10;
 type Media = "none" | "cover" | "image" | "video";
+/** A Page's logo; if Meta will not serve it, the round placeholder rather than a broken-image icon. */
+function PageLogo({ src }: { src?: string }) {
+  const [bad, setBad] = useState(false);
+  return src && !bad ? <img src={src} alt="" onError={() => setBad(true)} className="h-8 w-8 rounded-full" /> : <span className="h-8 w-8 rounded-full bg-slate-100" />;
+}
 
 export default function SocialTab({ state, currentUser, triggerToast }: SharedProps) {
   const canPost = SITE_EDITORS.includes(currentUser?.role);
@@ -186,7 +191,7 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
         {status && !status.configured && <p className="text-amber-700">The server has no Meta app configured (META_APP_ID / META_APP_SECRET / FMS_PUBLIC_URL). Admin sets them in the FMS .env.</p>}
         {accounts.map(a => (
           <div key={a.id} className="flex flex-wrap items-center gap-2 rounded border border-slate-200 p-2">
-            {a.picture ? <img src={a.picture} alt="" className="h-8 w-8 rounded-full" /> : <span className="h-8 w-8 rounded-full bg-slate-100" />}
+            <PageLogo src={a.picture} />
             <b dir="auto">{a.name}</b>
             {a.status?.followers != null && <span className="text-slate-500"><span dir="ltr">{a.status.followers.toLocaleString()}</span> followers</span>}
             {a.igUsername ? <span className="rounded-full bg-pink-50 px-2 py-0.5 text-pink-700">Instagram @{a.igUsername}{a.status?.igFollowers != null && <> · <span dir="ltr">{a.status.igFollowers.toLocaleString()}</span></>}{a.status?.igQuotaUsed != null && <> · <span dir="ltr">{a.status.igQuotaUsed}/{a.status.igQuotaTotal ?? "?"}</span> today</>}</span> : <span className="text-slate-400">no Instagram linked</span>}

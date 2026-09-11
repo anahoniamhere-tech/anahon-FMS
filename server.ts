@@ -4454,7 +4454,10 @@ const META_APP_ID = () => (process.env.META_APP_ID || "").trim();
 const META_APP_SECRET = () => (process.env.META_APP_SECRET || "").trim();
 const metaRedirect = () => `${String(process.env.FMS_PUBLIC_URL || "").replace(/\/$/, "")}/api/social/meta/callback`;
 const connectStates = new Map<string, { userId: string; userName: string; expires: number }>();
-const publicAccount = (a: any) => ({ id: a.id, name: a.name, picture: a.picture, igId: a.igId, igUsername: a.igUsername, connectedAt: a.connectedAt, tokenValid: a.tokenValid, tokenCheckedAt: a.tokenCheckedAt });
+// The picture Meta hands over at connect time is a signed CDN address with an expiry (oe=); both Pages'
+// died on 11 Sep 2026 with a 403. The Graph picture edge redirects to a fresh one on every load and
+// needs no token, so the stored column is never shown.
+const publicAccount = (a: any) => ({ id: a.id, name: a.name, picture: `https://graph.facebook.com/${a.id}/picture?type=square`, igId: a.igId, igUsername: a.igUsername, connectedAt: a.connectedAt, tokenValid: a.tokenValid, tokenCheckedAt: a.tokenCheckedAt });
 async function digitalTask(title: string, notes: string) {
   const holder = await prisma.user.findFirst({ where: { role: DIGITAL_SEAT, active: true } }).catch(() => null);
   await prisma.complianceTask.create({ data: { id: `task-${Date.now()}`, title, category: "Social", dueDate: new Date().toISOString().slice(0, 10), status: "Pending", notes, assigneeUserId: holder?.id ?? null, createdBy: "u-1" } }).catch(() => {});
