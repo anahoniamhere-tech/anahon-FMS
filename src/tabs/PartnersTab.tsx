@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Calendar, Download, User } from "lucide-react";
+import { ic } from "../nav";
+import { Calendar, Download, User, Banknote, Hourglass, Upload, Zap } from "lucide-react";
 import { Account, Expense, Project } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
@@ -309,11 +310,11 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
                         <h4 className="text-xs font-bold text-amber-900 uppercase font-mono">
-                          ⏳ Pending eBLOM advices ({pendingTransactions.length})
+                          <span className="inline-flex items-center gap-1.5">{ic(Hourglass)}Pending eBLOM advices ({pendingTransactions.length})</span>
                         </h4>
                         {FINANCE.includes(currentUser.role) && (
                           <label className="text-[11px] font-bold text-amber-800 hover:text-amber-950 cursor-pointer inline-flex items-center gap-1 min-h-[44px] px-2 border border-amber-300 rounded bg-white">
-                            📥 Import eBLOM advice PDF
+                            <span className="inline-flex items-center gap-1">{ic(Upload, "h-3 w-3")}Import eBLOM advice PDF</span>
                             <input
                               type="file"
                               accept="application/pdf"
@@ -370,7 +371,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                     {FINANCE.includes(currentUser.role) && (
                       <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                          <h4 className="text-xs font-bold font-mono uppercase text-slate-800">💵 Count the cash drawer</h4>
+                          <h4 className="text-xs font-bold font-mono uppercase text-slate-800"><span className="inline-flex items-center gap-1.5">{ic(Banknote)}Count the cash drawer</span></h4>
                           <span className="text-[10px] text-slate-500 font-mono">
                             ledger 1120 book: {formatUSD(state.accounts.find(a => a.code === "1120")?.balance || 0)}
                           </span>
@@ -428,7 +429,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                         className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3"
                       >
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                          <h4 className="text-xs font-bold font-mono uppercase text-slate-800">⚡ Lodge Daily Direct Expense</h4>
+                          <h4 className="text-xs font-bold font-mono uppercase text-slate-800"><span className="inline-flex items-center gap-1.5">{ic(Zap)}Lodge Daily Direct Expense</span></h4>
                           <span className="text-[10px] text-slate-500 font-mono">
                             pays from: {selectedAccount?.name} {selectedAccount?.accountNo} — one submit posts voucher · bank · budget · ledger · digitized record
                           </span>
@@ -559,7 +560,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                           <div className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
                             <div>
                               <h4 className="text-xs font-bold font-mono uppercase text-slate-800 border-b border-slate-100 pb-2">
-                                ⚡ Quick Daily Direct Expense Lodger
+                                <span className="inline-flex items-center gap-1.5">{ic(Zap)}Quick Daily Direct Expense Lodger</span>
                               </h4>
                               <p className="text-[10px] text-slate-500 mt-1">
                                 Bypass the approval lifecycle for immediate operations. Logs, approvals, settlements, and ledger postings execute in one click.

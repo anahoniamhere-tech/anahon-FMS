@@ -46,8 +46,7 @@ import {
   Grid,
   List,
   Eye,
-  Newspaper
-} from "lucide-react";
+  Newspaper, FolderOpen, Lock, TriangleAlert } from "lucide-react";
 import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, BankAccount, Employee, Timesheet, FixedAsset, PartnerAccount, AppDoc, ComplianceTask, AuditLog, Opportunity, Client, Quotation, QuotationItem, Proposal } from "./types";
 
 import { PROPOSAL_SECTIONS, STREAMS, OPP_STAGES, QUOTE_STATUSES, SERVICE_CATALOG, FINANCIAL_TERMS, PRODUCTION_NOTE, TECHNICAL_NOTE, EXTRAS_DEFAULT } from "./constants";
@@ -81,7 +80,7 @@ import SocialTab from "./tabs/SocialTab";
 import LiveTab from "./tabs/LiveTab";
 import RoleSwitch, { ActingBanner } from "./RoleSwitch";
 import { searchHits, SearchHits } from "./globalSearch";
-import { NAV, visibleNav, LANDING } from "./nav";
+import { NAV, visibleNav, LANDING, ic } from "./nav";
 import { deskItems, localToday } from "./workflow";
 import { withTicket, refreshDocTicket } from "./docTicket";
 import { SharedProps } from "./tabs/shared";
@@ -292,11 +291,11 @@ export default function App() {
     );
     return (
       <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3 text-start">
-        <h5 className="text-xs font-bold text-slate-800 font-mono uppercase">📂 File — {partyName}</h5>
+        <h5 className="text-xs font-bold text-slate-800 font-mono uppercase"><span className="inline-flex items-center gap-1.5">{ic(FolderOpen)}File — {partyName}</span></h5>
         {maySeePersonnelFile(currentUser, state.employees, partyId) && (
           <div className="rounded-lg border border-[#E23B3B]/30 bg-[#E23B3B]/[0.04] p-2.5">
             <p className="text-[10px] font-bold uppercase tracking-wider text-[#8f2020] mb-1">
-              🔒 Personal file — restricted
+              <span className="inline-flex items-center gap-1">{ic(Lock, "h-3 w-3")}Personal file — restricted</span>
             </p>
             {personal.length === 0 && (
               <p className="text-[11px] italic text-slate-500">No personal documents on file yet.</p>
@@ -349,7 +348,7 @@ export default function App() {
         )}
         {unlinkedByName.length > 0 && (
           <div>
-            <p className="text-[10px] font-bold text-amber-600 uppercase mb-1">⚠ Unlinked documents matching this name (verify & link)</p>
+            <p className="text-[10px] font-bold text-amber-600 uppercase mb-1"><span className="inline-flex items-center gap-1">{ic(TriangleAlert, "h-3 w-3")}Unlinked documents matching this name (verify & link)</span></p>
             {unlinkedByName.map(docLink)}
           </div>
         )}

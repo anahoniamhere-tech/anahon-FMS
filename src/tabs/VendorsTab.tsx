@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { ic } from "../nav";
+import { Trash2, Ban, Bot, FileSignature, Landmark, Plus, RefreshCw, Search } from "lucide-react";
 import { Account, Vendor } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
@@ -242,17 +243,17 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                   each one is trivial, the total is not. */}
               <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">🔁 Subscriptions & Renewals</h3>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(RefreshCw)}Subscriptions & Renewals</span></h3>
                   <div className="flex items-center gap-2">
                     {SUPPLIER_EDITORS.includes(currentUser.role) && (
                       <>
                         <button type="button" disabled={subBusy} onClick={detectSubscriptions}
                           className="text-xs font-medium bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-2 disabled:opacity-50 transition-all">
-                          {subBusy ? "Scanning…" : "🔍 Find in statements"}
+                          {subBusy ? "Scanning…" : <span className="inline-flex items-center gap-1.5">{ic(Search)}Find in statements</span>}
                         </button>
                         <button type="button" onClick={() => setSubForm({ name: "", amount: "", currency: "USD", cycle: "Monthly", nextRenewal: "", status: "Active", bankAccountId: "ba-blom-usd", matchText: "", notes: "" })}
                           className="text-xs font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 py-2 transition-all">
-                          ➕ Track a subscription
+                          <span className="inline-flex items-center gap-1.5">{ic(Plus)}Track a subscription</span>
                         </button>
                       </>
                     )}
@@ -417,7 +418,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                   <h3 className="text-xs font-bold text-slate-800 uppercase font-mono tracking-wider">Onboard New Provider (Supplier / Consultant / Freelancer)</h3>
                   <div className="p-2 rounded-lg border border-indigo-200 bg-indigo-50/40 md:w-1/2">
                     <label className={`block text-xs font-bold mb-1 ${aiVendorScanning ? "text-slate-400" : "text-indigo-700"}`}>
-                      {aiVendorScanning ? "🤖 Reading supplier details…" : "🤖 Scan an invoice with AI (auto-fill supplier details)"}
+                      <span className="inline-flex items-center gap-1.5">{ic(Bot)}{aiVendorScanning ? "Reading supplier details…" : "Scan an invoice with AI (auto-fill supplier details)"}</span>
                     </label>
                     <input
                       type="file"
@@ -529,7 +530,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
 
                   {["Consultant / Freelancer", "Service Provider"].includes(newVendorCategory) && (
                     <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-xs flex flex-col gap-1 font-mono">
-                      <span className="font-bold flex items-center gap-1">🏛️ Lebanese MoF Statutory Compliance Alert:</span>
+                      <span className="font-bold flex items-center gap-1">{ic(Landmark)}Lebanese MoF Statutory Compliance Alert:</span>
                       <p className="leading-relaxed">
                         Individuals and consultants who do not have an official, active **Tax Registry ID** (MoF number) are subject to a **7.5% Withholding Tax (WHT)**.
                         The system will automatically calculate and withhold this tax at the payment stage unless a valid Tax Registry ID is entered above.
@@ -623,7 +624,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                         <td className="px-6 py-4 hidden md:table-cell">
                           {v.blocked ? (
                             <span className="text-[10px] bg-red-100 text-red-700 font-bold uppercase tracking-wider px-2 py-0.5 rounded">
-                              🚨 blocked - direct fail-safe
+                              <span className="inline-flex items-center gap-1">{ic(Ban, "h-3 w-3")}blocked - direct fail-safe</span>
                             </span>
                           ) : (
                             <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold uppercase tracking-wider px-2 py-0.5 rounded">
@@ -701,7 +702,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                     className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3"
                   >
                     <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <h3 className="text-sm font-bold text-slate-900">📄 Service agreement — {v.name}</h3>
+                      <h3 className="text-sm font-bold text-slate-900"><span className="inline-flex items-center gap-1.5">{ic(FileSignature)}Service agreement — {v.name}</span></h3>
                       <span className="text-[10px] font-mono text-slate-500">{v.category}{v.taxId ? ` · Tax ID ${v.taxId}` : ""}</span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">

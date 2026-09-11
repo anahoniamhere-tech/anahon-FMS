@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { ic } from "../nav";
+import { Archive as ArchiveIcon } from "lucide-react";
 import { SharedProps } from "./shared";
 import Info from "../Info";
 import { ARCHIVE_EDITORS, SITE_EDITORS } from "../roles";
@@ -64,7 +66,7 @@ export default function ArchiveTab({ currentUser, triggerToast, lang }: SharedPr
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-xl font-bold text-slate-900">🗂 Archive</h2>
+        <h2 className="text-xl font-bold text-slate-900"><span className="inline-flex items-center gap-1.5">{ic(ArchiveIcon, "h-5 w-5")}Archive</span></h2>
         <div className="flex rounded-full bg-slate-100 p-0.5 text-xs font-bold">
           {(["items", "schema"] as const).map(v => (
             <button key={v} onClick={() => setView(v)} className={`rounded-full px-3 py-1 ${view === v ? "bg-slate-900 text-white" : "text-slate-600"}`}>{v === "items" ? "Items" : "Tag schema"}</button>

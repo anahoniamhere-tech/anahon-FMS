@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Activity, Calendar, Copy, DollarSign, FolderGit2, Percent, Sliders } from "lucide-react";
+import { ic } from "../nav";
+import { Activity, Calendar, Copy, DollarSign, FolderGit2, Percent, Sliders, Smartphone, TriangleAlert } from "lucide-react";
 import { Donor, Project } from "../types";
 import { SharedProps } from "./shared";
 
@@ -171,7 +172,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                 <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">📱 Open on your phone</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-600"><span className="inline-flex items-center gap-1.5">{ic(Smartphone)}Open on your phone</span></p>
                       <p className="mt-1 font-mono text-lg font-bold text-slate-900 break-all">{phoneAccess.urls[0].url}</p>
                       <p className="mt-0.5 text-[10px] text-slate-400">
                         Same WiFi · this Mac must be awake and running · address is read live, so it stays correct if the router changes it
@@ -267,7 +268,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                           <div className="flex items-center gap-2">
                             <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${t.status === "Done" ? "bg-emerald-100 text-emerald-700" : isOverdue ? "bg-red-100 text-red-700 animate-pulse" : "bg-amber-100 text-amber-700"
                               }`}>
-                              {t.status === "Done" ? "Done" : isOverdue ? "⚠ OVERDUE" : t.status}
+                              {t.status === "Done" ? "Done" : isOverdue ? <span className="inline-flex items-center gap-1">{ic(TriangleAlert, "h-3 w-3")}OVERDUE</span> : t.status}
                             </span>
                           </div>
                         </div>

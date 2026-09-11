@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
+import { ic } from "../nav";
 import React, { useEffect, useState } from "react";
-import { Activity, Award, Download, Trash2 } from "lucide-react";
+import { Activity, Award, Download, Trash2, Banknote, CalendarRange, ChartColumn, CircleCheck, ClipboardList, Files, FolderGit2, FolderOpen, MapPin, Plus, Sheet, Sparkles, X } from "lucide-react";
 import { Account, AppDoc, Donor, Expense, Procurement, Project, Timesheet } from "../types";
 import { STREAMS } from "../constants";
 import { tr } from "../i18n";
@@ -11,11 +12,11 @@ import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES, CORE_SLOTS, missingCoreD
 
 /** The pages of a project's workspace, in the order they are shown. */
 type WorkspaceTab = "overview" | "papers" | "money" | "reconciliation";
-const WORKSPACE_TABS: { key: WorkspaceTab; label: string }[] = [
-  { key: "overview", label: "📌 Where it stands" },
-  { key: "papers", label: "📁 Papers" },
-  { key: "money", label: "💵 Money" },
-  { key: "reconciliation", label: "📊 Monthly Reconciliation Report" }
+const WORKSPACE_TABS: { key: WorkspaceTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { key: "overview", label: "Where it stands", icon: MapPin },
+  { key: "papers", label: "Papers", icon: FolderOpen },
+  { key: "money", label: "Money", icon: Banknote },
+  { key: "reconciliation", label: "Monthly Reconciliation Report", icon: ChartColumn }
 ];
 
 export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVoucherDocUpload, isProjectOfficer, openDoc, refreshState, requestableProjects, selectedProjectId, setSelectedProjectId, state, t, triggerToast, visibleProjects, workspaceRef, focusId, setFocusId }: SharedProps) {
@@ -938,7 +939,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                 {FINANCE.includes(currentUser.role) && (
                   <button type="button" onClick={() => setShowCreateProject(v => !v)}
                     className="min-h-[44px] bg-red-600 text-white text-xs font-medium rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">
-                    {showCreateProject ? `✕ ${t("Cancel")}` : `➕ ${t("Create New Project")}`}
+                    <span className="inline-flex items-center gap-1.5">{showCreateProject ? <>{ic(X)}{t("Cancel")}</> : <>{ic(Plus)}{t("Create New Project")}</>}</span>
                   </button>
                 )}
               </div>
@@ -947,7 +948,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
               {/* Add Project Inline form */}
               {FINANCE.includes(currentUser.role) && (
                 <form onSubmit={handleCreateProject} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">➕ Create New Project</h3>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Plus)}Create New Project</span></h3>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Project Name")}</label>
@@ -1073,7 +1074,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
               {/* Active Restricted Projects Section (NEW) */}
               <div className="space-y-4">
                 <h3 className="text-md font-bold text-slate-800 uppercase font-mono flex items-center gap-1.5">
-                  📁 {t("Active grants")}
+                  <span className="inline-flex items-center gap-1.5">{ic(FolderGit2)}{t("Active grants")}</span>
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {live.map(projectCard)}
@@ -1085,7 +1086,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                 {done.length > 0 && (
                   <details className="rounded-xl border border-slate-200 bg-white shadow-sm">
                     <summary className="min-h-[44px] cursor-pointer list-none px-4 py-3 text-xs font-bold uppercase font-mono text-slate-700 hover:bg-slate-50 rounded-xl flex items-center justify-between gap-2">
-                      <span>✅ {t("Completed grants")}</span>
+                      <span className="inline-flex items-center gap-1.5">{ic(CircleCheck)}{t("Completed grants")}</span>
                       <span className="font-normal text-[10px] text-slate-500" dir="ltr">
                         {done.length}{owedInDone > 0 ? ` · ${owedInDone} ${t("papers still owed")}` : ""}
                       </span>
@@ -1115,7 +1116,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                 return (
                   <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <h3 className="text-xs font-bold text-amber-800 uppercase font-mono">📋 {t("Papers still to file")}</h3>
+                      <h3 className="text-xs font-bold text-amber-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(ClipboardList)}{t("Papers still to file")}</span></h3>
                       <span className="text-[10px] text-amber-700 font-mono" dir="ltr">
                         {owed.reduce((n, r) => n + r.a.missing.length, 0)} · {owed.length} {t("projects")}
                       </span>
@@ -1216,7 +1217,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             className={`min-h-[44px] flex-1 px-3 py-2.5 flex items-center justify-center rounded-md transition-colors ${projectWorkspaceTab === tab.key ? "bg-white text-red-650 shadow-sm font-bold" : "text-slate-600 hover:text-slate-800"
                               }`}
                           >
-                            {t(tab.label)}
+                            <span className="inline-flex items-center gap-1.5">{ic(tab.icon)}{t(tab.label)}</span>
                           </button>
                         ))}
                       </div>
@@ -1249,7 +1250,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           return (
                             <div id="core-project-documents" className="p-4 bg-white border border-slate-200 rounded-lg space-y-2 scroll-mt-4">
                               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                                <h4 className="text-xs font-bold text-slate-700 uppercase font-mono">📑 Core Project Documents</h4>
+                                <h4 className="text-xs font-bold text-slate-700 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Files)}Core Project Documents</span></h4>
                                 <span className={`text-[10px] font-bold ${missing ? "text-amber-700" : "text-emerald-700"}`}>
                                   {missing ? `${missing} of 4 missing` : "complete"}
                                 </span>
@@ -1290,24 +1291,24 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             so what needs doing next is visible without being remembered. */}
                         <div className="p-4 bg-white border border-slate-200 rounded-lg space-y-3">
                           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                            <h4 className="text-xs font-bold text-slate-700 uppercase font-mono">🗓 Project Timeline & Assignments</h4>
+                            <h4 className="text-xs font-bold text-slate-700 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(CalendarRange)}Project Timeline & Assignments</span></h4>
                             {ACTIVITY_EDITORS.includes(currentUser.role) && (
                               <div className="flex items-center gap-2">
                                 <button type="button" onClick={() => generateTimeline(selectedProjectId!)}
                                   className="text-[11px] font-medium bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5 transition-all"
                                   title="Create the standard steps from this grant's start, mid-point and end dates">
-                                  ✨ Generate from grant dates
+                                  <span className="inline-flex items-center gap-1">{ic(Sparkles, "h-3 w-3")}Generate from grant dates</span>
                                 </button>
                                 <label className="text-[11px] font-medium bg-slate-100 hover:bg-slate-200 rounded-lg px-3 py-1.5 cursor-pointer transition-all"
                                   title="Upload the donor's Activity Timetable (.xlsx) — activities, Results and period columns are read from the sheet">
-                                  📊 Import donor timetable
+                                  <span className="inline-flex items-center gap-1">{ic(Sheet, "h-3 w-3")}Import donor timetable</span>
                                   <input type="file" accept=".xlsx" className="hidden"
                                     onChange={e => importTimetable(e, selectedProjectId!)} />
                                 </label>
                                 <button type="button"
                                   onClick={() => setActivityForm({ projectId: selectedProjectId, title: "", detail: "", kind: "Activity", dueDate: "", assigneeUserId: "", status: "Planned" })}
                                   className="text-[11px] font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg px-3 py-1.5 transition-all">
-                                  ➕ Add step
+                                  <span className="inline-flex items-center gap-1">{ic(Plus, "h-3 w-3")}Add step</span>
                                 </button>
                               </div>
                             )}
@@ -1469,11 +1470,11 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                             <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                               <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
-                                📂 1. Project papers — every document filed against this project
+                                <span className="inline-flex items-center gap-1.5">{ic(FolderOpen)}1. Project papers — every document filed against this project</span>
                               </h4>
                               {FINANCE.includes(currentUser.role) && (
                                 <label className="text-[10px] text-red-650 hover:text-red-700 font-bold cursor-pointer inline-flex items-center min-h-[44px] px-2">
-                                  ➕ Upload MoU
+                                  <span className="inline-flex items-center gap-1">{ic(Plus, "h-3 w-3")}Upload MoU</span>
                                   <input
                                     type="file"
                                     accept="application/pdf,image/png,image/jpeg"
@@ -1565,7 +1566,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                             <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                               <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
-                                📂 2. Procurement Files & Bid Matrices
+                                <span className="inline-flex items-center gap-1.5">{ic(FolderOpen)}2. Procurement Files & Bid Matrices</span>
                               </h4>
                               <span className="text-[10px] bg-slate-200 text-slate-700 font-bold font-mono px-1.5 py-0.5 rounded">{projProcurements.length} files</span>
                             </div>
@@ -1601,7 +1602,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                             <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                               <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
-                                📂 3. Expense Vouchers & Bills (Bills Ledger)
+                                <span className="inline-flex items-center gap-1.5">{ic(FolderOpen)}3. Expense Vouchers & Bills (Bills Ledger)</span>
                               </h4>
                               <span className="text-[10px] bg-slate-200 text-slate-700 font-bold font-mono px-1.5 py-0.5 rounded">{projExpenses.length} vouchers</span>
                             </div>
@@ -1674,7 +1675,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                             <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                               <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
-                                📂 4. Bank Reconciliation Statement Items
+                                <span className="inline-flex items-center gap-1.5">{ic(FolderOpen)}4. Bank Reconciliation Statement Items</span>
                               </h4>
                               <span className="text-[10px] bg-slate-200 text-slate-700 font-bold font-mono px-1.5 py-0.5 rounded">{projFunding.length + projBankTx.length} items</span>
                             </div>
@@ -1719,7 +1720,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3 md:col-span-2">
                             <div className="flex justify-between items-center border-b border-slate-200 pb-2">
                               <h4 className="text-xs font-bold text-slate-700 uppercase font-mono flex items-center gap-1.5">
-                                📂 5. Personnel Cost Allocation Sheets (Timesheets)
+                                <span className="inline-flex items-center gap-1.5">{ic(FolderOpen)}5. Personnel Cost Allocation Sheets (Timesheets)</span>
                               </h4>
                               <span className="text-[10px] bg-slate-200 text-slate-700 font-bold font-mono px-1.5 py-0.5 rounded">{projTimesheets.length} allocated logs</span>
                             </div>
@@ -2114,12 +2115,12 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                   opening each workspace in turn. */}
               <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">🗓 Project Timelines</h3>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(CalendarRange)}Project Timelines</span></h3>
                   {ACTIVITY_EDITORS.includes(currentUser.role) && (
                     <button type="button" onClick={() => generateTimeline(null, true)}
                       className="text-xs font-medium bg-slate-800 text-white hover:bg-slate-700 rounded-lg px-3 py-2 transition-all"
                       title="Apply the standard 8-step template to every project, marking steps done where the evidence already exists">
-                      ✨ Build / refresh all timelines
+                      <span className="inline-flex items-center gap-1.5">{ic(Sparkles)}Build / refresh all timelines</span>
                     </button>
                   )}
                 </div>

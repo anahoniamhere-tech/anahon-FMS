@@ -1,5 +1,6 @@
 import React, { useState, FormEvent } from "react";
-import { Trash2 } from "lucide-react";
+import { ic } from "../nav";
+import { Trash2, Bot, Brain, FilePen, Hourglass, Layers, Pencil, Plus, TriangleAlert } from "lucide-react";
 import { Donor, Opportunity, Proposal } from "../types";
 import { OPP_STAGES, PROPOSAL_SECTIONS, STREAMS } from "../constants";
 import { SharedProps } from "./shared";
@@ -321,7 +322,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                       </div>
                       {activeCount === 0 && opps.length === 0 && (
                         <p className="mt-2 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
-                          ⚠ Funding gap — no active project and no pipeline
+                          <span className="inline-flex items-center gap-1">{ic(TriangleAlert, "h-3 w-3")}Funding gap — no active project and no pipeline</span>
                         </p>
                       )}
                     </div>
@@ -332,14 +333,14 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
               {/* Pipeline board */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-md font-bold text-slate-800 uppercase font-mono">🎯 Donor Pipeline</h3>
+                  <h3 className="text-md font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Layers)}Donor Pipeline</span></h3>
                   {MANAGERS.includes(currentUser.role) && !oppForm && (
                     <div className="flex items-center gap-2">
                       <button onClick={() => { setIntakeOpen(!intakeOpen); setIntake(null); }} className="bg-indigo-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-indigo-700 transition-all">
-                        🤖 {intakeOpen ? "Close call reader" : "Start from a call"}
+                        <span className="inline-flex items-center gap-1.5">{ic(Bot)}{intakeOpen ? "Close call reader" : "Start from a call"}</span>
                       </button>
                       <button onClick={() => setOppForm({ stage: "Prospect", currency: "USD" })} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all">
-                        ➕ Add Opportunity
+                        <span className="inline-flex items-center gap-1.5">{ic(Plus)}Add Opportunity</span>
                       </button>
                     </div>
                   )}
@@ -349,7 +350,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                     Everything it proposes lands in the normal editable form — nothing is saved here. */}
                 {intakeOpen && !oppForm && (
                   <div className="p-5 bg-indigo-50 border border-indigo-200 rounded-xl space-y-3">
-                    <h4 className="text-sm font-bold text-indigo-900 uppercase font-mono">🤖 Read a funding call</h4>
+                    <h4 className="text-sm font-bold text-indigo-900 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Bot)}Read a funding call</span></h4>
                     <p className="text-[11px] text-indigo-800">
                       Give it the call as a link, a file, or pasted text. It proposes the title, funder, program, amount and
                       deadline, and assesses the fit against AnaHon's real track record. You review every field before saving.
@@ -420,7 +421,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
 
                 {oppForm && (
                   <form onSubmit={saveOpportunity} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
-                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">{oppForm.id ? "✏️ Edit Opportunity" : "➕ New Opportunity"}</h4>
+                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{oppForm.id ? <>{ic(Pencil)}Edit Opportunity</> : <>{ic(Plus)}New Opportunity</>}</span></h4>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div className="md:col-span-2">
                         <label htmlFor="opp-title" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Title")}</label>
@@ -522,7 +523,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                 {propForm && (
                   <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
                     <div>
-                      <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">📝 Proposal — {propForm.title}</h4>
+                      <h4 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(FilePen)}Proposal — {propForm.title}</span></h4>
                       <p className="text-[11px] text-slate-500">AnaHon is the applicant. Donor: {state.donors.find(d => d.id === propForm.donorId)?.name || "not set"}. Write once here, then adapt into the donor's own template.</p>
                       {/* The pipeline this call belongs to is the user's decision — the AI may
                           recommend one, but it never moves the card. */}
@@ -551,7 +552,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                     </div>
                     {/* AI assist — grounded in AnaHon's real track record, prefill only */}
                     <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-2">
-                      <label htmlFor="ai-call" className="block text-[10px] font-bold text-indigo-800 uppercase">🧠 AI Assist — the donor's call</label>
+                      <label htmlFor="ai-call" className="block text-[10px] font-bold text-indigo-800 uppercase"><span className="inline-flex items-center gap-1">{ic(Brain, "h-3 w-3")}AI Assist — the donor's call</span></label>
                       {/* Three ways in: a file, a link, or paste. All land in the same box so
                           you can read and correct the text before the AI sees it. */}
                       <div className="flex flex-wrap items-center gap-2">
@@ -667,7 +668,7 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                   return (
                     <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm space-y-2">
                       <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-slate-800 uppercase font-mono">⏳ {t("Deadlines")}</h4>
+                        <h4 className="text-xs font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Hourglass)}{t("Deadlines")}</span></h4>
                         <span className="text-[10px] text-slate-500">{dated.length} dated · {state.opportunities.filter(o => !o.deadline && !["Awarded", "Declined"].includes(o.stage)).length} undated</span>
                       </div>
                       <div className="space-y-1">

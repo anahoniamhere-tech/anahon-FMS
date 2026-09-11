@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Activity } from "lucide-react";
+import { ic } from "../nav";
+import { Activity, Scale, TriangleAlert } from "lucide-react";
 import { Account, Project } from "../types";
 import { SharedProps } from "./shared";
 import { FINANCE } from "../roles";
@@ -149,7 +150,7 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                 <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
                   <div className="border-b border-slate-100 pb-3">
                     <h3 className="text-md font-bold text-slate-800 uppercase font-mono flex items-center gap-1.5">
-                      ⚖️ Post Manual Adjustment Journal Entry
+                      <span className="inline-flex items-center gap-1.5">{ic(Scale)}Post Manual Adjustment Journal Entry</span>
                     </h3>
                     <p className="text-xs text-slate-500">Record corrective adjustments or periodic transfers directly. Must be perfectly balanced (Debits = Credits).</p>
                   </div>
@@ -310,7 +311,7 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                           <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2 py-0.5 rounded-full font-bold font-mono">✓ Balanced</span>
                         ) : (
                           <span className="bg-amber-100 text-amber-800 text-[10px] px-2 py-0.5 rounded-full font-bold font-mono">
-                            ⚠️ Out of balance by {formatUSD(Math.abs(adjItems.reduce((s, i) => s + Number(i.debit || 0), 0) - adjItems.reduce((s, i) => s + Number(i.credit || 0), 0)))}
+                            <span className="inline-flex items-center gap-1 align-middle">{ic(TriangleAlert, "h-3 w-3")}Out of balance by</span> {formatUSD(Math.abs(adjItems.reduce((s, i) => s + Number(i.debit || 0), 0) - adjItems.reduce((s, i) => s + Number(i.credit || 0), 0)))}
                           </span>
                         )}
                       </div>

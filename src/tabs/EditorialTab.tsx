@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Newspaper, ShieldAlert, CheckCircle2 } from "lucide-react";
+import { ic } from "../nav";
+import { Newspaper, ShieldAlert, CheckCircle2, Ban, Bot, Calendar, Clapperboard, Drama, Library, Lightbulb, Link as LinkIcon, Scale } from "lucide-react";
 import { ContentItem } from "../types";
 import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "../constants";
 import { CONTENT_LABELS } from "../editorialGates";
@@ -469,7 +470,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
       {/* Weekly editorial meeting — derived agenda + held-meeting record (Policy 002) */}
       <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
         <h3 className="text-sm font-bold text-slate-800 uppercase font-mono mb-3 flex items-center justify-between">
-          <span>📅 {t("Editorial Meetings")}</span>
+          <span className="inline-flex items-center gap-1.5">{ic(Calendar)}{t("Editorial Meetings")}</span>
           <a href="/api/calendar.ics" download className="text-[10px] font-sans normal-case bg-slate-100 hover:bg-slate-200 text-slate-700 rounded px-2.5 py-1">
             ⬇ {t("Download calendar (.ics)")}
           </a>
@@ -698,7 +699,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
           }}
           className={`p-5 bg-slate-900 text-white border rounded-xl shadow-lg space-y-3 ${dragOver ? "border-red-500 border-2 border-dashed" : "border-slate-800"}`}>
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold uppercase font-mono">💡 {t("Idea Desk")}</h3>
+            <h3 className="text-sm font-bold uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Lightbulb)}{t("Idea Desk")}</span></h3>
             <span className="flex items-center gap-3">
               {chat.provider && <span className="text-[10px] text-slate-400 font-mono">{t("Provided by")} {chat.provider}</span>}
               <button onClick={() => setChat(null)} className="text-slate-400 hover:text-white text-xs">✕ {t("Cancel")}</button>
@@ -809,7 +810,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
           {/* Section 2b — reuse anything already in the library */}
           <div>
             <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
-              📚 {t("From Library")} <span className="normal-case font-normal">({library.length})</span>
+              <span className="inline-flex items-center gap-1.5">{ic(Library)}{t("From Library")}</span> <span className="normal-case font-normal">({library.length})</span>
             </span>
             {!chatLib ? (
               <button onClick={() => setChatLib(true)}
@@ -874,19 +875,19 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                 <button onClick={() => setForm({ title: "", contentType: "Article", contentLabel: "", sponsorDisclosure: "", stream: "", channels: ["Website"], assigneeUserId: "", dueDate: "", brief: "", legalFlag: false, materials: [], rehearsal: true })}
                   title={t("Rehearsal — walk the whole chain alone, taking each step in a different seat with Act as…. Publishing it never leaves the FMS.")}
                   className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded px-4 py-2.5 shadow">
-                  🎭 {t("New rehearsal")}
+                  <span className="inline-flex items-center gap-1.5">{ic(Drama)}{t("New rehearsal")}</span>
                 </button>
               )}
               {!chat && (
                 <button onClick={() => setChat({ messages: [], busy: false, draft: null, materials: [], provider: "", pendingFile: null })}
                   className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow">
-                  💡 {t("Suggest with AI")}
+                  <span className="inline-flex items-center gap-1.5">{ic(Lightbulb)}{t("Suggest with AI")}</span>
                 </button>
               )}
             </span>
           ) : (
             <div className="space-y-3 text-xs">
-              <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">{form.rehearsal ? `🎭 ${t("New rehearsal")}` : t("New Assignment")}</h3>
+              <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">{form.rehearsal ? <span className="inline-flex items-center gap-1.5">{ic(Drama)}{t("New rehearsal")}</span> : t("New Assignment")}</h3>
               {form.rehearsal && (
                 <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
                   {t("Rehearsal — walk the whole chain alone, taking each step in a different seat with Act as…. Publishing it never leaves the FMS.")}
@@ -992,7 +993,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
         <button onClick={() => setLibOpen(v => !v)}
           className="flex w-full items-center justify-between text-sm font-bold text-slate-800 uppercase font-mono">
-          <span>📚 {t("Materials Library")} <span className="text-slate-400 normal-case font-sans font-normal">({library.length})</span></span>
+          <span><span className="inline-flex items-center gap-1.5">{ic(Library)}{t("Materials Library")}</span> <span className="text-slate-400 normal-case font-sans font-normal">({library.length})</span></span>
           <span className="text-slate-400">{libOpen ? "▾" : "▸"}</span>
         </button>
 
@@ -1098,12 +1099,12 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                     setOpenId(open ? null : item.id);
                   }}>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLE[item.status]}`}>{t(item.status)}</span>
-                  {item.rehearsal && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-amber-300">🎭 {t("REHEARSAL")}</span>}
+                  {item.rehearsal && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-amber-300"><span className="inline-flex items-center gap-1">{ic(Drama, "h-3 w-3")}{t("REHEARSAL")}</span></span>}
                   <span className="font-bold text-slate-900">{item.title}</span>
                   <span className="text-slate-400">{item.contentType}{item.stream ? ` · ${item.stream}` : ""}</span>
                   {item.factCheckTag && <span className="text-emerald-700 flex items-center gap-0.5 text-[10px] font-bold"><CheckCircle2 className="h-3 w-3" /> {t("Fact-checked")}</span>}
                   {item.legalFlag && <span className="text-red-700 flex items-center gap-0.5 text-[10px] font-bold"><ShieldAlert className="h-3 w-3" /> {t("Legal review required")}</span>}
-                  {item.aiAssisted && <span className="text-indigo-700 text-[10px] font-bold" title={t("AI used")}>🤖 AI{item.aiDisclosed ? " ✓" : ""}</span>}
+                  {item.aiAssisted && <span className="text-indigo-700 text-[10px] font-bold" title={t("AI used")}><span className="inline-flex items-center gap-1">{ic(Bot, "h-3 w-3")}AI{item.aiDisclosed ? " ✓" : ""}</span></span>}
                   {item.drafts.length > 0 && (
                     <span className="text-slate-600 text-[10px] font-bold bg-slate-100 rounded-full px-2 py-0.5" title={item.drafts.map(d => d.label).join(" · ")}>
                       📝 {item.drafts.length} {t("Drafts")}
@@ -1117,9 +1118,9 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                   {item.corrections.length > 0 && <span className="text-amber-700 text-[10px] font-bold">{item.corrections.length} {t("Corrections")}</span>}
                   {item.websiteUrl && !item.retractedAt && (
                     <a href={item.websiteUrl} target="_blank" rel="noopener" onClick={ev => ev.stopPropagation()}
-                      className="text-sky-700 text-[10px] font-bold underline" title={item.websiteUrl}>🔗 {t("View on website")}</a>
+                      className="text-sky-700 text-[10px] font-bold underline" title={item.websiteUrl}><span className="inline-flex items-center gap-1">{ic(LinkIcon, "h-3 w-3")}{t("View on website")}</span></a>
                   )}
-                  {item.retractedAt && <span className="text-red-700 text-[10px] font-bold" title={item.retractReason}>⛔ {t("Retracted from website")} {item.retractedAt.slice(0, 10)}</span>}
+                  {item.retractedAt && <span className="text-red-700 text-[10px] font-bold" title={item.retractReason}><span className="inline-flex items-center gap-1">{ic(Ban, "h-3 w-3")}{t("Retracted from website")}</span> {item.retractedAt.slice(0, 10)}</span>}
                   <span className="ms-auto text-slate-500 font-mono">{nameOf(item.assigneeUserId)}{item.dueDate ? ` · ${item.dueDate}` : ""}</span>
                 </div>
 
@@ -1263,7 +1264,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                           {studio?.itemId === item.id && (
                             <div className="mt-2 p-3 bg-slate-900 text-white rounded-lg space-y-2">
                               <div className="flex items-center justify-between">
-                                <span className="font-bold uppercase text-[10px] font-mono">🎬 {t("Production Studio")}</span>
+                                <span className="font-bold uppercase text-[10px] font-mono"><span className="inline-flex items-center gap-1">{ic(Clapperboard, "h-3 w-3")}{t("Production Studio")}</span></span>
                                 <span className="flex items-center gap-3">
                                   {studio.provider && <span className="text-[9px] text-slate-400 font-mono">{t("Provided by")} {studio.provider}</span>}
                                   <button
@@ -1436,7 +1437,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                     {/* Legal attestation (Policy 002) */}
                     {item.legalFlag && (
                       <div>
-                        <h5 className="font-bold text-red-700 uppercase text-[10px] mb-1">⚖ Legal Review</h5>
+                        <h5 className="font-bold text-red-700 uppercase text-[10px] mb-1"><span className="inline-flex items-center gap-1">{ic(Scale, "h-3 w-3")}Legal Review</span></h5>
                         {item.legalReviewedBy
                           ? <p className="font-mono text-[11px] text-slate-600">Reviewed by {item.legalReviewedBy}{item.legalReviewNote ? ` — ${item.legalReviewNote}` : ""} (recorded by {nameOf(item.legalRecordedBy)}, {item.legalRecordedAt.slice(0, 10)})</p>
                           : ["Editorial Review", "Approved"].includes(item.status) && isEditor ? (
@@ -1476,7 +1477,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
 
                     {item.rehearsal && (
                       <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
-                        <p className="font-bold">🎭 {t("REHEARSAL")} — {t("Rehearsal — walk the whole chain alone, taking each step in a different seat with Act as…. Publishing it never leaves the FMS.")}</p>
+                        <p className="font-bold"><span className="inline-flex items-center gap-1 align-middle">{ic(Drama, "h-3 w-3")}{t("REHEARSAL")}</span> — {t("Rehearsal — walk the whole chain alone, taking each step in a different seat with Act as…. Publishing it never leaves the FMS.")}</p>
                         <p className="mt-1">{t("You are standing in")}: <b>{seat}</b></p>
                         <p className="mt-0.5">{t("Seats so far")}: {t("author seat")} <b>{item.assigneeAs || "—"}</b> · {t("fact-checker seat")} <b>{item.factCheckerAs || "—"}</b> · {t("PM approval seat")} <b>{item.pmApprovedAs || "—"}</b> · {t("PD approval seat")} <b>{item.pdApprovedAs || "—"}</b></p>
                       </div>

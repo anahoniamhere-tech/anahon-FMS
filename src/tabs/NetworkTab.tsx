@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from "react";
+import { ic } from "../nav";
+import { GraduationCap } from "lucide-react";
 import { NetworkContact, Engagement } from "../types";
 import { STREAMS, ENGAGEMENT_KINDS, ENGAGEMENT_PARTS, CONTACT_KINDS } from "../constants";
 import { SharedProps, waLink } from "./shared";
@@ -212,7 +214,7 @@ export default function NetworkTab({ state, currentUser, refreshState, t, trigge
           because a contact is usually reached through the event you met them at. */}
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-          <h3 className="text-sm font-bold uppercase font-mono text-slate-800">🎓 Events &amp; engagements</h3>
+          <h3 className="text-sm font-bold uppercase font-mono text-slate-800"><span className="inline-flex items-center gap-1.5">{ic(GraduationCap)}Events &amp; engagements</span></h3>
           {canEdit && (
             <button
               onClick={() => setEngForm(engForm ? null : { ...BLANK_ENG })}

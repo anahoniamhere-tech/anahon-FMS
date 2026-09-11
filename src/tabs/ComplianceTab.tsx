@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { RefreshCw, Settings } from "lucide-react";
+import { ic } from "../nav";
+import { RefreshCw, Settings, ShieldAlert } from "lucide-react";
 import { Project } from "../types";
 import { STREAMS } from "../constants";
 import { SharedProps } from "./shared";
@@ -59,7 +60,7 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
               {/* Team & Roles — master account only. Role authority lives in the DB (server middleware). */}
               {currentUser.role === "Super Admin" && (
                 <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
-                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">👥 Team & Roles (master account)</h3>
+                  <h3 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(ShieldAlert)}Team & Roles (master account)</span></h3>
                   <p className="text-[11px] text-slate-500">Project Officers can raise vouchers and procurement requests for their assigned projects only — the server refuses everything else, including approving their own requests (§4.3).</p>
                   <div className="space-y-2">
                     {state.users.filter(u => u.active).map(u => {

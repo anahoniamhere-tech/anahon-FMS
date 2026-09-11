@@ -25,7 +25,9 @@ export type NavItem = {
 };
 export type NavSection = { section: string; roles?: string[]; items: NavItem[] };
 
-const ic = (I: React.ComponentType<{ className?: string }>) => <I className="h-4 w-4 shrink-0" />;
+// Exported so panel headings draw the same icons the tabs do — one icon style app-wide.
+// `size` exists only for 10–11px chips, where a 16px icon would outweigh the text.
+export const ic = (I: React.ComponentType<{ className?: string }>, size = "h-4 w-4") => <I className={`${size} shrink-0`} />;
 const glyph = (g: string) => <span className="h-4 w-4 shrink-0 text-center leading-4">{g}</span>;
 
 // Role groups, matching the checks the server makes.

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ic } from "../nav";
+import { Megaphone, TriangleAlert } from "lucide-react";
 import { SharedProps } from "./shared";
 import { SITE_EDITORS } from "../roles";
 import { socialPostBlockers, socialRendition, CAPTION_KIND } from "../editorialGates";
@@ -167,7 +169,7 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-slate-900">📣 Social desk</h2>
+      <h2 className="text-xl font-bold text-slate-900"><span className="inline-flex items-center gap-1.5">{ic(Megaphone, "h-5 w-5")}Social desk</span></h2>
 
       {/* accounts */}
       <div className={`space-y-2 rounded-lg border-s-4 bg-white p-3 text-xs ${!status ? "border-slate-300" : accounts.length && accounts.every(a => a.status?.valid) ? "border-emerald-500" : "border-amber-500"}`}>
@@ -189,8 +191,8 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
             {a.status?.followers != null && <span className="text-slate-500"><span dir="ltr">{a.status.followers.toLocaleString()}</span> followers</span>}
             {a.igUsername ? <span className="rounded-full bg-pink-50 px-2 py-0.5 text-pink-700">Instagram @{a.igUsername}{a.status?.igFollowers != null && <> · <span dir="ltr">{a.status.igFollowers.toLocaleString()}</span></>}{a.status?.igQuotaUsed != null && <> · <span dir="ltr">{a.status.igQuotaUsed}/{a.status.igQuotaTotal ?? "?"}</span> today</>}</span> : <span className="text-slate-400">no Instagram linked</span>}
             <span className={`rounded-full px-2 py-0.5 font-bold ${a.status?.valid ? "bg-emerald-50 text-emerald-800" : "bg-red-50 text-red-800"}`}>{a.status?.valid ? `token ok · expires ${a.status.expires === "never" ? "never" : a.status.expires.slice(0, 10)}` : `token invalid${a.status?.error ? `: ${a.status.error}` : ""}`}</span>
-            {a.status?.valid && !a.status?.canPublishFB && <span className="text-amber-700">⚠ no pages_manage_posts — reconnect</span>}
-            {a.igId && a.status?.valid && !a.status?.canPublishIG && <span className="text-amber-700">⚠ no instagram_content_publish — reconnect with Instagram ticked</span>}
+            {a.status?.valid && !a.status?.canPublishFB && <span className="text-amber-700 inline-flex items-center gap-1">{ic(TriangleAlert, "h-3 w-3")}no pages_manage_posts — reconnect</span>}
+            {a.igId && a.status?.valid && !a.status?.canPublishIG && <span className="text-amber-700 inline-flex items-center gap-1">{ic(TriangleAlert, "h-3 w-3")}no instagram_content_publish — reconnect with Instagram ticked</span>}
             {canPost && <button onClick={() => removeAccount(a)} className="ms-auto text-red-700 underline">disconnect</button>}
           </div>
         ))}

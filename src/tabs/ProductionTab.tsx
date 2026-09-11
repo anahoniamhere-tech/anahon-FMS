@@ -1,5 +1,6 @@
 import { useState, FormEvent } from "react";
-import { Trash2, Download } from "lucide-react";
+import { ic } from "../nav";
+import { Trash2, Download, Banknote, Contact, Landmark, Pencil, Plus, Receipt, ScrollText } from "lucide-react";
 import { Client, Quotation, QuotationItem } from "../types";
 import { EXTRAS_DEFAULT, FINANCIAL_TERMS, PRODUCTION_NOTE, QUOTE_STATUSES, SERVICE_CATALOG, TECHNICAL_NOTE } from "../constants";
 import { tr } from "../i18n";
@@ -237,17 +238,17 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
               {/* Clients register */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-md font-bold text-slate-800 uppercase font-mono">👥 Client Log</h3>
+                  <h3 className="text-md font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Contact)}Client Log</span></h3>
                   {MANAGERS.includes(currentUser.role) && !clientForm && (
                     <button onClick={() => setClientForm({})} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all">
-                      ➕ Register Client
+                      <span className="inline-flex items-center gap-1.5">{ic(Plus)}Register Client</span>
                     </button>
                   )}
                 </div>
 
                 {clientForm && (
                   <form onSubmit={saveClient} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
-                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">{clientForm.id ? "✏️ Edit Client" : "➕ New Client"}</h4>
+                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{clientForm.id ? <>{ic(Pencil)}Edit Client</> : <>{ic(Plus)}New Client</>}</span></h4>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
                         <label htmlFor="cli-name" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Client Name")}</label>
@@ -312,7 +313,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
               {/* Quotations log */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-md font-bold text-slate-800 uppercase font-mono">📄 Quotations</h3>
+                  <h3 className="text-md font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(ScrollText)}Quotations</span></h3>
                   {MANAGERS.includes(currentUser.role) && !quoteForm && (
                     <button onClick={() => setQuoteForm({
                       status: "Draft",
@@ -321,14 +322,14 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                       items: [{ service: "", description: "", output: "", unitPrice: 0, qty: 1 }],
                       terms: { financial: FINANCIAL_TERMS[1], production: PRODUCTION_NOTE, technical: TECHNICAL_NOTE, extras: EXTRAS_DEFAULT }
                     })} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all" disabled={state.clients.length === 0}>
-                      ➕ New Quotation
+                      <span className="inline-flex items-center gap-1.5">{ic(Plus)}New Quotation</span>
                     </button>
                   )}
                 </div>
 
                 {quoteForm && (
                   <form onSubmit={saveQuotation} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
-                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">{quoteForm.id ? `✏️ Edit ${quoteForm.quoteNo}` : "➕ New Quotation"}</h4>
+                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{quoteForm.id ? <>{ic(Pencil)}Edit {quoteForm.quoteNo}</> : <>{ic(Plus)}New Quotation</>}</span></h4>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div>
                         <label htmlFor="qt-client" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Client")}</label>
@@ -487,7 +488,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                   if (!suggestions.length) return null;
                   return (
                     <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
-                      <p className="text-[11px] font-bold text-amber-800 uppercase">🏦 Money in that may settle an open quotation</p>
+                      <p className="text-[11px] font-bold text-amber-800 uppercase"><span className="inline-flex items-center gap-1">{ic(Landmark, "h-3 w-3")}Money in that may settle an open quotation</span></p>
                       {suggestions.map(({ q, left, txs }) => txs.map(tx => {
                         const acct = state.bankAccounts.find(ba => ba.id === tx.bankAccountId);
                         return (
@@ -517,7 +518,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                     who actually took the money. */}
                 {receiptForm && (
                   <form onSubmit={issueReceipt} className="p-4 bg-white border border-amber-200 rounded-xl shadow-sm space-y-3">
-                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">🧾 Issue receipt — {receiptForm.q.quoteNo}</h4>
+                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Receipt)}Issue receipt — {receiptForm.q.quoteNo}</span></h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <label htmlFor="rc-method" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Method")}</label>
@@ -553,7 +554,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                 {/* Off-bank settlement: OMT / BOB / Whish / cash. Evidence ref mandatory. */}
                 {settleForm && (
                   <form onSubmit={submitOffbankSettlement} className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
-                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">💵 Record off-bank payment — {settleForm.q.quoteNo}</h4>
+                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Banknote)}Record off-bank payment — {settleForm.q.quoteNo}</span></h4>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div>
                         <label htmlFor="st-method" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Method")}</label>
@@ -754,7 +755,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                   return (
                     <div className="space-y-2 pt-4 border-t border-slate-200">
                       <div className="flex items-center justify-between flex-wrap gap-2">
-                        <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">🧾 {t("Receipt log")}</h4>
+                        <h4 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Receipt)}{t("Receipt log")}</span></h4>
                         <span className={`text-[11px] font-bold ${unsigned ? "text-amber-700" : "text-slate-400"}`}>
                           {rows.length === 0 ? t("no receipts issued")
                             : unsigned ? `${unsigned} ${t("without the signed copy on file")}`
