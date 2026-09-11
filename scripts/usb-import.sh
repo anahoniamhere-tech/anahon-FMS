@@ -18,6 +18,7 @@
 #   sudo -n bash scripts/usb-import.sh --device /dev/sdd1  # say exactly which device
 #   sudo -n bash scripts/usb-import.sh --checksum          # verify every byte, not just sizes
 #   sudo -n bash scripts/usb-import.sh --dry-run           # show what would copy, write nothing
+#   sudo -n bash scripts/usb-import.sh --exclude-from FILE # skip files already on the server
 #
 # Re-running is safe and is how you resume: rsync skips what is already there and
 # --partial keeps a half-copied file so an interrupted run continues where it stopped.
@@ -26,9 +27,18 @@ set -euo pipefail
 # An ssh command runs without sbin on the PATH, and every tool here lives there.
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-DEST_ROOT=/mnt/mainpool/anahon/archive/imports   # the archive dataset, nowhere near the FMS vault
+# One folder per drive under the server dataset, matching the library already there
+# (Production_hard, Anahon_hard, ANAHON_OLD_HARD, Hard1, Choulwade3...). The `archive`
+# dataset is NOT for drive dumps — it holds the website's media archive, catalogue and
+# taxonomy only. Corrected 10 Sep 2026 after imports were landing in the wrong dataset.
+DEST_ROOT=/mnt/mainpool/server
 MOUNT=/mnt/import                                # fixed path, so a half-finished run is obvious
-DEVICE=""; DEST=""; CHECKSUM=0; DRYRUN=0; ALLOW_LOOP=0
+DEVICE=""; DEST=""; CHECKSUM=0; DRYRUN=0; ALLOW_LOOP=0; EXCLUDE_FROM=""
+
+# -rltD, NOT -a: mainpool/server carries NFSv4 ACLs with aclmode=restricted, which
+# refuses chmod, so -a's permission/owner/group copy fails every file with EPERM.
+# -r recurse, -l symlinks, -t timestamps, -D devices/specials: everything -a does but perms.
+RSYNC=(rsync -rltD)
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -37,7 +47,8 @@ while [ $# -gt 0 ]; do
     --checksum) CHECKSUM=1; shift ;;
     --dry-run)  DRYRUN=1; shift ;;
     --allow-loop) ALLOW_LOOP=1; shift ;;   # for testing this script against a loopback image
-    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    --exclude-from) EXCLUDE_FROM="${2:?--exclude-from needs a file of paths relative to the drive root}"; shift 2 ;;
+    -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1 (try --help)" >&2; exit 2 ;;
   esac
 done
@@ -113,28 +124,51 @@ findmnt -no SOURCE,TARGET,FSTYPE,OPTIONS "$MOUNT" | sed 's/^/Mounted : /'
 findmnt -no OPTIONS "$MOUNT" | grep -q '\bro\b' || { echo "Refusing: it did not mount read-only." >&2; exit 1; }
 
 # ---- 4. Copy into the archive dataset. -------------------------------------------------
-[ -n "$DEST" ] || DEST="$(echo "${LABEL:-drive}" | tr ' /' '--' | tr -cd '[:alnum:]._-')-$(date +%Y%m%d)"
+# Named for the DRIVE, not the date: re-importing the same drive merges into its own
+# folder (rsync here never deletes), which is the convention the library already uses.
+[ -n "$DEST" ] || DEST="$(echo "${LABEL:-drive}" | tr ' /' '--' | tr -cd '[:alnum:]._-')"
 TARGET="$DEST_ROOT/$DEST"
+
+# Files listed in --exclude-from are already on the server (proved by checksum), so
+# they are neither copied nor counted. They must come out of the SOURCE totals too, or
+# step 5's file-count comparison would flag a correct import as a mismatch.
+# The list is rsync patterns: [ * ? are backslash-escaped, so strip the backslashes to
+# get the literal path for stat (exFAT/FAT names cannot contain a real backslash).
+EX=(); EX_N=0; EX_B=0
+if [ -n "$EXCLUDE_FROM" ]; then
+  [ -r "$EXCLUDE_FROM" ] || { echo "Cannot read exclude list: $EXCLUDE_FROM" >&2; exit 1; }
+  EX=(--exclude-from="$EXCLUDE_FROM")
+  while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    lit="${rel//\\/}"
+    if [ -f "$MOUNT/$lit" ]; then
+      EX_N=$((EX_N+1)); EX_B=$((EX_B + $(stat -c %s "$MOUNT/$lit")))
+    fi
+  done < "$EXCLUDE_FROM"
+  printf 'Excluded: %s files, %s bytes (already on the server)\n' "$EX_N" "$EX_B"
+fi
+
 SRC_N=$(find "$MOUNT" -type f | wc -l)
 SRC_B=$(find "$MOUNT" -type f -printf '%s\n' | awk '{s+=$1} END {print s+0}')
+SRC_N=$((SRC_N - EX_N)); SRC_B=$((SRC_B - EX_B))
 printf 'Source  : %s files, %s bytes (%.2f GB)\n' "$SRC_N" "$SRC_B" "$(echo "$SRC_B" | awk '{print $1/1073741824}')"
 echo "Into    : $TARGET"
 
 if [ "$DRYRUN" = 1 ]; then
   echo "-- dry run: nothing is written --"
-  rsync -a --partial --dry-run --itemize-changes "$MOUNT/" "$TARGET/" | head -20
+  "${RSYNC[@]}" --partial "${EX[@]}" --dry-run --itemize-changes "$MOUNT/" "$TARGET/" | head -20
   exit 0
 fi
 
 mkdir -p "$TARGET"
 START=$(date +%s)
-# -a preserves timestamps; --partial keeps a half-copied file so a re-run resumes.
+# -t preserves timestamps; --partial keeps a half-copied file so a re-run resumes.
 # There is deliberately no --delete: nothing on the card, and nothing already in the
 # archive, is ever removed by this script.
 # --info=progress2 redraws one progress line, which is right at a terminal and becomes
 # hundreds of repeated lines when there is none (ssh without a tty, cron, an agent).
 if [ -t 1 ]; then PROGRESS=(--info=progress2); else PROGRESS=(--info=stats2); fi
-rsync -a --partial "${PROGRESS[@]}" --human-readable "$MOUNT/" "$TARGET/"
+"${RSYNC[@]}" --partial "${EX[@]}" "${PROGRESS[@]}" --human-readable "$MOUNT/" "$TARGET/"
 ELAPSED=$(( $(date +%s) - START )); [ "$ELAPSED" -gt 0 ] || ELAPSED=1
 
 # ---- 5. Prove it arrived. --------------------------------------------------------------
@@ -150,7 +184,7 @@ OK=1
 
 if [ "$CHECKSUM" = 1 ] && [ "$OK" = 1 ]; then
   echo "Checksumming every file (this re-reads both sides)…"
-  DIFF=$(rsync -a --dry-run --itemize-changes --checksum "$MOUNT/" "$TARGET/" | grep -v '^\.d' || true)
+  DIFF=$("${RSYNC[@]}" "${EX[@]}" --dry-run --itemize-changes --checksum "$MOUNT/" "$TARGET/" | grep -v '^\.d' || true)
   if [ -n "$DIFF" ]; then echo "$DIFF" | head -20; echo "MISMATCH: the files above differ by content."; OK=0
   else echo "Every file matches by checksum."; fi
 fi
