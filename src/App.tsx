@@ -1383,7 +1383,7 @@ export default function App() {
             makes it a containing block but not a stacking context, so the widget inside
             keeps competing on z with the rest of the page. */}
         <div className="relative flex flex-1 flex-col overflow-hidden">
-        <main className="flex-1 flex flex-col overflow-y-auto p-4 pb-24 md:p-8 md:pb-8">
+        <main className="flex-1 flex flex-col overflow-y-auto p-4 pb-24 md:p-8 md:pb-24">
 
           {/* Tab Content Dynamic Mounting */}
           {activeTab === "dashboard" && <DashboardTab {...shared} />}

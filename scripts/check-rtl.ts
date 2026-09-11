@@ -106,8 +106,36 @@ ok("the buttons never shrink", /<div className="flex shrink-0 items-center gap-2
 ok("they sit clear of the edge", /ps-4 pe-5 py-3 flex items-center justify-between/.test(app));
 // The pill is fixed, so without this the last rows sit under it with no way to
 // scroll them out — 31px of the row was unreadable on a phone.
-ok("the list can scroll clear of the missing-evidence pill", /overflow-y-auto p-4 pb-24 md:p-8 md:pb-8/.test(app));
+ok("the list can scroll clear of the missing-evidence pill", /overflow-y-auto p-4 pb-24 md:p-8 md:pb-24/.test(app));
 ok("and the pill is slimmer where the screen is narrow", /gap-1\.5 px-3 py-2\.5 sm:gap-2 sm:px-4 sm:py-3 rounded-full/.test(app));
+
+console.log("\nthe help bubble");
+// It rests on the content's first column (start-5 / md:start-8 is <main>'s own
+// padding), so on a wide screen the last row sat under it for good: md:p-8 left
+// 32px where the bubble reaches 68 — Suppliers' "Not on file" line, 6 Sep 2026.
+// Derived from both class strings, so growing or lifting the bubble, or trimming
+// the padding, fails here at either width. Tailwind spacing is 4px a step.
+const bot = read("src/HelpDesk.tsx");
+const mainCls = app.match(/<main className="([^"]+)"/)?.[1] ?? "";
+const bubbleCls = bot.match(/className="([^"]*\bbottom-\d+[^"]*rounded-full[^"]*)"/)?.[1] ?? "";
+const tw = (cls: string, at: string, ...props: string[]) => {
+  for (const p of props) {
+    const m = cls.match(new RegExp(`(?<![\\w:-])${at}${p}-(\\d+)(?![\\w./])`));
+    if (m) return Number(m[1]) * 4;
+  }
+};
+for (const [at, where] of [["", "on a phone"], ["md:", "on a wide screen"]]) {
+  const pad = tw(mainCls, at, "pb", "p") ?? tw(mainCls, "", "pb", "p") ?? 0;
+  const reach = (tw(bubbleCls, at, "bottom") ?? tw(bubbleCls, "", "bottom") ?? 0)
+    + (tw(bubbleCls, at, "h") ?? tw(bubbleCls, "", "h") ?? 0);
+  ok(`the list can scroll clear of it ${where}`, reach > 0 && pad >= reach, `${pad}px of padding, the bubble reaches ${reach}px`);
+}
+// The two things the fix above must not undo. `fixed` would place it against the
+// viewport and put it back on the sidebar; above 96 it floats on the drawer's dim.
+ok("it is placed against the content column, so it cannot cover the sidebar", bubbleCls.startsWith("absolute "));
+const dim = Number(app.match(/fixed inset-0 bg-black\/50 z-\[(\d+)\]/)?.[1]);
+const zs = [...bot.matchAll(/className="[^"]*?(?<![\w:-])z-\[(\d+)\]/g)].map(m => Number(m[1]));
+ok("it and its panel stay under the missing-documents drawer's dim", zs.length === 2 && zs.every(z => z < dim), `${zs.join(", ")} vs ${dim}`);
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
