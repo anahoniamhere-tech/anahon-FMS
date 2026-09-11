@@ -18,7 +18,7 @@ import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
-import { NO_SERIAL, CONDITIONS, CURRENCIES, nextEquipmentTag, mayVerifyEquipment, sameSerial } from "./src/equipment.js";
+import { NO_SERIAL, CONDITIONS, CURRENCIES, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder } from "./src/equipment.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -7601,6 +7601,7 @@ Rules:
 - brand and model: as printed (the model number, e.g. "ILME-FX6V").
 - name: a short plain name a person would use, e.g. "Sony FX6 cinema camera".
 - specs: only what the label itself states — capacity, power, voltage, resolution, storage — one per line. Empty if it states none. Never add specifications from your own knowledge.
+- Anything not printed is an empty string — never a placeholder such as "generic", "unknown", "N/A" or "-".
 - warnings: anything cropped, blurred, reflective or ambiguous; name the characters you are unsure of.`;
 
     let extracted: any;
@@ -7618,6 +7619,10 @@ Rules:
     } catch (e: any) {
       return res.status(422).json({ error: `The label could not be read (${e.message}). Type the details from the label instead.` });
     }
+
+    // A placeholder is an answer dressed as data. Blank it before it reaches a form a hurried
+    // person might save — the model's instruction says the same, but the form must not depend on it.
+    for (const k of ["name", "brand", "model", "serialNumber", "specs"]) extracted[k] = blankIfPlaceholder(extracted[k]);
 
     const twin = extracted.serialNumber
       ? (await prisma.fixedAsset.findMany({ select: { tag: true, serialNumber: true } })).find(a => sameSerial(a.serialNumber, extracted.serialNumber))
@@ -7645,8 +7650,9 @@ app.post("/api/assets/register", async (req, res) => {
 
     const name = String(b.name || "").trim();
     if (!name) return res.status(400).json({ error: "Name the item." });
-    // Blank is not a serial. Either it is typed as printed, or someone says there is none.
-    const serialNumber = b.noSerial === true ? NO_SERIAL : String(b.serialNumber || "").trim();
+    // Blank is not a serial, and "N/A" is blank by another name. Either it is typed as
+    // printed, or someone says there is none.
+    const serialNumber = b.noSerial === true ? NO_SERIAL : blankIfPlaceholder(b.serialNumber);
     if (!serialNumber) return res.status(400).json({ error: `Type the serial exactly as printed, or tick "${NO_SERIAL}".` });
     if (!(CONDITIONS as readonly string[]).includes(b.condition)) return res.status(400).json({ error: "Record the condition it arrived in." });
     const location = String(b.location || "").trim();

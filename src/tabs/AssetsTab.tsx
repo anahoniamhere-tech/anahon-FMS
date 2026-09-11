@@ -212,7 +212,7 @@ export default function AssetsTab({ currentUser, openDoc, refreshState, state, t
           {scan.confidence && (
             <div className={`rounded-lg border p-2.5 text-[11px] ${scan.confidence === "high" && !scan.warnings?.length ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
               <p className="font-bold">{t("Read from the label")} — {t("confidence")}: {t(scan.confidence)}. {t("Compare each field with the label before saving.")}</p>
-              {scan.warnings?.map((w, i) => <p key={i}>⚠ {w}</p>)}
+              {scan.warnings?.map((w, i) => <p key={i} dir="auto">⚠ {w}</p>)}
             </div>
           )}
           {scan.duplicateOfTag && (

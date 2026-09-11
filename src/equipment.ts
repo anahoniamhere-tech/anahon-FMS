@@ -62,3 +62,14 @@ export function sameSerial(a: string | null | undefined, b: string | null | unde
   const x = n(a);
   return !!x && x === n(b) && x !== n(NO_SERIAL);
 }
+
+/**
+ * What a model — or a hurried person — writes when nothing is printed: "N/A", "unknown",
+ * "generic", "-". Saved as a serial it is an invented serial by another name, so it counts
+ * as blank wherever a serial, brand or model is read. The live scan on 11 Sep answered
+ * "generic" for a brand it could not see; that is the case this exists for.
+ */
+export function blankIfPlaceholder(s: string | null | undefined): string {
+  const t = String(s ?? "").trim();
+  return /^(n\/?a|none|nil|null|unknown|generic|unbranded|not (visible|legible|printed|available)|-+|\?+|\.+)$/i.test(t) ? "" : t;
+}

@@ -9,7 +9,7 @@
 // be a rule about the PERSON, or it holds for everyone except the one account that most
 // needs it. Run: npx tsx scripts/check-equipment.ts
 import { readFileSync } from "node:fs";
-import { NO_SERIAL, nextEquipmentTag, parseTag, sameSerial, equipmentStatus, mayVerifyEquipment } from "../src/equipment.js";
+import { NO_SERIAL, nextEquipmentTag, parseTag, sameSerial, equipmentStatus, mayVerifyEquipment, blankIfPlaceholder } from "../src/equipment.js";
 import { ROUTE_SEATS } from "../src/gates.js";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS, PLO, AUDITOR } from "../src/roles.js";
 
@@ -42,7 +42,7 @@ console.log("\nB. a serial is typed or declared absent — never invented");
 ok("nothing on the server invents one any more", !server.includes("SN-M-"));
 ok("nor in the browser, which used to invent it before the server could refuse", !tab.includes("SN-M-"));
 ok("blank is refused unless someone says there is none",
-  /b\.noSerial === true \? NO_SERIAL : String\(b\.serialNumber \|\| ""\)\.trim\(\)/.test(reg) && /if \(!serialNumber\) return res\.status\(400\)/.test(reg));
+  /b\.noSerial === true \? NO_SERIAL : blankIfPlaceholder\(b\.serialNumber\);/.test(reg) && /if \(!serialNumber\) return res\.status\(400\)/.test(reg));
 ok("the same serial typed differently is still the same item", sameSerial("AB-12 34", "ab1234"));
 ok("different serials are different items", !sameSerial("X100", "X101"));
 ok("blank never matches blank", !sameSerial("", ""));
@@ -99,6 +99,17 @@ ok("filed through the one upload route, against the item", /fetch\("\/api\/docum
 ok("into the funding project's folder, beside the voucher", /linkedRecordType === "FixedAsset" && linkedRecordId/.test(server));
 ok("the keeper receives the photos they filed", /const DOMAIN = buys \? new Set\(\["Expense", "Project", "Website", "FixedAsset"\]\)/.test(server));
 ok("a thumbnail carries the sign-in ticket", tab.includes("withTicket(`/api/document/content/${doc.id}`)"));
+
+console.log("\nI. a placeholder is not an answer");
+// The live scan of 11 Sep answered "generic" for a brand it could not see. A serial of "N/A"
+// saved from a prefilled form would be the invented serial again, one step removed.
+ok("'N/A' is not a serial", blankIfPlaceholder("N/A") === "" && blankIfPlaceholder("n/a") === "");
+ok("nor 'unknown', 'generic', '-', '?', 'Not visible'", ["unknown", "Generic", "-", "---", "?", "Not visible"].every(x => blankIfPlaceholder(x) === ""));
+ok("a real serial survives, trimmed", blankIfPlaceholder(" 4C1A-9ZX ") === "4C1A-9ZX");
+ok("a real name that merely contains the word survives", blankIfPlaceholder("Generic Electric Co") === "Generic Electric Co");
+ok("the scan blanks placeholders before they reach the form", /extracted\[k\] = blankIfPlaceholder\(extracted\[k\]\)/.test(scan));
+ok("and tells the model not to write them", /never a placeholder such as "generic", "unknown", "N\/A" or "-"/.test(scan));
+ok("an English warning keeps its own direction in the Arabic layout", tab.includes('<p key={i} dir="auto">'));
 
 console.log("\nH. status");
 ok("entered before receiving existed", equipmentStatus({}) === "Registered");
