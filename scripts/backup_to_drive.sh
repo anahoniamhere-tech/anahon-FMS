@@ -34,6 +34,8 @@ export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
 [ -f "$KEY" ] || { echo "missing key: $KEY"; exit 1; }
 [ -d "$(dirname "$DRIVE")" ] || { echo "Google Drive folder not mounted"; exit 1; }
 mkdir -p "$PULL" "$STAGE"
+# The pulled plaintext (database + full vault) must not outlive the run, whatever step fails.
+trap 'rm -rf "$PULL"' EXIT
 
 echo "== $(date '+%F %T') start"
 newest() {  # newest <mount path> -> youngest snapshot name, by creation time. Never by name: the
@@ -83,11 +85,22 @@ mkdir -p "$DRIVE"
 cp "$STAGE"/*-"$STAMP".* "$DRIVE/"
 cp "$(dirname "$0")/../RESTORE-FMS-BACKUP.txt" "$DRIVE/" 2>/dev/null || true
 
+# Under launchd macOS refuses to LIST the Google Drive folder (TCC: "Operation not permitted")
+# while still allowing a named file to be written or removed. So the sets on Drive are tracked
+# in a local ledger and pruned by name; the Drive folder is never listed.
+LEDGER="$STAGE/drive-sets.txt"
+echo "$STAMP" >> "$LEDGER"
+prune() {
+  sort -ur "$LEDGER" | tail -n +$((KEEP+1)) | while read -r s; do
+    [ "$s" = "$STAMP" ] && continue   # never the set just uploaded
+    echo "  removing set $s"
+    rm -f "$DRIVE/fms-database-$s.db.enc" "$DRIVE/document-vault-$s.tar.gz.enc" \
+          "$DRIVE/workbench-$s.tar.gz.enc" "$DRIVE/SHA256SUMS-$s.txt" || return 1
+    grep -vx "$s" "$LEDGER" > "$LEDGER.new"; mv "$LEDGER.new" "$LEDGER"
+  done || return 1
+  echo "  kept on Drive: $(sort -ur "$LEDGER" | tr '\n' ' ')"
+}
 echo "4/4  prune Drive to newest $KEEP sets"
-for pat in "fms-database-*.db.enc" "document-vault-*.tar.gz.enc" "workbench-*.tar.gz.enc" "SHA256SUMS-*.txt"; do
-  ls -1 "$DRIVE"/$pat 2>/dev/null | sort -r | tail -n +$((KEEP+1)) | while read -r f; do echo "  removing $(basename "$f")"; rm -f "$f"; done
-done
-ls -lh "$DRIVE" | grep -v '^total'
-# The pulled plaintext (database + full vault) must not outlive the run — it sits unencrypted in $HOME otherwise.
-rm -rf "$PULL"
+# The copy already succeeded; a failed prune is logged, never a failed backup.
+prune || echo "  WARNING: prune failed — Drive may hold more than $KEEP sets"
 echo "== $(date '+%F %T') done"
