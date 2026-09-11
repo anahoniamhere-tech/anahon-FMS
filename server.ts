@@ -41,11 +41,20 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+// Through the app.anahon.online door every visitor arrives from the VPS's tunnel address, which
+// PRIVATE_IP counts as private — so the office-only feeds would open to the whole internet.
+// TRUST_PROXY names exactly that hop; nginx overwrites X-Forwarded-For, so req.ip is the visitor.
+app.set("trust proxy", process.env.TRUST_PROXY || false);
+
 // Local calendar date (YYYY-MM-DD). Bank lines and journal entries are dated in Beirut time —
 // toISOString() is UTC and files an evening entry under yesterday.
 const localDate = () => new Date().toLocaleDateString("en-CA");
 
-app.use(express.json({ limit: "50mb" }));
+// The vault upload carries the file as base64 inside JSON — 4/3 of its size — so a 40 MB PDF
+// is ~54 MB of body and the general 50 MB ceiling refused it. That one route gets ~80 MB of file.
+const jsonBody = express.json({ limit: "50mb" });
+const vaultBody = express.json({ limit: "110mb" });
+app.use((req, res, next) => (req.path === "/api/document/upload" ? vaultBody : jsonBody)(req, res, next));
 
 // ── Role resolution & Project Officer gate ──────────────────────────────────
 // Partial fix for §5.3 (client-supplied roles): whenever a request names a user id,
