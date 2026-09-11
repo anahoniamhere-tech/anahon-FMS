@@ -7617,7 +7617,12 @@ Rules:
         required: ["name", "brand", "model", "serialNumber", "specs", "confidence"], additionalProperties: false
       }, { base64, mimeType }, "low", "gemini");
     } catch (e: any) {
-      return res.status(422).json({ error: `The label could not be read (${e.message}). Type the details from the label instead.` });
+      // The free tier answers "high demand" (503) or "slow down" (429) at busy hours. That is a
+      // moment's wait, not a reason to type the label out — and its raw JSON is not for a phone.
+      const busy = /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand/i.test(String(e?.message));
+      return res.status(busy ? 503 : 422).json({ error: busy
+        ? "The label reader is busy for a moment — press Scan the label again, or type the details from the label."
+        : `The label could not be read (${e.message}). Type the details from the label instead.` });
     }
 
     // A placeholder is an answer dressed as data. Blank it before it reaches a form a hurried

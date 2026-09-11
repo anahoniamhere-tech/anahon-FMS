@@ -99,6 +99,10 @@ ok("the phone opens the camera for the label and for the item", (tab.match(/capt
 ok("a second scan replaces the first — a blank read never leaves the last item's serial behind",
   /serial: x\.serialNumber \|\| "", noSerial:/.test(tab) && !/x\.(serialNumber|brand|model|name|specs) \|\| prev\./.test(tab));
 
+// The live re-scan of 11 Sep met the free tier's 503 and showed its raw JSON on the screen.
+ok("a busy reader is a moment's wait, said in a sentence — not the provider's JSON",
+  /high demand/.test(scan) && scan.includes("The label reader is busy for a moment — press Scan the label again"));
+
 console.log("\nG. the photos are documents like any other");
 ok("filed through the one upload route, against the item", /fetch\("\/api\/document\/upload"/.test(tab) && /linkedRecordType: "FixedAsset", linkedRecordId: assetId/.test(tab));
 ok("into the funding project's folder, beside the voucher", /linkedRecordType === "FixedAsset" && linkedRecordId/.test(server));
