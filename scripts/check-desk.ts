@@ -7,7 +7,7 @@
 // it cannot open, a label with no Arabic. Run: npx tsx scripts/check-desk.ts
 import { readFileSync } from "node:fs";
 import { RULES, STATUS_FIELD, TOOL_DESK, CONTACT_DESK, deskItems, missingPaperItems, LIVE_SUPPLIER_PAPERS, Rule } from "../src/workflow.js";
-import { ALL_ROLES, DIRECTORS, FINANCE, MANAGERS, SUPPLIER_EDITORS, CONTENT_EDITORS, PM_SLOT, PD_SLOT, MASTER } from "../src/roles.js";
+import { EQUIPMENT_VERIFIERS, ALL_ROLES, DIRECTORS, FINANCE, MANAGERS, SUPPLIER_EDITORS, CONTENT_EDITORS, PM_SLOT, PD_SLOT, MASTER } from "../src/roles.js";
 import { CONTENT_STATUSES } from "../src/editorialGates.js";
 import { visibleNav } from "../src/nav.js";
 
@@ -24,6 +24,7 @@ const IFACE: Record<string, string> = {
   expenses: "Expense", procurements: "Procurement", timesheets: "Timesheet", contentItems: "ContentItem",
   projectActivities: "ProjectActivity", projects: "Project", opportunities: "Opportunity", quotations: "Quotation",
   complianceTasks: "ComplianceTask", subscriptions: "Subscription", tools: "Tool", networkContacts: "NetworkContact",
+  fixedAssets: "FixedAsset",
 };
 /** Brace-balanced body of `export interface Name { … }` — some status fields sit after a nested `{…}[]`. */
 const iface = (name: string) => {
@@ -54,7 +55,9 @@ for (const [kind, list] of lists) {
   const have = [...new Set(RULES.filter(r => r.kind === kind).map(r => r.status))].sort();
   ok(`${kind}: rules = the server's whitelist`, same(have, [...list].sort()), `rules ${have.join(",")} vs ${list.join(",")}`);
 }
-const keys = RULES.map(r => `${r.kind}|${r.status}|${r.emptyField || ""}`);
+// A slot is who a row speaks to: an Editorial Review seat (emptyField) or a named person
+// (person). The equipment return has one row for its holder and one for the keepers.
+const keys = RULES.map(r => `${r.kind}|${r.status}|${r.emptyField || ""}|${r.person || ""}`);
 ok("no (kind, status, slot) listed twice", new Set(keys).size === keys.length);
 
 console.log("\nB. right column, right kind");
@@ -87,6 +90,7 @@ const record = (r: Rule): any => {
     id: `${r.kind}-1`, title: "T", name: "N", voucherNo: "PV-1", quoteNo: "Q-1", month: "2026-08", employeeId: "emp-1", projectId: "p1",
     requestorId: "emp-1", assigneeUserId: "", factCheckerUserId: "u-x", pmApprovedBy: "", pdApprovedBy: "",
     dueDate: today, nextRenewal: today, reviewBy: today, followUpBy: today, deadline: today, validUntil: today, decisionDate: today, notes: "",
+    tag: "EQ-001", holderId: "u-x", receivedBy: "u-po", dueBack: today, nextCheckDue: today,
   };
   base[STATUS_FIELD[r.kind] || "status"] = r.status;
   return base;
@@ -114,7 +118,7 @@ for (const r of RULES.filter(live)) {
 }
 
 console.log("\nE. seats, doors, Arabic");
-const SEATS: readonly string[][] = [DIRECTORS, FINANCE, MANAGERS, SUPPLIER_EDITORS, CONTENT_EDITORS, PM_SLOT, PD_SLOT, TOOL_DESK, CONTACT_DESK, MASTER];
+const SEATS: readonly string[][] = [DIRECTORS, FINANCE, MANAGERS, SUPPLIER_EDITORS, EQUIPMENT_VERIFIERS, CONTENT_EDITORS, PM_SLOT, PD_SLOT, TOOL_DESK, CONTACT_DESK, MASTER];
 ok("every seat is a roles.ts list by reference", RULES.every(r => !r.seat || SEATS.includes(r.seat as string[])), RULES.filter(r => r.seat && !SEATS.includes(r.seat as string[])).map(r => `${r.kind}/${r.status}`).join(","));
 for (const r of RULES.filter(x => x.seat)) {
   const blind = r.seat!.filter(role => !visibleNav(role).some(s => s.items.some(i => i.navKey === r.door)));

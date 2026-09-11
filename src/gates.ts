@@ -78,6 +78,9 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/subscriptions/roll": SUPPLIER_EDITORS,
   "/api/assets/register": SUPPLIER_EDITORS,
   "/api/assets/scan-label": SUPPLIER_EDITORS,        // reads a label, saves nothing
+  "/api/assets/checkout": SUPPLIER_EDITORS,
+  "/api/assets/checkin": SUPPLIER_EDITORS,
+  "/api/assets/repair": SUPPLIER_EDITORS,
   "/api/assets/verify": EQUIPMENT_VERIFIERS,          // never the keeper of the register
 
   // ---- Projects and funding -------------------------------------------------

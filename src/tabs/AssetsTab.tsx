@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { SharedProps } from "./shared";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS } from "../roles";
 import { withTicket } from "../docTicket";
-import { CONDITIONS, CURRENCIES, NO_SERIAL, equipmentStatus, mayVerifyEquipment } from "../equipment";
+import { CONDITIONS, CURRENCIES, NO_SERIAL, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, checkOutBlocker, equipmentStatus, mayVerifyEquipment } from "../equipment";
+import { addDays, localToday } from "../workflow";
 
 /** A request equipment can be booked against: the money is committed. The route asks the same. */
 const BOOKABLE = ["Approved", "Paid", "Posted"];
@@ -52,14 +53,23 @@ const STATUS_CHIP: Record<string, string> = {
   Verified: "bg-emerald-100 text-emerald-800",
 };
 
-export default function AssetsTab({ currentUser, openDoc, refreshState, state, t, triggerToast }: SharedProps) {
+export default function AssetsTab({ currentUser, focusId, lang, openDoc, refreshState, setFocusId, state, t, triggerToast }: SharedProps) {
   const [f, setF] = useState({ ...BLANK, custodian: currentUser?.name || "" });
   const set = (k: keyof typeof BLANK, v: string | boolean) => setF(prev => ({ ...prev, [k]: v }));
   const [labelPhoto, setLabelPhoto] = useState<Photo | null>(null);
   const [itemPhoto, setItemPhoto] = useState<Photo | null>(null);
   const [scan, setScan] = useState<{ busy: boolean; confidence?: string; warnings?: string[]; duplicateOfTag?: string }>({ busy: false });
   const [saving, setSaving] = useState(false);
-  const [verifyDraft, setVerifyDraft] = useState<Record<string, { condition: string; location: string }>>({});
+  const [verifyDraft, setVerifyDraft] = useState<Record<string, { condition: string; location: string; months: string }>>({});
+  // One open panel at a time — check out, check in or a repair — and its fields.
+  const [panel, setPanel] = useState<{ id: string; kind: "out" | "in" | "repair" } | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  // Which items to print stickers for, and at what size.
+  const [stickersOpen, setStickersOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [stickerMm, setStickerMm] = useState<number>(DEFAULT_STICKER_MM);
 
   const assets = state.fixedAssets || [];
   const receiving = SUPPLIER_EDITORS.includes(currentUser.role);
@@ -168,11 +178,11 @@ export default function AssetsTab({ currentUser, openDoc, refreshState, state, t
   };
 
   const handleVerify = async (a: { id: string; condition: string; location: string }) => {
-    const d = verifyDraft[a.id] || { condition: a.condition, location: a.location };
+    const d = verifyDraft[a.id] || { condition: a.condition, location: a.location, months: String(DEFAULT_CHECK_MONTHS) };
     const res = await fetch("/api/assets/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetId: a.id, condition: d.condition, location: d.location }),
+      body: JSON.stringify({ assetId: a.id, condition: d.condition, location: d.location, checkEveryMonths: Number(d.months) }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return triggerToast(data.error || "Confirmation was refused.", "error");
@@ -189,17 +199,123 @@ export default function AssetsTab({ currentUser, openDoc, refreshState, state, t
     else triggerToast(t("The photo did not upload."), "error");
   };
 
+  const today = localToday();
+  const dayFmt = (ymd?: string | null) => ymd
+    ? new Date(`${ymd.slice(0, 10)}T12:00:00`).toLocaleDateString(lang === "ar" ? "ar-LB" : "en-GB", { weekday: "short", day: "numeric", month: "short" })
+    : "";
+  const activeUsers = state.users.filter(u => u.active).sort((a, b) => a.name.localeCompare(b.name));
+
+  // A sticker's QR, or a desk row, opens /?door=assets&focus=<id>: bring that item into view.
+  useEffect(() => {
+    if (!focusId) return;
+    // A desk row or a notification names the item's id; a sticker's short link (/e/EQ-004)
+    // names its tag, because the open route that redirects it looks nothing up.
+    const want = focusId.replace(/^fixedAssets:/, "");
+    const hit = /^tag:/i.test(want)
+      ? assets.find(a => (a.tag || "").toUpperCase() === want.slice(4).toUpperCase())
+      : assets.find(a => a.id === want);
+    if (!hit) return;
+    const id = hit.id;
+    setFocusId(null);
+    setHighlight(id);
+    setTimeout(() => document.getElementById(`asset-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 50);
+    const off = setTimeout(() => setHighlight(null), 4000);
+    return () => clearTimeout(off);
+  }, [focusId, assets.length]);
+
+  const openPanel = (id: string, kind: "out" | "in" | "repair", seed: Record<string, string> = {}) => {
+    setPanel(panel?.id === id && panel.kind === kind ? null : { id, kind });
+    setDraft(seed);
+  };
+  const field = (k: string) => draft[k] ?? "";
+  const setField = (k: string, v: string) => setDraft(prev => ({ ...prev, [k]: v }));
+
+  // The three custody writes go one way. The route decides, and a refusal is shown as it says it.
+  const send = async (path: string, body: object, done: string) => {
+    const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return triggerToast(data.error || "Refused.", "error");
+    triggerToast(done);
+    setPanel(null);
+    setDraft({});
+    refreshState();
+  };
+
+  const btn = "inline-flex min-h-[44px] items-center gap-1 rounded bg-slate-900 px-3 text-[11px] font-bold text-white hover:bg-slate-950 md:min-h-0 md:py-1.5";
+  const btnGhost = "inline-flex min-h-[44px] items-center gap-1 rounded border border-slate-300 bg-white px-3 text-[11px] font-bold text-slate-700 hover:bg-slate-50 md:min-h-0 md:py-1.5";
+  const btnOff = "inline-flex min-h-[44px] cursor-not-allowed items-center rounded bg-slate-100 px-3 text-[11px] font-semibold text-slate-500 md:min-h-0 md:py-1.5";
   const lbl = "block text-[10px] font-bold text-slate-600 uppercase mb-1";
   const inp = "finance-input w-full text-xs min-h-[44px] md:min-h-0";
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold">{t("Fixed Assets capitalization Register")}</h2>
-        <p className="text-xs text-slate-500 md:max-w-xl">
-          {t("Photograph the label when equipment arrives. The person who took delivery registers it; somebody else confirms it is really here.")}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">{t("Fixed Assets capitalization Register")}</h2>
+          <p className="text-xs text-slate-500 md:max-w-xl">
+            {t("Photograph the label when equipment arrives. The person who took delivery registers it; somebody else confirms it is really here.")}
+          </p>
+        </div>
+        {assets.some(a => a.tag) && (
+          <button
+            type="button" aria-expanded={stickersOpen}
+            onClick={() => {
+              // Opens on the new ones: whatever arrived this week, the usual reason to print.
+              if (!stickersOpen) setPicked(new Set(assets.filter(a => a.tag && (a.receivedAt || "").slice(0, 10) >= addDays(today, -7)).map(a => a.id)));
+              setStickersOpen(!stickersOpen);
+            }}
+            className={btnGhost}
+          >
+            🏷 {t("Stickers")}
+          </button>
+        )}
       </div>
+
+      {stickersOpen && (() => {
+        const tagged = assets.filter(a => a.tag).sort((x, y) => String(y.receivedAt || "").localeCompare(String(x.receivedAt || "")));
+        const sample = tagged.find(a => picked.has(a.id)) || tagged[0];
+        return (
+          <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-900">{t("Stickers")}</h3>
+              <button type="button" onClick={() => setPicked(new Set(tagged.map(a => a.id)))} className={btnGhost}>{t("All")}</button>
+              <button type="button" onClick={() => setPicked(new Set(tagged.filter(a => (a.receivedAt || "").slice(0, 10) >= addDays(today, -7)).map(a => a.id)))} className={btnGhost}>{t("Received this week")}</button>
+              <button type="button" onClick={() => setPicked(new Set())} className={btnGhost}>{t("None")}</button>
+              <select aria-label={t("Sticker size")} value={stickerMm} onChange={e => setStickerMm(Number(e.target.value))} className="finance-input min-h-[44px] bg-white text-xs md:min-h-0">
+                {STICKER_SIZES.map(mm => <option key={mm} value={mm}>{t("QR {n} cm").replace("{n}", String(mm / 10))}</option>)}
+              </select>
+            </div>
+            <div className="grid max-h-56 grid-cols-1 gap-1 overflow-y-auto md:grid-cols-2">
+              {tagged.map(a => (
+                <label key={a.id} className="flex min-h-[36px] cursor-pointer items-center gap-2 rounded px-1 text-xs hover:bg-slate-50">
+                  <input
+                    type="checkbox" className="h-4 w-4" checked={picked.has(a.id)}
+                    onChange={e => { const next = new Set(picked); e.target.checked ? next.add(a.id) : next.delete(a.id); setPicked(next); }}
+                  />
+                  <span dir="ltr" className="font-mono font-bold">{a.tag}</span>
+                  <span className="truncate">{a.name}</span>
+                  <span dir="ltr" className="ms-auto shrink-0 text-[10px] text-slate-400">{(a.receivedAt || "").slice(0, 10)}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {picked.size > 0 ? (
+                <a href={withTicket(`/api/assets/stickers?size=${stickerMm}&ids=${[...picked].map(encodeURIComponent).join(",")}`)} target="_blank" rel="noreferrer" className={btn}>
+                  🖨 {t("Print {n} stickers").replace("{n}", String(picked.size))}
+                </a>
+              ) : (
+                <button type="button" disabled className={btnOff}>🖨 {t("Print")} — {t("choose at least one item")}</button>
+              )}
+              {sample && (
+                <a href={withTicket(`/api/assets/stickers?strip=1&ids=${encodeURIComponent(sample.id)}`)} target="_blank" rel="noreferrer" className={btnGhost}>
+                  📏 {t("Test strip")} — <span dir="ltr">{sample.tag}</span>
+                </a>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500">{t("Print at 100% (actual size), never “fit to page”. Test the printed strip with a phone's own camera — not the screen.")}</p>
+          </div>
+        );
+      })()}
 
       {receiving && (
         <form onSubmit={handleReceive} className="p-4 bg-white border border-slate-200 rounded-lg space-y-4">
@@ -350,9 +466,9 @@ export default function AssetsTab({ currentUser, openDoc, refreshState, state, t
           const status = equipmentStatus(a);
           const docs = docsOf(a.id);
           const v = a.expenseId ? state.expenses.find(e => e.id === a.expenseId) : undefined;
-          const d = verifyDraft[a.id] || { condition: a.condition, location: a.location };
+          const d = verifyDraft[a.id] || { condition: a.condition, location: a.location, months: String(DEFAULT_CHECK_MONTHS) };
           return (
-            <div key={a.id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
+            <div key={a.id} id={`asset-${a.id}`} className={`p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3 ${highlight === a.id ? "ring-2 ring-amber-400" : ""}`}>
               <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
                 {a.tag ? (
                   // Big enough to copy onto a sticker by hand; a tap copies it for a label printer.
@@ -412,6 +528,21 @@ export default function AssetsTab({ currentUser, openDoc, refreshState, state, t
                 <p className="text-[11px] text-emerald-800">✓ {t("Confirmed by")} {nameOf(a.verifiedBy)} · <span dir="ltr">{a.verifiedAt.slice(0, 10)}</span> · {t(a.condition)}</p>
               )}
 
+              {a.holderId && (
+                <p className={`rounded-lg px-3 py-2 text-xs font-bold ${a.dueBack && a.dueBack < today ? "bg-red-50 text-red-800" : "bg-sky-50 text-sky-900"}`}>
+                  📤 {t("With {name} — {purpose} — due {date}")
+                    .replace("{name}", nameOf(a.holderId).split(/\s+/)[0])
+                    .replace("{purpose}", a.heldFor || "")
+                    .replace("{date}", dayFmt(a.dueBack))}
+                  {a.dueBack && a.dueBack < today ? ` · ${t("overdue")}` : ""}
+                </p>
+              )}
+              {a.nextCheckDue && !a.holderId && (
+                <p className={`text-[11px] ${a.nextCheckDue < today ? "font-bold text-red-700" : "text-slate-500"}`}>
+                  🔎 {t("Next physical check")}: <span dir="ltr">{a.nextCheckDue}</span>
+                </p>
+              )}
+
               {(docs.length > 0 || receiving) && (
                 <div className="flex flex-wrap items-center gap-2">
                   {docs.map(doc => (
@@ -432,9 +563,157 @@ export default function AssetsTab({ currentUser, openDoc, refreshState, state, t
                 </div>
               )}
 
+              {receiving && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                  {a.holderId ? (
+                    <button type="button" onClick={() => openPanel(a.id, "in", { location: a.location })} className={btn}>📥 {t("Check in")}</button>
+                  ) : checkOutBlocker(a) ? (
+                    // The route's own reason, as the label — never a tooltip a phone cannot show.
+                    <button type="button" disabled className={btnOff}>📤 {t("Check out")} — {t(checkOutBlocker(a)!)}</button>
+                  ) : (
+                    <button type="button" onClick={() => openPanel(a.id, "out")} className={btn}>📤 {t("Check out")}</button>
+                  )}
+                  <button type="button" onClick={() => openPanel(a.id, "repair", { date: today })} className={btnGhost}>🔧 {t("Log a repair")}</button>
+                  {a.tag && (
+                    <a href={withTicket(`/api/assets/stickers?ids=${encodeURIComponent(a.id)}`)} target="_blank" rel="noreferrer" className={btnGhost}>🏷 {t("Print sticker")}</a>
+                  )}
+                </div>
+              )}
+
+              {panel?.id === a.id && panel.kind === "out" && (
+                <form
+                  onSubmit={e => { e.preventDefault(); send("/api/assets/checkout", { assetId: a.id, holderId: field("holderId"), heldFor: field("heldFor"), projectId: field("projectId"), dueBack: field("dueBack") }, `${a.tag} — ${t("checked out")}`); }}
+                  className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-2"
+                >
+                  <div>
+                    <label htmlFor={`out-who-${a.id}`} className={lbl}>{t("Who is taking it")}</label>
+                    <select id={`out-who-${a.id}`} required value={field("holderId")} onChange={e => setField("holderId", e.target.value)} className={`${inp} bg-white`}>
+                      <option value="">{t("— choose —")}</option>
+                      {activeUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor={`out-for-${a.id}`} className={lbl}>{t("What for — the project or the shoot")}</label>
+                    <input id={`out-for-${a.id}`} required value={field("heldFor")} onChange={e => setField("heldFor", e.target.value)} placeholder={t("e.g. Tripoli shoot")} className={inp} />
+                  </div>
+                  <div>
+                    <label htmlFor={`out-proj-${a.id}`} className={lbl}>{t("Funded by project")}</label>
+                    <select id={`out-proj-${a.id}`} value={field("projectId")} onChange={e => setField("projectId", e.target.value)} className={`${inp} bg-white`}>
+                      <option value="">{t("— none —")}</option>
+                      {state.projects.map(p => <option key={p.id} value={p.id}>{p.code}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor={`out-due-${a.id}`} className={lbl}>{t("Due back")}</label>
+                    <input id={`out-due-${a.id}`} type="date" required min={today} value={field("dueBack")} onChange={e => setField("dueBack", e.target.value)} className={inp} />
+                  </div>
+                  <button type="submit" className={`${btn} justify-center md:col-span-2`}>📤 {t("Check out")}</button>
+                </form>
+              )}
+
+              {panel?.id === a.id && panel.kind === "in" && (
+                <form
+                  onSubmit={e => { e.preventDefault(); send("/api/assets/checkin", { assetId: a.id, condition: field("condition"), location: field("location"), note: field("note") }, `${a.tag} — ${t("checked in")}`); }}
+                  className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-3"
+                >
+                  <div>
+                    <label htmlFor={`in-cond-${a.id}`} className={lbl}>{t("Condition on return")}</label>
+                    <select id={`in-cond-${a.id}`} required value={field("condition")} onChange={e => setField("condition", e.target.value)} className={`${inp} bg-white`}>
+                      <option value="">{t("— choose —")}</option>
+                      {CONDITIONS.map(c => <option key={c} value={c}>{t(c)}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor={`in-loc-${a.id}`} className={lbl}>{t("Kept at")}</label>
+                    <input id={`in-loc-${a.id}`} value={field("location")} onChange={e => setField("location", e.target.value)} className={inp} />
+                  </div>
+                  <div>
+                    <label htmlFor={`in-note-${a.id}`} className={lbl}>{t("Note")}</label>
+                    <input id={`in-note-${a.id}`} value={field("note")} onChange={e => setField("note", e.target.value)} placeholder={t("e.g. lens cap missing")} className={inp} />
+                  </div>
+                  <button type="submit" className={`${btn} justify-center md:col-span-3`}>📥 {t("Check in")}</button>
+                </form>
+              )}
+
+              {panel?.id === a.id && panel.kind === "repair" && (() => {
+                const v = vouchers.find(e => e.id === field("expenseId"));
+                return (
+                  <form
+                    onSubmit={e => { e.preventDefault(); send("/api/assets/repair", { assetId: a.id, date: field("date"), work: field("work"), doneBy: field("doneBy"), cost: field("cost"), currency: field("currency"), expenseId: field("expenseId") }, `${a.tag} — ${t("repair logged")}`); }}
+                    className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-2"
+                  >
+                    <div className="md:col-span-2">
+                      <label htmlFor={`rp-work-${a.id}`} className={lbl}>{t("What was done")}</label>
+                      <input id={`rp-work-${a.id}`} required value={field("work")} onChange={e => setField("work", e.target.value)} placeholder={t("e.g. replaced the battery door")} className={inp} />
+                    </div>
+                    <div>
+                      <label htmlFor={`rp-by-${a.id}`} className={lbl}>{t("Done by")}</label>
+                      <input id={`rp-by-${a.id}`} required value={field("doneBy")} onChange={e => setField("doneBy", e.target.value)} placeholder={t("a person or a repair shop")} className={inp} />
+                    </div>
+                    <div>
+                      <label htmlFor={`rp-date-${a.id}`} className={lbl}>{t("Date")}</label>
+                      <input id={`rp-date-${a.id}`} type="date" required value={field("date")} onChange={e => setField("date", e.target.value)} className={inp} />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label htmlFor={`rp-v-${a.id}`} className={lbl}>{t("Paid on payment request")}</label>
+                      <select id={`rp-v-${a.id}`} value={field("expenseId")} onChange={e => setField("expenseId", e.target.value)} className={`${inp} bg-white`}>
+                        <option value="">{t("— not paid on a payment request —")}</option>
+                        {vouchers.map(e => <option key={e.id} value={e.id}>{e.voucherNo} · {supplierOf(e.vendorId)} · {money(e.amount, e.currency)}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label htmlFor={`rp-cost-${a.id}`} className={lbl}>{t("Cost")}</label>
+                      <div className="flex gap-2">
+                        <input id={`rp-cost-${a.id}`} type="number" step="0.01" min="0" required dir="ltr" value={field("cost")} onChange={e => setField("cost", e.target.value)} className={`${inp} font-mono`} />
+                        {v ? (
+                          <span className="self-center font-mono text-xs font-bold">{v.currency}</span>
+                        ) : (
+                          <select aria-label={t("Currency")} required value={field("currency")} onChange={e => setField("currency", e.target.value)} className="finance-input min-h-[44px] bg-white text-xs md:min-h-0">
+                            <option value="">—</option>
+                            {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+                    <p className="self-end text-[10px] text-slate-500">{t("A repair is an expense — the item's cost does not change.")}</p>
+                    <button type="submit" className={`${btn} justify-center md:col-span-2`}>🔧 {t("Log the repair")}</button>
+                  </form>
+                );
+              })()}
+
+              {((a.movements?.length || 0) + (a.repairs?.length || 0)) > 0 && (
+                <div>
+                  <button type="button" onClick={() => setHistoryFor(historyFor === a.id ? null : a.id)} aria-expanded={historyFor === a.id} className="text-[11px] font-bold text-slate-500 hover:underline min-h-[24px]">
+                    🗂 {t("History")} ({(a.movements?.length || 0) + (a.repairs?.length || 0)})
+                  </button>
+                  {historyFor === a.id && (
+                    <div className="mt-1 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
+                      {[...(a.movements || [])].reverse().map(m => (
+                        <p key={m.id}>
+                          📤 <span dir="ltr">{m.outAt.slice(0, 10)}</span> → {nameOf(m.holderId)} · {m.heldFor} · {t("due")} <span dir="ltr">{m.dueBack}</span>
+                          {m.inAt
+                            ? <> · 📥 <span dir="ltr">{m.inAt.slice(0, 10)}</span> · {t(m.returnCondition || "")}{m.note ? ` — ${m.note}` : ""}</>
+                            : <> · <b>{t("still out")}</b></>}
+                        </p>
+                      ))}
+                      {[...(a.repairs || [])].reverse().map(r => (
+                        <p key={r.id}>
+                          🔧 <span dir="ltr">{r.date}</span> · {r.work} · {r.doneBy} · <span dir="ltr">{money(r.cost, r.currency)}</span>
+                          {r.expenseId ? ` · ${state.expenses.find(e => e.id === r.expenseId)?.voucherNo || t("Bought on a payment request on file")}` : ""}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* The same predicate the route asks. The keeper of the register is not a
                   verifier at all; a verifier who took delivery sees why they cannot confirm. */}
-              {verifier && (mayVerifyEquipment(currentUser, a) ? (
+              {verifier && (a.holderId ? (
+                <button type="button" disabled className="w-full cursor-not-allowed rounded bg-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-500">
+                  ✓ {t("Confirm it is here")} — {t("it is out; confirm it once it is back")}
+                </button>
+              ) : mayVerifyEquipment(currentUser, a) ? (
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                   <select
                     aria-label={t("Condition found")} value={d.condition}
@@ -448,6 +727,13 @@ export default function AssetsTab({ currentUser, openDoc, refreshState, state, t
                     onChange={e => setVerifyDraft({ ...verifyDraft, [a.id]: { ...d, location: e.target.value } })}
                     className="finance-input min-h-[44px] w-40 text-xs md:min-h-0"
                   />
+                  <select
+                    aria-label={t("Next check")} value={d.months}
+                    onChange={e => setVerifyDraft({ ...verifyDraft, [a.id]: { ...d, months: e.target.value } })}
+                    className="finance-input min-h-[44px] bg-white text-xs md:min-h-0"
+                  >
+                    {CHECK_EVERY_MONTHS.map(n => <option key={n} value={n}>{t("check again in {n} months").replace("{n}", String(n))}</option>)}
+                  </select>
                   <button type="button" onClick={() => handleVerify(a)} className="min-h-[44px] rounded bg-slate-900 px-3 text-[11px] font-bold text-white hover:bg-slate-950 md:min-h-0 md:py-1.5">
                     ✓ {status === "Verified" ? t("Confirm again") : t("Confirm it is here")}
                   </button>

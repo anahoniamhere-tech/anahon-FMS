@@ -273,6 +273,17 @@ model FixedAsset {
   receivedBy               String?
   verifiedAt               String?
   verifiedBy               String?
+  /// Who has it now (a User.id), what for and until when — empty while it is in.
+  holderId                 String?
+  heldFor                  String  @default("")
+  heldProjectId            String  @default("")
+  outAt                    String?
+  dueBack                  String?
+  /// When it is next due a physical check; every confirmation sets it (12 months by default).
+  nextCheckDue             String?
+  /// The item's own log, oldest first: every check-out and return, every repair.
+  movementsJson            String  @default("[]")
+  repairsJson              String  @default("[]")
 }
 
 model PartnerAccount {

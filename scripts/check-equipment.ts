@@ -9,7 +9,10 @@
 // be a rule about the PERSON, or it holds for everyone except the one account that most
 // needs it. Run: npx tsx scripts/check-equipment.ts
 import { readFileSync } from "node:fs";
-import { NO_SERIAL, nextEquipmentTag, parseTag, sameSerial, equipmentStatus, mayVerifyEquipment, blankIfPlaceholder } from "../src/equipment.js";
+import { NO_SERIAL, nextEquipmentTag, parseTag, sameSerial, equipmentStatus, mayVerifyEquipment, blankIfPlaceholder,
+  checkOutBlocker, stickerLink, stickerSheetHtml, QR_ALPHANUMERIC, STICKER_SIZES, DEFAULT_STICKER_MM, STRIP_SIZES,
+  CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS } from "../src/equipment.js";
+import { RULES, deskItems } from "../src/workflow.js";
 import { ROUTE_SEATS } from "../src/gates.js";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS, PLO, AUDITOR } from "../src/roles.js";
 
@@ -23,7 +26,14 @@ const tab = read("src/tabs/AssetsTab.tsx");
 const between = (from: string, to: string) => server.slice(server.indexOf(from), server.indexOf(to, server.indexOf(from)));
 const scan = between('app.post("/api/assets/scan-label"', 'app.post("/api/assets/register"');
 const reg = between('app.post("/api/assets/register"', 'app.post("/api/assets/verify"');
-const ver = between('app.post("/api/assets/verify"', "// Partner drawings & contributions");
+const ver = between('app.post("/api/assets/verify"', 'app.post("/api/assets/checkout"');
+const out = between('app.post("/api/assets/checkout"', 'app.post("/api/assets/checkin"');
+const back = between('app.post("/api/assets/checkin"', 'app.post("/api/assets/repair"');
+const fix = between('app.post("/api/assets/repair"', "// Stickers to print:");
+const stick = between('app.get("/api/assets/stickers"', 'app.get("/e/:tag"');
+const short = between('app.get("/e/:tag"', "// Partner drawings & contributions");
+const i18n = read("src/i18n.ts");
+const pkg = read("package.json");
 
 console.log("\nA. the sticker series numbers itself from the stickers");
 ok("the first item is EQ-001", nextEquipmentTag([]) === "EQ-001");
@@ -66,7 +76,7 @@ for (const [name, body] of [["scan", scan], ["register", reg], ["verify", ver]] 
   ok(`${name}: never falls back to a named seat or id`, !/\|\| "u-\d"|"Finance Officer"|\|\| "Auditor"/.test(body));
 }
 ok("who took delivery is written on the record", /receivedAt: new Date\(\)\.toISOString\(\), receivedBy: user\.id/.test(reg));
-ok("and who confirmed it", /verifiedAt: new Date\(\)\.toISOString\(\), verifiedBy: user\.id/.test(ver));
+ok("and who confirmed it", /verifiedAt: now, verifiedBy: user\.id, nextCheckDue/.test(ver));
 
 console.log("\nE. the keeper never confirms an item — enforced on the server");
 const item = (receivedBy: string | null) => ({ receivedBy });
@@ -124,6 +134,123 @@ console.log("\nH. status");
 ok("entered before receiving existed", equipmentStatus({}) === "Registered");
 ok("delivery taken", equipmentStatus({ receivedAt: "2026-09-11" }) === "Received");
 ok("confirmed by somebody else", equipmentStatus({ receivedAt: "2026-09-11", verifiedAt: "2026-09-12" }) === "Verified");
+
+/* ── Phase 2 (11 Sep 2026): custody, the desk, repairs, the periodic check, stickers ── */
+
+console.log("\nJ. an item goes out only when it is confirmed and in, and comes back with its condition");
+ok("unconfirmed stays in", checkOutBlocker({ verifiedAt: null }) === "not confirmed yet");
+ok("out has one holder, not two", checkOutBlocker({ verifiedAt: "2026-09-11", holderId: "u-po" }) === "already out");
+ok("confirmed and in may go", checkOutBlocker({ verifiedAt: "2026-09-11", holderId: null }) === null);
+ok("the route refuses with the same predicate the button shows", /const blocker = checkOutBlocker\(asset\);/.test(out) && tab.includes("{t(checkOutBlocker(a)!)}"));
+ok("the database refuses a second check-out too — the write lands only on a row still in and confirmed",
+  /where: \{ id: asset\.id, holderId: null, verifiedAt: \{ not: null \} \}/.test(out) && /if \(done\.count !== 1\)/.test(out));
+ok("the holder is an active account", /if \(!holder \|\| !holder\.active\)/.test(out));
+ok("what it is for, and a due-back date not in the past, are required", /if \(!heldFor\)/.test(out) && /dueBack < localDate\(\)/.test(out));
+ok("a return records the condition it came back in and clears the holder",
+  /CONDITIONS as readonly string\[\]\)\.includes\(condition\)/.test(back)
+  && /holderId: null, heldFor: "", heldProjectId: "", outAt: null, dueBack: null, condition, location/.test(back)
+  && /where: \{ id: asset\.id, holderId: asset\.holderId \}/.test(back));
+ok("both writes go on the item's own log", /moves\.push\(\{/.test(out) && /returnCondition: condition/.test(back));
+for (const [name, body] of [["checkout", out], ["checkin", back], ["repair", fix]] as const) {
+  ok(`${name}: the signed-in person, or a refusal — no named fallback`, /if \(!user\?\.id\) return res\.status\(401\)/.test(body) && !/\|\| "u-\d"|"Finance Officer"/.test(body));
+}
+ok("who lent it and who took it back are the session's", /outBy: user\.id/.test(out) && /inBy: user\.id/.test(back));
+ok("out is a status derived from the holder, never stored", equipmentStatus({ verifiedAt: "x", holderId: "u-po" }) === "Out" && /status: equipmentStatus\(a\)/.test(server));
+ok("the register says who has it, what for and when it is due", tab.includes('t("With {name} — {purpose} — due {date}")'));
+ok("nobody confirms an item while it is out on a shoot", /if \(asset\.holderId\) return res\.status\(409\)/.test(ver));
+
+console.log("\nK. the desk carries overdue returns and periodic checks — no second reminder path");
+const TODAY = "2026-09-11";
+const people = [
+  { id: "u-sa", name: "Saad", email: "sa@x", role: "Super Admin", active: true },
+  { id: "u-plo", name: "Ahmad", email: "plo@x", role: PLO, active: true },
+  { id: "u-fo", name: "Marwan", email: "fo@x", role: "Finance Officer", active: true },
+  { id: "u-po", name: "Omar", email: "po@x", role: "Project Officer", active: true },
+  { id: "u-aud", name: "Auditor", email: "aud@x", role: AUDITOR, active: false },
+];
+const me = (id: string) => { const u = people.find(p => p.id === id)!; return { id: u.id, email: u.email, role: u.role }; };
+const deskOf = (id: string, assets: any[]) => deskItems(me(id), { users: people, fixedAssets: assets } as any, TODAY).filter(i => i.kind === "fixedAssets");
+const outItem = (holderId: string, dueBack: string) => ({ id: "a1", tag: "EQ-001", name: "Camera", status: "Out", holderId, dueBack, receivedBy: "u-plo" });
+const holderRow = deskOf("u-po", [outItem("u-po", TODAY)]);
+ok("due back today: on the holder's own desk, opening My Desk — a Project Officer has no Equipment door",
+  holderRow.length === 1 && holderRow[0].group === "mine" && holderRow[0].door === "mydesk" && holderRow[0].verb === "Bring the equipment back");
+ok("and on the keepers' desks, opening Equipment",
+  ["u-plo", "u-fo"].every(id => deskOf(id, [outItem("u-po", TODAY)]).some(i => i.group === "mine" && i.door === "assets" && i.verb === "Chase the return")));
+ok("overdue reads as overdue", deskOf("u-po", [outItem("u-po", "2026-09-08")])[0]?.urgency === "overdue");
+ok("not before it is due", ["u-po", "u-plo", "u-fo", "u-sa"].every(id => deskOf(id, [outItem("u-po", "2026-09-12")]).length === 0));
+ok("a keeper holding it gets one row, not two", deskOf("u-plo", [outItem("u-plo", TODAY)]).length === 1);
+const checkDue = (receivedBy: string, nextCheckDue: string) => ({ id: "a2", tag: "EQ-002", name: "Tripod", status: "Verified", receivedBy, nextCheckDue });
+ok("a periodic check falls due on the verifier's desk — the master account covers the vacant auditor seat",
+  deskOf("u-sa", [checkDue("u-plo", TODAY)]).some(i => i.group === "cover" && i.door === "assets" && i.verb === "Check it is still here"));
+ok("not before it is due", deskOf("u-sa", [checkDue("u-plo", "2026-10-11")]).length === 0);
+// deskItems shows anyone a near-due item on somebody else's desk as a "this week" note; what the
+// exclusion guarantees is that it is never the receiver's own turn.
+ok("never the turn of the person who received it — at most a 'due this week' note, never mine or cover",
+  deskOf("u-sa", [checkDue("u-sa", TODAY)]).every(i => i.group === "week"));
+ok("a received item waits on the verifier's desk, and never on its receiver's",
+  deskOf("u-sa", [{ id: "a3", tag: "EQ-003", name: "Mic", status: "Received", receivedBy: "u-plo" }]).some(i => i.verb === "Confirm it is here")
+  && deskOf("u-sa", [{ id: "a3", tag: "EQ-003", name: "Mic", status: "Received", receivedBy: "u-sa" }]).length === 0);
+const eqRules = RULES.filter(r => r.kind === "fixedAssets");
+ok("the dated rows use `when` with a zero horizon — they appear on the day, not before",
+  eqRules.filter(r => r.when).every(r => r.horizon === 0) && eqRules.some(r => r.when === "dueBack") && eqRules.some(r => r.when === "nextCheckDue"));
+ok("a holder sees the item they hold even on a trimmed view — and nothing about its money",
+  (server.match(/fixedAssets: heldByViewer/g) || []).length >= 3 && server.includes("fixedAssets: buys ? fixedAssets : heldByViewer")
+  && !/const heldByViewer[^;]*\bcost\b/.test(server));
+
+console.log("\nL. a repair is an expense: logged on the item, never on its cost");
+const repairWrite = fix.slice(fix.indexOf("prisma.fixedAsset.update("), fix.indexOf("prisma.fixedAsset.update(") + 140);
+ok("the only field a repair writes is the item's repair log", /data: \{ repairsJson: JSON\.stringify\(repairs\) \}/.test(repairWrite));
+ok("cost basis, book value and depreciation are untouched", !/cost:|currentBookValue|accumulatedDepreciation/.test(repairWrite));
+ok("what, who and when are required", /if \(!work\)/.test(fix) && /if \(!doneBy\)/.test(fix) && /Give the date of the repair/.test(fix));
+ok("a linked voucher must be approved, sets the currency, and caps the cost",
+  /\["Approved", "Paid", "Posted"\]\.includes\(exp\.status\)/.test(fix) && /currency = exp\.currency/.test(fix) && /if \(cost > exp\.amount \+ 0\.005\)/.test(fix));
+
+console.log("\nM. every confirmation books the next check");
+// The date sum is the server's own addMonths — the one subscriptions and grant milestones already
+// use — not a second copy. It takes YYYY-MM-DD: handed a full timestamp it would return it unchanged.
+ok("twelve months on by default, with the server's own date sum, given a plain date",
+  DEFAULT_CHECK_MONTHS === 12 && /nextCheckDue = addMonths\(now\.slice\(0, 10\), months\)/.test(ver));
+ok("which clamps a missing month-end rather than rolling into the next month", /if \(d\.getUTCDate\(\) < day\) d\.setUTCDate\(0\);/.test(server));
+ok("and there is only one of it", (server.match(/const addMonths = /g) || []).length === 1 && !/export function addMonths/.test(read("src/equipment.ts")));
+ok("the verifier may choose 6 or 24 instead", JSON.stringify(CHECK_EVERY_MONTHS) === "[6,12,24]"
+  && /CHECK_EVERY_MONTHS as readonly number\[\]\)\.includes\(Number\(req\.body\.checkEveryMonths\)\)/.test(ver) && /nextCheckDue = addMonths\(now\.slice\(0, 10\), months\)/.test(ver));
+ok("items confirmed before this existed get their first check a year after it",
+  /date\("verifiedAt", '\+12 months'\)/.test(read("prisma/migrations/20260911160000_equipment_custody/migration.sql")));
+
+console.log("\nN. a small sticker: a short capital link, real millimetres, the phone's own camera");
+const base = "https://anahon-1.tailbcb2b7.ts.net:8444";
+const link = stickerLink(base, "EQ-004");
+ok("the link is short and in capitals", link === "HTTPS://ANAHON-1.TAILBCB2B7.TS.NET:8444/E/EQ-004");
+ok("every character sits in the QR's alphanumeric set", QR_ALPHANUMERIC.test(link) && QR_ALPHANUMERIC.test(stickerLink(base, "EQ-1000")));
+// Version 3 at level M holds 61 alphanumeric characters (ISO/IEC 18004, table 7). Past that it grows.
+ok("and short enough to stay at version 3 (29 × 29) — 61 characters at level M", link.length <= 61 && stickerLink(base, "EQ-99999").length <= 61);
+ok("in lower case it would not be — the reason for the capitals", !QR_ALPHANUMERIC.test(base));
+ok("the QR is level M with a 2-module quiet zone", /border=2,error_correction=qrcode\.constants\.ERROR_CORRECT_M/.test(server));
+ok("the short route is open, looks nothing up, and only points at the Equipment door",
+  !/prisma\./.test(short) && /res\.redirect\(302, `\/\?door=assets&focus=\$\{encodeURIComponent\(`tag:\$\{tag\}`\)\}`\)/.test(short) && /\.toUpperCase\(\)/.test(short));
+ok("it answers /E/ in capitals as well: Express routing is case-blind and nothing here turns that off", !/case sensitive routing|caseSensitive/.test(server));
+ok("the screen finds an item by its tag, case-blind", /\/\^tag:\/i\.test\(want\)/.test(tab) && /\.toUpperCase\(\) === want\.slice\(4\)\.toUpperCase\(\)/.test(tab));
+ok("stickers print for those who can open Equipment, at FMS_PUBLIC_URL, with the shared generator",
+  /doorsFor\(String\(req\.dbUser\?\.role\)\)\.map\(String\)\.includes\("assets"\)/.test(stick) && /if \(!base\) return res\.status\(503\)/.test(stick) && /qrSvg\(stickerLink\(base, String\(a\.tag\)\)\)/.test(stick));
+ok("no QR package was added — the Python one already in the image does it", !/"qrcode"/.test(pkg));
+const qr = "<svg viewBox=\"0 0 33 33\"></svg>";
+const sheet = stickerSheetHtml([{ tag: "EQ-004", name: "Sony FX6 <script>alert(1)</script>", qr }], { mm: 15 });
+ok("A4 with a margin, laid out in millimetres", /@page \{ size: A4; margin: 10mm; \}/.test(sheet) && sheet.includes("--q:15mm") && sheet.includes("width: calc(var(--q) + 5mm); height: calc(var(--q) + 5mm)"));
+ok("a 1.5 cm QR makes a 2 × 2 cm sticker", DEFAULT_STICKER_MM === 15 && JSON.stringify(STICKER_SIZES) === "[10,15,20]");
+ok("tag and name in 6 pt on one line, cut short", /font: 6pt\/1\.15/.test(sheet) && /white-space: nowrap; overflow: hidden; text-overflow: ellipsis/.test(sheet));
+ok("a typed name cannot inject markup", !sheet.includes("<script>alert(1)</script>") && sheet.includes("&lt;script&gt;"));
+ok("an unknown size falls back to 1.5 cm", stickerSheetHtml([{ tag: "EQ-1", name: "x", qr }], { mm: 7 }).includes("--q:15mm"));
+const strip = stickerSheetHtml([{ tag: "EQ-004", name: "Mic", qr }, { tag: "EQ-005", name: "Other", qr }], { strip: true });
+ok("the test strip is one item at 1, 1.2, 1.5 and 2 cm, captioned",
+  JSON.stringify(STRIP_SIZES) === "[10,12,15,20]" && (strip.match(/class="s"/g) || []).length === 4
+  && ["1 cm", "1.2 cm", "1.5 cm", "2 cm"].every(c => strip.includes(`<figcaption>${c}</figcaption>`)) && !strip.includes("EQ-005"));
+ok("the screen picks which items to print, the size, and the strip — every link carries the sign-in ticket",
+  tab.includes("withTicket(`/api/assets/stickers?size=${stickerMm}&ids=") && tab.includes("withTicket(`/api/assets/stickers?strip=1&ids=") && /STICKER_SIZES\.map/.test(tab));
+
+console.log("\nO. the Equipment screen speaks Arabic");
+const keysUsed = [...tab.matchAll(/\bt\("((?:[^"\\]|\\.)*)"\)/g)].map(m => m[1]);
+const missingAr = [...new Set(keysUsed)].filter(k => !i18n.includes(`"${k}":`));
+ok(`every t("…") on the screen has Arabic (${new Set(keysUsed).size})`, missingAr.length === 0, missingAr.join(" | "));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

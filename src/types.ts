@@ -296,6 +296,19 @@ export interface FixedAsset {
   receivedBy?: string | null;
   verifiedAt?: string | null;
   verifiedBy?: string | null;
+  /** Derived in loadState from the facts on the row — never stored. The desk keys on it. */
+  status?: "Registered" | "Received" | "Verified" | "Out";
+  /** Who has it now (a User.id), what for and until when. Empty while it is in. */
+  holderId?: string | null;
+  heldFor?: string;
+  heldProjectId?: string;
+  outAt?: string | null;
+  dueBack?: string | null;
+  /** When it is next due a physical check; every confirmation sets it. */
+  nextCheckDue?: string | null;
+  /** Its own log, oldest first — parsed from movementsJson and repairsJson in loadState. */
+  movements?: import("./equipment").Movement[];
+  repairs?: import("./equipment").Repair[];
 }
 
 export interface PartnerAccount {

@@ -10,7 +10,7 @@
  * desk when someone acts on the record itself.
  */
 import type { DatabaseState } from "./types";
-import {
+import { EQUIPMENT_VERIFIERS,
   DIRECTORS, FINANCE, MANAGERS, SUPPLIER_EDITORS, CONTENT_EDITORS, TOOL_EDITORS, CONTACT_EDITORS,
   PM_SLOT, PD_SLOT, PLO, MASTER, PERSONNEL_FILE,
 } from "./roles";
@@ -120,6 +120,17 @@ export const RULES: Rule[] = [
   { kind: "networkContacts", status: "Contacted", seat: CONTACT_DESK, when: "followUpBy", horizon: 0, door: "network", verb: "Follow up" },
   { kind: "networkContacts", status: "Warm",      seat: CONTACT_DESK, when: "followUpBy", horizon: 0, door: "network", verb: "Follow up" },
   { kind: "networkContacts", status: "Dormant",   seat: null, door: "network", verb: "" },
+  // FixedAsset — its status is derived in loadState (Received, Verified, Out), never stored.
+  // Received: somebody else confirms it is here — never the person who took delivery.
+  { kind: "fixedAssets", status: "Received", seat: EQUIPMENT_VERIFIERS, exclude: ["receivedBy"], door: "assets", verb: "Confirm it is here" },
+  // Verified: back on the verifier's desk the day its periodic check falls due, same exclusion.
+  { kind: "fixedAssets", status: "Verified", seat: EQUIPMENT_VERIFIERS, exclude: ["receivedBy"], when: "nextCheckDue", horizon: 0, door: "assets", verb: "Check it is still here" },
+  // Out: from the day it is due back, on the holder's desk — My Desk, because a Project
+  // Officer on a shoot has no Equipment door — and on the keepers'. Two rows for one status,
+  // one per audience, like the two Editorial Review slots; the keeper row never reaches the
+  // keeper who is holding it.
+  { kind: "fixedAssets", status: "Out", seat: null, person: "holderId", when: "dueBack", horizon: 0, door: "mydesk", verb: "Bring the equipment back" },
+  { kind: "fixedAssets", status: "Out", seat: SUPPLIER_EDITORS, exclude: ["holderId"], when: "dueBack", horizon: 0, door: "assets", verb: "Chase the return" },
 ];
 
 /** The status column per kind — everything is `status` except the funnel. */
@@ -138,6 +149,7 @@ export const TITLES: Partial<Record<Kind, (r: any, s: State) => string>> = {
   subscriptions:     r => r.name,
   tools:             r => r.name,
   networkContacts:   r => r.name,
+  fixedAssets:       r => `${r.tag || ""} · ${r.name}`,
 };
 
 export type Urgency = "overdue" | "week" | "waiting";

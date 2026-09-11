@@ -62,6 +62,7 @@ const DESK_ROUTES: Record<string, string> = {
   "tools|In use": "/api/tools/save", "networkContacts|New": "/api/contacts/save",
   "opportunities|Prospect": "/api/opportunities/save", "quotations|Sent": "/api/quotations/save",
   "projectActivities|Planned": "/api/activities/save",
+  "fixedAssets|Received": "/api/assets/verify", "fixedAssets|Verified": "/api/assets/verify", "fixedAssets|Out": "/api/assets/checkin",
 };
 const STEP: Record<string, string> = { "expenses|Submitted": "approve", "expenses|Under Finance Review": "approve", "expenses|Approved": "cashbook-pay", "expenses|Paid": "general-ledger-post" };
 for (const rule of RULES) {

@@ -28,11 +28,15 @@ export function nextEquipmentTag(tags: (string | null | undefined)[]): string {
   return `EQ-${String(highest + 1).padStart(3, "0")}`;
 }
 
-export type EquipmentStatus = "Registered" | "Received" | "Verified";
+export type EquipmentStatus = "Registered" | "Received" | "Verified" | "Out";
 
-/** Registered = entered before receiving existed; Received = delivery taken; Verified = confirmed by someone else. */
-export function equipmentStatus(a: { receivedAt?: string | null; verifiedAt?: string | null }): EquipmentStatus {
-  return a.verifiedAt ? "Verified" : a.receivedAt ? "Received" : "Registered";
+/**
+ * Out = somebody has it; otherwise Verified, Received or Registered by what has been
+ * recorded. Derived in loadState and never stored: the desk keys its rules on it, and a
+ * stored copy would be one more thing to disagree with the facts it is read from.
+ */
+export function equipmentStatus(a: { receivedAt?: string | null; verifiedAt?: string | null; holderId?: string | null }): EquipmentStatus {
+  return a.holderId ? "Out" : a.verifiedAt ? "Verified" : a.receivedAt ? "Received" : "Registered";
 }
 
 /**
@@ -72,4 +76,90 @@ export function sameSerial(a: string | null | undefined, b: string | null | unde
 export function blankIfPlaceholder(s: string | null | undefined): string {
   const t = String(s ?? "").trim();
   return /^(n\/?a|none|nil|null|unknown|generic|unbranded|not (visible|legible|printed|available)|-+|\?+|\.+)$/i.test(t) ? "" : t;
+}
+
+/* ── Phase 2: custody, the sticker, repairs, the periodic check ───────────────── */
+
+/** One check-out and its return, kept on the item, oldest first. */
+export type Movement = {
+  id: string; holderId: string; heldFor: string; projectId: string;
+  outAt: string; outBy: string; dueBack: string;
+  inAt: string | null; inBy: string | null; returnCondition: string | null; note: string;
+};
+/** One repair. It is an expense: it never changes the item's cost basis. */
+export type Repair = {
+  id: string; date: string; work: string; doneBy: string;
+  cost: number; currency: string; expenseId: string; loggedBy: string; loggedAt: string;
+};
+
+/**
+ * Why this item may not go out now, or null when it may. The route refuses with it and the
+ * button carries it as its label, so the two cannot disagree. Something nobody has
+ * confirmed is here cannot be lent, and an item already out has one holder, not two.
+ */
+export function checkOutBlocker(a: { holderId?: string | null; verifiedAt?: string | null }): "already out" | "not confirmed yet" | null {
+  if (a.holderId) return "already out";
+  if (!a.verifiedAt) return "not confirmed yet";
+  return null;
+}
+
+/** How often an item is physically checked again, in months — 12 unless the verifier says otherwise. */
+export const CHECK_EVERY_MONTHS = [6, 12, 24] as const;
+export const DEFAULT_CHECK_MONTHS = 12;
+
+/** Sticker sizes, as the QR's side in millimetres: 15 is a 2 × 2 cm sticker, 10 is for a small microphone. */
+export const STICKER_SIZES = [10, 15, 20] as const;
+export const DEFAULT_STICKER_MM = 15;
+/** The test strip: one item at each size on one row, to find the smallest a phone still opens. */
+export const STRIP_SIZES = [10, 12, 15, 20] as const;
+
+/** The characters a QR code's alphanumeric mode carries. Anything else forces byte mode. */
+export const QR_ALPHANUMERIC = /^[0-9A-Z $%*+\-./:]+$/;
+
+/**
+ * What a sticker's QR carries: a short link, all in capitals —
+ * HTTPS://ANAHON-1.TAILBCB2B7.TS.NET:8444/E/EQ-004. Capitals keep it inside the QR's
+ * alphanumeric mode, which holds this 48-character link to version 3 (29 × 29 modules); the
+ * same link in lower case needs byte mode and version 4 (33 × 33), and at 1.5 cm every module
+ * counts. Scheme and host are case-blind, and the server matches /e/ case-blind. The phone's
+ * own camera reads it — there is no scanner in the app — so the base is FMS_PUBLIC_URL, the
+ * address a phone actually reaches.
+ */
+export function stickerLink(base: string, tag: string): string {
+  return `${String(base).replace(/\/$/, "")}/E/${tag}`.toUpperCase();
+}
+
+/**
+ * A printable page of stickers: each the QR and, under it on one line in 6 pt, the tag and
+ * the item's name — cut short, never wrapped. Real millimetres on A4, printed at 100%: a
+ * sticker is the QR plus 2.5 mm each side (the QR's own 2-module quiet zone sits inside it),
+ * so a 1.5 cm QR makes a 2 × 2 cm sticker. `strip` prints the first item once at every
+ * STRIP_SIZE on one row. Anything a person typed is escaped — an item's name is typed.
+ */
+export function stickerSheetHtml(items: { tag: string; name: string; qr: string }[], opts: { mm?: number; strip?: boolean } = {}): string {
+  const esc = (x: string) => String(x ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+  const mm = (STICKER_SIZES as readonly number[]).includes(Number(opts.mm)) ? Number(opts.mm) : DEFAULT_STICKER_MM;
+  const sticker = (i: { tag: string; name: string; qr: string }, q: number, caption = "") =>
+    `<figure><div class="s" style="--q:${q}mm"><div class="q">${i.qr}</div><div class="c" dir="auto"><b dir="ltr">${esc(i.tag)}</b> ${esc(i.name)}</div></div>${caption ? `<figcaption>${caption}</figcaption>` : ""}</figure>`;
+  const strip = !!opts.strip && items.length > 0;
+  const body = strip ? STRIP_SIZES.map(q => sticker(items[0], q, `${q / 10} cm`)).join("") : items.map(i => sticker(i, mm)).join("");
+  const note = !items.length ? "No item carries a tag yet — receive one on the Equipment screen first."
+    : strip ? `Test strip for ${esc(items[0].tag)}: the same QR at 1, 1.2, 1.5 and 2 cm. Print at 100% (actual size), then try each with a phone's own camera — the smallest it opens every time is the size to use.`
+    : `${items.length} sticker${items.length === 1 ? "" : "s"}, QR ${mm / 10} cm. Print at 100% (actual size) — never “fit to page” — and cut on the dotted lines. Test with a phone's own camera on the paper, not on this screen.`;
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Equipment stickers</title><style>
+@page { size: A4; margin: 10mm; }
+* { box-sizing: border-box; margin: 0; }
+body { font-family: "DejaVu Sans", Arial, sans-serif; color: #000; }
+.sheet { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 2mm; }
+figure { break-inside: avoid; }
+.s { width: calc(var(--q) + 5mm); height: calc(var(--q) + 5mm); padding: 1.2mm 2.5mm 0; outline: 0.1mm dashed #aaa; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+.q { width: var(--q); height: var(--q); flex: none; }
+.q svg { width: 100%; height: 100%; display: block; }
+.c { width: 100%; margin-top: 0.4mm; font: 6pt/1.15 "DejaVu Sans", Arial, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+.c b { font-family: "DejaVu Sans Mono", Menlo, monospace; }
+figcaption { font: 7pt Arial, sans-serif; color: #555; text-align: center; margin-top: 1mm; }
+.note { font: 13px/1.4 system-ui, sans-serif; padding: 10px 14px; margin-bottom: 10px; background: #fff7e6; border: 1px solid #f0d9a8; }
+@media screen { body { padding: 10mm; } }
+@media print { .note { display: none; } }
+</style></head><body><p class="note">${note}</p><div class="sheet">${body}</div></body></html>`;
 }

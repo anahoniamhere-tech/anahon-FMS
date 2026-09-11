@@ -18,7 +18,7 @@ import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
-import { NO_SERIAL, CONDITIONS, CURRENCIES, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder } from "./src/equipment.js";
+import { NO_SERIAL, CONDITIONS, CURRENCIES, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type Movement, type Repair } from "./src/equipment.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -118,7 +118,7 @@ const PLO_ALLOWED_POSTS = new Set([
   "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone",
   "/api/expense/new", "/api/expense/scan-invoice",
   "/api/document/upload", "/api/materials/link",
-  "/api/assets/register", "/api/assets/scan-label",
+  "/api/assets/register", "/api/assets/scan-label", "/api/assets/checkout", "/api/assets/checkin", "/api/assets/repair",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/activities/save", "/api/activities/generate", "/api/activities/delete", "/api/activities/import-timetable",
   "/api/vendor/scan",
@@ -509,7 +509,7 @@ async function loadState(viewer?: any) {
     journalEntries,
     employees,
     timesheets,
-    fixedAssets,
+    rawAssets,
     partnerAccounts,
     documents,
     auditLogs,
@@ -565,6 +565,17 @@ async function loadState(viewer?: any) {
     prisma.fxRates.findFirst()
   ]);
 
+  // Equipment carries a status the desk can key on — derived from the facts on the row and
+  // never stored — and its own log, parsed. A corrupt log must not take the whole app down,
+  // so it reads as empty. Someone holding an item sees that item even on a trimmed view:
+  // the reminder to bring it back has to reach a Project Officer on a shoot, who has no
+  // Equipment door and would otherwise be sent nothing. Only what the desk needs, no money.
+  const log = (j: any) => { try { return JSON.parse(j || "[]"); } catch { return []; } };
+  const fixedAssets = rawAssets.map(({ movementsJson, repairsJson, ...a }: any) =>
+    ({ ...a, status: equipmentStatus(a), movements: log(movementsJson), repairs: log(repairsJson) }));
+  const heldByViewer = viewer ? fixedAssets.filter((a: any) => a.holderId === viewer.id).map((a: any) =>
+    ({ id: a.id, tag: a.tag, name: a.name, status: a.status, holderId: a.holderId, heldFor: a.heldFor, outAt: a.outAt, dueBack: a.dueBack })) : [];
+
   const auditTotal = await prisma.auditLog.count();
 
   // Deserialize dynamic array list columns
@@ -616,7 +627,7 @@ async function loadState(viewer?: any) {
       journalEntries: [],
       employees: employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase()),
       timesheets: formattedTimesheets.filter(t => employees.some(e => e.id === t.employeeId && e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase())),
-      fixedAssets: [],
+      fixedAssets: heldByViewer,
       partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [],
       opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
@@ -635,7 +646,7 @@ async function loadState(viewer?: any) {
       users, accounts: [], donors: [], projects: [], budgetLines: [], vendors: [],
       expenses: [], procurements: [], bankAccounts: [], bankTransactions: [], journalEntries: [],
       employees: mine, timesheets: formattedTimesheets.filter(t => mineIds.has(t.employeeId)),
-      fixedAssets: [], partnerAccounts: [],
+      fixedAssets: heldByViewer, partnerAccounts: [],
       documents: filterPersonnelDocs(documents, viewer, employees).filter(d => d.partyId && mineIds.has(d.partyId)).map(d => ({
         id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
         base64: d.base64.startsWith("link://") ? d.base64 : "", category: d.category,
@@ -669,7 +680,7 @@ async function loadState(viewer?: any) {
       bankAccounts: [], bankTransactions: [], journalEntries: [],
       employees: me,
       timesheets: formattedTimesheets.filter(t => myIds.has(t.employeeId)),
-      fixedAssets: buys ? fixedAssets : [],
+      fixedAssets: buys ? fixedAssets : heldByViewer,
       partnerAccounts: [],
       documents: filterPersonnelDocs(documents, viewer, employees).filter(d => DOMAIN.has(String(d.linkedRecordType || "")) || (d.partyId && myIds.has(d.partyId))).map(d => ({
         id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
@@ -709,7 +720,7 @@ async function loadState(viewer?: any) {
       expenses: myExpenses,
       procurements: formattedProcurements.filter(p => myProjectIds.has(p.projectId)),
       bankAccounts, bankTransactions: [], journalEntries: [],
-      employees: [], timesheets: [], fixedAssets: [], partnerAccounts: [],
+      employees: [], timesheets: [], fixedAssets: heldByViewer, partnerAccounts: [],
       documents: documents
         .filter(d =>
           (d.linkedRecordType === "Project" && myProjectIds.has(d.linkedRecordId)) ||
@@ -1684,7 +1695,7 @@ async function qrSvg(text: string): Promise<string | null> {
     const { execFile } = await import("child_process");
     const svg: string = await new Promise((resolve, reject) => {
       execFile("python3", ["-c",
-            "import sys,qrcode,qrcode.image.svg,io;i=qrcode.make(sys.argv[1],image_factory=qrcode.image.svg.SvgPathImage,box_size=10,border=2);b=io.BytesIO();i.save(b);print(b.getvalue().decode())",
+            "import sys,qrcode,qrcode.image.svg,io;i=qrcode.make(sys.argv[1],image_factory=qrcode.image.svg.SvgPathImage,box_size=10,border=2,error_correction=qrcode.constants.ERROR_CORRECT_M);b=io.BytesIO();i.save(b);print(b.getvalue().decode())",
         text],
         { timeout: 8000 }, (err, stdout) => err ? reject(err) : resolve(stdout));
     });
@@ -7744,19 +7755,176 @@ app.post("/api/assets/verify", async (req, res) => {
         ? `You took delivery of ${asset.tag || asset.name} — someone else must confirm it.`
         : "Only an equipment verifier may confirm this — never the keeper of the register." });
     }
+    // Nobody can confirm what is out on a shoot; it is confirmed when it is back.
+    if (asset.holderId) return res.status(409).json({ error: `${asset.tag || asset.name} is out — confirm it once it is back.` });
     if (!(CONDITIONS as readonly string[]).includes(condition)) return res.status(400).json({ error: "Record the condition you found it in." });
     const location = String(req.body.location || "").trim() || asset.location;
+    // Every confirmation books the next one: 12 months on unless the verifier chose 6 or 24.
+    const months = (CHECK_EVERY_MONTHS as readonly number[]).includes(Number(req.body.checkEveryMonths)) ? Number(req.body.checkEveryMonths) : DEFAULT_CHECK_MONTHS;
+    const now = new Date().toISOString();
+    // The server's own addMonths, the one subscriptions and grant milestones use — it takes
+    // YYYY-MM-DD, and a 31st that does not exist clamps to the month's end.
+    const nextCheckDue = addMonths(now.slice(0, 10), months);
 
     const updated = await prisma.fixedAsset.update({
       where: { id: assetId },
-      data: { condition, location, verifiedAt: new Date().toISOString(), verifiedBy: user.id }
+      data: { condition, location, verifiedAt: now, verifiedBy: user.id, nextCheckDue }
     });
     await createAuditLog(user.id, user.name, "Equipment Verified",
-      `${asset.tag || asset.name} "${asset.name}" confirmed physically: ${condition}, at ${location}.`);
+      `${asset.tag || asset.name} "${asset.name}" confirmed physically: ${condition}, at ${location}. Next check due ${nextCheckDue}.`);
     res.json({ success: true, asset: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Lending an item out. Only a confirmed item, and only one that is in: something nobody has
+// checked is here cannot be lent, and an item already out has one holder, not two. The
+// refusal is the database's as well as ours — the write lands only on a row that is still in
+// and confirmed, so two keepers pressing at the same moment cannot both succeed.
+app.post("/api/assets/checkout", async (req, res) => {
+  try {
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to check equipment out." });
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: String(req.body.assetId || "") } });
+    if (!asset) return res.status(404).json({ error: "That item is not on the register." });
+    const label = asset.tag || asset.name;
+    const blocker = checkOutBlocker(asset);
+    if (blocker === "already out") {
+      const holding = await prisma.user.findUnique({ where: { id: String(asset.holderId) } });
+      return res.status(409).json({ error: `${label} is already out with ${holding?.name || "someone"} until ${asset.dueBack}.` });
+    }
+    if (blocker) return res.status(400).json({ error: `${label} has not been confirmed yet — it can go out once somebody else has checked it is here.` });
+    const holder = await prisma.user.findUnique({ where: { id: String(req.body.holderId || "") } });
+    if (!holder || !holder.active) return res.status(400).json({ error: "Choose who is taking it — an active account." });
+    const heldFor = String(req.body.heldFor || "").trim();
+    if (!heldFor) return res.status(400).json({ error: "Say what it is for — the project or the shoot." });
+    const dueBack = String(req.body.dueBack || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueBack) || dueBack < localDate()) return res.status(400).json({ error: "Give the date it is due back — today or later." });
+    const projectId = String(req.body.projectId || "");
+    const now = new Date().toISOString();
+    const moves: Movement[] = JSON.parse(asset.movementsJson || "[]");
+    moves.push({ id: `mv-${Date.now()}`, holderId: holder.id, heldFor, projectId, outAt: now, outBy: user.id, dueBack, inAt: null, inBy: null, returnCondition: null, note: "" });
+    const done = await prisma.fixedAsset.updateMany({
+      where: { id: asset.id, holderId: null, verifiedAt: { not: null } },
+      data: { holderId: holder.id, heldFor, heldProjectId: projectId, outAt: now, dueBack, movementsJson: JSON.stringify(moves) }
+    });
+    if (done.count !== 1) return res.status(409).json({ error: `${label} changed a moment ago — reload and look again.` });
+    await createAuditLog(user.id, user.name, "Equipment Out", `${label} "${asset.name}" out to ${holder.name} for ${heldFor}, due back ${dueBack}.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bringing it back. The keeper records the condition it came back in — that is what the log
+// is for — and the item is in again, confirmed as before; its periodic check is unchanged.
+// A return late by any number of days says so in the audit line.
+app.post("/api/assets/checkin", async (req, res) => {
+  try {
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to check equipment in." });
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: String(req.body.assetId || "") } });
+    if (!asset) return res.status(404).json({ error: "That item is not on the register." });
+    const label = asset.tag || asset.name;
+    if (!asset.holderId) return res.status(400).json({ error: `${label} is not out.` });
+    const condition = req.body.condition;
+    if (!(CONDITIONS as readonly string[]).includes(condition)) return res.status(400).json({ error: "Record the condition it came back in." });
+    const location = String(req.body.location || "").trim() || asset.location;
+    const note = String(req.body.note || "").trim();
+    const now = new Date().toISOString();
+    const moves: Movement[] = JSON.parse(asset.movementsJson || "[]");
+    const open = [...moves].reverse().find(m => !m.inAt);
+    if (open) Object.assign(open, { inAt: now, inBy: user.id, returnCondition: condition, note });
+    const done = await prisma.fixedAsset.updateMany({
+      where: { id: asset.id, holderId: asset.holderId },
+      data: { holderId: null, heldFor: "", heldProjectId: "", outAt: null, dueBack: null, condition, location, movementsJson: JSON.stringify(moves) }
+    });
+    if (done.count !== 1) return res.status(409).json({ error: `${label} changed a moment ago — reload and look again.` });
+    const holder = await prisma.user.findUnique({ where: { id: asset.holderId } });
+    const today = localDate();
+    const late = asset.dueBack && asset.dueBack < today ? Math.round((Date.parse(today) - Date.parse(asset.dueBack)) / 86400000) : 0;
+    await createAuditLog(user.id, user.name, "Equipment Returned",
+      `${label} "${asset.name}" back from ${holder?.name || asset.holderId}${late ? `, ${late} day${late === 1 ? "" : "s"} late` : ""}: ${condition}${note ? ` — ${note}` : ""}; kept at ${location}.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// A repair is an expense, not an improvement. It goes on the item's own log and, when a
+// voucher paid for it, points at that voucher — and it never touches the cost basis, the
+// book value or the depreciation, which change only when the item itself is bought or
+// written down.
+app.post("/api/assets/repair", async (req, res) => {
+  try {
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to log a repair." });
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: String(req.body.assetId || "") } });
+    if (!asset) return res.status(404).json({ error: "That item is not on the register." });
+    const b = req.body;
+    const work = String(b.work || "").trim(), doneBy = String(b.doneBy || "").trim(), date = String(b.date || "");
+    if (!work) return res.status(400).json({ error: "Say what was done." });
+    if (!doneBy) return res.status(400).json({ error: "Say who did it — a person or a repair shop." });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Give the date of the repair." });
+    const cost = Number(b.cost);
+    if (!(cost >= 0)) return res.status(400).json({ error: "Give what it cost — 0 if nothing." });
+    let currency: string, expenseId = "", voucherNo = "";
+    if (b.expenseId) {
+      const exp = await prisma.expense.findUnique({ where: { id: String(b.expenseId) } });
+      if (!exp) return res.status(404).json({ error: "That payment request was not found." });
+      if (!["Approved", "Paid", "Posted"].includes(exp.status)) return res.status(400).json({ error: `${exp.voucherNo} is ${exp.status} — a repair is linked to a request that has been approved.` });
+      if (cost > exp.amount + 0.005) return res.status(400).json({ error: `${exp.voucherNo} is ${exp.amount.toFixed(2)} ${exp.currency} — the repair cannot cost more than the request that paid for it.` });
+      currency = exp.currency; expenseId = exp.id; voucherNo = exp.voucherNo;
+    } else {
+      currency = String(b.currency || "");
+      if (!(CURRENCIES as readonly string[]).includes(currency)) return res.status(400).json({ error: "Choose the currency it was paid in." });
+    }
+    const repairs: Repair[] = JSON.parse(asset.repairsJson || "[]");
+    repairs.push({ id: `rp-${Date.now()}`, date, work, doneBy, cost, currency, expenseId, loggedBy: user.id, loggedAt: new Date().toISOString() });
+    await prisma.fixedAsset.update({ where: { id: asset.id }, data: { repairsJson: JSON.stringify(repairs) } });
+    await createAuditLog(user.id, user.name, "Equipment Repair Logged",
+      `${asset.tag || asset.name} "${asset.name}": ${work} by ${doneBy} on ${date}, ${cost.toFixed(2)} ${currency}${voucherNo ? ` (${voucherNo})` : ""}. Cost basis unchanged.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Stickers to print: the QR and, under it, the tag and the item's name. The QR carries the
+// short capital link stickerLink builds (…/E/EQ-004) at FMS_PUBLIC_URL, which a phone's own
+// camera opens; there is no scanner in the app. The same Python QR generator the phone-
+// calendar feed already uses — error correction M, a 2-module quiet zone, alphanumeric mode
+// chosen by the library for an all-capitals link — so nothing new is installed. `ids` picks
+// the items (none = every tagged one), `size` is 10, 15 or 20 mm, `strip=1` is the test strip.
+app.get("/api/assets/stickers", async (req: any, res) => {
+  try {
+    if (!doorsFor(String(req.dbUser?.role)).map(String).includes("assets")) return res.status(403).send("Only those who can open the Equipment screen print its stickers.");
+    const base = String(process.env.FMS_PUBLIC_URL || "").replace(/\/$/, "");
+    if (!base) return res.status(503).send("FMS_PUBLIC_URL is not set, so a sticker would point nowhere a phone can reach.");
+    const ids = String(req.query.ids || "").split(",").map(x => x.trim()).filter(Boolean);
+    const strip = req.query.strip === "1";
+    const assets = await prisma.fixedAsset.findMany({
+      where: { tag: { not: null }, ...(ids.length ? { id: { in: ids } } : {}) }, orderBy: { tag: "asc" }, ...(strip ? { take: 1 } : {})
+    });
+    // ponytail: one python spawn per sticker; batch them into one call if a sheet ever runs to hundreds.
+    const items = await Promise.all(assets.map(async a => ({ tag: String(a.tag), name: a.name, qr: await qrSvg(stickerLink(base, String(a.tag))) })));
+    if (items.some(i => !i.qr)) return res.status(500).send("The QR generator is not available on this server.");
+    res.type("html").send(stickerSheetHtml(items as { tag: string; name: string; qr: string }[], { mm: Number(req.query.size), strip }));
+  } catch (err: any) {
+    res.status(500).send("Stickers failed: " + err.message);
+  }
+});
+
+// A sticker's short link. It is open, because a phone's camera app arrives here before anyone
+// has signed in — so it looks nothing up and gives nothing away, not even whether the tag
+// exists. It only turns the tag into the Equipment door's own ?door=&focus= query, and the
+// signed-in screen finds the item. Express matches routes case-blind, so /E/EQ-004 — what the
+// QR carries, in capitals — lands here too.
+app.get("/e/:tag", (req, res) => {
+  const tag = String(req.params.tag || "").toUpperCase();
+  if (!/^EQ-\d+$/.test(tag)) return res.redirect(302, "/?door=assets");
+  res.redirect(302, `/?door=assets&focus=${encodeURIComponent(`tag:${tag}`)}`);
 });
 
 // Partner drawings & contributions
