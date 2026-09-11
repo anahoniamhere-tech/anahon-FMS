@@ -75,7 +75,7 @@ ok("reads and changes can be told apart on the screen", (() => {
 })());
 
 console.log("\nwhat the browser can still show");
-const files = ["App.tsx", "tabs/EditorialTab.tsx", "tabs/ExpensesTab.tsx", "tabs/ProjectsTab.tsx", "tabs/ProductionTab.tsx"];
+const files = ["App.tsx", "tabs/EditorialTab.tsx", "tabs/ExpensesTab.tsx", "tabs/ProjectsTab.tsx", "tabs/ProductionTab.tsx", "tabs/AssetsTab.tsx"];
 for (const f of files) {
   const text = src(f);
   const bare = [...text.matchAll(/(?:src|href)=\{`\/api\/[^`]*`\}/g)].map(m => m[0]);

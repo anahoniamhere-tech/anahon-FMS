@@ -18,6 +18,7 @@ import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
+import { NO_SERIAL, CONDITIONS, CURRENCIES, nextEquipmentTag, mayVerifyEquipment, sameSerial } from "./src/equipment.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -117,7 +118,7 @@ const PLO_ALLOWED_POSTS = new Set([
   "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone",
   "/api/expense/new", "/api/expense/scan-invoice",
   "/api/document/upload", "/api/materials/link",
-  "/api/assets/register",
+  "/api/assets/register", "/api/assets/scan-label",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/activities/save", "/api/activities/generate", "/api/activities/delete", "/api/activities/import-timetable",
   "/api/vendor/scan",
@@ -658,7 +659,7 @@ async function loadState(viewer?: any) {
     const me = employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase());
     const myIds = new Set(me.map(e => e.id));
     const visibleIds = new Set(visibleProjects.map((p: any) => p.id));
-    const DOMAIN = buys ? new Set(["Expense", "Project", "Website"]) : new Set(["Website"]);
+    const DOMAIN = buys ? new Set(["Expense", "Project", "Website", "FixedAsset"]) : new Set(["Website"]);
     return {
       users, accounts: [], donors: buys ? donors : [], projects: visibleProjects,
       budgetLines: budgetLines.filter((b: any) => visibleIds.has(b.projectId)),
@@ -7582,62 +7583,165 @@ app.post("/api/timesheets/approve", async (req, res) => {
 });
 
 // Assets registering
+// Reading an equipment label from a phone photo. Prefill only: a model misreads an O for a
+// 0, and a wrong serial on the register is worse than a blank one, so nothing is saved here —
+// the person holding the item checks every field before /api/assets/register runs. The free
+// Gemini path on purpose (it takes the photo as inlineData); nothing falls through to a paid call.
+app.post("/api/assets/scan-label", async (req, res) => {
+  try {
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to scan equipment." });
+    const { base64, mimeType, filename } = req.body;
+    if (!base64 || !mimeType) return res.status(400).json({ error: "A photo of the label is required." });
+
+    const prompt = `You are receiving equipment for AnaHon Media Platform. The photo shows an equipment label, a rating plate, or the item itself. Read ONLY what is printed and return STRICT JSON.
+
+Rules:
+- serialNumber: copy it EXACTLY as printed, character for character, from the field marked "S/N", "SN", "Serial", "Serial No." or similar. If no serial is legible, return an empty string. Never guess, never complete a partial number, and never use a model number, IMEI, MAC address or bare barcode digits unless the label calls it the serial.
+- brand and model: as printed (the model number, e.g. "ILME-FX6V").
+- name: a short plain name a person would use, e.g. "Sony FX6 cinema camera".
+- specs: only what the label itself states — capacity, power, voltage, resolution, storage — one per line. Empty if it states none. Never add specifications from your own knowledge.
+- warnings: anything cropped, blurred, reflective or ambiguous; name the characters you are unsure of.`;
+
+    let extracted: any;
+    try {
+      extracted = await askJson(prompt, {
+        type: "object",
+        properties: {
+          name: { type: "string" }, brand: { type: "string" }, model: { type: "string" },
+          serialNumber: { type: "string" }, specs: { type: "string" },
+          confidence: { type: "string", enum: ["high", "medium", "low"] },
+          warnings: { type: "array", items: { type: "string" } }
+        },
+        required: ["name", "brand", "model", "serialNumber", "specs", "confidence"], additionalProperties: false
+      }, { base64, mimeType }, "low", "gemini");
+    } catch (e: any) {
+      return res.status(422).json({ error: `The label could not be read (${e.message}). Type the details from the label instead.` });
+    }
+
+    const twin = extracted.serialNumber
+      ? (await prisma.fixedAsset.findMany({ select: { tag: true, serialNumber: true } })).find(a => sameSerial(a.serialNumber, extracted.serialNumber))
+      : undefined;
+    extracted.duplicateOfTag = twin ? (twin.tag || "An item on the register") : "";
+
+    await createAuditLog(user.id, user.name, "AI Label Scan",
+      `Read "${filename || "photo"}" — ${[extracted.brand, extracted.model].filter(Boolean).join(" ") || "item"}, serial ${extracted.serialNumber || "(none legible)"} (confidence: ${extracted.confidence}). Prefill only; nothing registered.`);
+    res.json({ extracted });
+  } catch (err: any) {
+    res.status(500).json({ error: "Label scan failed: " + err.message });
+  }
+});
+
+// Receiving equipment. The person who took delivery registers it; somebody else confirms it
+// physically (/api/assets/verify). Three things this route used to do and must not: invent a
+// serial when the field was blank, write every item as "Excellent" and in USD whatever the
+// invoice said, and fall back to a named Finance Officer when no user came with the request.
+// The actor is the signed-in person the middleware verified — nobody else.
 app.post("/api/assets/register", async (req, res) => {
   try {
-    const { name, serialNumber, fundingProjectId, purchaseDate, cost, usefulLifeYears, custodian, location, user } = req.body;
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to receive equipment." });
+    const b = req.body;
 
-    const asset = await prisma.fixedAsset.create({
-      data: {
-        id: `asset-${Date.now()}`,
-        name,
-        serialNumber: serialNumber || `SN-M-${Math.floor(Math.random() * 900000)}`,
-        fundingProjectId,
-        purchaseDate,
-        cost: Number(cost),
-        currency: "USD",
-        usefulLifeYears: Number(usefulLifeYears),
-        custodian,
-        location,
-        condition: "Excellent",
-        currentBookValue: Number(cost),
-        depreciationMethod: "Straight Line",
-        accumulatedDepreciation: 0
+    const name = String(b.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Name the item." });
+    // Blank is not a serial. Either it is typed as printed, or someone says there is none.
+    const serialNumber = b.noSerial === true ? NO_SERIAL : String(b.serialNumber || "").trim();
+    if (!serialNumber) return res.status(400).json({ error: `Type the serial exactly as printed, or tick "${NO_SERIAL}".` });
+    if (!(CONDITIONS as readonly string[]).includes(b.condition)) return res.status(400).json({ error: "Record the condition it arrived in." });
+    const location = String(b.location || "").trim();
+    const custodian = String(b.custodian || "").trim();
+    if (!location || !custodian) return res.status(400).json({ error: "Say where it is kept and who holds it." });
+    const usefulLifeYears = Number(b.usefulLifeYears);
+    if (!Number.isInteger(usefulLifeYears) || usefulLifeYears < 1) return res.status(400).json({ error: "Useful life must be a whole number of years." });
+    const cost = Number(b.cost);
+    if (!(cost > 0)) return res.status(400).json({ error: "Give the cost of this item." });
+
+    const onFile = await prisma.fixedAsset.findMany({ select: { tag: true, serialNumber: true, cost: true, expenseId: true } });
+    const twin = onFile.find(a => sameSerial(a.serialNumber, serialNumber));
+    if (twin) return res.status(409).json({ error: `${twin.tag || "An item on the register"} already carries serial ${serialNumber} — this is probably the same item.` });
+
+    // Bought on a voucher: the currency, the date and the project are the voucher's, never
+    // retyped. The cost stays the person's — one voucher can buy several items — but it may
+    // not exceed what is left of the voucher once the items already booked on it are counted.
+    let currency: string, purchaseDate: string, fundingProjectId: string, against = "";
+    if (b.expenseId) {
+      const exp = await prisma.expense.findUnique({ where: { id: String(b.expenseId) } });
+      if (!exp) return res.status(404).json({ error: "That payment request was not found." });
+      if (!["Approved", "Paid", "Posted"].includes(exp.status)) {
+        return res.status(400).json({ error: `${exp.voucherNo} is ${exp.status} — equipment is booked against a request that has been approved.` });
       }
-    });
+      const left = exp.amount - onFile.filter(a => a.expenseId === exp.id).reduce((s, a) => s + a.cost, 0);
+      if (cost > left + 0.005) return res.status(400).json({ error: `Only ${left.toFixed(2)} ${exp.currency} of ${exp.voucherNo} is left to book as equipment.` });
+      currency = exp.currency;
+      purchaseDate = String(exp.paid_at || exp.approved_at || exp.created_at || "").slice(0, 10);
+      fundingProjectId = exp.projectId;
+      against = ` against ${exp.voucherNo}`;
+    } else {
+      currency = String(b.currency || "");
+      if (!(CURRENCIES as readonly string[]).includes(currency)) return res.status(400).json({ error: "Choose the currency it was bought in." });
+      purchaseDate = String(b.purchaseDate || "");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) return res.status(400).json({ error: "Give the date it was bought." });
+      fundingProjectId = String(b.fundingProjectId || "");
+    }
 
-    await createAuditLog(
-      user?.id || "u-3",
-      user?.name || "Finance Officer",
-      "Asset Capitalized",
-      `Registered fixed asset ${name} in main studio ledger.`
-    );
+    // The tag is the highest issued plus one, and the unique index is what guarantees it:
+    // two people receiving in the same instant collide there, and the second takes the next.
+    let asset: any = null;
+    for (let attempt = 0; !asset; attempt++) {
+      const tag = nextEquipmentTag((await prisma.fixedAsset.findMany({ select: { tag: true } })).map(a => a.tag));
+      try {
+        asset = await prisma.fixedAsset.create({
+          data: {
+            id: `asset-${Date.now()}`, tag, name,
+            brand: String(b.brand || "").trim(), model: String(b.model || "").trim(), specs: String(b.specs || "").trim(),
+            serialNumber, expenseId: String(b.expenseId || ""),
+            fundingProjectId, purchaseDate, cost, currency, usefulLifeYears,
+            custodian, location, condition: b.condition,
+            currentBookValue: cost, depreciationMethod: "Straight Line", accumulatedDepreciation: 0,
+            receivedAt: new Date().toISOString(), receivedBy: user.id
+          }
+        });
+      } catch (e: any) {
+        if (e?.code !== "P2002" || attempt >= 2) throw e;
+      }
+    }
 
+    await createAuditLog(user.id, user.name, "Equipment Received",
+      `${asset.tag} "${name}" (serial ${serialNumber}), ${cost.toFixed(2)} ${currency}${against}, arrived ${b.condition}; kept at ${location}, held by ${custodian}.`);
     res.json({ success: true, asset });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Verify Physical state on asset
+// Physical confirmation. gates.ts already refuses any seat that is not a verifier's; this is
+// the rule a gate cannot know — that the person who took delivery is not the person who
+// confirms it. Standing in another seat changes the role, never the id.
 app.post("/api/assets/verify", async (req, res) => {
   try {
-    const { assetId, condition, location, user } = req.body;
-
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to verify equipment." });
+    const { assetId, condition } = req.body;
     const asset = await prisma.fixedAsset.findUnique({ where: { id: assetId } });
-    if (!asset) return res.status(404).json({ error: "Asset index missing." });
+    if (!asset) return res.status(404).json({ error: "That item is not on the register." });
+    if (!mayVerifyEquipment(user, asset)) {
+      const own = asset.receivedBy === user.id;
+      await createAuditLog(user.id, user.name, "Action Refused",
+        `${user.name} tried to confirm ${asset.tag || asset.name}${own ? ", which they took delivery of themselves" : ` from the ${user.role} seat`}.`);
+      return res.status(403).json({ error: own
+        ? `You took delivery of ${asset.tag || asset.name} — someone else must confirm it.`
+        : "Only an equipment verifier may confirm this — never the keeper of the register." });
+    }
+    if (!(CONDITIONS as readonly string[]).includes(condition)) return res.status(400).json({ error: "Record the condition you found it in." });
+    const location = String(req.body.location || "").trim() || asset.location;
 
     const updated = await prisma.fixedAsset.update({
       where: { id: assetId },
-      data: { condition, location }
+      data: { condition, location, verifiedAt: new Date().toISOString(), verifiedBy: user.id }
     });
-
-    await createAuditLog(
-      user?.id || "u-3",
-      user?.name || "Auditor",
-      "Physical asset verify check",
-      `Asset verified: "${asset.name}" physical state reported: ${condition}`
-    );
-
+    await createAuditLog(user.id, user.name, "Equipment Verified",
+      `${asset.tag || asset.name} "${asset.name}" confirmed physically: ${condition}, at ${location}.`);
     res.json({ success: true, asset: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -8229,7 +8333,10 @@ app.post("/api/document/upload", async (req, res) => {
         proj = await prisma.project.findUnique({ where: { id: linkedRecordId } });
       } else if (linkedRecordType === "Expense" && linkedRecordId) {
         const exp = await prisma.expense.findUnique({ where: { id: linkedRecordId } });
-        if (exp) proj = await prisma.project.findUnique({ where: { id: exp.projectId } });
+        if (exp) proj = await prisma.project.findUnique({ where: { id: exp.projectId } });      } else if (linkedRecordType === "FixedAsset" && linkedRecordId) {
+        // Equipment photos go in the funding project's folder, beside the voucher it was bought on.
+        const asset = await prisma.fixedAsset.findUnique({ where: { id: linkedRecordId } });
+        if (asset?.fundingProjectId) proj = await prisma.project.findUnique({ where: { id: asset.fundingProjectId } });
       }
       if (proj) projectCode = await vaultFolderForProject(prisma, proj);
     } catch { /* fall back to GENERAL */ }

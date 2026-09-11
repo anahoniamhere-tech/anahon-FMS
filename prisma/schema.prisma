@@ -261,6 +261,18 @@ model FixedAsset {
   currentBookValue         Float
   depreciationMethod       String
   accumulatedDepreciation  Float
+  /// EQ-001, EQ-002… — the highest issued plus one, the number that goes on the sticker.
+  tag                      String? @unique
+  brand                    String  @default("")
+  model                    String  @default("")
+  specs                    String  @default("")
+  /// The payment request it was bought on; supplier, date and project are read from it.
+  expenseId                String  @default("")
+  /// Who took delivery, and who confirmed it physically — never the same person.
+  receivedAt               String?
+  receivedBy               String?
+  verifiedAt               String?
+  verifiedBy               String?
 }
 
 model PartnerAccount {

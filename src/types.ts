@@ -285,6 +285,17 @@ export interface FixedAsset {
   currentBookValue: number;
   depreciationMethod: "Straight Line" | "Double Declining";
   accumulatedDepreciation: number;
+  /** EQ-001… the sticker number. Null only on rows registered before receiving existed. */
+  tag?: string | null;
+  brand?: string;
+  model?: string;
+  specs?: string;
+  /** The payment request it was bought on. Empty for a gift or an older purchase. */
+  expenseId?: string;
+  receivedAt?: string | null;
+  receivedBy?: string | null;
+  verifiedAt?: string | null;
+  verifiedBy?: string | null;
 }
 
 export interface PartnerAccount {
