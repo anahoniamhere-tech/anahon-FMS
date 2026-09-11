@@ -756,6 +756,18 @@ export const AR: Record<string, string> = {
     "شخص واحد مسمّى، يُختار عند إرسال القطعة إلى هنا — ولا يكون الكاتب أبداً.",
   "Never the author of the piece.": "ليس كاتب القطعة أبداً.",
   "No one person may hold more than one of these approvals.": "لا يجوز لشخص واحد أن يشغل أكثر من واحدة من هذه الموافقات.",
+  // Editorial rehearsal (11 Sep 2026)
+  "REHEARSAL": "بروفة",
+  "New rehearsal": "بروفة جديدة",
+  "Rehearsal — walk the whole chain alone, taking each step in a different seat with Act as…. Publishing it never leaves the FMS.": "بروفة — امشِ السلسلة كلّها بمفردك، وخذ كلّ خطوة من مقعد مختلف عبر «التصرّف بصفة…». نشرها لا يغادر النظام أبداً.",
+  "You are standing in": "أنت الآن في مقعد",
+  "Seats so far": "المقاعد حتى الآن",
+  "author seat": "مقعد الكاتب",
+  "fact-checker seat": "مقعد المدقِّق",
+  "PM approval seat": "مقعد موافقة مدير الإنتاج",
+  "PD approval seat": "مقعد موافقة مدير البرنامج",
+  "Fact-checker seat": "مقعد المدقِّق",
+  "Rehearsal published — nothing left the FMS": "نُشرت البروفة — لم يخرج شيء من النظام",
   // Policy 002 content types + carousels (9 Sep 2026)
   "Content label": "تصنيف المحتوى",
   "choose": "اختر",

@@ -39,7 +39,8 @@ export default function EditorialMap({ state, currentUser, t, rtl }: { state: an
         .filter(d => d.kind === (MAP_KIND as any));
     } catch { return []; }
   }, [state, currentUser]);
-  const live = useMemo(() => livePositions(state?.contentItems || [], desk), [state, desk]);
+  // Rehearsals are walk-throughs, not pipeline: the map counts real pieces only.
+  const live = useMemo(() => livePositions((state?.contentItems || []).filter((c: any) => !c.rehearsal), desk), [state, desk]);
   const standings = useMemo(() => stations.map(s => stationStanding(s, state?.users || [])), [stations, state]);
   const inFlight = stations.filter(s => !s.terminal).reduce((n, s) => n + (live[s.status]?.length || 0), 0);
   const trouble = stations.map((s, i) => ({ s, st: standings[i] })).filter(x => x.st.vacant || x.st.understaffed);

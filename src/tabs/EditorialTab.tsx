@@ -5,7 +5,7 @@ import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHE
 import { CONTENT_LABELS } from "../editorialGates";
 import { SharedProps } from "./shared";
 import Info from "../Info";
-import { CONTENT_EDITORS, CREW } from "../roles";
+import { CONTENT_EDITORS, CREW, ALL_ROLES } from "../roles";
 import { withTicket } from "../docTicket";
 import EditorialMap from "./EditorialMap";
 
@@ -135,6 +135,11 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
   };
 
   const isEditor = EDITOR_ROLES.includes(currentUser.role);
+  // The seat worn right now (Act as…), else the person's own role. On a REHEARSAL the server checks
+  // each step against this seat, so the drawer does too; on a real piece nothing here changes.
+  const seat: string = (window as any).__actingAs || currentUser.role;
+  const seatEditor = EDITOR_ROLES.includes(seat);
+  const isMaster = currentUser.role === "Super Admin";
   const canManage = isEditor || currentUser.role === "Project Officer"; // server scope-checks POs
 
   const nameOf = (id: string) => state.users.find(u => u.id === id)?.name || "—";
@@ -350,8 +355,8 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
     const ahead7 = new Date(Date.now() + 7 * day).toISOString().split("T")[0];
     const items = state.contentItems || [];
     return {
-      pastWeek: items.filter(c => c.publishedAt && c.publishedAt.slice(0, 10) >= ago7),
-      comingWeek: items.filter(c => c.status !== "Published" && c.dueDate && c.dueDate <= ahead7)
+      pastWeek: items.filter(c => !c.rehearsal && c.publishedAt && c.publishedAt.slice(0, 10) >= ago7),
+      comingWeek: items.filter(c => !c.rehearsal && c.status !== "Published" && c.dueDate && c.dueDate <= ahead7)
     };
   }, [state.contentItems]);
 
@@ -865,6 +870,13 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                 className="bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded px-4 py-2.5 shadow">
                 + {t("New Assignment")}
               </button>
+              {isMaster && (
+                <button onClick={() => setForm({ title: "", contentType: "Article", contentLabel: "", sponsorDisclosure: "", stream: "", channels: ["Website"], assigneeUserId: "", dueDate: "", brief: "", legalFlag: false, materials: [], rehearsal: true })}
+                  title={t("Rehearsal — walk the whole chain alone, taking each step in a different seat with Act as…. Publishing it never leaves the FMS.")}
+                  className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded px-4 py-2.5 shadow">
+                  🎭 {t("New rehearsal")}
+                </button>
+              )}
               {!chat && (
                 <button onClick={() => setChat({ messages: [], busy: false, draft: null, materials: [], provider: "", pendingFile: null })}
                   className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow">
@@ -874,7 +886,12 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
             </span>
           ) : (
             <div className="space-y-3 text-xs">
-              <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">{t("New Assignment")}</h3>
+              <h3 className="text-sm font-bold text-slate-800 uppercase font-mono">{form.rehearsal ? `🎭 ${t("New rehearsal")}` : t("New Assignment")}</h3>
+              {form.rehearsal && (
+                <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
+                  {t("Rehearsal — walk the whole chain alone, taking each step in a different seat with Act as…. Publishing it never leaves the FMS.")}
+                </p>
+              )}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="md:col-span-2">
                   <span className="block text-slate-600 font-bold mb-1">{t("Title")}</span>
@@ -1068,8 +1085,8 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
         <div className="divide-y divide-slate-100">
           {visible.map(item => {
             const open = openId === item.id;
-            const isAssignee = currentUser.id === item.assigneeUserId;
-            const isChecker = currentUser.id === item.factCheckerUserId;
+            const isAssignee = item.rehearsal ? seat === item.assigneeAs : currentUser.id === item.assigneeUserId;
+            const isChecker = item.rehearsal ? seat === item.factCheckerAs : currentUser.id === item.factCheckerUserId;
             const blockers = publishBlockers({ ...item, checksJson: JSON.stringify(item.checks || {}) });
             return (
               <div key={item.id} className="py-3 text-xs">
@@ -1081,6 +1098,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                     setOpenId(open ? null : item.id);
                   }}>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLE[item.status]}`}>{t(item.status)}</span>
+                  {item.rehearsal && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-amber-300">🎭 {t("REHEARSAL")}</span>}
                   <span className="font-bold text-slate-900">{item.title}</span>
                   <span className="text-slate-400">{item.contentType}{item.stream ? ` · ${item.stream}` : ""}</span>
                   {item.factCheckTag && <span className="text-emerald-700 flex items-center gap-0.5 text-[10px] font-bold"><CheckCircle2 className="h-3 w-3" /> {t("Fact-checked")}</span>}
@@ -1456,6 +1474,13 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       </div>
                     )}
 
+                    {item.rehearsal && (
+                      <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
+                        <p className="font-bold">🎭 {t("REHEARSAL")} — {t("Rehearsal — walk the whole chain alone, taking each step in a different seat with Act as…. Publishing it never leaves the FMS.")}</p>
+                        <p className="mt-1">{t("You are standing in")}: <b>{seat}</b></p>
+                        <p className="mt-0.5">{t("Seats so far")}: {t("author seat")} <b>{item.assigneeAs || "—"}</b> · {t("fact-checker seat")} <b>{item.factCheckerAs || "—"}</b> · {t("PM approval seat")} <b>{item.pmApprovedAs || "—"}</b> · {t("PD approval seat")} <b>{item.pdApprovedAs || "—"}</b></p>
+                      </div>
+                    )}
                     {/* Actions — status × role, server re-checks everything */}
                     <div className="flex flex-wrap gap-2 pt-1">
                       {item.status === "Assigned" && (isAssignee || canManage) && (
@@ -1465,10 +1490,12 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       {item.status === "In Production" && (isAssignee || canManage) && (
                         <span className="flex flex-wrap items-center gap-1">
                           <select value={checkerPick} onChange={e => setCheckerPick(e.target.value)} className="finance-input py-1">
-                            <option value="">{t("Fact-Checker")}…</option>
-                            {activeUsers.filter(u => u.id !== item.assigneeUserId).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            <option value="">{item.rehearsal ? t("Fact-checker seat") : t("Fact-Checker")}…</option>
+                            {item.rehearsal
+                              ? ALL_ROLES.filter(r => r !== item.assigneeAs).map(r => <option key={r} value={r}>{r}</option>)
+                              : activeUsers.filter(u => u.id !== item.assigneeUserId).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                           </select>
-                          <button onClick={() => post("/api/content/submit-factcheck", { id: item.id, factCheckerUserId: checkerPick }, "Sent to fact-check")}
+                          <button onClick={() => post("/api/content/submit-factcheck", item.rehearsal ? { id: item.id, factCheckerSeat: checkerPick } : { id: item.id, factCheckerUserId: checkerPick }, "Sent to fact-check")}
                             className="bg-amber-600 hover:bg-amber-700 text-white rounded px-3 py-1.5">{t("Send to Fact-Check")}</button>
                         </span>
                       )}
@@ -1480,20 +1507,20 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                         <button onClick={() => { const reason = window.prompt("Reason for returning:"); if (reason) post("/api/content/return", { id: item.id, reason }, "Returned for revision"); }}
                           className="bg-slate-100 hover:bg-slate-200 rounded px-3 py-1.5">{t("Return for Revision")}</button>
                       ) : null}
-                      {item.status === "Editorial Review" && isEditor && !isAssignee && (
+                      {item.status === "Editorial Review" && (item.rehearsal ? seatEditor : isEditor) && !isAssignee && (
                         <><button onClick={() => post("/api/content/approve", { id: item.id }, "Approved")}
                           className="bg-purple-600 hover:bg-purple-700 text-white rounded px-3 py-1.5">✓ {t("Approve")}</button><Info id="content-approve" lang={lang} /></>
                       )}
                       {item.status === "Approved" && isEditor && (
                         <><button
-                          onClick={() => post("/api/content/publish", { id: item.id }, "Published — fact-checked tag applied")}
+                          onClick={() => post("/api/content/publish", { id: item.id }, item.rehearsal ? t("Rehearsal published — nothing left the FMS") : "Published — fact-checked tag applied")}
                           disabled={blockers.length > 0}
                           title={blockers.join("\n")}
                           className="bg-red-600 hover:bg-red-700 text-white rounded px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
                           🚀 {t("Publish")}
                         </button><Info id="two-approvers" lang={lang} /></>
                       )}
-                      {item.status !== "Published" && isEditor && (
+                      {(item.status !== "Published" || item.rehearsal) && isEditor && (
                         <button onClick={() => { if (window.confirm(`Remove "${item.title}"?`)) post("/api/content/delete", { id: item.id }, "Removed"); }}
                           className="text-red-600 hover:bg-red-50 rounded px-3 py-1.5">{t("Delete")}</button>
                       )}

@@ -469,6 +469,14 @@ model ContentItem {
   // Commercial only: "Maintain transparency about any commercial relationships or sponsorships
   // associated with the content" (Policy 002). Who paid for it, or what the relationship is.
   sponsorDisclosure   String  @default("")
+  // A REHEARSAL (11 Sep 2026): a walk-through of the chain by one person in several seats, via
+  // "Act as…". Set only when the item is created and never changed afterwards — no route may flip
+  // it either way. On a rehearsal, separation compares the SEAT a step was taken in rather than the
+  // person, and "publish" never leaves the FMS. On every other item nothing changes: separation is
+  // still by person, which is the whole of Policies 002 and 005.
+  rehearsal           Boolean @default(false)
+  assigneeAs          String  @default("")       // rehearsal only: the seat that authored it (recorded at Start)
+  factCheckerAs       String  @default("")       // rehearsal only: the seat named as fact-checker
   stream              String  @default("")       // programme (STREAMS) — POs own their programme's content
   channelsJson        String  @default("[]")     // subset of CONTENT_CHANNELS (Policy 002 channels)
   brief               String  @default("")

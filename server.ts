@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
-import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers } from "./src/editorialGates.js";
+import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
@@ -1625,7 +1625,7 @@ app.get("/api/calendar.ics", async (req, res) => {
     if (!fromPrivateNetwork(req)) return res.status(403).send("This feed is served on the office network only.");
     const [meetings, items, users] = await Promise.all([
       prisma.editorialMeeting.findMany(),
-      prisma.contentItem.findMany({ where: { NOT: { status: "Published" } } }),
+      prisma.contentItem.findMany({ where: { NOT: { status: "Published" }, rehearsal: false } }),
       prisma.user.findMany()
     ]);
     const nameOf = (id: string) => users.find(u => u.id === id)?.name || "";
@@ -2479,7 +2479,7 @@ async function anahonBrainContext(): Promise<string> {
     // Published and still standing. A retracted piece keeps status "Published" — the record
     // is permanent under Policy 005 — but it has been taken off the website, and offering it
     // to a funder as track record would be claiming work AnaHon has withdrawn.
-    prisma.contentItem.findMany({ where: { status: "Published", retractedAt: "" }, orderBy: { publishedAt: "desc" } }),
+    prisma.contentItem.findMany({ where: { status: "Published", retractedAt: "", rehearsal: false }, orderBy: { publishedAt: "desc" } }),
     strategyCorpus()
   ]);
   const donorName = (id: string) => donors.find(d => d.id === id)?.name || id;
@@ -3767,7 +3767,21 @@ const CONTENT_EDITOR_ROLES = CONTENT_EDITORS;
 // re-reads this database and refuses anything not Published, so the call carries
 // no authority of its own — and publishing here never depends on it succeeding.
 const SITE_URL = process.env.SITE_URL || "http://localhost:4321";
+// ---- editorial rehearsal (11 Sep 2026) ---------------------------------------------------------
+// A rehearsal walks the whole chain in several seats and never leaves the FMS. These three helpers
+// are the only places that know about it outside the routes' own seat checks.
+/** The seat this request is standing in: the worn seat when acting, else the person's own role. */
+const seatOf = (user: any) => stampActingAs() ?? String(user?.role || "");
+/** An audit line about a content item. A rehearsal's lines are marked, so the walk-through can
+ *  never be read later as real publishing. */
+const itemAudit = (item: any, user: any, action: string, details: string) =>
+  createAuditLog(user?.id, user?.name, action, item?.rehearsal ? `${REHEARSAL_TAG} ${details}` : details);
+/** Guard at the single entry of everything that carries a piece out of the FMS. */
+const isRehearsal = async (id: string) =>
+  !!(await prisma.contentItem.findUnique({ where: { id }, select: { rehearsal: true } }).catch(() => null))?.rehearsal;
+
 async function notifySiteUnpublish(id: string) {
+  if (await isRehearsal(id)) return;                                  // a rehearsal was never on the site
   try {
     const r = await fetch(`${SITE_URL}/__unpublish`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id })
@@ -3779,6 +3793,7 @@ async function notifySiteUnpublish(id: string) {
   }
 }
 async function notifySite(id: string, why: string) {
+  if (await isRehearsal(id)) return;                                  // a rehearsal never reaches the site
   try {
     const r = await fetch(`${SITE_URL}/__publish`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id })
@@ -3821,7 +3836,7 @@ async function contentManageBlock(req: any, stream: string): Promise<string | nu
 app.post("/api/content/save", async (req, res) => {
   try {
     const { id, title, contentType, stream, channels, brief, assigneeUserId, dueDate,
-            contentLabel, sponsorDisclosure,
+            contentLabel, sponsorDisclosure, rehearsal,
             assignedMeetingDate, reviewedMeetingDate, checks, legalFlag, materials,
             aiAssisted, aiDisclosed, user } = req.body;
     if (!title) return res.status(400).json({ error: "Give the content item a title." });
@@ -3867,6 +3882,12 @@ app.post("/api/content/save", async (req, res) => {
 
     const existing = id ? await prisma.contentItem.findUnique({ where: { id } }) : null;
     if (id && !existing) return res.status(404).json({ error: "Content item not found." });
+    // A rehearsal is decided at birth and never afterwards: the flag is read ONLY on create, and
+    // `data` below never carries it, so no update — from any seat — can flip it either way.
+    const wantsRehearsal = !existing && rehearsal === true;
+    if (wantsRehearsal && (req as any).dbUser?.role !== "Super Admin") {
+      return res.status(403).json({ error: "Only the master account can start a rehearsal." });
+    }
     if (existing && existing.status === "Published") {
       return res.status(403).json({ error: "Published content is a permanent record — issue a public correction instead (Policy 005)." });
     }
@@ -3896,11 +3917,13 @@ app.post("/api/content/save", async (req, res) => {
       ? await prisma.contentItem.update({ where: { id }, data })
       : await prisma.contentItem.create({ data: {
           id: `content-${Date.now()}`, ...data,
+          // Saad plays every seat, so he is the author of record; the author SEAT is taken at Start.
+          ...(wantsRehearsal ? { rehearsal: true, assigneeUserId: assigneeUserId || user?.id || "" } : {}),
           // Policy 002: assignments come out of the daily production meeting.
           assignedMeetingDate: assignedMeetingDate || localDate(),
           created_at: new Date().toISOString()
         } });
-    await createAuditLog(user?.id, user?.name,
+    await itemAudit(item, user,
       existing ? "Content Item Updated" : "Content Assigned",
       existing
         ? `"${item.title}" edited in status ${item.status}.`
@@ -3923,8 +3946,9 @@ app.post("/api/content/start", async (req, res) => {
       const block = await contentManageBlock(req, item.stream);
       if (block) return res.status(403).json({ error: "Only the assignee or an editor can start production." });
     }
-    const updated = await prisma.contentItem.update({ where: { id }, data: { status: "In Production" } });
-    await createAuditLog(user?.id, user?.name, "Content Production Started", `"${item.title}" moved to In Production.`);
+    const updated = await prisma.contentItem.update({ where: { id }, data: { status: "In Production",
+      ...(item.rehearsal ? { assigneeAs: seatOf(user) } : {}) } });
+    await itemAudit(item, user, "Content Production Started", `"${item.title}" moved to In Production.`);
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -3943,6 +3967,15 @@ app.post("/api/content/submit-factcheck", async (req, res) => {
       const block = await contentManageBlock(req, item.stream);
       if (block) return res.status(403).json({ error: "Only the assignee or an editor can submit for fact-check." });
     }
+    if (item.rehearsal) {
+      const seat = String(req.body.factCheckerSeat || "");
+      if (!ASSIGNABLE_ROLES.includes(seat)) return res.status(400).json({ error: "Name the seat that will fact-check this rehearsal." });
+      const clash = rehearsalSeatClash(item, "factcheck", seat);
+      if (clash) return res.status(403).json({ error: clash });
+      const updated = await prisma.contentItem.update({ where: { id }, data: { status: "Fact-Check", factCheckerUserId: user?.id || "", factCheckerAs: seat } });
+      await itemAudit(item, user, "Content Sent to Fact-Check", `"${item.title}" → fact-check by the ${seat} seat (not the author's seat, ${item.assigneeAs || "unrecorded"}).`);
+      return res.json({ success: true, item: updated });
+    }
     const checker = factCheckerUserId ? await prisma.user.findUnique({ where: { id: factCheckerUserId } }) : null;
     if (!checker || !checker.active) {
       return res.status(400).json({ error: "Name an active user as the fact-checker (Policy 005: assign a dedicated individual responsible for verifying the facts)." });
@@ -3952,7 +3985,7 @@ app.post("/api/content/submit-factcheck", async (req, res) => {
       return res.status(403).json({ error: `Policy 005 impartiality: the fact-checker must not be the author — assign someone other than ${checker.name}.` });
     }
     const updated = await prisma.contentItem.update({ where: { id }, data: { status: "Fact-Check", factCheckerUserId } });
-    await createAuditLog(user?.id, user?.name, "Content Sent to Fact-Check",
+    await itemAudit(item, user, "Content Sent to Fact-Check",
       `"${item.title}" → independent fact-check by ${checker.name} (not the author — Policy 005).`);
     res.json({ success: true, item: updated });
   } catch (err: any) {
@@ -3974,7 +4007,7 @@ app.post("/api/content/factcheck-log", async (req, res) => {
     const log = JSON.parse(item.factCheckJson || "[]");
     log.push({ source, step: step || "", date: localDate() });
     const updated = await prisma.contentItem.update({ where: { id }, data: { factCheckJson: JSON.stringify(log) } });
-    await createAuditLog(user?.id, user?.name, "Fact-Check Source Recorded",
+    await itemAudit(item, user, "Fact-Check Source Recorded",
       `"${item.title}": ${source}${step ? " — " + step : ""}.`);
     res.json({ success: true, item: updated });
   } catch (err: any) {
@@ -3994,13 +4027,17 @@ app.post("/api/content/factcheck-pass", async (req, res) => {
     if (user?.id !== item.factCheckerUserId) {
       return res.status(403).json({ error: "Only the named fact-checker can pass this item (Policy 005: independent review by the assigned individual)." });
     }
+    if (item.rehearsal) {
+      const clash = rehearsalSeatClash(item, "pass", seatOf(user));
+      if (clash) return res.status(403).json({ error: clash });
+    }
     const log = JSON.parse(item.factCheckJson || "[]");
     if (!log.length) {
       return res.status(403).json({ error: "Log at least one source or verification step first (Policy 005: detailed records of all sources and verification steps)." });
     }
     const updated = await prisma.contentItem.update({ where: { id },
       data: { status: "Editorial Review", factCheckPassedAt: new Date().toISOString() } });
-    await createAuditLog(user?.id, user?.name, "Content Fact-Check Passed",
+    await itemAudit(item, user, "Content Fact-Check Passed",
       `"${item.title}" verified by ${user?.name}: ${log.length} source/step record(s) → Editorial Review.`);
     res.json({ success: true, item: updated });
   } catch (err: any) {
@@ -4030,7 +4067,7 @@ app.post("/api/content/return", async (req, res) => {
       status: "In Production", factCheckPassedAt: "",
       pmApprovedBy: "", pmApprovedAt: "", pmApprovedAs: null, pdApprovedBy: "", pdApprovedAt: "", pdApprovedAs: null
     } });
-    await createAuditLog(user?.id, user?.name, "Content Returned for Revision",
+    await itemAudit(item, user, "Content Returned for Revision",
       `"${item.title}" sent back from ${item.status}: ${reason}. Prior fact-check and approvals voided.`);
     res.json({ success: true, item: updated });
   } catch (err: any) {
@@ -4049,7 +4086,7 @@ app.post("/api/content/approve", async (req, res) => {
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
       return res.status(403).json({ error: "Approval needs the Production Manager, the Programs Director or the master account (Policy 002)." });
     }
-    if (user?.id === item.assigneeUserId) {
+    if (!item.rehearsal && user?.id === item.assigneeUserId) {
       return res.status(403).json({ error: "You authored this item — a different officer must approve it (§4.3 segregation of duties)." });
     }
     // Role → slot; the master account may stand in for ONE empty slot, never both.
@@ -4060,17 +4097,21 @@ app.post("/api/content/approve", async (req, res) => {
     const mine = target === "pm" ? item.pmApprovedBy : item.pdApprovedBy;
     const other = target === "pm" ? item.pdApprovedBy : item.pmApprovedBy;
     if (mine) return res.status(400).json({ error: `The ${target === "pm" ? "Production Manager" : "Programs Director"} slot is already approved.` });
-    if (other === user?.id) {
+    if (!item.rehearsal && other === user?.id) {
       return res.status(403).json({ error: "You already hold the other approval — Policy 002 requires the Production Manager AND the Programs Director, two different people." });
+    }
+    if (item.rehearsal) {
+      const clash = rehearsalSeatClash(item, target, seatOf(user));
+      if (clash) return res.status(403).json({ error: clash });
     }
     const now = new Date().toISOString();
     const data: any = target === "pm"
-      ? { pmApprovedBy: user.id, pmApprovedAt: now, pmApprovedAs: actor(user).as }
-      : { pdApprovedBy: user.id, pdApprovedAt: now, pdApprovedAs: actor(user).as };
+      ? { pmApprovedBy: user.id, pmApprovedAt: now, pmApprovedAs: actor(user).as ?? (item.rehearsal ? seatOf(user) : null) }
+      : { pdApprovedBy: user.id, pdApprovedAt: now, pdApprovedAs: actor(user).as ?? (item.rehearsal ? seatOf(user) : null) };
     const both = target === "pm" ? !!item.pdApprovedBy : !!item.pmApprovedBy;
     if (both) data.status = "Approved";
     const updated = await prisma.contentItem.update({ where: { id }, data });
-    await createAuditLog(user?.id, user?.name,
+    await itemAudit(item, user,
       target === "pm" ? "Content Approved — Production Manager" : "Content Approved — Programs Director",
       `"${item.title}" approved by ${user?.name}${both ? " — both approvals in place." : "; awaiting the second approval."}`);
     res.json({ success: true, item: updated });
@@ -4097,7 +4138,7 @@ app.post("/api/content/legal-record", async (req, res) => {
       legalReviewedBy, legalReviewNote: legalReviewNote || "",
       legalRecordedBy: user?.id || "", legalRecordedAt: new Date().toISOString()
     } });
-    await createAuditLog(user?.id, user?.name, "Content Legal Review Recorded",
+    await itemAudit(item, user, "Content Legal Review Recorded",
       `"${item.title}": reviewed by ${legalReviewedBy} — recorded by ${user?.name}.`);
     res.json({ success: true, item: updated });
   } catch (err: any) {
@@ -4120,12 +4161,13 @@ app.post("/api/content/publish", async (req, res) => {
       status: "Published", publishedAt: new Date().toISOString(), factCheckTag: true
     } });
     const channels = JSON.parse(item.channelsJson || "[]");
-    await createAuditLog(user?.id, user?.name, "Content Published",
+    await itemAudit(item, user, "Content Published",
       `"${item.title}" (${item.contentType}) published to ${channels.join(", ") || "no channel"} — fact-checked tag applied; PM+PD dual approval on record.`);
-    // after the audit row is committed — the site reads this database and must not race the write
+    // after the audit row is committed — the site reads this database and must not race the write.
+    // Both refuse a rehearsal at their own door (isRehearsal), so "publish" there is status + audit only.
     if (!channels.length || channels.includes("Website")) void notifySite(id, "publish");
     void releaseSocialDrafts(id);                                       // social posts drafted for this item go out now the gate has passed
-    res.json({ success: true, item: updated });
+    res.json({ success: true, item: updated, rehearsal: !!item.rehearsal });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -4219,12 +4261,12 @@ app.post("/api/content/cover", async (req, res) => {
         category: "Cover", linkedRecordType: "Content", linkedRecordId: id, contentHash, created_at: new Date().toISOString()
       } });
       coverPath = `GENERAL/Cover/${fname}`;
-      await createAuditLog(user?.id, user?.name, "Cover Generated", `"${item.title}": cover made with ${how} → ${doc.refNo}.`);
+      await itemAudit(item, user, "Cover Generated", `"${item.title}": cover made with ${how} → ${doc.refNo}.`);
     }
     const updated = await prisma.contentItem.update({ where: { id }, data: {
       coverPath, coverProvider: how, ...(how !== "upload" ? { aiAssisted: true } : {})
     } });
-    if (how === "upload") await createAuditLog(user?.id, user?.name, "Cover Set", `"${item.title}": cover set from an uploaded document.`);
+    if (how === "upload") await itemAudit(item, user, "Cover Set", `"${item.title}": cover set from an uploaded document.`);
     // a published piece gets its page re-rendered with the new cover
     if (item.status === "Published" && !item.retractedAt) {
       const ch = JSON.parse(item.channelsJson || "[]"); if (!ch.length || ch.includes("Website")) void notifySite(id, "cover");
@@ -4957,6 +4999,7 @@ async function refreshSocialStats() {
 }
 /** /api/content/publish passed the gate: the item's drafts go out (never earlier than now). */
 async function releaseSocialDrafts(contentItemId: string) {
+  if (await isRehearsal(contentItemId)) return;                       // nor a social account
   return actingContext.exit(async () => {
     try {
       const drafts = await prisma.socialPost.findMany({ where: { contentItemId, state: "Draft" } });
@@ -5128,7 +5171,7 @@ app.post("/api/content/retract", async (req, res) => {
     if (item.retractedAt) return res.status(400).json({ error: "Already retracted." });
     if (!reason) return res.status(400).json({ error: "State why it is being retracted (public record, Policy 005)." });
     const updated = await prisma.contentItem.update({ where: { id }, data: { retractedAt: new Date().toISOString(), retractReason: String(reason) } });
-    await createAuditLog(user?.id, user?.name, "Content Retracted", `"${item.title}" taken off the website: ${reason}`);
+    await itemAudit(item, user, "Content Retracted", `"${item.title}" taken off the website: ${reason}`);
     void notifySiteUnpublish(id);
     void cancelSocialDrafts(id, "the item was retracted");
     res.json({ success: true, item: updated });
@@ -5154,7 +5197,7 @@ app.post("/api/content/correction", async (req, res) => {
     const corrections = JSON.parse(item.correctionsJson || "[]");
     corrections.push({ date: localDate(), nature, correction, by: user?.name || "" });
     const updated = await prisma.contentItem.update({ where: { id }, data: { correctionsJson: JSON.stringify(corrections) } });
-    await createAuditLog(user?.id, user?.name, "Content Correction Issued",
+    await itemAudit(item, user, "Content Correction Issued",
       `"${item.title}": ${nature} — correction appended ${localDate()}; original noted, status remains Published.`);
     { const ch = JSON.parse(item.channelsJson || "[]"); if (!ch.length || ch.includes("Website")) void notifySite(id, "correction"); }
     res.json({ success: true, item: updated });
@@ -5181,11 +5224,14 @@ app.post("/api/content/delete", async (req, res) => {
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
       return res.status(403).json({ error: "Removing a content item needs an editor role." });
     }
-    if (item.status === "Published") {
+    // A rehearsal may go even when "published": it never reached an audience, BY CONSTRUCTION —
+    // the flag is set at creation and no route can set it later, so it cannot be claimed after the
+    // fact for a real piece. That is the difference from the predicates the note above forbids.
+    if (item.status === "Published" && !item.rehearsal) {
       return res.status(403).json({ error: "Published content is a permanent record and cannot be deleted — append a correction instead (Policy 005)." });
     }
     await prisma.contentItem.delete({ where: { id } });
-    await createAuditLog(user?.id, user?.name, "Content Item Removed", `Removed "${item.title}" (${item.status}).`);
+    await itemAudit(item, user, "Content Item Removed", `Removed "${item.title}" (${item.status}).`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -5470,7 +5516,7 @@ app.post("/api/content/research", async (req, res) => {
       `Write in Arabic if the brief is in Arabic. Be concise; this becomes a fact-check log, not an article.`
     ].join("\n"), runMode);
 
-    await createAuditLog(user?.id, user?.name, "Content Research Run" + takeUsage(),
+    await itemAudit(item, user, "Content Research Run" + takeUsage(),
       `"${item.title}": ${facts.length} open fact(s), ${runMode === "sources" ? `${ownLinks.length} supplied source(s) read` : "open web search"}, ${out.sources.length} source(s) returned.`);
     res.json({ success: true, mode: runMode, facts, findings: out.text, sources: out.sources });
   } catch (err: any) {
@@ -5493,7 +5539,7 @@ app.post("/api/content/draft-save", async (req, res) => {
     // Saving an AI draft marks the item AI-assisted — the transparency rule's publish
     // gate (watermark/disclaimer attestation) now applies automatically.
     const updated = await prisma.contentItem.update({ where: { id }, data: { draftsJson: JSON.stringify(drafts), aiAssisted: true } });
-    await createAuditLog(user?.id, user?.name, "Content Draft Saved", `"${item.title}": ${label} (${kind}) — draft ${drafts.length}.`);
+    await itemAudit(item, user, "Content Draft Saved", `"${item.title}": ${label} (${kind}) — draft ${drafts.length}.`);
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -5513,7 +5559,7 @@ app.post("/api/content/draft-delete", async (req, res) => {
     if (!(index >= 0 && index < drafts.length)) return res.status(400).json({ error: "No such draft." });
     const [removed] = drafts.splice(index, 1);
     const updated = await prisma.contentItem.update({ where: { id }, data: { draftsJson: JSON.stringify(drafts) } });
-    await createAuditLog(user?.id, user?.name, "Content Draft Removed", `"${item.title}": ${removed.label} removed.`);
+    await itemAudit(item, user, "Content Draft Removed", `"${item.title}": ${removed.label} removed.`);
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

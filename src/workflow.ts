@@ -300,6 +300,11 @@ export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
     if (!rule.seat && !rule.person && !rule.standIns) continue;         // terminal rows never produce an item
     for (const r of (((s as any)[rule.kind] as any[]) || [])) {         // a trimmed branch ships [] → nothing
       if (r[STATUS_FIELD[rule.kind] || "status"] !== rule.status) continue;
+      // An editorial rehearsal is a walk-through, not work: it is never anyone's turn and never
+      // counts on a desk, a badge, a push or a calendar (all of which read this function).
+      // Asked of content items only — the field exists nowhere else, and check-desk's recording
+      // proxy rightly fails a rule that reads an undeclared field off a voucher or a timesheet.
+      if (rule.kind === "contentItems" && r.rehearsal) continue;
       if (rule.parent && !(((s as any)[rule.parent.in] as any[]) || []).some(p => p.id === r[rule.parent!.field] && (!rule.parent!.status || p.status === rule.parent!.status))) continue;
       const when = dueOf(rule, r);
       if ((rule.datedOnly || rule.horizon !== undefined) && !when) continue;

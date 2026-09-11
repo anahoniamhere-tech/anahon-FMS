@@ -45,9 +45,10 @@ export const CONTENT_CHECKS: [key: string, label: string, policySentence: string
  * goes out: a piece still in the pipeline yields a Draft that the gate releases on publish
  * (src/meta.ts initialState). It only refuses a post that no piece is answerable for.
  */
-export function socialPostBlockers(item: { status: string; retractedAt: string } | null): string[] {
+export function socialPostBlockers(item: { status: string; retractedAt: string; rehearsal?: boolean } | null): string[] {
   if (!item) return ["Every post carries a piece from the editorial register — Policy 002 covers Facebook and Instagram exactly as it covers the website, and all content is reviewed and approved before it is published. Create or pick the piece, and the post goes out when the piece is cleared."];
   if (item.retractedAt) return ["That piece has been retracted — its posts were cancelled and it may not be promoted again (Policy 005)."];
+  if ((item as any).rehearsal) return ["That piece is a rehearsal — a walk-through of the chain, not a publication. Nothing from it goes to a social account."];
   return [];
 }
 
@@ -133,6 +134,12 @@ export type ContentGateFields = {
   contentLabel?: string;
   sponsorDisclosure?: string;
   aiAssisted?: boolean;
+  // Rehearsal only (11 Sep 2026) — see rehearsalSeatClash below. Ignored on a real piece.
+  rehearsal?: boolean;
+  assigneeAs?: string | null;
+  factCheckerAs?: string | null;
+  pmApprovedAs?: string | null;
+  pdApprovedAs?: string | null;
   aiDisclosed?: boolean;
 };
 
@@ -148,8 +155,13 @@ export function publishBlockers(c: ContentGateFields): string[] {
   if (!c.factCheckPassedAt) blockers.push("Fact-check has not passed (Policy 005: fact-checked before publication).");
   if (!c.pmApprovedBy) blockers.push("Production Manager approval missing (Policy 002).");
   if (!c.pdApprovedBy) blockers.push("Programs Director approval missing (Policy 002).");
-  if (c.pmApprovedBy && c.pdApprovedBy && c.pmApprovedBy === c.pdApprovedBy)
+  if (c.rehearsal) {
+    // A rehearsal is one person in four seats, so "two different people" becomes "four different
+    // seats" — and it is still refused when any two steps were taken in the same one.
+    blockers.push(...rehearsalSeatsBlockers(c));
+  } else if (c.pmApprovedBy && c.pdApprovedBy && c.pmApprovedBy === c.pdApprovedBy) {
     blockers.push("Both approvals are by the same person — Policy 002 requires the Production Manager AND the Programs Director.");
+  }
   // Policy 002 requires every piece to be labelled News / Commercial / Opinion, and a commercial
   // piece to disclose the relationship behind it. An unlabelled piece cannot be published.
   if (!c.contentLabel) blockers.push("No content label — say whether this is News, Commercial or Opinion (Policy 002: each content type must be clearly labelled).");
@@ -167,4 +179,56 @@ export function publishBlockers(c: ContentGateFields): string[] {
     if (!checks[key]) blockers.push(`Standard unmet: ${label} (Policy 002).`);
   }
   return blockers;
+}
+
+/* ── Rehearsal: the chain walked by one person in several seats ──────────────
+ * Saad is the only active holder of an editorial seat, so the real chain cannot run end to end:
+ * separation compares PEOPLE (user ids) and "Act as…" changes only the seat, never the person.
+ * That refusal is correct and stays — loosening it would let one login publish anything, which is
+ * exactly what Policies 002 and 005 forbid.
+ *
+ * A rehearsal is a separate kind of item where each step must instead be taken in a different
+ * SEAT. It walks every gate, and its "publish" never leaves the FMS. These rules apply ONLY when
+ * `rehearsal` is set; a real piece never reads them.
+ */
+export const REHEARSAL_TAG = "[REHEARSAL]";
+export type RehearsalStep = "factcheck" | "pass" | "pm" | "pd";
+type Seats = { assigneeAs?: string | null; factCheckerAs?: string | null; pmApprovedAs?: string | null; pdApprovedAs?: string | null };
+
+/**
+ * Why `seat` may not take `step` on a rehearsal; "" when it may.
+ *   factcheck — naming the fact-checker seat: never the author's seat (Policy 005 impartiality)
+ *   pass      — only the seat named as fact-checker may pass it
+ *   pm / pd   — an approval seat must differ from the author, the checker and the other approval
+ */
+export function rehearsalSeatClash(item: Seats, step: RehearsalStep, seat: string): string {
+  const s = String(seat || "");
+  if (!s) return "No seat — stand in a seat with Act as… first.";
+  if (step === "factcheck") {
+    return s === item.assigneeAs ? `The ${s} seat authored this rehearsal — name a different seat as fact-checker (Policy 005: the checker is not the author).` : "";
+  }
+  if (step === "pass") {
+    return s !== item.factCheckerAs ? `Only the ${item.factCheckerAs || "named fact-checker"} seat can pass this — you are standing in ${s}.` : "";
+  }
+  const other = step === "pm" ? item.pdApprovedAs : item.pmApprovedAs;
+  if (s === item.assigneeAs) return `The ${s} seat authored this rehearsal — approve it from a different seat (§4.3).`;
+  if (s === item.factCheckerAs) return `The ${s} seat fact-checked this rehearsal — approve it from a different seat.`;
+  if (other && s === other) return `The ${s} seat already holds the other approval — Policy 002 needs two different approvers, so use a different seat.`;
+  return "";
+}
+
+/** A rehearsal publishes only with four steps taken in four different seats. */
+export function rehearsalSeatsBlockers(c: Seats): string[] {
+  const named: [string, string | null | undefined][] = [
+    ["author", c.assigneeAs], ["fact-checker", c.factCheckerAs],
+    ["Production Manager approval", c.pmApprovedAs], ["Programs Director approval", c.pdApprovedAs],
+  ];
+  const out = named.filter(([, v]) => !v).map(([k]) => `Rehearsal: no seat recorded for the ${k}.`);
+  const seen = new Map<string, string>();
+  for (const [k, v] of named) {
+    if (!v) continue;
+    if (seen.has(v)) out.push(`Rehearsal: the ${seen.get(v)} and the ${k} were both the ${v} seat — each step must be a different seat.`);
+    else seen.set(v, k);
+  }
+  return out;
 }

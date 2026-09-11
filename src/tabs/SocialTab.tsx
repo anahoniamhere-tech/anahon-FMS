@@ -54,7 +54,9 @@ export default function SocialTab({ state, currentUser, triggerToast }: SharedPr
   };
 
   // ---- composer ----
-  const items: any[] = useMemo(() => ((state as any)?.contentItems || []).filter((i: any) => !i.retractedAt), [state]);
+  // A rehearsal is a walk-through, not a publication: it is never offered here (and the server's
+  // socialPostBlockers refuses it anyway).
+  const items: any[] = useMemo(() => ((state as any)?.contentItems || []).filter((i: any) => !i.retractedAt && !i.rehearsal), [state]);
   const [targets, setTargets] = useState<string[]>([]);          // "accountId|network"
   const [message, setMessage] = useState(""); const [link, setLink] = useState("");
   const [media, setMedia] = useState<Media>("none"); const [imageUrl, setImageUrl] = useState("");

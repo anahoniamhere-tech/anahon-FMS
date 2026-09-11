@@ -473,6 +473,9 @@ export interface ContentItem {
   pdApprovedBy: string;
   pdApprovedAt: string;
   pdApprovedAs?: string;
+  rehearsal?: boolean;         // a walk-through in several seats; never leaves the FMS (11 Sep 2026)
+  assigneeAs?: string;         // rehearsal: the author's seat
+  factCheckerAs?: string;      // rehearsal: the fact-checker's seat
   factCheckTag: boolean;
   publishedAt: string;
   websiteUrl?: string;         // live page on the website, set by the publish hook
