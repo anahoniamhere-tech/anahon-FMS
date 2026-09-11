@@ -99,11 +99,14 @@ export default function AssetsTab({ currentUser, openDoc, refreshState, state, t
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "The label could not be read.");
       const x = data.extracted;
+      // A scan replaces what the last one read, blanks included. Keeping the previous value
+      // when this label shows nothing would leave one item's serial in another item's form.
+      // Only the person's own "No serial on item" tick survives a scan.
       setF(prev => ({
         ...prev,
-        name: x.name || prev.name, brand: x.brand || prev.brand, model: x.model || prev.model,
-        serial: x.serialNumber || prev.serial, noSerial: x.serialNumber ? false : prev.noSerial,
-        specs: x.specs || prev.specs,
+        name: x.name || "", brand: x.brand || "", model: x.model || "",
+        serial: x.serialNumber || "", noSerial: x.serialNumber ? false : prev.noSerial,
+        specs: x.specs || "",
       }));
       setScan({ busy: false, confidence: x.confidence, warnings: x.warnings || [], duplicateOfTag: x.duplicateOfTag });
     } catch (err: any) {

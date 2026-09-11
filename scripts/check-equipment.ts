@@ -94,6 +94,11 @@ ok("and creates nothing", !/fixedAsset\.(create|update)/.test(scan));
 ok("it warns when the serial it read is already on the register", /extracted\.duplicateOfTag = twin/.test(scan));
 ok("the phone opens the camera for the label and for the item", (tab.match(/capture="environment"/g) || []).length >= 2);
 
+// Scan the wrong item, then the right one whose serial is worn off: the second read is blank,
+// and a form that keeps the old value hands the right item the wrong item's serial.
+ok("a second scan replaces the first — a blank read never leaves the last item's serial behind",
+  /serial: x\.serialNumber \|\| "", noSerial:/.test(tab) && !/x\.(serialNumber|brand|model|name|specs) \|\| prev\./.test(tab));
+
 console.log("\nG. the photos are documents like any other");
 ok("filed through the one upload route, against the item", /fetch\("\/api\/document\/upload"/.test(tab) && /linkedRecordType: "FixedAsset", linkedRecordId: assetId/.test(tab));
 ok("into the funding project's folder, beside the voucher", /linkedRecordType === "FixedAsset" && linkedRecordId/.test(server));
