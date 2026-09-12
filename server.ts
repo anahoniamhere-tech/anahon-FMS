@@ -129,7 +129,7 @@ const PLO_ALLOWED_POSTS = new Set([
   "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone",
   "/api/expense/new", "/api/expense/scan-invoice",
   "/api/document/upload", "/api/materials/link",
-  "/api/assets/register", "/api/assets/update", "/api/assets/scan-label", "/api/assets/checkout", "/api/assets/checkin", "/api/assets/repair",
+  "/api/assets/register", "/api/assets/update", "/api/assets/scan-label", "/api/assets/checkout", "/api/assets/checkin", "/api/assets/move", "/api/assets/repair",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/activities/save", "/api/activities/generate", "/api/activities/delete", "/api/activities/import-timetable",
   "/api/vendor/scan",
@@ -8260,6 +8260,62 @@ app.post("/api/assets/checkin", async (req, res) => {
     const late = asset.dueBack && asset.dueBack < today ? Math.round((Date.parse(today) - Date.parse(asset.dueBack)) / 86400000) : 0;
     await createAuditLog(user.id, user.name, "Equipment Returned",
       `${label} "${asset.name}" back from ${previousHolderName}${late ? `, ${late} day${late === 1 ? "" : "s"} late` : ""}: ${condition}${note ? ` — ${note}` : ""}; now with ${restHolder.name} at ${loc.location}.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Where an item rests — corrected, or simply moved. Registration writes the item's first
+// custody entry and a loan is settled by check-out/check-in, but a thing can move without
+// anybody borrowing it: the disk registered as Ahmad's is in the office drawer. Before this
+// there was no way to say so, and the card kept naming a person who did not have it.
+//
+// It does NOT edit the entry that is wrong. Custody is the movement log, so this appends the
+// next entry, the same shape a check-in writes: the log still says what it always said, and
+// now also says that on this date somebody put it here. Same picker, same fixed list of
+// places, same validator as registration — one idea, written once.
+//
+// Only for an item that is IN. Something out on a loan comes back through check-in, where the
+// condition it came back in is recorded; moving it here would lose that.
+app.post("/api/assets/move", async (req, res) => {
+  try {
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to say where equipment is." });
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: String(req.body.assetId || "") } });
+    if (!asset) return res.status(404).json({ error: "That item is not on the register." });
+    const label = asset.tag || asset.name;
+    if (asset.holderId) return res.status(409).json({ error: `${label} is out on a loan — check it in instead, so the condition it comes back in is recorded.` });
+
+    if (!(HOLDER_KINDS as readonly string[]).includes(String(req.body.holderKind))) return res.status(400).json({ error: "Say who has it — the organisation, an employee or a supplier." });
+    const holderKind = req.body.holderKind as HolderKind;
+    const holderId = holderKind === "org" ? "" : String(req.body.holderId || "");
+    if (holderKind !== "org" && !holderId) return res.status(400).json({ error: "Choose who has it." });
+    const holder = await resolveHolder(holderKind, holderId, true);
+    if (!holder.ok) return res.status(400).json({ error: holder.error });
+    const loc = resolveLocation(req.body.location, req.body.locationOther);
+    if (!loc.ok) return res.status(400).json({ error: loc.error });
+
+    const moves: Movement[] = JSON.parse(asset.movementsJson || "[]");
+    const resting = moves[moves.length - 1];
+    if (resting && resting.holderKind === holderKind && resting.holderId === holderId && resting.location === loc.location) {
+      return res.status(400).json({ error: `${label} is already recorded as being there.` });
+    }
+    const wasWith = resting ? await holderDisplayName(resting.holderKind, resting.holderId) : (asset.custodian || "someone");
+    const wasAt = resting ? resting.location : (asset.location || "somewhere");
+    const now = new Date().toISOString();
+    if (resting && !resting.inAt) Object.assign(resting, { inAt: now, inBy: user.id });
+    moves.push({ id: `mv-${Date.now()}`, holderKind, holderId, location: loc.location, heldFor: "", projectId: "", outAt: now, outBy: user.id, dueBack: null, inAt: null, inBy: null, returnCondition: null, note: "" });
+
+    // Only a row that is still in: if somebody checked it out a moment ago, this must not land.
+    const done = await prisma.fixedAsset.updateMany({
+      where: { id: asset.id, holderId: null },
+      data: { custodian: holder.name, location: loc.location, movementsJson: JSON.stringify(moves) }
+    });
+    if (done.count !== 1) return res.status(409).json({ error: `${label} changed a moment ago — reload and look again.` });
+
+    await createAuditLog(user.id, user.name, "Equipment Moved",
+      `${label} "${asset.name}" — was with ${wasWith} at ${wasAt}, now with ${holder.name} at ${loc.location}.`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

@@ -36,7 +36,8 @@ const reg = fields + between('app.post("/api/assets/register"', 'app.post("/api/
 const edit = between('app.post("/api/assets/update"', 'app.post("/api/assets/verify"');
 const ver = between('app.post("/api/assets/verify"', 'app.post("/api/assets/checkout"');
 const out = between('app.post("/api/assets/checkout"', 'app.post("/api/assets/checkin"');
-const back = between('app.post("/api/assets/checkin"', 'app.post("/api/assets/repair"');
+const back = between('app.post("/api/assets/checkin"', 'app.post("/api/assets/move"');
+const moved = between('app.post("/api/assets/move"', 'app.post("/api/assets/repair"');
 const fix = between('app.post("/api/assets/repair"', "// Stickers to print:");
 const stick = between('app.get("/api/assets/stickers"', 'app.get("/e/:tag"');
 const short = between('app.get("/e/:tag"', "// Partner drawings & contributions");
@@ -489,6 +490,28 @@ ok("the locked fields are shown with their values and the reason they are locked
 ok("the keeper reaches it from the item itself", /onClick=\{\(\) => startEdit\(a\)\}/.test(tab) && /aria-expanded=\{edit\?\.id === a\.id\}/.test(tab));
 ok("the form opens on what the item says now, so leaving a field alone leaves it alone",
   /serial: a\.serialNumber === NO_SERIAL \? "" : \(a\.serialNumber \|\| ""\)/.test(tab) && /gift: !a\.expenseId && !a\.cost/.test(tab));
+
+console.log("\nJJ. a thing moves without anybody borrowing it — 12 Sep 2026");
+ok("the keepers say where a resting item is, and Super Admin is one of them",
+  ROUTE_SEATS["/api/assets/move"] === SUPPLIER_EDITORS && server.includes('"/api/assets/move"'));
+ok("an item out on a loan is refused — it comes back through check-in, where its condition is recorded",
+  /if \(asset\.holderId\) return res\.status\(409\)/.test(moved) && /check it in instead/.test(moved));
+ok("it never edits the entry that is wrong — it appends the next one, the shape a check-in writes",
+  /moves\.push\(\{/.test(moved) && /dueBack: null/.test(moved) && !/moves\.pop\(\)|moves\.splice|moves\.length - 1\] =/.test(moved));
+ok("the earlier entry is closed, not deleted, so the log still says what it said",
+  /if \(resting && !resting\.inAt\) Object\.assign\(resting, \{ inAt: now, inBy: user\.id \}\)/.test(moved));
+ok("the same holder rule and the same fixed list of places as registration — no second idea",
+  /await resolveHolder\(holderKind, holderId, true\)/.test(moved) && /resolveLocation\(req\.body\.location, req\.body\.locationOther\)/.test(moved));
+ok("saying it is where it already is changes nothing", /is already recorded as being there/.test(moved));
+ok("the write lands only on a row still in, so it cannot race a check-out",
+  /where: \{ id: asset\.id, holderId: null \}/.test(moved) && /if \(done\.count !== 1\)/.test(moved));
+ok("it touches custody only — never the cost, the confirmation or what the item is",
+  /data: \{ custodian: holder\.name, location: loc\.location, movementsJson/.test(moved)
+  && !/verifiedAt|cost:|condition:|serialNumber/.test(moved));
+ok("the audit line says where it was and where it is now", /was with \$\{wasWith\} at \$\{wasAt\}, now with \$\{holder\.name\} at \$\{loc\.location\}/.test(moved));
+ok("the button is offered only while the item is in", /\{!a\.holderId && \(\s*<button type="button" onClick=\{\(\) => openPanel\(a\.id, "move"/.test(tab));
+ok("it opens on what the card already says, so an unchanged field really is unchanged",
+  /holderKind: cm\?\.holderKind \|\| "org", holderId: cm\?\.holderId \|\| "", location: cm\?\.location \|\| a\.location \|\| ""/.test(tab));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

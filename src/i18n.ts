@@ -554,6 +554,10 @@ export const AR: Record<string, string> = {
   "Gift — no cost recorded": "هدية — لا تكلفة مسجّلة",
   // Correcting a registered item — 12 Sep 2026.
   "Correct the details": "تصحيح البيانات",
+  "Where it is": "أين هو",
+  "Save where it is": "حفظ مكانه",
+  "Where it is now. The log keeps every earlier answer — this adds today's.": "أين هو الآن. السجلّ يحتفظ بكل إجابة سابقة — وهذه تُضاف إليها.",
+  "moved": "نُقل",
   "Correct what this item is": "تصحيح ما هو هذا الصنف",
   "Save the correction": "حفظ التصحيح",
   "Corrected.": "تم التصحيح.",

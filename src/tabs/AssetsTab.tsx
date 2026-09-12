@@ -82,7 +82,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   const [saving, setSaving] = useState(false);
   const [verifyDraft, setVerifyDraft] = useState<Record<string, { condition: string; months: string }>>({});
   // One open panel at a time — check out, check in or a repair — and its fields.
-  const [panel, setPanel] = useState<{ id: string; kind: "out" | "in" | "repair" } | null>(null);
+  const [panel, setPanel] = useState<{ id: string; kind: "out" | "in" | "repair" | "move" } | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   // A correction in progress. Its own copy of the form, seeded from the item: nothing is
@@ -484,7 +484,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
     return () => clearTimeout(off);
   }, [focusId, assets.length]);
 
-  const openPanel = (id: string, kind: "out" | "in" | "repair", seed: Record<string, string> = {}) => {
+  const openPanel = (id: string, kind: "out" | "in" | "repair" | "move", seed: Record<string, string> = {}) => {
     setPanel(panel?.id === id && panel.kind === kind ? null : { id, kind });
     setDraft(seed);
   };
@@ -818,6 +818,9 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                   ) : (
                     <button type="button" onClick={() => openPanel(a.id, "out")} className={btn}><LogOut className="h-4 w-4" /> {t("Check out")}</button>
                   )}
+                  {!a.holderId && (
+                    <button type="button" onClick={() => openPanel(a.id, "move", { holderKind: cm?.holderKind || "org", holderId: cm?.holderId || "", location: cm?.location || a.location || "" })} className={btnGhost}><MapPin className="h-4 w-4" /> {t("Where it is")}</button>
+                  )}
                   <button type="button" onClick={() => openPanel(a.id, "repair", { date: today })} className={btnGhost}><Wrench className="h-4 w-4" /> {t("Log a repair")}</button>
                   <button type="button" aria-expanded={edit?.id === a.id} onClick={() => startEdit(a)} className={btnGhost}><Pencil className="h-4 w-4" /> {t("Correct the details")}</button>
                   {a.tag && (
@@ -879,6 +882,26 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                     {locationPicker(`in-loc-${a.id}`, field("location"), field("locationOther"), v => setField("location", v), v => setField("locationOther", v))}
                   </div>
                   <button type="submit" className={`${btn} justify-center md:col-span-2`}><LogIn className="h-4 w-4" /> {t("Check in")}</button>
+                </form>
+              )}
+
+              {/* A thing moves without anybody borrowing it. This does not edit the entry that
+                  is wrong — it writes the next one, so the log keeps saying what it said. */}
+              {panel?.id === a.id && panel.kind === "move" && (
+                <form
+                  onSubmit={e => { e.preventDefault(); send("/api/assets/move", { assetId: a.id, holderKind: field("holderKind"), holderId: field("holderId"), location: field("location"), locationOther: field("locationOther") }, `${a.tag} — ${t("moved")}`); }}
+                  className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-2"
+                >
+                  <p className="text-[11px] text-slate-500 md:col-span-2">{t("Where it is now. The log keeps every earlier answer — this adds today's.")}</p>
+                  <div>
+                    <label htmlFor={`mv-holder-${a.id}`} className={lbl}>{t("Currently with")}</label>
+                    {holderPicker(`mv-holder-${a.id}`, field("holderKind"), field("holderId"), true, (kind, holderId) => setDraft(prev => ({ ...prev, holderKind: kind, holderId })))}
+                  </div>
+                  <div>
+                    <label htmlFor={`mv-loc-${a.id}`} className={lbl}>{t("Currently in")}</label>
+                    {locationPicker(`mv-loc-${a.id}`, field("location"), field("locationOther"), v => setField("location", v), v => setField("locationOther", v))}
+                  </div>
+                  <button type="submit" className={`${btn} justify-center md:col-span-2`}><MapPin className="h-4 w-4" /> {t("Save where it is")}</button>
                 </form>
               )}
 

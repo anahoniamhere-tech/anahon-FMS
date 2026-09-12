@@ -81,6 +81,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/assets/scan-label": SUPPLIER_EDITORS,        // reads a label, saves nothing
   "/api/assets/checkout": SUPPLIER_EDITORS,
   "/api/assets/checkin": SUPPLIER_EDITORS,
+  "/api/assets/move": SUPPLIER_EDITORS,                // where a resting item is; a loan still goes out and comes back
   "/api/assets/repair": SUPPLIER_EDITORS,
   "/api/assets/verify": EQUIPMENT_VERIFIERS,          // never the keeper of the register
 
