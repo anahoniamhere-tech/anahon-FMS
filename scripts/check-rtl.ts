@@ -124,6 +124,14 @@ ok("the Arabic label in the reports keeps an even gap", /<span className="text-s
 const proj = read("src/tabs/ProjectsTab.tsx");
 ok("the Word export's selector matches the JSX", proj.includes(".text-end {") && !proj.includes(".text-right {"));
 
+/**
+ * The body of every quoted or backticked run, blanked out. What is left is the JSX a
+ * browser lays out — the only place dir="ltr" can be put. Quotes are kept so an attribute
+ * still reads as an attribute; only the contents go.
+ */
+const maskStrings = (line: string) =>
+  line.replace(/(["'`])(?:\\.|(?!\1)[\s\S])*?\1/g, (m, q) => q + " ".repeat(m.length - 2) + q);
+
 console.log("\nmachine text that leads with a number is isolated");
 // A run only scrambles when it STARTS with a digit or sign and then mixes with a
 // Latin word: "−1,250.00 USD" renders "USD 1,250.00−" inside an Arabic paragraph,
@@ -137,10 +145,11 @@ for (const f of files) {
     // EMPTY parens here meant the rule never saw a single house-style figure: sixteen
     // genuine cases shipped past it (Books room, 12 Sep). Any argument list counts now,
     // and the currency may sit a few characters further along — "0.00"} {exp.currency}.
-    // The `<` keeps it to JSX: the same run inside a WhatsApp message string
-    // (ExpensesTab, ProductionTab) has no element to carry dir, and isolating it there
-    // is not a thing you can do.
-    if (!/toLocaleString\([^)]*\)[\s\S]{0,30}?[Cc]urrency/.test(line) || !line.includes("<")) return;
+    // Masking string bodies keeps it to JSX text: a figure inside a message string, a toast
+    // or a ternary label has no element to carry dir, so isolating it is not a thing you can
+    // do. A bare `<` guard on the line was not enough — it let toast strings through
+    // (Books room, 12 Sep).
+    if (!/toLocaleString\([^)]*\)[\s\S]{0,30}?[Cc]urrency/.test(maskStrings(line))) return;
     const window = lines.slice(Math.max(0, i - 2), i + 1).join(" ");
     if (!/dir="ltr"/.test(window)) risky.push(`${f}:${i + 1}`);
   });
@@ -151,10 +160,36 @@ ok("every amount + currency pair is isolated", risky.length === 0, risky.join(",
 // around the figure. Both verified by hand in Banking/Reports (Books room, 12 Sep).
 ok("a table cell isolates on an inner span, not the cell",
   !/<td[^>]*dir="ltr"/.test(read("src/tabs/BankingTab.tsx")));
-// ponytail: formatUSD() embeds its own symbol, so this rule cannot see it — 72 lines
-// carry one unisolated today. Most are a lone figure in its own cell, which does not
-// scramble; the ones that bite sit inside a sentence. Widen to formatUSD only with a
-// way to tell those apart, or it is 72 false positives.
+// formatUSD() embeds its own symbol, so the rule above cannot see it, and 85 lines call it.
+// The discriminator is not "figure in a sentence" — it is a t() call in the SAME element
+// (Books room, 12 Sep, measured in a browser at dir="rtl"). A figure beside a hardcoded
+// English literal sits in an all-LTR island and is safe; a figure beside t() becomes a
+// digit-leading island inside an Arabic run at runtime, and inverts. Wrapping it puts a
+// <span> between the two, so the rule clears itself — that is what makes it a rule and
+// not a one-off audit. 0 hits today; 4 on ReportsTab as it stood before 4b0261b, which
+// were exactly the four figures that were scrambling.
+const mixesWithT = (raw: string) => {
+  const line = maskStrings(raw);
+  for (const m of line.matchAll(/formatUSD\(/g)) {
+    const close = line.indexOf("<", m.index);
+    const run = line.slice(line.lastIndexOf(">", m.index) + 1, close === -1 ? line.length : close);
+    if (/\bt\(/.test(run)) return true;
+  }
+  return false;
+};
+const mixed: string[] = [];
+for (const f of files) {
+  read(f).split("\n").forEach((line, i) => { if (mixesWithT(line)) mixed.push(`${f}:${i + 1}`); });
+}
+ok("a formatUSD figure never shares an element with a t() call", mixed.length === 0, mixed.join(", "));
+// The element is the unit, not the line and not "any text": these four are safe and a
+// looser rule would send someone to "fix" them. Verified in a browser, not reasoned.
+ok("a t() neighbour is the case", mixesWithT('<p>{t("Of the")} {formatUSD(bs.cash)} {t("in the bank")}</p>'));
+ok("an English-only neighbour is not", !mixesWithT('<span>ledger 1120 book: {formatUSD(x)}</span>'));
+ok("a lone figure in a cell is not", !mixesWithT("<td>{formatUSD(x)}</td>"));
+ok("and wrapping clears it — the span comes between", !mixesWithT('<span dir="ltr">{formatUSD(x)}</span>'));
+ok("a figure inside a message string is not a case",
+  !mixesWithT('const msg = `owed ${formatUSD(x)} to ${t("them")}`;'));
 ok("the date range on the payroll sheet is isolated",
   /<span dir="ltr">\{eng\[pid\]\.first\} → \{eng\[pid\]\.last\}<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
 ok("so is the LOE percentage", /<span dir="ltr">\{eng\[pid\]\.pct\}% \(payroll\)<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
