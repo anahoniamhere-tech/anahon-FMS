@@ -172,6 +172,12 @@ export interface Expense {
    *  equipment…). Named when the request is raised: the procurement rule needs it then.
    *  Blank on rows raised before this existed. */
   costAccountCode?: string;
+  /** Why this cost never involved choosing a supplier ("a salary under an employment
+   *  contract"), or "" when it did. Derived in loadState from the account the books actually
+   *  debited — netted, so a corrected voucher reads where the cost is now — and shipped to
+   *  every seat, because deriving it in the browser made the same register read one number to
+   *  a director and another to the keeper who cannot see the journal. */
+  noSupplierChoice?: string;
 }
 
 export interface Procurement {

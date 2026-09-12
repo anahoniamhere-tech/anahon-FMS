@@ -596,11 +596,39 @@ async function loadState(viewer?: any) {
   const auditTotal = await prisma.auditLog.count();
 
   // Deserialize dynamic array list columns
-  const formattedExpenses = expenses.map(e => ({
-    ...e,
-    comments: JSON.parse(e.commentsJson || "[]"),
-    allocations: JSON.parse(e.allocationsJson || "[]")
-  }));
+  // Whether a voucher's cost ever involved choosing a supplier — answered HERE, once, for
+  // every seat (12 Sep 2026).
+  //
+  // It used to be worked out in the browser from state.journalEntries. Operational seats never
+  // receive those, so the same register read 67 gaps to a director and 84 to the keeper holding
+  // the phone: rent and salaries looked to him like purchases nobody got quotations for. A
+  // number that means something different depending on who is looking is not a number anybody
+  // can act on. The reason itself gives nothing away — "this is rent" is not a fact about the
+  // books — so it is safe to ship to every seat, and it is the answer rather than the evidence.
+  //
+  // Netted, not gross: a ledger correction credits the wrong account and debits the right one
+  // beside it, so a corrected voucher has debit legs on both (src/costAccount.ts). Falls back to
+  // the voucher's own answer only while the books have not spoken; silence is never an exemption.
+  const expenseAccountCodes = new Set(accounts.filter((a: any) => a.type === "Expense").map((a: any) => a.code));
+  const legsByVoucher = new Map<string, any[]>();
+  for (const j of journalEntries) {
+    const list = legsByVoucher.get(j.referenceNo) || [];
+    for (const leg of JSON.parse(j.itemsJson || "[]")) list.push(leg);
+    legsByVoucher.set(j.referenceNo, list);
+  }
+  const formattedExpenses = expenses.map(e => {
+    const posted = debitedExpenseAccounts(legsByVoucher.get(e.voucherNo) || []).filter(c => expenseAccountCodes.has(c));
+    const codes = posted.length
+      ? posted
+      : (e.costAccountCode && expenseAccountCodes.has(e.costAccountCode) ? [e.costAccountCode] : []);
+    return {
+      ...e,
+      comments: JSON.parse(e.commentsJson || "[]"),
+      allocations: JSON.parse(e.allocationsJson || "[]"),
+      /** Why this cost never involved choosing a supplier, or "" when it did. */
+      noSupplierChoice: noSupplierChoice(codes)
+    };
+  });
 
   const formattedProcurements = procurements.map(p => ({
     ...p,

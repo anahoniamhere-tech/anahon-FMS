@@ -93,9 +93,9 @@ ok("a MIXED voucher is not exempt — paying the rent and buying a lens still co
   noSupplierChoice(["7100", "6300"]) === "");
 ok("an unposted voucher, with no account behind it yet, stays on the list — silence is not an exemption",
   noSupplierChoice([]) === "");
-ok("the counter asks the books, not the wording of a voucher title",
-  /state\.journalEntries\.filter\(j => j\.referenceNo === e\.voucherNo\)/.test(app)
-  && /debitedExpenseAccounts\(items\)/.test(app) && /a\.type === "Expense"/.test(app));
+ok("the answer asks the books, not the wording of a voucher title",
+  /for \(const j of journalEntries\)/.test(server) && /debitedExpenseAccounts\(/.test(server)
+  && /a\.type === "Expense"/.test(server));
 ok("and only the ones with a real supplier choice are counted as a gap",
   /const noProcurement = overThreshold\.filter\(x => !x\.notASupplierChoice\)/.test(app));
 ok("the set-aside ones are shown, with their reason — excluded, never hidden",
@@ -118,8 +118,9 @@ ok("and asks for it on the voucher form, saying when no quotations are expected"
   /id="exp-cost-account"/.test(expenses) && /No quotations are expected — this is \{noSupplierChoice/.test(expenses));
 ok("the procurement picker disappears for that spend rather than demanding an answer",
   /needsProcurement\(Number\(expenseAmount\)\) && !noSupplierChoice\(\[expenseCostAccount\]\)/.test(expenses));
-ok("the counter still prefers the books, and falls back to the voucher only before they speak",
-  /if \(posted\.length\) return posted;/.test(app) && /e\.costAccountCode && expenseCodes\.has\(e\.costAccountCode\)/.test(app));
+ok("it still prefers the books, and falls back to the voucher only before they speak",
+  /const codes = posted\.length\s*\n?\s*\? posted/.test(server)
+  && /e\.costAccountCode && expenseAccountCodes\.has\(e\.costAccountCode\)/.test(server));
 
 console.log("\nH. the ledger stops posting every cost as video production");
 ok("posting debits the account the voucher named", /confirmedCostAccount\s*\n?\s*\|\| exp\.costAccountCode/.test(server)
@@ -206,13 +207,30 @@ ok("a genuinely split cost still reads as two — one correction cannot express 
   debitedExpenseAccounts([posting("6000", 3000), posting("6300", 2000)]).sort().join() === "6000,6300");
 ok("the bank, payable and withholding legs were never the cost and are ignored",
   debitedExpenseAccounts([posting("6000", 5000), { accountCode: "1120", debit: 0, credit: 5000 }, { accountCode: "2100", debit: 0, credit: 5000 }]).join() === "6000");
-ok("the counter reads it netted, through the books' own module",
-  /debitedExpenseAccounts\(items\)\.filter\(c => expenseCodes\.has\(c\)\)/.test(app)
-  && !/\.filter\(i => i\.debit > 0\)\.map\(i => i\.accountCode\)/.test(app));
-ok("and still keeps the chart as the filter, which is stricter than a code prefix", /a\.type === "Expense"/.test(app));
+ok("the SERVER reads it netted, through the books' own module",
+  /debitedExpenseAccounts\(legsByVoucher\.get\(e\.voucherNo\) \|\| \[\]\)\.filter\(c => expenseAccountCodes\.has\(c\)\)/.test(server));
+ok("and keeps the chart as the filter, which is stricter than a code prefix",
+  /accounts\.filter\(\(a: any\) => a\.type === "Expense"\)/.test(server));
 ok("a fully reversed voucher falls through to the answer on the voucher itself",
   debitedExpenseAccounts([posting("6000", 5000), { accountCode: "6000", debit: 0, credit: 5000 }]).length === 0
-  && /e\.costAccountCode && expenseCodes\.has\(e\.costAccountCode\)/.test(app));
+  && /e\.costAccountCode && expenseAccountCodes\.has\(e\.costAccountCode\)/.test(server));
+
+console.log("\nK. one number for every seat — 12 Sep 2026");
+// Derived in the browser, this read 67 gaps to a director and 84 to the keeper holding the
+// phone: operational seats never receive journal entries, so rent and salaries looked to him
+// like purchases nobody got quotations for.
+ok("the answer is computed once, in loadState, and shipped on the voucher",
+  /noSupplierChoice: noSupplierChoice\(codes\)/.test(server));
+ok("every seat that gets expenses gets it — it rides on formattedExpenses, not on a branch",
+  /const formattedExpenses = expenses\.map\(e => \{/.test(server)
+  && (server.match(/expenses: buys \? formattedExpenses : \[\]/g) || []).length >= 1);
+ok("the browser reads the answer and no longer derives it",
+  /notASupplierChoice: e\.noSupplierChoice \|\| ""/.test(app)
+  && !/debitedExpenseAccounts/.test(app) && !/state\.journalEntries/.test(app));
+ok("a missing answer is not an exemption — blank means the question still applies",
+  noSupplierChoice([]) === "" && /e\.noSupplierChoice \|\| ""/.test(app));
+ok("and the reason shipped is the reason, never the journal it came from",
+  !/journalEntries: journalEntries/.test(server.slice(server.indexOf("const formattedExpenses"), server.indexOf("const formattedProcurements"))));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

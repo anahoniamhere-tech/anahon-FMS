@@ -52,8 +52,6 @@ import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, B
 import { PROPOSAL_SECTIONS, STREAMS, OPP_STAGES, QUOTE_STATUSES, SERVICE_CATALOG, FINANCIAL_TERMS, PRODUCTION_NOTE, TECHNICAL_NOTE, EXTRAS_DEFAULT } from "./constants";
 import { tr } from "./i18n";
 import { THRESHOLD_LABEL, needsProcurement } from "./procurementPolicy";
-import { noSupplierChoice } from "./spendKind";
-import { debitedExpenseAccounts } from "./costAccount";
 import IcontentInvPage from "./IcontentInvPage";
 import ProjectsTab from "./tabs/ProjectsTab";
 import ExpensesTab from "./tabs/ExpensesTab";
@@ -981,30 +979,17 @@ export default function App() {
       .filter(e => COUNTED.includes(e.status) && !hasProof(e.id) && !isReconstructed(e.id))
       .sort((a, b) => b.convertedAmount - a.convertedAmount);
 
-    // An RFQ is a question about choosing a supplier. Where the books show there was no
-    // supplier to choose — a salary, the rent, a bank charge — the question does not apply,
-    // so the item is set aside with its reason rather than demanded forever. The account the
-    // entry debited is the signal; an unposted voucher has none, and stays on the list.
-    const expenseCodes = new Set(state.accounts.filter(a => a.type === "Expense").map(a => a.code));
-    const debitedAccounts = (e: { voucherNo: string; costAccountCode?: string }): string[] => {
-      // NET, not gross, and that distinction is the whole of it (12 Sep 2026). A ledger
-      // correction never edits the posted entry — it credits the wrong account and debits the
-      // right one beside it — so a corrected voucher carries debit legs on BOTH. Read gross and
-      // a cost properly moved onto rent reads as "6000 + 7100", no longer wholly exempt, and
-      // lands back on this list as a purchase nobody got quotations for. costPositions nets the
-      // credits off and says what a person reading the books would say: it is on 7100 now.
-      const items = state.journalEntries.filter(j => j.referenceNo === e.voucherNo).flatMap(j => j.items || []);
-      // The chart itself, not a code prefix — stricter than the module's own guess.
-      const posted = debitedExpenseAccounts(items).filter(c => expenseCodes.has(c));
-      // The books have the last word. Before they have spoken, the voucher's own answer
-      // stands — otherwise a salary raised this morning sits on the list until somebody
-      // posts it, which is the very wait this was meant to end.
-      if (posted.length) return posted;
-      return e.costAccountCode && expenseCodes.has(e.costAccountCode) ? [e.costAccountCode] : [];
-    };
+    // An RFQ is a question about choosing a supplier. Where there was no supplier to choose —
+    // a salary, the rent, a bank charge — the question does not apply, so the item is set aside
+    // with its reason rather than demanded forever.
+    //
+    // The answer comes from the server (loadState), not from journal entries read here. It used
+    // to be derived in this file, and operational seats never receive journal entries, so this
+    // register read 67 gaps to a director and 84 to the keeper holding the phone. One rule, one
+    // place, one number for everybody.
     const overThreshold = state.expenses
       .filter(e => COUNTED.includes(e.status) && needsProcurement(e.convertedAmount) && !e.procurementId)
-      .map(e => ({ e, notASupplierChoice: noSupplierChoice(debitedAccounts(e)) }))
+      .map(e => ({ e, notASupplierChoice: e.noSupplierChoice || "" }))
       .sort((a, b) => b.e.convertedAmount - a.e.convertedAmount);
     const noProcurement = overThreshold.filter(x => !x.notASupplierChoice).map(x => x.e);
     const notProcurable = overThreshold.filter(x => x.notASupplierChoice);
