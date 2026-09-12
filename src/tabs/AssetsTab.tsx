@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Camera, ClipboardList, Gift, History, LogIn, LogOut, Package, Printer, Receipt, Ruler, ScanLine, Search, Tag, Wrench } from "lucide-react";
+import { Camera, ClipboardList, Gift, History, LogIn, LogOut, MapPin, Package, Printer, Receipt, Ruler, ScanLine, Search, Tag, Wrench } from "lucide-react";
 import { SharedProps } from "./shared";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS } from "../roles";
 import { withTicket } from "../docTicket";
-import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, checkOutBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife } from "../equipment";
+import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, EQUIPMENT_LOCATIONS, OTHER_LOCATION, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, checkOutBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife, currentMovement } from "../equipment";
 import { addDays, localToday } from "../workflow";
 
 /** A request equipment can be booked against: the money is committed. The route asks the same. */
@@ -46,8 +46,16 @@ const BLANK = {
   name: "", brand: "", model: "", serial: "", noSerial: false, specs: "",
   kind: "", lifeOverride: "",
   expenseId: "", cost: "", currency: "", gift: false, purchaseDate: "", projectId: "",
-  custodian: "", location: "", condition: "",
+  // Who has it right now, and where — the item's first custody entry. Never edited again
+  // once saved: every later change happens through check-out and check-in (12 Sep 2026).
+  holderKind: "org", holderId: "", location: "", locationOther: "",
+  condition: "",
 };
+
+/** "employee:u-7" ↔ {kind:"employee", id:"u-7"}; "org:" ↔ {kind:"org", id:""}. One
+ *  encoding, used by every holder picker on this screen so a value round-trips exactly. */
+const holderValue = (kind: string, id: string) => kind === "org" ? "org:" : `${kind}:${id}`;
+const parseHolderValue = (v: string) => { const i = v.indexOf(":"); return { kind: v.slice(0, i), id: v.slice(i + 1) }; };
 
 /** Kinds a receiver understands at a glance, not the internal keys. */
 const KIND_LABELS: Record<string, string> = {
@@ -63,7 +71,7 @@ const STATUS_CHIP: Record<string, string> = {
 };
 
 export default function AssetsTab({ currentUser, focusId, lang, openDoc, refreshState, setFocusId, state, t, triggerToast }: SharedProps) {
-  const [f, setF] = useState({ ...BLANK, custodian: currentUser?.name || "" });
+  const [f, setF] = useState({ ...BLANK, holderKind: "employee", holderId: currentUser?.id || "" });
   const set = (k: keyof typeof BLANK, v: string | boolean) => setF(prev => ({ ...prev, [k]: v }));
   const setKind = (kind: string) => setF(prev => ({ ...prev, kind, lifeOverride: "" }));
   const policyLife = usefulLifeFor(f.kind);
@@ -72,7 +80,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   const [itemPhoto, setItemPhoto] = useState<Photo | null>(null);
   const [scan, setScan] = useState<{ busy: boolean; confidence?: string; warnings?: string[]; duplicateOfTag?: string }>({ busy: false });
   const [saving, setSaving] = useState(false);
-  const [verifyDraft, setVerifyDraft] = useState<Record<string, { condition: string; location: string; months: string }>>({});
+  const [verifyDraft, setVerifyDraft] = useState<Record<string, { condition: string; months: string }>>({});
   // One open panel at a time — check out, check in or a repair — and its fields.
   const [panel, setPanel] = useState<{ id: string; kind: "out" | "in" | "repair" } | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -93,6 +101,14 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   const nameOf = (id?: string | null) => state.users.find(u => u.id === id)?.name || id || "";
   const supplierOf = (vendorId?: string) => state.vendors.find(v => v.id === vendorId)?.name || t("Direct Reimbursement");
   const projectOf = (id?: string) => state.projects.find(p => p.id === id)?.code || "";
+  // A movement's holder resolved to a name — the organisation, an employee (the same
+  // account list the loan picker already used) or a supplier. Blank/unknown kind is read
+  // as "employee": every movement before this design was a loan to a User, and this is
+  // that one legacy case, not a real third option nobody has chosen.
+  const custodyName = (kind: string | undefined, id: string) =>
+    kind === "org" ? t("AnaHon (the organisation)") :
+    kind === "vendor" ? (state.vendors.find(v => v.id === id)?.name || id) :
+    (state.users.find(u => u.id === id)?.name || id);
 
   // One request can buy several items, so the next may only take what is left of it.
   const bookedOn = (expenseId: string) => assets.filter(a => a.expenseId === expenseId).reduce((s, a) => s + (a.cost || 0), 0);
@@ -172,7 +188,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
           expenseId: f.expenseId, gift: f.gift, cost: f.gift ? "0" : f.cost, currency: f.gift ? "" : f.currency,
           purchaseDate: f.purchaseDate, fundingProjectId: f.projectId,
           ...(overriding && f.lifeOverride ? { usefulLifeYears: f.lifeOverride } : {}),
-          custodian: f.custodian, location: f.location, condition: f.condition,
+          holderKind: f.holderKind, holderId: f.holderId, location: f.location, locationOther: f.locationOther, condition: f.condition,
         }),
       });
       const data = await res.json();
@@ -187,7 +203,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
       ]);
       if (filed.every(Boolean)) triggerToast(`${t("Received")} — ${tag}. ${t("Added to the stickers to print below.")}`);
       else triggerToast(`${t("Received")} — ${tag}. ${t("A photo did not upload; add it from the item's card.")}`, "error");
-      setF({ ...BLANK, custodian: currentUser?.name || "" });
+      setF({ ...BLANK, holderKind: "employee", holderId: currentUser?.id || "" });
       setLabelPhoto(null);
       setItemPhoto(null);
       setScan({ busy: false });
@@ -199,12 +215,12 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
     }
   };
 
-  const handleVerify = async (a: { id: string; condition: string; location: string }) => {
-    const d = verifyDraft[a.id] || { condition: a.condition, location: a.location, months: String(DEFAULT_CHECK_MONTHS) };
+  const handleVerify = async (a: { id: string; condition: string }) => {
+    const d = verifyDraft[a.id] || { condition: a.condition, months: String(DEFAULT_CHECK_MONTHS) };
     const res = await fetch("/api/assets/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetId: a.id, condition: d.condition, location: d.location, checkEveryMonths: Number(d.months) }),
+      body: JSON.stringify({ assetId: a.id, condition: d.condition, checkEveryMonths: Number(d.months) }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return triggerToast(data.error || "Confirmation was refused.", "error");
@@ -226,6 +242,44 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
     ? new Date(`${ymd.slice(0, 10)}T12:00:00`).toLocaleDateString(lang === "ar" ? "ar-LB" : "en-GB", { weekday: "short", day: "numeric", month: "short" })
     : "";
   const activeUsers = state.users.filter(u => u.active).sort((a, b) => a.name.localeCompare(b.name));
+  const activeVendors = state.vendors.filter(v => v.active && !v.blocked).sort((a, b) => a.name.localeCompare(b.name));
+
+  /** Who has it — a grouped picker over the two lists the FMS already has. `includeOrg`
+   *  drops "the organisation itself" from a check-out, since that is what the item is
+   *  leaving, not a destination. */
+  const holderPicker = (id: string, kind: string, holderId: string, includeOrg: boolean, onChange: (kind: string, holderId: string) => void) => (
+    <select
+      id={id} required value={holderValue(kind, holderId)}
+      onChange={e => { const p = parseHolderValue(e.target.value); onChange(p.kind, p.id); }}
+      className={`${inp} bg-white`}
+    >
+      <option value="" disabled hidden>{t("— choose —")}</option>
+      {includeOrg && <option value="org:">{t("The organisation itself")}</option>}
+      <optgroup label={t("An employee")}>
+        {activeUsers.map(u => <option key={u.id} value={holderValue("employee", u.id)}>{u.name}</option>)}
+      </optgroup>
+      <optgroup label={t("A supplier")}>
+        {activeVendors.map(v => <option key={v.id} value={holderValue("vendor", v.id)}>{v.name}</option>)}
+      </optgroup>
+    </select>
+  );
+
+  /** Where it is — the short list, or "Other" with a typed line underneath. */
+  const locationPicker = (id: string, value: string, other: string, onChange: (v: string) => void, onOther: (v: string) => void) => (
+    <>
+      <select id={id} required value={value} onChange={e => onChange(e.target.value)} className={`${inp} bg-white`}>
+        <option value="">{t("— choose —")}</option>
+        {EQUIPMENT_LOCATIONS.map(l => <option key={l} value={l}>{t(l)}</option>)}
+        <option value={OTHER_LOCATION}>{t("Other — type it")}</option>
+      </select>
+      {value === OTHER_LOCATION && (
+        <input
+          required value={other} onChange={e => onOther(e.target.value)}
+          placeholder={t("Where is it exactly?")} className={`${inp} mt-1`}
+        />
+      )}
+    </>
+  );
 
   // A sticker's QR, or a desk row, opens /?door=assets&focus=<id>: bring that item into view.
   useEffect(() => {
@@ -516,12 +570,12 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               </span>
             </div>
             <div>
-              <label htmlFor="eq-custodian" className={lbl}>{t("Held by")}</label>
-              <input id="eq-custodian" required value={f.custodian} onChange={e => set("custodian", e.target.value)} className={inp} />
+              <label htmlFor="eq-holder" className={lbl}>{t("Currently with")}</label>
+              {holderPicker("eq-holder", f.holderKind, f.holderId, true, (kind, holderId) => setF(prev => ({ ...prev, holderKind: kind, holderId })))}
             </div>
             <div>
-              <label htmlFor="eq-location" className={lbl}>{t("Kept at")}</label>
-              <input id="eq-location" required value={f.location} onChange={e => set("location", e.target.value)} placeholder={t("e.g. Tripoli office, studio cupboard")} className={inp} />
+              <label htmlFor="eq-location" className={lbl}>{t("Currently in")}</label>
+              {locationPicker("eq-location", f.location, f.locationOther, v => set("location", v), v => set("locationOther", v))}
             </div>
             <div>
               <label htmlFor="eq-condition" className={lbl}>{t("Condition on arrival")}</label>
@@ -573,7 +627,10 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
           const status = equipmentStatus(a);
           const docs = docsOf(a.id);
           const v = a.expenseId ? state.expenses.find(e => e.id === a.expenseId) : undefined;
-          const d = verifyDraft[a.id] || { condition: a.condition, location: a.location, months: String(DEFAULT_CHECK_MONTHS) };
+          const d = verifyDraft[a.id] || { condition: a.condition, months: String(DEFAULT_CHECK_MONTHS) };
+          // The whole custody state boils down to the last entry on the timeline — see
+          // src/equipment.ts. Null only for a row that predates this design.
+          const cm = currentMovement(a);
           return (
             <div key={a.id} id={`asset-${a.id}`} className={`p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3 ${highlight === a.id ? "ring-2 ring-amber-400" : ""}`}>
               <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
@@ -603,7 +660,34 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 {a.specs && <p className="mt-1 whitespace-pre-line text-[11px] text-slate-500">{a.specs}</p>}
               </div>
 
-              <p className="text-[11px] text-slate-600">{t("Kept at")}: {a.location} · {t("Held by")}: {a.custodian}</p>
+              {a.holderId ? (
+                // On a loan — cm is guaranteed by the mirrored holderId column.
+                <p className={`rounded-lg px-3 py-2 text-xs font-bold ${a.dueBack && a.dueBack < today ? "bg-red-50 text-red-800" : "bg-sky-50 text-sky-900"}`}>
+                  <LogOut className="inline h-3.5 w-3.5" /> {t("With {name} — {purpose} — due {date}")
+                    .replace("{name}", custodyName(cm?.holderKind, cm?.holderId || "").split(/\s+/)[0])
+                    .replace("{purpose}", a.heldFor || "")
+                    .replace("{date}", dayFmt(a.dueBack))}
+                  {a.dueBack && a.dueBack < today ? ` · ${t("overdue")}` : ""}
+                </p>
+              ) : cm ? (
+                <p className="text-[11px] text-slate-600">
+                  <MapPin className="inline h-3.5 w-3.5" />{" "}
+                  {cm.holderKind === "org"
+                    ? t("{place} — since {date}").replace("{place}", t(cm.location) || cm.location).replace("{date}", dayFmt(cm.outAt))
+                    : cm.location
+                      ? t("With {name} — {place} — since {date}")
+                          .replace("{name}", custodyName(cm.holderKind, cm.holderId).split(/\s+/)[0])
+                          .replace("{place}", t(cm.location) || cm.location)
+                          .replace("{date}", dayFmt(cm.outAt))
+                      : t("With {name} — since {date}")
+                          .replace("{name}", custodyName(cm.holderKind, cm.holderId).split(/\s+/)[0])
+                          .replace("{date}", dayFmt(cm.outAt))}
+                </p>
+              ) : (
+                // A row that predates this design has no timeline — the last thing its
+                // plain custodian/location columns said is still readable, just undated.
+                <p className="text-[11px] text-slate-600"><MapPin className="inline h-3.5 w-3.5" /> {a.custodian || "—"} · {a.location || "—"}</p>
+              )}
               {a.expenseId && (
                 <p className="text-[11px] text-slate-600">
                   <Receipt className="inline h-3.5 w-3.5" /> {v ? (<>
@@ -643,15 +727,6 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 <p className="text-[11px] text-emerald-800">✓ {t("Confirmed by")} {nameOf(a.verifiedBy)} · <span dir="ltr">{a.verifiedAt.slice(0, 10)}</span> · {t(a.condition)}</p>
               )}
 
-              {a.holderId && (
-                <p className={`rounded-lg px-3 py-2 text-xs font-bold ${a.dueBack && a.dueBack < today ? "bg-red-50 text-red-800" : "bg-sky-50 text-sky-900"}`}>
-                  <LogOut className="inline h-3.5 w-3.5" /> {t("With {name} — {purpose} — due {date}")
-                    .replace("{name}", nameOf(a.holderId).split(/\s+/)[0])
-                    .replace("{purpose}", a.heldFor || "")
-                    .replace("{date}", dayFmt(a.dueBack))}
-                  {a.dueBack && a.dueBack < today ? ` · ${t("overdue")}` : ""}
-                </p>
-              )}
               {a.nextCheckDue && !a.holderId && (
                 <p className={`text-[11px] ${a.nextCheckDue < today ? "font-bold text-red-700" : "text-slate-500"}`}>
                   <Search className="inline h-3.5 w-3.5" /> {t("Next physical check")}: <span dir="ltr">{a.nextCheckDue}</span>
@@ -681,7 +756,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               {receiving && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                   {a.holderId ? (
-                    <button type="button" onClick={() => openPanel(a.id, "in", { location: a.location })} className={btn}><LogIn className="h-4 w-4" /> {t("Check in")}</button>
+                    <button type="button" onClick={() => openPanel(a.id, "in", { holderKind: "org", holderId: "", location: a.location || "" })} className={btn}><LogIn className="h-4 w-4" /> {t("Check in")}</button>
                   ) : checkOutBlocker(a) ? (
                     // The route's own reason, as the label — never a tooltip a phone cannot show.
                     <button type="button" disabled className={btnOff}><LogOut className="h-4 w-4" /> {t("Check out")} — {t(checkOutBlocker(a)!)}</button>
@@ -697,15 +772,12 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
 
               {panel?.id === a.id && panel.kind === "out" && (
                 <form
-                  onSubmit={e => { e.preventDefault(); send("/api/assets/checkout", { assetId: a.id, holderId: field("holderId"), heldFor: field("heldFor"), projectId: field("projectId"), dueBack: field("dueBack") }, `${a.tag} — ${t("checked out")}`); }}
+                  onSubmit={e => { e.preventDefault(); send("/api/assets/checkout", { assetId: a.id, holderKind: field("holderKind"), holderId: field("holderId"), heldFor: field("heldFor"), projectId: field("projectId"), dueBack: field("dueBack") }, `${a.tag} — ${t("checked out")}`); }}
                   className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-2"
                 >
                   <div>
                     <label htmlFor={`out-who-${a.id}`} className={lbl}>{t("Who is taking it")}</label>
-                    <select id={`out-who-${a.id}`} required value={field("holderId")} onChange={e => setField("holderId", e.target.value)} className={`${inp} bg-white`}>
-                      <option value="">{t("— choose —")}</option>
-                      {activeUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                    </select>
+                    {holderPicker(`out-who-${a.id}`, field("holderKind"), field("holderId"), false, (kind, holderId) => setDraft(prev => ({ ...prev, holderKind: kind, holderId })))}
                   </div>
                   <div>
                     <label htmlFor={`out-for-${a.id}`} className={lbl}>{t("What for — the project or the shoot")}</label>
@@ -728,8 +800,8 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
 
               {panel?.id === a.id && panel.kind === "in" && (
                 <form
-                  onSubmit={e => { e.preventDefault(); send("/api/assets/checkin", { assetId: a.id, condition: field("condition"), location: field("location"), note: field("note") }, `${a.tag} — ${t("checked in")}`); }}
-                  className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-3"
+                  onSubmit={e => { e.preventDefault(); send("/api/assets/checkin", { assetId: a.id, condition: field("condition"), holderKind: field("holderKind"), holderId: field("holderId"), location: field("location"), locationOther: field("locationOther"), note: field("note") }, `${a.tag} — ${t("checked in")}`); }}
+                  className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-2"
                 >
                   <div>
                     <label htmlFor={`in-cond-${a.id}`} className={lbl}>{t("Condition on return")}</label>
@@ -739,14 +811,18 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                     </select>
                   </div>
                   <div>
-                    <label htmlFor={`in-loc-${a.id}`} className={lbl}>{t("Kept at")}</label>
-                    <input id={`in-loc-${a.id}`} value={field("location")} onChange={e => setField("location", e.target.value)} className={inp} />
-                  </div>
-                  <div>
                     <label htmlFor={`in-note-${a.id}`} className={lbl}>{t("Note")}</label>
                     <input id={`in-note-${a.id}`} value={field("note")} onChange={e => setField("note", e.target.value)} placeholder={t("e.g. lens cap missing")} className={inp} />
                   </div>
-                  <button type="submit" className={`${btn} justify-center md:col-span-3`}><LogIn className="h-4 w-4" /> {t("Check in")}</button>
+                  <div>
+                    <label htmlFor={`in-holder-${a.id}`} className={lbl}>{t("Currently with")}</label>
+                    {holderPicker(`in-holder-${a.id}`, field("holderKind"), field("holderId"), true, (kind, holderId) => setDraft(prev => ({ ...prev, holderKind: kind, holderId })))}
+                  </div>
+                  <div>
+                    <label htmlFor={`in-loc-${a.id}`} className={lbl}>{t("Currently in")}</label>
+                    {locationPicker(`in-loc-${a.id}`, field("location"), field("locationOther"), v => setField("location", v), v => setField("locationOther", v))}
+                  </div>
+                  <button type="submit" className={`${btn} justify-center md:col-span-2`}><LogIn className="h-4 w-4" /> {t("Check in")}</button>
                 </form>
               )}
 
@@ -805,10 +881,18 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                     <div className="mt-1 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
                       {[...(a.movements || [])].reverse().map(m => (
                         <p key={m.id}>
-                          <LogOut className="inline h-3.5 w-3.5" /> <span dir="ltr">{m.outAt.slice(0, 10)}</span> → {nameOf(m.holderId)} · {m.heldFor} · {t("due")} <span dir="ltr">{m.dueBack}</span>
-                          {m.inAt
-                            ? <> · <LogIn className="inline h-3.5 w-3.5" /> <span dir="ltr">{m.inAt.slice(0, 10)}</span> · {t(m.returnCondition || "")}{m.note ? ` — ${m.note}` : ""}</>
-                            : <> · <b>{t("still out")}</b></>}
+                          {m.dueBack ? (
+                            <>
+                              <LogOut className="inline h-3.5 w-3.5" /> <span dir="ltr">{m.outAt.slice(0, 10)}</span> → {custodyName(m.holderKind, m.holderId)} · {m.heldFor} · {t("due")} <span dir="ltr">{m.dueBack}</span>
+                              {m.inAt
+                                ? <> · <LogIn className="inline h-3.5 w-3.5" /> <span dir="ltr">{m.inAt.slice(0, 10)}</span> · {t(m.returnCondition || "")}{m.note ? ` — ${m.note}` : ""}</>
+                                : <> · <b>{t("still out")}</b></>}
+                            </>
+                          ) : (
+                            <>
+                              <MapPin className="inline h-3.5 w-3.5" /> <span dir="ltr">{m.outAt.slice(0, 10)}</span> · {m.holderKind === "org" ? (t(m.location) || m.location) : `${custodyName(m.holderKind, m.holderId)} — ${t(m.location) || m.location}`}
+                            </>
+                          )}
                         </p>
                       ))}
                       {[...(a.repairs || [])].reverse().map(r => (
@@ -837,11 +921,6 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                   >
                     {CONDITIONS.map(c => <option key={c} value={c}>{t(c)}</option>)}
                   </select>
-                  <input
-                    aria-label={t("Kept at")} value={d.location}
-                    onChange={e => setVerifyDraft({ ...verifyDraft, [a.id]: { ...d, location: e.target.value } })}
-                    className="finance-input min-h-[44px] w-40 text-xs md:min-h-0"
-                  />
                   <select
                     aria-label={t("Next check")} value={d.months}
                     onChange={e => setVerifyDraft({ ...verifyDraft, [a.id]: { ...d, months: e.target.value } })}

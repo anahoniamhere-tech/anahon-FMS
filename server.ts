@@ -19,7 +19,7 @@ import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/
 import { NAV } from "./src/nav.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
-import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type Movement, type Repair } from "./src/equipment.js";
+import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -7748,6 +7748,38 @@ Rules:
 // serial when the field was blank, write every item as "Excellent" and in USD whatever the
 // invoice said, and fall back to a named Finance Officer when no user came with the request.
 // The actor is the signed-in person the middleware verified — nobody else.
+// Who currently has an item, resolved and validated once so the register form and the
+// check-in form cannot each invent a different rule for what counts as a real holder.
+// "employee" resolves against the user accounts, exactly as the loan picker already did —
+// this app treats a login as how an employee is named, so there is no second roster to
+// keep in step with this one. Strict: used whenever a custody entry is written.
+async function resolveHolder(holderKind: string, holderId: string, allowOrg: boolean): Promise<{ ok: boolean; name: string; error: string }> {
+  if (holderKind === "org") {
+    if (!allowOrg) return { ok: false, name: "", error: "Say who is taking it — an employee or a supplier." };
+    return { ok: true, name: "AnaHon", error: "" };
+  }
+  if (holderKind === "employee") {
+    const u = await prisma.user.findUnique({ where: { id: holderId } });
+    if (!u || !u.active) return { ok: false, name: "", error: "Choose an active account." };
+    return { ok: true, name: u.name, error: "" };
+  }
+  if (holderKind === "vendor") {
+    const v = await prisma.vendor.findUnique({ where: { id: holderId } });
+    if (!v || v.blocked) return { ok: false, name: "", error: "Choose a supplier that is not blocked." };
+    return { ok: true, name: v.name, error: "" };
+  }
+  return { ok: false, name: "", error: "Say who has it — the organisation, an employee or a supplier." };
+}
+
+// A lenient counterpart for messages about an item's PAST or PRESENT holder — a display
+// line must still read sensibly even for a name that has since been deactivated or removed,
+// which resolveHolder above would rightly refuse to accept for a NEW write.
+async function holderDisplayName(holderKind: string, holderId: string): Promise<string> {
+  if (holderKind === "org") return "AnaHon";
+  if (holderKind === "vendor") return (await prisma.vendor.findUnique({ where: { id: holderId } }))?.name || "a supplier";
+  return (await prisma.user.findUnique({ where: { id: holderId } }))?.name || "someone";
+}
+
 app.post("/api/assets/register", async (req, res) => {
   try {
     const user = req.body.user;
@@ -7761,9 +7793,18 @@ app.post("/api/assets/register", async (req, res) => {
     const serialNumber = b.noSerial === true ? NO_SERIAL : blankIfPlaceholder(b.serialNumber);
     if (!serialNumber) return res.status(400).json({ error: `Type the serial exactly as printed, or tick "${NO_SERIAL}".` });
     if (!(CONDITIONS as readonly string[]).includes(b.condition)) return res.status(400).json({ error: "Record the condition it arrived in." });
-    const location = String(b.location || "").trim();
-    const custodian = String(b.custodian || "").trim();
-    if (!location || !custodian) return res.status(400).json({ error: "Say where it is kept and who holds it." });
+    // Who has it and where — the organisation itself, an employee or a supplier, and a
+    // place from the fixed list or typed. This is the item's FIRST custody entry; every
+    // later change happens through check-out and check-in, never by editing this record.
+    if (!(HOLDER_KINDS as readonly string[]).includes(String(b.holderKind))) return res.status(400).json({ error: "Say who has it — the organisation, an employee or a supplier." });
+    const holderKind = b.holderKind as HolderKind;
+    const holderId = holderKind === "org" ? "" : String(b.holderId || "");
+    if (holderKind !== "org" && !holderId) return res.status(400).json({ error: "Choose who has it." });
+    const holder = await resolveHolder(holderKind, holderId, true);
+    if (!holder.ok) return res.status(400).json({ error: holder.error });
+    const loc = resolveLocation(b.location, b.locationOther);
+    if (!loc.ok) return res.status(400).json({ error: loc.error });
+    const location = loc.location, custodian = holder.name;
     // Useful life comes from Finance's own policy table, keyed on what the item is — never a
     // guess made at the receiving desk, and never blocked for want of a category: an unknown
     // or missing kind falls back to "other". Only Finance may put a different figure on the
@@ -7822,6 +7863,13 @@ app.post("/api/assets/register", async (req, res) => {
     for (let attempt = 0; !asset; attempt++) {
       const tag = nextEquipmentTag((await prisma.fixedAsset.findMany({ select: { tag: true } })).map(a => a.tag));
       try {
+        const receivedAt = new Date().toISOString();
+        // The item's first custody entry — never edited afterward, only superseded.
+        const firstMovement: Movement = {
+          id: `mv-${Date.now()}`, holderKind, holderId, location,
+          heldFor: "", projectId: "", outAt: receivedAt, outBy: user.id, dueBack: null,
+          inAt: null, inBy: null, returnCondition: null, note: ""
+        };
         asset = await prisma.fixedAsset.create({
           data: {
             id: `asset-${Date.now()}`, tag, name, kind,
@@ -7830,7 +7878,7 @@ app.post("/api/assets/register", async (req, res) => {
             fundingProjectId, purchaseDate, cost, currency, usefulLifeYears,
             custodian, location, condition: b.condition,
             currentBookValue: cost, depreciationMethod: "Straight Line", accumulatedDepreciation: 0,
-            receivedAt: new Date().toISOString(), receivedBy: user.id
+            receivedAt, receivedBy: user.id, movementsJson: JSON.stringify([firstMovement])
           }
         });
       } catch (e: any) {
@@ -7867,7 +7915,8 @@ app.post("/api/assets/verify", async (req, res) => {
     // Nobody can confirm what is out on a shoot; it is confirmed when it is back.
     if (asset.holderId) return res.status(409).json({ error: `${asset.tag || asset.name} is out — confirm it once it is back.` });
     if (!(CONDITIONS as readonly string[]).includes(condition)) return res.status(400).json({ error: "Record the condition you found it in." });
-    const location = String(req.body.location || "").trim() || asset.location;
+    // Where it is does not change on a confirmation — that is set at receiving or a
+    // check-in, never here; this asks only whether the item is really where it says.
     // Every confirmation books the next one: 12 months on unless the verifier chose 6 or 24.
     const months = (CHECK_EVERY_MONTHS as readonly number[]).includes(Number(req.body.checkEveryMonths)) ? Number(req.body.checkEveryMonths) : DEFAULT_CHECK_MONTHS;
     const now = new Date().toISOString();
@@ -7877,10 +7926,10 @@ app.post("/api/assets/verify", async (req, res) => {
 
     const updated = await prisma.fixedAsset.update({
       where: { id: assetId },
-      data: { condition, location, verifiedAt: now, verifiedBy: user.id, nextCheckDue }
+      data: { condition, verifiedAt: now, verifiedBy: user.id, nextCheckDue }
     });
     await createAuditLog(user.id, user.name, "Equipment Verified",
-      `${asset.tag || asset.name} "${asset.name}" confirmed physically: ${condition}, at ${location}. Next check due ${nextCheckDue}.`);
+      `${asset.tag || asset.name} "${asset.name}" confirmed physically: ${condition}. Next check due ${nextCheckDue}.`);
     res.json({ success: true, asset: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -7900,12 +7949,18 @@ app.post("/api/assets/checkout", async (req, res) => {
     const label = asset.tag || asset.name;
     const blocker = checkOutBlocker(asset);
     if (blocker === "already out") {
-      const holding = await prisma.user.findUnique({ where: { id: String(asset.holderId) } });
-      return res.status(409).json({ error: `${label} is already out with ${holding?.name || "someone"} until ${asset.dueBack}.` });
+      const current = JSON.parse(asset.movementsJson || "[]").slice(-1)[0];
+      const holdingName = current ? await holderDisplayName(current.holderKind, current.holderId) : "someone";
+      return res.status(409).json({ error: `${label} is already out with ${holdingName} until ${asset.dueBack}.` });
     }
     if (blocker) return res.status(400).json({ error: `${label} has not been confirmed yet — it can go out once somebody else has checked it is here.` });
-    const holder = await prisma.user.findUnique({ where: { id: String(req.body.holderId || "") } });
-    if (!holder || !holder.active) return res.status(400).json({ error: "Choose who is taking it — an active account." });
+    // Who is taking it — an employee or a supplier; never the organisation, which is what
+    // it is leaving. Something nobody has checked is here cannot be handed to anyone.
+    if (!["employee", "vendor"].includes(String(req.body.holderKind))) return res.status(400).json({ error: "Choose who is taking it — an employee or a supplier." });
+    const holderKind = req.body.holderKind as HolderKind;
+    const holderId = String(req.body.holderId || "");
+    const holder = await resolveHolder(holderKind, holderId, false);
+    if (!holder.ok) return res.status(400).json({ error: holder.error });
     const heldFor = String(req.body.heldFor || "").trim();
     if (!heldFor) return res.status(400).json({ error: "Say what it is for — the project or the shoot." });
     const dueBack = String(req.body.dueBack || "");
@@ -7913,10 +7968,13 @@ app.post("/api/assets/checkout", async (req, res) => {
     const projectId = String(req.body.projectId || "");
     const now = new Date().toISOString();
     const moves: Movement[] = JSON.parse(asset.movementsJson || "[]");
-    moves.push({ id: `mv-${Date.now()}`, holderId: holder.id, heldFor, projectId, outAt: now, outBy: user.id, dueBack, inAt: null, inBy: null, returnCondition: null, note: "" });
+    // The resting assignment ends here — handed off, not returned, so no condition to record.
+    const resting = moves[moves.length - 1];
+    if (resting && !resting.inAt) Object.assign(resting, { inAt: now, inBy: user.id });
+    moves.push({ id: `mv-${Date.now()}`, holderKind, holderId, location: "", heldFor, projectId, outAt: now, outBy: user.id, dueBack, inAt: null, inBy: null, returnCondition: null, note: "" });
     const done = await prisma.fixedAsset.updateMany({
       where: { id: asset.id, holderId: null, verifiedAt: { not: null } },
-      data: { holderId: holder.id, heldFor, heldProjectId: projectId, outAt: now, dueBack, movementsJson: JSON.stringify(moves) }
+      data: { holderId, heldFor, heldProjectId: projectId, outAt: now, dueBack, movementsJson: JSON.stringify(moves) }
     });
     if (done.count !== 1) return res.status(409).json({ error: `${label} changed a moment ago — reload and look again.` });
     await createAuditLog(user.id, user.name, "Equipment Out", `${label} "${asset.name}" out to ${holder.name} for ${heldFor}, due back ${dueBack}.`);
@@ -7939,22 +7997,33 @@ app.post("/api/assets/checkin", async (req, res) => {
     if (!asset.holderId) return res.status(400).json({ error: `${label} is not out.` });
     const condition = req.body.condition;
     if (!(CONDITIONS as readonly string[]).includes(condition)) return res.status(400).json({ error: "Record the condition it came back in." });
-    const location = String(req.body.location || "").trim() || asset.location;
     const note = String(req.body.note || "").trim();
+    // Coming back settles it somewhere: who has it now — the organisation, an employee or
+    // a supplier — and where. Not typed text: the same picker registration uses, because
+    // this is exactly the same kind of fact, and every later change happens right here.
+    if (!(HOLDER_KINDS as readonly string[]).includes(String(req.body.holderKind))) return res.status(400).json({ error: "Say who has it now — the organisation, an employee or a supplier." });
+    const restKind = req.body.holderKind as HolderKind;
+    const restId = restKind === "org" ? "" : String(req.body.holderId || "");
+    if (restKind !== "org" && !restId) return res.status(400).json({ error: "Choose who has it now." });
+    const restHolder = await resolveHolder(restKind, restId, true);
+    if (!restHolder.ok) return res.status(400).json({ error: restHolder.error });
+    const loc = resolveLocation(req.body.location, req.body.locationOther);
+    if (!loc.ok) return res.status(400).json({ error: loc.error });
     const now = new Date().toISOString();
     const moves: Movement[] = JSON.parse(asset.movementsJson || "[]");
     const open = [...moves].reverse().find(m => !m.inAt);
     if (open) Object.assign(open, { inAt: now, inBy: user.id, returnCondition: condition, note });
+    const previousHolderName = open ? await holderDisplayName(open.holderKind, open.holderId) : "someone";
+    moves.push({ id: `mv-${Date.now()}`, holderKind: restKind, holderId: restId, location: loc.location, heldFor: "", projectId: "", outAt: now, outBy: user.id, dueBack: null, inAt: null, inBy: null, returnCondition: null, note: "" });
     const done = await prisma.fixedAsset.updateMany({
       where: { id: asset.id, holderId: asset.holderId },
-      data: { holderId: null, heldFor: "", heldProjectId: "", outAt: null, dueBack: null, condition, location, movementsJson: JSON.stringify(moves) }
+      data: { holderId: null, heldFor: "", heldProjectId: "", outAt: null, dueBack: null, condition, custodian: restHolder.name, location: loc.location, movementsJson: JSON.stringify(moves) }
     });
     if (done.count !== 1) return res.status(409).json({ error: `${label} changed a moment ago — reload and look again.` });
-    const holder = await prisma.user.findUnique({ where: { id: asset.holderId } });
     const today = localDate();
     const late = asset.dueBack && asset.dueBack < today ? Math.round((Date.parse(today) - Date.parse(asset.dueBack)) / 86400000) : 0;
     await createAuditLog(user.id, user.name, "Equipment Returned",
-      `${label} "${asset.name}" back from ${holder?.name || asset.holderId}${late ? `, ${late} day${late === 1 ? "" : "s"} late` : ""}: ${condition}${note ? ` — ${note}` : ""}; kept at ${location}.`);
+      `${label} "${asset.name}" back from ${previousHolderName}${late ? `, ${late} day${late === 1 ? "" : "s"} late` : ""}: ${condition}${note ? ` — ${note}` : ""}; now with ${restHolder.name} at ${loc.location}.`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

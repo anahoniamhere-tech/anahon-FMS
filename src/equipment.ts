@@ -13,6 +13,40 @@ export const CONDITIONS = ["Excellent", "Good", "Needs Repair", "Damaged"] as co
 export const CURRENCIES = ["USD", "EUR", "LBP"] as const;
 
 /**
+ * Who currently has an item — the three kinds this register knows. "employee" is drawn
+ * from the FMS's user accounts (the same list the loan picker already used): the two are
+ * treated as one person everywhere else in this app (a login is how an employee is named
+ * here), so there is no separate personnel roster to keep in step with this one.
+ */
+export const HOLDER_KINDS = ["org", "employee", "vendor"] as const;
+export type HolderKind = typeof HOLDER_KINDS[number];
+
+/**
+ * Where an item currently sits, when it is at the organisation rather than out on loan —
+ * a short list because a long one is a form nobody reads, plus "other" for anything that
+ * does not fit. Change the list here; nothing else names a place.
+ */
+export const EQUIPMENT_LOCATIONS = ["Tripoli office", "Studio", "Store cupboard"] as const;
+/** The picker's escape hatch — never the literal value stored on the record. */
+export const OTHER_LOCATION = "other";
+
+/**
+ * A place typed or chosen, resolved and validated in one place so the register form and
+ * the check-in form cannot each invent a different rule for what a location is.
+ */
+export function resolveLocation(location: unknown, other: unknown): { ok: boolean; location: string; error: string } {
+  const loc = String(location ?? "").trim();
+  if (!loc) return { ok: false, location: "", error: "Say where it is kept." };
+  if (loc === OTHER_LOCATION) {
+    const custom = String(other ?? "").trim();
+    if (!custom) return { ok: false, location: "", error: "Type where it is kept." };
+    return { ok: true, location: custom, error: "" };
+  }
+  if (!(EQUIPMENT_LOCATIONS as readonly string[]).includes(loc)) return { ok: false, location: "", error: "Choose a place from the list, or \"Other\" to type one." };
+  return { ok: true, location: loc, error: "" };
+}
+
+/**
  * What kind of thing this is, and how many years it depreciates over — Finance's policy,
  * not a guess made at the receiving desk. One place, so a number changes once and every
  * item that reads it agrees. Proposed 12 Sep 2026, pending Marwan's confirmation of the
@@ -127,12 +161,33 @@ export function blankIfPlaceholder(s: string | null | undefined): string {
 
 /* ── Phase 2: custody, the sticker, repairs, the periodic check ───────────────── */
 
-/** One check-out and its return, kept on the item, oldest first. */
+/**
+ * One entry in the item's custody timeline, oldest first — a resting assignment ("with
+ * Ahmad, at the Tripoli office") or a loan ("with Ahmad, for the Beirut shoot, due back
+ * Friday"), told apart by `dueBack`: null for a rest, a date for a loan. `outAt`/`outBy`
+ * are when this state began and who recorded it; `inAt`/`inBy` are when it ended — closed
+ * either by an actual return (`returnCondition`/`note` filled in) or simply superseded by
+ * the next entry starting (a resting assignment ending because the item was checked out).
+ * "Currently with / in" (12 Sep 2026) reads the LAST entry — see `currentMovement` — so
+ * check-out and check-in are the only ways custody ever changes; nothing edits a field.
+ */
 export type Movement = {
-  id: string; holderId: string; heldFor: string; projectId: string;
-  outAt: string; outBy: string; dueBack: string;
+  id: string; holderKind: HolderKind; holderId: string; location: string;
+  heldFor: string; projectId: string;
+  outAt: string; outBy: string; dueBack: string | null;
   inAt: string | null; inBy: string | null; returnCondition: string | null; note: string;
 };
+
+/**
+ * The current custody state — who has it and where — is simply the last entry on the
+ * item's own timeline; there is nothing else to derive it from. A row that predates this
+ * design has no timeline at all (`movements` empty), and this returns null for it rather
+ * than guessing — the caller falls back to whatever plain text its old columns still hold.
+ */
+export function currentMovement(a: { movements?: Movement[] }): Movement | null {
+  const list = a.movements || [];
+  return list.length ? list[list.length - 1] : null;
+}
 /** One repair. It is an expense: it never changes the item's cost basis. */
 export type Repair = {
   id: string; date: string; work: string; doneBy: string;

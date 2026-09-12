@@ -12,7 +12,8 @@ import { readFileSync } from "node:fs";
 import { NO_SERIAL, nextEquipmentTag, parseTag, sameSerial, equipmentStatus, mayVerifyEquipment, blankIfPlaceholder,
   checkOutBlocker, stickerLink, stickerSheetHtml, QR_ALPHANUMERIC, STICKER_SIZES, DEFAULT_STICKER_MM, STRIP_SIZES,
   CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS,
-  EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, DEFAULT_KIND, normalizeKind, usefulLifeFor, mayOverrideUsefulLife } from "../src/equipment.js";
+  EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, DEFAULT_KIND, normalizeKind, usefulLifeFor, mayOverrideUsefulLife,
+  HOLDER_KINDS, EQUIPMENT_LOCATIONS, OTHER_LOCATION, resolveLocation, currentMovement } from "../src/equipment.js";
 import { RULES, deskItems } from "../src/workflow.js";
 import { ROUTE_SEATS } from "../src/gates.js";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS, PLO, AUDITOR, FINANCE } from "../src/roles.js";
@@ -77,7 +78,7 @@ for (const [name, body] of [["scan", scan], ["register", reg], ["verify", ver]] 
   ok(`${name}: refuses a request with no signed-in user`, /if \(!user\?\.id\) return res\.status\(401\)/.test(body));
   ok(`${name}: never falls back to a named seat or id`, !/\|\| "u-\d"|"Finance Officer"|\|\| "Auditor"/.test(body));
 }
-ok("who took delivery is written on the record", /receivedAt: new Date\(\)\.toISOString\(\), receivedBy: user\.id/.test(reg));
+ok("who took delivery is written on the record", /const receivedAt = new Date\(\)\.toISOString\(\);/.test(reg) && /receivedAt, receivedBy: user\.id/.test(reg));
 ok("and who confirmed it", /verifiedAt: now, verifiedBy: user\.id, nextCheckDue/.test(ver));
 
 console.log("\nE. the keeper never confirms an item — enforced on the server");
@@ -146,11 +147,12 @@ ok("confirmed and in may go", checkOutBlocker({ verifiedAt: "2026-09-11", holder
 ok("the route refuses with the same predicate the button shows", /const blocker = checkOutBlocker\(asset\);/.test(out) && tab.includes("{t(checkOutBlocker(a)!)}"));
 ok("the database refuses a second check-out too — the write lands only on a row still in and confirmed",
   /where: \{ id: asset\.id, holderId: null, verifiedAt: \{ not: null \} \}/.test(out) && /if \(done\.count !== 1\)/.test(out));
-ok("the holder is an active account", /if \(!holder \|\| !holder\.active\)/.test(out));
+ok("the holder is an active account — validated once, in the same helper register and check-in use",
+  /if \(!u \|\| !u\.active\) return \{ ok: false, name: "", error: "Choose an active account\." \};/.test(server));
 ok("what it is for, and a due-back date not in the past, are required", /if \(!heldFor\)/.test(out) && /dueBack < localDate\(\)/.test(out));
 ok("a return records the condition it came back in and clears the holder",
   /CONDITIONS as readonly string\[\]\)\.includes\(condition\)/.test(back)
-  && /holderId: null, heldFor: "", heldProjectId: "", outAt: null, dueBack: null, condition, location/.test(back)
+  && /holderId: null, heldFor: "", heldProjectId: "", outAt: null, dueBack: null, condition, custodian: restHolder\.name, location: loc\.location/.test(back)
   && /where: \{ id: asset\.id, holderId: asset\.holderId \}/.test(back));
 ok("both writes go on the item's own log", /moves\.push\(\{/.test(out) && /returnCondition: condition/.test(back));
 for (const [name, body] of [["checkout", out], ["checkin", back], ["repair", fix]] as const) {
@@ -341,6 +343,81 @@ ok("the inputs are disabled while ticked, so nothing typed there can leak throug
 ok("the card says \"Gift\" rather than three columns of \"0.00\" with no currency",
   /a\.cost > 0 \? \(/.test(tab) && tab.includes('<Gift className="inline h-3.5 w-3.5" /> {t("Gift — no cost recorded")}'));
 ok("FixedAsset.currency admits the one honest case with no sum to name", /currency: "USD" \| "EUR" \| "LBP" \| "";/.test(types));
+
+console.log("\nW. \"Currently with / in\" is a derived field over the movement log — 12 Sep 2026");
+// Saad's point: the item's location and holder are FACTS ABOUT ITS HISTORY, not a text
+// field someone edits. Registration writes the first entry; check-out and check-in are
+// the only two things that ever write another one. Nothing else touches custody.
+ok("who has it is one of three kinds, and only three", JSON.stringify(HOLDER_KINDS) === '["org","employee","vendor"]');
+
+console.log("\nX. resolveLocation — the fixed list, or \"Other\" typed, never invented");
+ok("blank is refused", !resolveLocation("", "").ok);
+ok("a listed place is accepted as-is", resolveLocation("Studio", "").ok && resolveLocation("Studio", "").location === "Studio");
+ok("\"other\" with nothing typed is refused", !resolveLocation(OTHER_LOCATION, "").ok);
+ok("\"other\" with a typed place is accepted, trimmed", resolveLocation(OTHER_LOCATION, "  Beirut warehouse  ").location === "Beirut warehouse");
+ok("a value that names neither the list nor \"other\" is refused — nothing is guessed", !resolveLocation("Somewhere else", "").ok);
+ok("the three places on offer are exactly these, nothing invented per item",
+  JSON.stringify(EQUIPMENT_LOCATIONS) === '["Tripoli office","Studio","Store cupboard"]');
+
+console.log("\nY. currentMovement — the whole state is the last entry, nothing more");
+ok("no history yet → null, not a guess", currentMovement({ movements: [] }) === null && currentMovement({}) === null);
+const M = (over: any) => ({ id: "m1", holderKind: "employee", holderId: "u-1", location: "Studio", heldFor: "", projectId: "", outAt: "2026-09-01T00:00:00.000Z", outBy: "u-1", dueBack: null, inAt: null, inBy: null, returnCondition: null, note: "", ...over });
+ok("one entry → that entry", currentMovement({ movements: [M({})] })?.id === "m1");
+ok("several entries → the LAST one, not the first", currentMovement({ movements: [M({ id: "old" }), M({ id: "new" })] })?.id === "new");
+
+console.log("\nZ. the register: who has it and where, resolved once — never typed free text");
+ok("the free-text \"Held by\" / \"Kept at\" inputs are gone from the form",
+  !tab.includes('id="eq-custodian"') && !tab.includes('id="eq-location" required value={f.location} onChange={e => set("location"'));
+ok("an unknown holder kind is refused before anything is looked up",
+  /if \(!\(HOLDER_KINDS as readonly string\[\]\)\.includes\(String\(b\.holderKind\)\)\) return res\.status\(400\)/.test(reg));
+ok("the organisation needs no id; an employee or a supplier must name one",
+  /const holderId = holderKind === "org" \? "" : String\(b\.holderId \|\| ""\);/.test(reg) && /if \(holderKind !== "org" && !holderId\)/.test(reg));
+ok("both sides ask the same resolvers the check-in route asks", /const holder = await resolveHolder\(holderKind, holderId, true\);/.test(reg) && /const loc = resolveLocation\(b\.location, b\.locationOther\);/.test(reg));
+ok("the first movement carries no due-back — a rest, not a loan, and the same timestamp as receivedAt",
+  /const receivedAt = new Date\(\)\.toISOString\(\);/.test(reg) && /outAt: receivedAt, outBy: user\.id, dueBack: null,/.test(reg));
+ok("it is written on the record at creation, in one call — not a second update afterward",
+  /movementsJson: JSON\.stringify\(\[firstMovement\]\)/.test(reg) && !/fixedAsset\.update\(/.test(reg));
+ok("the screen shows a grouped picker — the organisation, an employee, a supplier — not typed text",
+  /holderPicker\("eq-holder", f\.holderKind, f\.holderId, true,/.test(tab) && /locationPicker\("eq-location", f\.location, f\.locationOther,/.test(tab));
+
+console.log("\nAA. check-out: the resting state ends, a loan begins — never to the organisation");
+ok("the organisation cannot be checked equipment out to — that is what it is leaving",
+  /if \(!\["employee", "vendor"\]\.includes\(String\(req\.body\.holderKind\)\)\)/.test(out));
+ok("the resting movement is closed (not deleted) the instant the loan starts",
+  /const resting = moves\[moves\.length - 1\];/.test(out) && /if \(resting && !resting\.inAt\) Object\.assign\(resting, \{ inAt: now, inBy: user\.id \}\);/.test(out));
+ok("the loan movement carries no location — it is away, not at one of our places", /location: "", heldFor, projectId, outAt: now, outBy: user\.id, dueBack,/.test(out));
+ok("\"already out\" is answered from the item's OWN timeline, not a Users-only lookup that would miss a supplier holder",
+  /const current = JSON\.parse\(asset\.movementsJson \|\| "\[\]"\)\.slice\(-1\)\[0\];/.test(out) && /await holderDisplayName\(current\.holderKind, current\.holderId\)/.test(out));
+ok("the screen offers employees and suppliers, never the organisation, for who is taking it",
+  /holderPicker\(`out-who-\$\{a\.id\}`, field\("holderKind"\), field\("holderId"\), false,/.test(tab));
+
+console.log("\nBB. check-in: the loan closes with a condition, and settles the item somewhere new");
+ok("the loan entry is closed with a real condition and note, exactly as before", /Object\.assign\(open, \{ inAt: now, inBy: user\.id, returnCondition: condition, note \}\);/.test(back));
+ok("who had it, for the audit line, comes from that closed entry — even a supplier", /const previousHolderName = open \? await holderDisplayName\(open\.holderKind, open\.holderId\) : "someone";/.test(back));
+ok("coming back settles it somewhere — the organisation, an employee or a supplier, and a real place",
+  /if \(!\(HOLDER_KINDS as readonly string\[\]\)\.includes\(String\(req\.body\.holderKind\)\)\)/.test(back) && /const loc = resolveLocation\(req\.body\.location, req\.body\.locationOther\);/.test(back));
+ok("a fresh resting movement is pushed, carrying no due-back", /dueBack: null, inAt: null, inBy: null, returnCondition: null, note: ""\s*\}\);/.test(back));
+ok("the legacy custodian/location columns still get a readable snapshot, for any tool that reads them raw",
+  /custodian: restHolder\.name, location: loc\.location, movementsJson/.test(back));
+ok("the free-text \"Kept at\" input on this form is gone, replaced by the same grouped pickers registration uses",
+  /holderPicker\(`in-holder-\${a\.id}`, field\("holderKind"\), field\("holderId"\), true,/.test(tab) && /locationPicker\(`in-loc-\${a\.id}`, field\("location"\), field\("locationOther"\),/.test(tab));
+
+console.log("\nCC. verify: confirms the item is there — never asks where");
+ok("the route no longer reads or writes a location at all",
+  !/const location = String\(req\.body\.location/.test(ver) && !/data: \{ condition, location,/.test(ver));
+ok("the verify row's free-text location input is gone from the screen", !tab.includes('aria-label={t("Kept at")}'));
+
+console.log("\nDD. the card: one state, not a stale label — a loan banner, a resting line, or an honest \"nothing known\" for a row from before this design");
+ok("a card on loan reads its holder from the current movement, not just the mirrored id — a supplier holds a loan too",
+  /custodyName\(cm\?\.holderKind, cm\?\.holderId \|\| ""\)/.test(tab));
+ok("resting with the organisation reads as a place, not \"With AnaHon\"",
+  tab.includes('t("{place} — since {date}")'));
+ok("resting with a person or a supplier names them, and the place if one is on file",
+  tab.includes('t("With {name} — {place} — since {date}")') && tab.includes('t("With {name} — since {date}")'));
+ok("a row with no movements at all — older than this design — shows its plain columns undated, not a fabricated date",
+  /a\.custodian \|\| "—"/.test(tab) && /a\.location \|\| "—"/.test(tab));
+ok("the history tells a loan and a rest apart by the same signal the route does — dueBack",
+  /\{m\.dueBack \? \(/.test(tab));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
