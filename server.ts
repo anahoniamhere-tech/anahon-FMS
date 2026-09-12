@@ -23,6 +23,7 @@ import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./
 import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, deleteBlocker, writeOffBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
+import { costAccountFor } from "./src/costAccount.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -6798,7 +6799,7 @@ app.post("/api/expense/new", async (req, res) => {
 // Action on expense lifecycle
 app.post("/api/expense/action", async (req, res) => {
   try {
-    const { expenseId, action, comment, paymentMethod, paymentRef, bankAccountId, whtAmount, netAmount, user } = req.body;
+    const { expenseId, action, comment, paymentMethod, paymentRef, bankAccountId, whtAmount, netAmount, costAccountCode, user } = req.body;
 
     const exp = await prisma.expense.findUnique({ where: { id: expenseId } });
     if (!exp) return res.status(404).json({ error: "Expense request not found." });
@@ -6830,6 +6831,48 @@ app.post("/api/expense/action", async (req, res) => {
       });
     }
 
+    // The approver confirms what kind of cost this is, because their click is what writes the
+    // journal line. The requester's answer is a proposal, and at raise time it also decides
+    // whether quotations are expected at all (src/spendKind.ts) — an exemption nobody but the
+    // person asking for the money has stood behind is not a control. Segregation of duties
+    // above has already established that this is not the requester.
+    let confirmedCostAccount = "";
+    let effectiveCostAccount = "";
+    if (action === "approve") {
+      const picked = String(costAccountCode || "").trim();
+      if (picked && picked !== exp.costAccountCode) {
+        const acc = await prisma.account.findUnique({ where: { code: picked } });
+        if (!acc || acc.type !== "Expense") {
+          return res.status(400).json({ error: "Confirm what kind of cost this is from the chart of accounts." });
+        }
+        confirmedCostAccount = picked;
+      }
+      // The account that will actually be debited. Derived when nobody named one, so that a
+      // voucher raised before the field existed cannot skip the rule below by saying nothing —
+      // silence is not an exemption (src/spendKind.ts).
+      effectiveCostAccount = confirmedCostAccount || exp.costAccountCode
+        || costAccountFor((await prisma.budgetLine.findUnique({ where: { id: exp.budgetLineId || "" } }))?.category);
+      // Policy 7.2, re-read against the account the approver is standing behind. A voucher
+      // raised as rent needs no quotations; approved as equipment, it needs them after all.
+      const effective = effectiveCostAccount;
+      if (needsProcurement(exp.convertedAmount) && !noSupplierChoice([effective])) {
+        const authority = exp.procurementId
+          ? await prisma.procurement.findUnique({ where: { id: exp.procurementId } })
+          : null;
+        if (!authority || authority.status !== "Approved" || authority.projectId !== exp.projectId) {
+          const acc = await prisma.account.findUnique({ where: { code: effective } });
+          const raisedExempt = exp.costAccountCode && exp.costAccountCode !== effective
+            && noSupplierChoice([exp.costAccountCode]);
+          return res.status(400).json({
+            error: `Policy 7.2: ${exp.voucherNo} is ${exp.convertedAmount.toFixed(2)} USD on ${effective} ${acc?.name || ""} — spend that chose a supplier, so it needs an approved ${quotationsRequired(exp.convertedAmount)}-quotation comparison or a single-source waiver before it can be approved. `
+              + (raisedExempt
+                ? `It was raised on ${exp.costAccountCode}, where no quotations are expected; confirming it here brings the rule back.`
+                : `Lodge one in Quotes & bids first.`)
+          });
+        }
+      }
+    }
+
     if (action === "finance-review") {
       updatedStatus = "Under Finance Review";
       await createAuditLog(
@@ -6844,10 +6887,10 @@ app.post("/api/expense/action", async (req, res) => {
       signed = { ...signed, approvedById: me.id, approvedAs: me.as };
 
       // Accrual basis accounting entry
-      // The account the voucher itself named. "6100" is what this route used for every cost
-      // regardless, which is right only for video production — kept as the fallback so a row
-      // raised before the field existed posts exactly as it would have.
-      const expenseCostAccount = exp.costAccountCode || "6100";
+      // The account this cost belongs to: what the approver confirmed just above, else what
+      // the voucher named when it was raised, else the budget line's category — the same
+      // derivation prisma/rebuild-ledger.ts has always used. Never 6100 as a catch-all.
+      const expenseCostAccount = effectiveCostAccount;
       const apAccount = "2100";
       const allocations = JSON.parse(exp.allocationsJson || "[]");
       const journalItems = [];
@@ -6921,7 +6964,10 @@ app.post("/api/expense/action", async (req, res) => {
         user?.id,
         user?.name,
         "Director Approval & Accrual Posting",
-        `Approved request and posted Accruals for ${exp.voucherNo}. Debited expense costs and credited Accounts Payable ${apAccount}.`
+        `Approved request and posted Accruals for ${exp.voucherNo}. Debited ${expenseCostAccount} and credited Accounts Payable ${apAccount}.`
+        + (confirmedCostAccount
+          ? ` Cost account confirmed at approval as ${confirmedCostAccount}${exp.costAccountCode ? ` (raised as ${exp.costAccountCode})` : ""}.`
+          : exp.costAccountCode ? "" : ` No account was named on the voucher; ${expenseCostAccount} derived from the budget line.`)
       );
     } else if (action === "return") {
       updatedStatus = "Returned for Correction";
@@ -7141,6 +7187,7 @@ app.post("/api/expense/action", async (req, res) => {
         paymentRef: updatedPaymentRef,
         whtAmount: updatedWhtAmount,
         netAmount: updatedNetAmount,
+        ...(confirmedCostAccount ? { costAccountCode: confirmedCostAccount } : {}),
         commentsJson: JSON.stringify(commentsList)
       }
     });
@@ -7294,7 +7341,8 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
     const convertedWhtAmount = whtVal * rate;
     const convertedNetAmount = expense.convertedAmount - convertedWhtAmount;
 
-    const expenseCostAccount = expense.costAccountCode || "6100";
+    const expenseCostAccount = expense.costAccountCode
+      || costAccountFor((await prisma.budgetLine.findUnique({ where: { id: expense.budgetLineId || "" } }))?.category);
     const bankAssetAccount = account.type === "Petty Cash" ? "1120" : "1100";
     // 2315 matches the rebuilt ledger convention (2310 is payroll tax).
     const taxPayableAccount = "2315";

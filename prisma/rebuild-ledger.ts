@@ -16,6 +16,8 @@
 //     visible on 1120 — that gap is real missing documentation, not a rounding error.
 import { PrismaClient } from "@prisma/client";
 
+import { costAccountFor } from "../src/costAccount.js";
+
 const prisma = new PrismaClient();
 
 const ACC = {
@@ -25,17 +27,8 @@ const ACC = {
   TRAVEL: "6200", EQUIP: "6300", SOFTWARE: "6400", RENT: "7100", BANKFEES: "7400", FXLOSS: "7700",
 };
 
-// BudgetLine.category -> expense account. Deterministic, documented in HANDOFF.
-const CATEGORY_ACCOUNT: Record<string, string> = {
-  "Personnel": ACC.STAFF, "Human Resources": ACC.STAFF,
-  "Contractors/Freelancers": ACC.FREELANCE,
-  "Travel": ACC.TRAVEL,
-  "Equipment & Supplies": ACC.EQUIP,
-  "Local Office": ACC.RENT,
-  "Catering & Hospitality": ACC.DIRECT,
-  "Other Costs": ACC.DIRECT,
-  "Software Subscriptions": ACC.SOFTWARE,
-};
+// BudgetLine.category -> expense account now lives in src/costAccount.ts, because the live
+// posting route needs the same answer — it used to hardcode 6100 for every voucher.
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -103,7 +96,7 @@ async function main() {
   }
   console.log(`card matching: ${matchedLines.size}/${cardVouchers.length} card vouchers matched to statement lines`);
 
-  const expenseAccountFor = (e: any) => CATEGORY_ACCOUNT[blById.get(e.budgetLineId)?.category || ""] || ACC.DIRECT;
+  const expenseAccountFor = (e: any) => costAccountFor(blById.get(e.budgetLineId)?.category);
   const usd = (amount: number, txAccountId: string) => eurAccountIds.has(txAccountId) ? r2(amount * fx) : amount;
   const bankCode = (txAccountId: string) => pettyAccountIds.has(txAccountId) ? ACC.PETTY : eurAccountIds.has(txAccountId) ? ACC.BANK_EUR : ACC.BANK_USD;
   const eurNote = (txAccountId: string) => eurAccountIds.has(txAccountId) ? ` [EUR @ ${fx}]` : "";

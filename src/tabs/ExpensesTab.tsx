@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { Procurement, Project, Vendor } from "../types";
 import { THRESHOLD_LABEL, needsProcurement } from "../procurementPolicy";
 import { costAccountChoices, noSupplierChoice } from "../spendKind";
+import { costAccountFor } from "../costAccount";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import Info from "../Info";
 import { DIRECTORS, FINANCE, REQUESTERS } from "../roles";
@@ -30,6 +31,8 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
   // posting, because the procurement question below depends on the answer: nobody compares
   // three quotations for a salary or for the rent.
   const [expenseCostAccount, setExpenseCostAccount] = useState("");
+  // What an approver has confirmed the cost to be, per voucher, before they sign.
+  const [confirmCostAccount, setConfirmCostAccount] = useState<Record<string, string>>({});
 
   // Inline single-source waiver raised from the voucher form (null = panel closed).
   const [inlineWaiver, setInlineWaiver] = useState<{ vendorName: string; amount: string; reason: string; retrospective: boolean } | null>(null);
@@ -877,8 +880,46 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
 
                           {["Submitted", "Under Finance Review"].includes(exp.status) && DIRECTORS.includes(currentUser.role) && (
                             <>
+                              {/* The signature writes the journal line, so the account is confirmed
+                                  here rather than taken on the requester's word — it also decides
+                                  whether quotations were expected at all. */}
+                              {(() => {
+                                const proposed = exp.costAccountCode
+                                  || costAccountFor(state.budgetLines?.find(bl => bl.id === exp.budgetLineId)?.category);
+                                const chosen = confirmCostAccount[exp.id] ?? proposed;
+                                const exempt = noSupplierChoice([chosen]);
+                                return (
+                                  <span className="flex flex-wrap items-center gap-1">
+                                    <label className="text-[10px] uppercase font-bold text-slate-500" htmlFor={`confirm-cost-${exp.id}`}>
+                                      Cost is
+                                    </label>
+                                    <select
+                                      id={`confirm-cost-${exp.id}`}
+                                      value={chosen}
+                                      onChange={e => setConfirmCostAccount(m => ({ ...m, [exp.id]: e.target.value }))}
+                                      className="text-[11px] border border-slate-300 rounded px-2 py-1.5 bg-white max-w-[15rem]"
+                                    >
+                                      {costAccountChoices(state.accounts).map(a => (
+                                        <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
+                                      ))}
+                                    </select>
+                                    <span className="text-[10px] text-slate-500">
+                                      {!exp.costAccountCode
+                                        ? "not named on the voucher — from the budget line"
+                                        : chosen !== exp.costAccountCode
+                                          ? `raised as ${exp.costAccountCode}`
+                                          : "as raised"}
+                                      {exempt ? ` · no quotations expected, this is ${exempt}` : ""}
+                                    </span>
+                                  </span>
+                                );
+                              })()}
                               <><button
-                                onClick={() => handleExpenseAction(exp.id, "approve")}
+                                onClick={() => handleExpenseAction(exp.id, "approve", {
+                                  costAccountCode: confirmCostAccount[exp.id]
+                                    ?? (exp.costAccountCode
+                                      || costAccountFor(state.budgetLines?.find(bl => bl.id === exp.budgetLineId)?.category))
+                                })}
                                 className="text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded font-medium"
                               >
                                 ✓ Grant Director Signature

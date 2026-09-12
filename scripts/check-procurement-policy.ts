@@ -13,6 +13,7 @@
 import { readFileSync } from "node:fs";
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "../src/procurementPolicy.js";
 import { NO_SUPPLIER_CHOICE, noSupplierChoice, costAccountChoices } from "../src/spendKind.js";
+import { CATEGORY_ACCOUNT, costAccountFor } from "../src/costAccount.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -120,10 +121,70 @@ ok("the counter still prefers the books, and falls back to the voucher only befo
   /if \(posted\.length\) return posted;/.test(app) && /e\.costAccountCode && expenseCodes\.has\(e\.costAccountCode\)/.test(app));
 
 console.log("\nH. the ledger stops posting every cost as video production");
-ok("posting debits the account the voucher named", /const expenseCostAccount = exp\.costAccountCode \|\| "6100"/.test(server)
-  && /const expenseCostAccount = expense\.costAccountCode \|\| "6100"/.test(server));
-ok("with the old hardcoded account as the fallback, so an older row posts exactly as before",
-  (server.match(/costAccountCode \|\| "6100"/g) || []).length === 2 && !/const expenseCostAccount = "6100"/.test(server));
+ok("posting debits the account the voucher named", /confirmedCostAccount\s*\n?\s*\|\| exp\.costAccountCode/.test(server)
+  && /const expenseCostAccount = expense\.costAccountCode/.test(server));
+// 6100 was the fallback for every cost. Keeping it would have been the bug, not the safety
+// net: all 192 live expenses have a budget line category, and not one of them maps to 6100.
+ok("6100 is no longer anybody's fallback", !/costAccountCode \|\| "6100"/.test(server)
+  && !/const expenseCostAccount = "6100"/.test(server));
+ok("an unnamed cost falls back to the budget line's category, not to a guess",
+  /costAccountFor\(\(await prisma\.budgetLine\.findUnique/.test(server)
+  && (server.match(/costAccountFor\(\(await prisma\.budgetLine\.findUnique/g) || []).length === 2);
+ok("the rebuild and the live posting read ONE map, so they cannot drift apart",
+  /export const CATEGORY_ACCOUNT/.test(read("src/costAccount.ts"))
+  && !/const CATEGORY_ACCOUNT/.test(read("prisma/rebuild-ledger.ts"))
+  && /costAccountFor\(blById\.get\(e\.budgetLineId\)\?\.category\)/.test(read("prisma/rebuild-ledger.ts")));
+ok("every category the live budget lines actually use has an account",
+  ["Personnel", "Human Resources", "Contractors/Freelancers", "Travel", "Equipment & Supplies",
+   "Local Office", "Catering & Hospitality", "Other Costs", "Software Subscriptions"]
+    .every(c => CATEGORY_ACCOUNT[c]));
+ok("and the default is 6000 direct project costs, never 6100 video production",
+  costAccountFor("") === "6000" && costAccountFor("Nothing Like This") === "6000"
+  && costAccountFor("Local Office") === "7100" && costAccountFor("Personnel") === "5100");
+
+console.log("\nI. the approver confirms the cost, because their signature writes the journal");
+ok("the signature carries a confirmed account", /costAccountCode, user \} = req\.body/.test(server)
+  && /handleExpenseAction\(exp\.id, "approve", \{/.test(expenses)
+  && /costAccountCode: confirmCostAccount\[exp\.id\]/.test(expenses));
+ok("the approver's pick is checked against the chart too, never free text",
+  /Confirm what kind of cost this is from the chart of accounts/.test(server));
+ok("what they confirmed is written to the voucher, not just used once",
+  /\.\.\.\(confirmedCostAccount \? \{ costAccountCode: confirmedCostAccount \} : \{\}\)/.test(server));
+ok("Policy 7.2 is re-read against the CONFIRMED account, not the requester's claim",
+  /effectiveCostAccount = confirmedCostAccount \|\| exp\.costAccountCode/.test(server)
+  && /needsProcurement\(exp\.convertedAmount\) && !noSupplierChoice\(\[effective\]\)/.test(server));
+// A voucher raised before costAccountCode existed names no account. If the re-check only ran
+// when one was named, saying nothing would skip it — the exemption by silence spendKind.ts
+// explicitly refuses. So the account is derived first, then the rule reads it.
+ok("a voucher that names no account cannot skip the rule by saying nothing",
+  /effectiveCostAccount = confirmedCostAccount \|\| exp\.costAccountCode\s*\n?\s*\|\| costAccountFor\(/.test(server)
+  && !/if \(effective && needsProcurement/.test(server));
+ok("and the posting debits that same resolved account, asked for once",
+  /const expenseCostAccount = effectiveCostAccount;/.test(server));
+ok("so a voucher raised as exempt spend cannot be approved onto an account that needs quotations",
+  /brings the rule back/.test(server));
+// The rule's actual decision, on real figures from the live books rather than invented ones.
+// Every category the live budget lines use is mapped, so each of these is a voucher that
+// exists: PV-FPU-R005 is 3,458.09 USD on "Local Office" with no procurement behind it, and
+// PV-SKFINV-016 is 2,930.00 USD on "Other Costs".
+const wouldStop = (usd: number, account: string) => needsProcurement(usd) && !noSupplierChoice([account]);
+ok("rent at 3,458.09 with no comparison behind it is let through — no supplier was ever chosen",
+  !wouldStop(3458.09, costAccountFor("Local Office")) && costAccountFor("Local Office") === "7100");
+ok("a freelancer's fee at 6,000 is let through too, per Saad's 12 Sep ruling — engaged, not bought",
+  !wouldStop(6000, costAccountFor("Contractors/Freelancers")) && costAccountFor("Contractors/Freelancers") === "5120");
+ok("the same rent voucher confirmed onto equipment instead IS stopped — a lens is bought",
+  wouldStop(3458.09, "6300"));
+ok("a legacy voucher naming nothing is judged on its derived account, not waved through",
+  wouldStop(2930, costAccountFor("Other Costs")) && costAccountFor("Other Costs") === "6000");
+ok("below the threshold nothing is demanded of either", !wouldStop(900, "6300") && !wouldStop(900, "7100"));
+// The derivation and the exemption list must stay in step: if a category maps to an account
+// nobody may post to, or the exempt list grows a 6xxx code, this fails rather than silently
+// exempting purchases.
+ok("every account the derivation can produce is a real postable expense code",
+  [...new Set(Object.values(CATEGORY_ACCOUNT)), costAccountFor("")].every(c => /^[567]\d\d\d$/.test(c)));
+ok("the screen shows the approver where the account came from before they sign",
+  /not named on the voucher — from the budget line/.test(expenses)
+  && /raised as \$\{exp\.costAccountCode\}/.test(expenses));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
