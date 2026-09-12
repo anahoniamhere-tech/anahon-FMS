@@ -46,3 +46,67 @@ export const DEFAULT_COST_ACCOUNT = "6000";
 export function costAccountFor(category?: string | null): string {
   return CATEGORY_ACCOUNT[String(category || "")] || DEFAULT_COST_ACCOUNT;
 }
+
+export interface JournalLeg {
+  accountCode: string;
+  debit?: number;
+  credit?: number;
+  projectId?: string | null;
+  donorId?: string | null;
+}
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+const isExpense = (code: string) => /^[567]\d\d\d$/.test(code);
+const groupKey = (l: JournalLeg) => `${l.accountCode}\u0000${l.projectId || ""}\u0000${l.donorId || ""}`;
+
+/**
+ * Where a voucher's cost is sitting RIGHT NOW, per account and per project/donor.
+ *
+ * Net, not gross, and that distinction is the whole of it. A correction leaves the original
+ * debit in place and adds a credit beside it, so after one reclassification the voucher has
+ * debit legs on BOTH accounts. Reading gross debits would say the cost is split across two
+ * accounts and refuse to correct it again — a correction you cannot correct. Netting the
+ * credits off says what a person reading the books would say: it is on the new account.
+ */
+export function costPositions(items: JournalLeg[]): { accountCode: string; projectId?: string | null; donorId?: string | null; amount: number }[] {
+  const net = new Map<string, { accountCode: string; projectId?: string | null; donorId?: string | null; amount: number }>();
+  for (const l of items) {
+    if (!isExpense(l.accountCode)) continue;   // AP, bank and withholding were never wrong
+    const k = groupKey(l);
+    const cur = net.get(k) || { accountCode: l.accountCode, projectId: l.projectId, donorId: l.donorId, amount: 0 };
+    cur.amount = r2(cur.amount + Number(l.debit || 0) - Number(l.credit || 0));
+    net.set(k, cur);
+  }
+  return [...net.values()].filter(p => p.amount > 0.004);
+}
+
+/** The distinct expense accounts a voucher's cost currently sits on. More than one means it
+ *  was genuinely split at posting, which a single reclassification cannot express. */
+export function debitedExpenseAccounts(items: JournalLeg[]): string[] {
+  return [...new Set(costPositions(items).map(p => p.accountCode))];
+}
+
+/**
+ * The correction that moves a cost already in the books from one expense account to another.
+ *
+ * A posted entry is not edited. Saad moved five vouchers from 6000 to 5120 on 12 Sep 2026 by
+ * script, rewriting the original entries in place, and the audit line was the only surviving
+ * trace that the books had ever said something else. That is the thing to avoid: a correction
+ * is a new two-sided entry — credit what was wrong, debit what is right — so the original
+ * posting, the correction and the reason all survive, which is the point of a ledger.
+ *
+ * One balanced pair per position, carrying that position's OWN project and donor. A voucher
+ * split across two projects has two, and collapsing them into one pair would move the money to
+ * the right account while losing which donor each half was spent against (Policy 4.7).
+ *
+ * The amount moved is each position's NET, so a voucher corrected twice moves what is actually
+ * there rather than the sum of every debit it has ever carried.
+ */
+export function reclassifyLegs(items: JournalLeg[], from: string, to: string): JournalLeg[] {
+  return costPositions(items)
+    .filter(p => p.accountCode === from)
+    .flatMap(p => [
+      { accountCode: to, debit: p.amount, credit: 0, projectId: p.projectId, donorId: p.donorId },
+      { accountCode: from, debit: 0, credit: p.amount, projectId: p.projectId, donorId: p.donorId },
+    ]);
+}

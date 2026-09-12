@@ -4,8 +4,16 @@ import { Activity, Scale, TriangleAlert } from "lucide-react";
 import { Account, Project } from "../types";
 import { SharedProps } from "./shared";
 import { FINANCE } from "../roles";
+import { costAccountChoices } from "../spendKind";
+import { debitedExpenseAccounts } from "../costAccount";
 
 export default function LedgerTab({ currentUser, formatUSD, refreshState, state, t, triggerToast }: SharedProps) {
+  // Reclassifying a cost already in the books: which voucher, where to, and why.
+  const [rcVoucher, setRcVoucher] = useState("");
+  const [rcTo, setRcTo] = useState("");
+  const [rcReason, setRcReason] = useState("");
+  const [rcBusy, setRcBusy] = useState(false);
+
   // Manual Adjustment Journal Entry states
   const [adjDate, setAdjDate] = useState("");
 
@@ -66,6 +74,33 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
       triggerToast(err.message, "error");
     }
   };
+  // What each voucher's cost is sitting on right now, read off the postings themselves rather
+  // than the voucher's own field — the books are what a correction has to move.
+  const postedOn = (voucherNo: string) => debitedExpenseAccounts(
+    (state.journalEntries || []).filter((e: any) => e.referenceNo === voucherNo)
+      .flatMap((e: any) => e.items || []));
+
+  const handleReclassify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRcBusy(true);
+    try {
+      const res = await fetch("/api/ledger/reclassify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expenseId: rcVoucher, toAccountCode: rcTo, reason: rcReason, user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not reclassify this cost.");
+      triggerToast(`${formatUSD(data.moved)} moved from ${data.from} to ${data.to}. The original entry is unchanged.`);
+      setRcVoucher(""); setRcTo(""); setRcReason("");
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    } finally {
+      setRcBusy(false);
+    }
+  };
+
   return (
             <div className="space-y-6">
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -144,6 +179,103 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                   })()}
                 </div>
               </div>
+
+              {/* Move a cost that is already in the books onto the account it belongs to.
+                  Never an edit of the original posting — a new balanced pair, with the reason. */}
+              {FINANCE.includes(currentUser.role) && (
+                <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm space-y-4">
+                  <div className="border-b border-slate-100 pb-3">
+                    <h3 className="text-md font-bold text-slate-800 uppercase font-mono flex items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1.5">{ic(Scale)}{t("Reclassify a posted cost")}</span>
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {t("Moves a cost already in the ledger onto the account it belongs to. The original entry is never changed — a balanced correcting entry is posted beside it, carrying the reason.")}
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleReclassify} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label htmlFor="rc-voucher" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Voucher")}</label>
+                        <select
+                          id="rc-voucher"
+                          required
+                          value={rcVoucher}
+                          onChange={e => { setRcVoucher(e.target.value); setRcTo(""); }}
+                          className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+                        >
+                          <option value="">{t("Select a voucher with a cost in the books")}</option>
+                          {(state.expenses || [])
+                            .filter((x: any) => postedOn(x.voucherNo).length === 1)
+                            .slice()
+                            .sort((a: any, b: any) => (b.paid_at || b.created_at || "").localeCompare(a.paid_at || a.created_at || ""))
+                            .map((x: any) => {
+                              const on = postedOn(x.voucherNo)[0];
+                              const onName = state.accounts.find((a: Account) => a.code === on)?.name || "";
+                              return (
+                                <option key={x.id} value={x.id}>
+                                  {x.voucherNo} — {x.title} · {formatUSD(x.convertedAmount)} · on {on} {onName}
+                                </option>
+                              );
+                            })}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="rc-to" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Belongs on")}</label>
+                        <select
+                          id="rc-to"
+                          required
+                          value={rcTo}
+                          onChange={e => setRcTo(e.target.value)}
+                          className="w-full border border-slate-300 rounded px-3 py-2 text-sm bg-white"
+                        >
+                          <option value="">{t("Choose the account")}</option>
+                          {costAccountChoices(state.accounts).map(a => (
+                            <option key={a.code} value={a.code}>{a.code} — {a.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label htmlFor="rc-reason" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Why it belongs there")}</label>
+                      <input
+                        id="rc-reason"
+                        required
+                        minLength={10}
+                        value={rcReason}
+                        onChange={e => setRcReason(e.target.value)}
+                        placeholder={t("e.g. engaged as a trainer under an agreement, not a purchase")}
+                        className="w-full border border-slate-300 rounded px-3 py-2 text-sm"
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        {t("This sentence is the only record of why the books changed their mind. It goes on the correcting entry and in the audit log.")}
+                      </p>
+                    </div>
+                    {(() => {
+                      const from = rcVoucher ? postedOn((state.expenses || []).find((x: any) => x.id === rcVoucher)?.voucherNo || "")[0] : "";
+                      if (!from || !rcTo || from === rcTo) return null;
+                      const exp = (state.expenses || []).find((x: any) => x.id === rcVoucher);
+                      return (
+                        <p className="text-[11px] bg-slate-50 border border-slate-200 rounded px-3 py-2 text-slate-700 font-mono">
+                          {t("Will post")}: {t("debit")} {rcTo} {formatUSD(exp?.convertedAmount || 0)} · {t("credit")} {from} {formatUSD(exp?.convertedAmount || 0)}
+                        </p>
+                      );
+                    })()}
+                    <button
+                      type="submit"
+                      disabled={rcBusy || !rcVoucher || !rcTo || rcReason.trim().length < 10}
+                      className="text-xs bg-slate-800 hover:bg-slate-950 disabled:bg-slate-300 text-white px-4 py-2 rounded font-bold"
+                    >
+                      {rcBusy
+                        ? t("Posting the correction…")
+                        : !rcVoucher ? t("Post correction — choose a voucher first")
+                        : !rcTo ? t("Post correction — choose the account first")
+                        : rcReason.trim().length < 10 ? t("Post correction — say why first")
+                        : t("Post the correcting entry")}
+                    </button>
+                  </form>
+                </div>
+              )}
 
               {/* Manual Adjustment Journal Entry Form */}
               {FINANCE.includes(currentUser.role) && (

@@ -225,7 +225,7 @@ export interface BankTransaction {
 
 export interface JournalEntry {
   id: string;
-  journal: "Cash Receipts" | "Cash Payments" | "Bank" | "General" | "Payroll" | "Depreciation" | "FX Gain/Loss";
+  journal: "Cash Receipts" | "Cash Payments" | "Bank" | "General" | "Payroll" | "Depreciation" | "FX Gain/Loss" | "Purchases" | "Adjustment";
   date: string;
   description: string;
   referenceNo: string;

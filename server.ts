@@ -23,7 +23,7 @@ import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./
 import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, deleteBlocker, endBlocker, endIsEffective, isDisposal, endKindOf, END_KINDS, mayEndEquipment, confirmDisposalBlocker, disposalSides, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
-import { costAccountFor } from "./src/costAccount.js";
+import { costAccountFor, reclassifyLegs, debitedExpenseAccounts, costPositions } from "./src/costAccount.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -7805,6 +7805,97 @@ app.post("/api/journal-entry/adjustment", async (req, res) => {
     );
 
     res.json({ success: true, journalEntry: je });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- Reclassifying a cost that is already in the books --------------------------------
+// The approver names the account before the journal is written; this is the other half, for
+// when it was already written and wrong. Before today it did not exist: five vouchers were
+// moved from 6000 to 5120 on 12 Sep 2026 by an ad-hoc script that rewrote the posted entries
+// in place, and a "Journal Reclassified" audit line was the only surviving trace.
+//
+// So: never an edit. A new two-sided entry, one balanced pair per original debit leg carrying
+// that leg's own project and donor, leaving the original posting where it is.
+//
+// DELIBERATELY not enforced here, and it is the opposite call from approval: Policy 7.2 is
+// NOT re-checked. Moving a cost from rent onto equipment does make it a purchase with no
+// quotation comparison behind it — but the money is spent, no comparison can be produced
+// retrospectively, and refusing would keep the books wrong in order to enforce a rule that
+// can no longer be satisfied. Accuracy wins; the voucher then appears on the missing-documents
+// list by itself, because that counter reads the accounts the books actually debited.
+app.post("/api/ledger/reclassify", async (req, res) => {
+  try {
+    const { expenseId, toAccountCode, reason, user } = req.body;
+
+    const exp = await prisma.expense.findUnique({ where: { id: expenseId } });
+    if (!exp) return res.status(404).json({ error: "Voucher not found." });
+
+    const to = String(toAccountCode || "").trim();
+    const why = String(reason || "").trim();
+    // A correction with no reason is indistinguishable from a mistake, and this is the one
+    // record that explains why the books changed their mind.
+    if (why.length < 10) {
+      return res.status(400).json({ error: "Say why this cost belongs somewhere else — the reason is the only record of it." });
+    }
+    const acc = to ? await prisma.account.findUnique({ where: { code: to } }) : null;
+    if (!acc || acc.type !== "Expense") {
+      return res.status(400).json({ error: "Choose the account this cost belongs to from the chart of accounts." });
+    }
+
+    // Every posting this voucher made. The expense side sits in whichever entry carried it —
+    // the accrual at approval, or the rebuild's Purchases entry for the historical rows.
+    const entries = await prisma.journalEntry.findMany({ where: { referenceNo: exp.voucherNo } });
+    const all = entries.flatMap(e => JSON.parse(e.itemsJson || "[]"));
+    const from = debitedExpenseAccounts(all);
+    if (!from.length) {
+      return res.status(400).json({ error: `${exp.voucherNo} has no cost posted to the ledger yet — set the account on the voucher itself, where the approver confirms it.` });
+    }
+    if (from.length > 1) {
+      return res.status(400).json({ error: `${exp.voucherNo} is already split across ${from.join(" and ")}. One reclassification cannot express that — post a manual adjustment instead.` });
+    }
+    if (from[0] === to) {
+      return res.status(400).json({ error: `${exp.voucherNo} is already on ${to} ${acc.name}.` });
+    }
+
+    const legs = reclassifyLegs(all, from[0], to);
+    // What is actually sitting there, netted — not the sum of every debit the voucher has ever
+    // carried, which double-counts a voucher that has been corrected before.
+    const moved = costPositions(all).filter(p => p.accountCode === from[0]).reduce((sum, p) => sum + p.amount, 0);
+    const fromAcc = await prisma.account.findUnique({ where: { code: from[0] } });
+
+    const je = await prisma.journalEntry.create({
+      data: {
+        id: `je-rc-${Date.now()}`,
+        journal: "Adjustment",
+        date: localDate(),
+        description: `Reclassified ${exp.voucherNo} (${exp.title}) from ${from[0]} ${fromAcc?.name || ""} to ${to} ${acc.name}: ${why}`,
+        referenceNo: exp.voucherNo,
+        isPosted: true,
+        itemsJson: JSON.stringify(legs)
+      }
+    });
+
+    // Both sides of the move, on the accounts themselves.
+    if (fromAcc) {
+      await prisma.account.update({ where: { code: from[0] }, data: { balance: fromAcc.balance - moved } });
+    }
+    await prisma.account.update({ where: { code: to }, data: { balance: acc.balance + moved } });
+
+    // The voucher now agrees with the books, so a future posting or rebuild reaches the same
+    // answer rather than re-deriving the account this correction just overruled.
+    await prisma.expense.update({ where: { id: expenseId }, data: { costAccountCode: to } });
+
+    await createAuditLog(
+      user?.id || "u-3",
+      user?.name || "Finance Officer",
+      "Journal Reclassified",
+      `${exp.voucherNo}: ${moved.toFixed(2)} USD moved from ${from[0]} ${fromAcc?.name || ""} to ${to} ${acc.name}. Reason: ${why}. `
+      + `Correcting entry ${je.id} posted; the original entry is unchanged.`
+    );
+
+    res.json({ success: true, journalEntry: je, from: from[0], to, moved: Number(moved.toFixed(2)) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

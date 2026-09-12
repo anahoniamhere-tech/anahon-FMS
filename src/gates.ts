@@ -50,6 +50,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/bank/import-notice": BOOKS,
   "/api/bank/reconcile": BOOKS,
   "/api/journal-entry/adjustment": BOOKS,
+  "/api/ledger/reclassify": BOOKS,
   "/api/budgets/allocate": BOOKS,
   "/api/cash/count": BOOKS,
   "/api/fxRates": BOOKS,

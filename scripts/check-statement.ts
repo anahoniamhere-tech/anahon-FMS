@@ -2,6 +2,7 @@
 // URL is hardcoded in schema.prisma, so purity beats copying the real books around.
 //   npx tsx scripts/check-statement.ts
 import { bucketFor, buildStatement, buildBalanceSheet, STATEMENT_LINES } from "../src/statement.js";
+import { reclassifyLegs, debitedExpenseAccounts, costPositions } from "../src/costAccount.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean) => {
@@ -124,6 +125,73 @@ ok("healthy reserves, and still cannot make payroll of 9,500", bs.netReserves > 
 
 console.log("\nbalance sheet — equipment is owned but cannot pay a salary");
 ok("equipment is not counted as cash", bs.cash === 22000 && bs.totalOwn - bs.cash === 21000);
+
+console.log("\nreclassifying a cost already in the books — never an edit of the original");
+// The shape the live books actually hold: one expense debit carrying its project and donor,
+// then the liability and withholding credits, which a reclassification must not touch.
+const POSTED = [
+  { accountCode: "6000", debit: 2930, credit: 0, projectId: "proj-skf-invj", donorId: "don-skf" },
+  { accountCode: "2100", debit: 0, credit: 2930, projectId: "proj-skf-invj" }
+];
+const moveOne = reclassifyLegs(POSTED, "6000", "5120");
+ok("it reads which expense account the postings actually debited",
+  debitedExpenseAccounts(POSTED).join() === "6000");
+ok("the liability leg is left alone — the cash left exactly as recorded",
+  moveOne.every(l => l.accountCode === "5120" || l.accountCode === "6000"));
+ok("one balanced pair: debit the right account, credit the wrong one",
+  moveOne.length === 2
+  && moveOne.find(l => l.accountCode === "5120")?.debit === 2930
+  && moveOne.find(l => l.accountCode === "6000")?.credit === 2930);
+ok("and it balances, so the correcting entry cannot post lopsided",
+  Math.abs(moveOne.reduce((n, l) => n + Number(l.debit || 0), 0)
+         - moveOne.reduce((n, l) => n + Number(l.credit || 0), 0)) < 0.005);
+ok("the donor and project ride along — moving the account must not lose who it was spent on",
+  moveOne.every(l => l.projectId === "proj-skf-invj" && l.donorId === "don-skf"));
+
+// A voucher split across two projects has two debit legs. Collapsing them into one pair would
+// move the money correctly and lose which donor each half belonged to (Policy 4.7).
+const SPLIT = [
+  { accountCode: "6000", debit: 600, credit: 0, projectId: "proj-a", donorId: "don-a" },
+  { accountCode: "6000", debit: 400, credit: 0, projectId: "proj-b", donorId: "don-b" },
+  { accountCode: "2100", debit: 0, credit: 1000, projectId: "proj-a" }
+];
+const moveSplit = reclassifyLegs(SPLIT, "6000", "6300");
+ok("a shared cost moves leg by leg, one pair per project", moveSplit.length === 4);
+ok("each half keeps its own donor", 
+  moveSplit.filter(l => l.donorId === "don-a").length === 2 && moveSplit.filter(l => l.donorId === "don-b").length === 2);
+ok("and the totals still match the money that was spent",
+  moveSplit.filter(l => l.accountCode === "6300").reduce((n, l) => n + Number(l.debit || 0), 0) === 1000
+  && moveSplit.filter(l => l.accountCode === "6000").reduce((n, l) => n + Number(l.credit || 0), 0) === 1000);
+ok("a voucher already split across two accounts is refused, not guessed at",
+  debitedExpenseAccounts([...POSTED, { accountCode: "7100", debit: 50, credit: 0 }]).length === 2);
+ok("nothing posted yet means nothing to reclassify — that is the approver's field instead",
+  debitedExpenseAccounts([{ accountCode: "2100", debit: 0, credit: 100 }]).length === 0);
+// A correction lands in the statement on the same line as the cost it corrects, or moves it
+// between lines when that is the point: 6000 and 5120 are both direct, 7100 is operating.
+// A correction must itself be correctable. The original debit stays put and a credit lands
+// beside it, so after one move the voucher HAS debit legs on both accounts; reading gross
+// debits would call that "split across two accounts" and refuse — a correction you cannot
+// correct. Netting says what a reader of the books would say.
+const afterOne = [...POSTED, ...moveOne];
+ok("after one correction the cost sits on exactly one account — the new one",
+  debitedExpenseAccounts(afterOne).join() === "5120");
+const moveTwice = reclassifyLegs(afterOne, "5120", "6300");
+ok("so it can be corrected again", moveTwice.length === 2);
+ok("and the second move carries the amount that is actually there, not the sum of every debit",
+  moveTwice.find(l => l.accountCode === "6300")?.debit === 2930);
+const afterTwo = [...afterOne, ...moveTwice];
+ok("three postings later the cost is still 2,930 and on one account",
+  debitedExpenseAccounts(afterTwo).join() === "6300"
+  && costPositions(afterTwo).reduce((n, p) => n + p.amount, 0) === 2930);
+ok("moved back to where it started, it is on one account again and still 2,930",
+  (() => { const back = [...afterTwo, ...reclassifyLegs(afterTwo, "6300", "6000")];
+    return debitedExpenseAccounts(back).join() === "6000"
+      && costPositions(back).reduce((n, p) => n + p.amount, 0) === 2930; })());
+ok("a genuinely split cost is still refused — two accounts at posting is not one correction",
+  debitedExpenseAccounts([...POSTED, { accountCode: "7100", debit: 50, credit: 0 }]).length === 2);
+
+ok("moving a cost between statement lines is exactly what a 6000 to 7100 correction does",
+  bucketFor("6000", "Expense") === "direct" && bucketFor("7100", "Expense") === "operating");
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nAll statement checks passed.\n");
 process.exit(failed ? 1 : 0);
