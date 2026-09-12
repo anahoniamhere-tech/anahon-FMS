@@ -33,16 +33,45 @@ const PHYSICAL: [string, string, string][] = [
   ["position",  `${B}(left|right)-([\\d.]|full|auto|px|\\[)`, "left-/right- → start-/end-"],
 ];
 
+/**
+ * `left-1/2` next to `-translate-x-1/2` is not a side — it is horizontal centring, and the
+ * pair renders identically in both directions because both halves are physical and cancel.
+ *
+ * Swapping it to the logical class actively BREAKS it: `start-1/2` becomes `right: 50%` under
+ * RTL while `translate-x` stays physical, so the element lands a full width off centre. The
+ * pair is therefore removed before a line is judged. A bare `left-1/2` with no translate is
+ * still a side, and so is `left-3` — the test below proves the narrowing did not blind the rule.
+ */
+const scrubCentring = (line: string) => {
+  let l = line;
+  if (/-translate-x-1\/2/.test(l)) l = l.replace(/(?<![A-Za-z0-9_])left-1\/2/g, "centred-x");
+  if (/(?<!-)\btranslate-x-1\/2/.test(l)) l = l.replace(/(?<![A-Za-z0-9_])right-1\/2/g, "centred-x");
+  return l;
+};
+
 console.log("\nno screen names a physical side");
 for (const [what, pattern, fix] of PHYSICAL) {
   const hits: string[] = [];
   for (const f of files) {
     read(f).split("\n").forEach((line, i) => {
-      if (new RegExp(pattern).test(line)) hits.push(`${f}:${i + 1}`);
+      const subject = what === "position" ? scrubCentring(line) : line;
+      if (new RegExp(pattern).test(subject)) hits.push(`${f}:${i + 1}`);
     });
   }
   ok(`${what} (${fix})`, hits.length === 0, hits.slice(0, 6).join(", ") + (hits.length > 6 ? ` +${hits.length - 6} more` : ""));
 }
+
+console.log("\nand the position rule still tells a side from a centre");
+const POSITION = new RegExp(PHYSICAL.find(r => r[0] === "position")![1]);
+const flags = (cls: string) => POSITION.test(scrubCentring(`<div className="${cls}">`));
+ok("a centring pair is not a side", !flags("absolute -top-5 left-1/2 -translate-x-1/2 flex"));
+ok("nor is the mirrored one", !flags("absolute right-1/2 translate-x-1/2"));
+ok("a bare left-1/2 still is — that is positioning, not centring", flags("absolute left-1/2"));
+ok("left-1/2 with a VERTICAL translate still is", flags("absolute left-1/2 -translate-y-1/2"));
+ok("a plain left-3 still is", flags("absolute left-3"));
+ok("right-0 still is", flags("absolute right-0"));
+ok("and left-1/2 with a positive x-translate still is — that is not the centring pair",
+  flags("absolute left-1/2 translate-x-1/2"));
 
 const app = read("src/App.tsx");
 console.log("\nthe page turns around");
