@@ -545,7 +545,13 @@ ok("the keepers may remove, and Super Admin is one of them",
   ROUTE_SEATS["/api/assets/delete"] === SUPPLIER_EDITORS && server.includes('"/api/assets/delete"'));
 ok("a fresh unconfirmed registration may go", deleteBlocker({ movements: [{} as any] }) === null);
 ok("a confirmed item may NOT — that is a second person's word", deleteBlocker({ verifiedAt: "2026-09-12", movements: [{} as any] }) === "somebody has confirmed it");
-ok("nor one that has been out", deleteBlocker({ movements: [{}, {}] as any }) === "it has been out");
+ok("nor one that has been out on a loan", deleteBlocker({ movements: [{ dueBack: "2026-09-20" }] as any }) === "it has been out");
+// 12 Sep 2026: this counted movements, so using "Where it is" to correct where a thing sits
+// locked the Remove button on EQ-001 and EQ-008 — neither had ever left the office.
+ok("but merely being MOVED is not being out — a tidied-up duplicate is still a duplicate",
+  deleteBlocker({ movements: [{ dueBack: null }, { dueBack: null }] as any }) === null);
+ok("and the signal is the same dueBack the whole file keys on, not a second idea",
+  deleteBlocker({ movements: [{ dueBack: null }, { dueBack: "2026-09-20" }, { dueBack: null }] as any }) === "it has been out");
 ok("nor one with a repair on it", deleteBlocker({ movements: [{} as any], repairs: [{} as any] }) === "it has a repair on it");
 ok("nor one that has already ended, however it ended", deleteBlocker({ endKind: "sold" }) === "its life here has already ended");
 ok("the route asks the same predicate the button does, and answers 409 with the way out",

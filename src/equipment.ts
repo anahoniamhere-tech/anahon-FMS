@@ -400,7 +400,14 @@ export function deleteBlocker(a: {
 }): "somebody has confirmed it" | "it has been out" | "it has a repair on it" | "its life here has already ended" | null {
   if (a.endKind) return "its life here has already ended";
   if (a.verifiedAt) return "somebody has confirmed it";
-  if ((a.movements || []).length > 1) return "it has been out";
+  // "Has been out" means a LOAN — somebody took it away and brought it back. It does not mean
+  // "has more than one movement": correcting where a thing sits with "Where it is" appends a
+  // resting entry too, and a duplicate row whose location was tidied up before anyone noticed
+  // it was a duplicate is still a duplicate. dueBack is the same signal the rest of this file
+  // keys on — null is a resting assignment, a date is a loan — so there is one idea here, not
+  // two that can drift. (Corrected 12 Sep 2026: counting movements locked EQ-001 and EQ-008,
+  // neither of which had ever left the office.)
+  if ((a.movements || []).some(m => m.dueBack)) return "it has been out";
   if ((a.repairs || []).length > 0) return "it has a repair on it";
   return null;
 }
