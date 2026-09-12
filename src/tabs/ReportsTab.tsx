@@ -246,7 +246,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                   })()}
 
                   <div>
-                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2">1. Budget vs Actual by Project</h3>
+                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2"><span dir="ltr">1. Budget vs Actual by Project</span></h3>
                     {reportData.perProject.map((p: any) => (
                       <div key={p.code} className="mb-4">
                         <p className="font-semibold text-xs bg-slate-100 px-2 py-1 rounded">{p.code} — {p.name} · {p.donor} · {p.status} · allocated {formatUSD(p.allocated)} · spent to date {formatUSD(p.toDate)} ({p.variancePct > 0 ? "+" : ""}{p.variancePct}%)</p>
@@ -262,13 +262,13 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
 
                   <div className="grid md:grid-cols-2 gap-6">
                     <div>
-                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2">2. Expenditure by Category (period)</h3>
+                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2"><span dir="ltr">2. Expenditure by Category (period)</span></h3>
                       <table className="w-full text-xs">{Object.entries(reportData.byCategory).map(([c, v]: any) => (
                         <tbody key={c}><tr className="border-t border-slate-100"><td className="py-1">{c}</td><td className="text-end font-mono">{formatUSD(v)}</td></tr></tbody>))}
                       </table>
                     </div>
                     <div>
-                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2">3. Cash & Bank Position (current)</h3>
+                      <h3 className="font-bold text-xs uppercase tracking-wider mb-2"><span dir="ltr">3. Cash & Bank Position (current)</span></h3>
                       <table className="w-full text-xs">{reportData.bankPosition.map((b: any) => (
                         <tbody key={b.name}><tr className="border-t border-slate-100"><td className="py-1">{b.name} ({b.currency})</td><td className="text-end font-mono"><span dir="ltr">{b.balance.toLocaleString()} {b.currency}</span></td><td className="text-end font-mono">{formatUSD(b.usd)}</td></tr></tbody>))}
                       </table>
@@ -276,7 +276,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                   </div>
 
                   <div>
-                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2">4. Income Received in Period</h3>
+                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2"><span dir="ltr">4. Income Received in Period</span></h3>
                     <table className="w-full text-xs">
                       <thead><tr className="text-[10px] text-slate-500 uppercase text-start"><th className="py-0.5">Date</th><th>Description</th><th>Account</th><th className="text-end">Amount</th><th className="text-end">USD</th></tr></thead>
                       <tbody>{reportData.deposits.map((d: any, i: number) => (
@@ -300,7 +300,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                   )}
 
                   <div>
-                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2">5. Compliance Status</h3>
+                    <h3 className="font-bold text-xs uppercase tracking-wider mb-2"><span dir="ltr">5. Compliance Status</span></h3>
                     {reportData.compliance.map((t: any, i: number) => (
                       <p key={i} className="text-xs py-0.5 border-t border-slate-100">{t.overdue ? "🔴" : t.status === "Done" ? "✅" : "🟡"} {t.title} — {t.status}{t.dueDate ? ` (due ${t.dueDate})` : ""}</p>
                     ))}
