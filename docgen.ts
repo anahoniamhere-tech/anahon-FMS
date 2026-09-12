@@ -188,9 +188,13 @@ export function contractHtml(o: {
    */
   parentReference?: string | null;
   /**
-   * The full monthly salary the framework contract establishes, at a 100% level of effort.
-   * Quoted on a subcontract as context for the level of effort it funds — never used to
+   * The total salary the annual contract states, at a 100% level of effort.
+   * Quoted on a subcontract as context for the level of effort it buys — never used to
    * recompute the fee, which is a typed figure. 0 or absent means no rate is on record.
+   *
+   * Quoted ONLY when `parentReference` names an annual contract to attribute it to. A
+   * subcontract that says no annual contract is on file and then quotes "the total salary
+   * stated in the annual contract" contradicts itself, and it does so on a signed page.
    */
   fullSalary?: number;
   /**
@@ -274,7 +278,7 @@ export function contractHtml(o: {
           : "، بصرف النظر عن عدد أيام العمل في الشهر. ويُسجَّل الجهد في كشوف دوام شهرية؛ ويسجّل الكشف الجهد المُنجَز لا المبلغ المستحق."} `
         : isService
           ? `وهو <b>ارتباط بمبلغ إجمالي</b>: يغطي الإجمالي أدناه النطاق المتفق عليه للمدة كاملة، ويُدفع على أقساط عند تسليم المخرجات وقبولها، مقابل فاتورة مقدّم الخدمة. `
-          : ""}${isSub && fullSalary
+          : ""}${isSub && parentReference && fullSalary
             ? `الراتب الإجمالي المنصوص عليه في العقد السنوي هو <b>${mAr(fullSalary)}</b> شهرياً؛ ويشتري هذا المشروع <b>نسبة الجهد ${ltr(String(loePct || 0))}%</b> المذكورة أعلاه منه. `
             : ""}`}
 ${noFixedValue
@@ -330,7 +334,7 @@ ${row("المدة", "Period", `${esc(longDate(startDate))} to ${esc(longDate(end
 ${loePct ? row("نسبة الجهد", "Level of Effort", ltr(`${esc(loePct)}%`)) : ""}
 ${monthlyFee ? row(isService ? "الأجر لكل فترة" : isFramework ? "الراتب الشهري الكامل (نسبة جهد 100%)" : "الأجر الشهري",
       isService ? "Fee per period" : isFramework ? "Full monthly salary (100% level of effort)" : "Monthly Fee", ltr(esc(money(monthlyFee)))) : ""}
-${isSub && fullSalary ? row("الراتب الشهري الكامل بموجب العقد السنوي", "Full monthly salary under the annual contract", ltr(esc(money(fullSalary)))) : ""}
+${isSub && parentReference && fullSalary ? row("الراتب الشهري الكامل بموجب العقد السنوي", "Full monthly salary under the annual contract", ltr(esc(money(fullSalary)))) : ""}
 ${isFramework && supersedesReference ? row("يحلّ محلّ", "Replaces", ltr(esc(supersedesReference))) : ""}
 ${row("إجمالي قيمة العقد", "Contract Total", noFixedValue
       ? `${esc(TOTAL_TEXT)}<span class="alt">${esc(TOTAL_TEXT_AR)}</span>`
@@ -374,7 +378,7 @@ for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.${isFram
           : ", independent of the number of days worked in the month. Effort is recorded on monthly timesheets; the timesheet records the effort delivered, not the amount payable."} `
         : isService
           ? `It is a <b>lump-sum engagement</b>: the total below covers the agreed scope for the whole period, payable in instalments on delivery and acceptance of the agreed outputs, against the provider's invoice. `
-          : ""}${isSub && fullSalary
+          : ""}${isSub && parentReference && fullSalary
             ? `The total salary stated in the annual contract is <b>${esc(money(fullSalary))}</b> per month; this project buys ${loePct ? `the <b>${esc(loePct)}% level of effort</b> stated above` : "the share stated above"} of it. `
             : ""}`}
 ${noFixedValue

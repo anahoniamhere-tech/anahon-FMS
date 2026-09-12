@@ -108,6 +108,18 @@ ok("the rate also appears in the particulars",
   withRate.includes("Full monthly salary under the annual contract$1,560.00"));
 ok("with no rate on record the subcontract simply omits it, inventing nothing",
   !text({ ...shared, fullSalary: 0 }).includes("total salary stated in the annual contract"));
+// TRF-2026 ran Feb-Jun 2026 and the annual contracts start Aug 2026, so those subcontracts
+// cite no parent — correctly, the chronology guard refuses a contract that did not yet exist.
+// The rate must then be silent too: a page cannot say "no annual contract is on file" and in
+// the next clause quote "the total salary stated in the annual contract".
+const orphan = { ...SUB, loePct: 20, monthlyFee: 312, parentReference: null, fullSalary: 1560 };
+ok("a subcontract with NO parent never quotes a total salary, even when one is passed",
+  !text(orphan).includes("total salary stated in the annual contract")
+  && !text(orphan).includes("Full monthly salary under the annual contract"));
+ok("and the Arabic does not quote it either",
+  !arText(orphan).includes("الراتب الإجمالي المنصوص عليه في العقد السنوي")
+  && !arText(orphan).includes("الراتب الشهري الكامل بموجب العقد السنوي"));
+ok("it still says plainly that none is on file", text(orphan).includes("No annual contract is on file for"));
 ok("a service agreement gains none of this", !text({ kind: "Service", contractTotal: 2000, loePct: 20 }).includes("framework"));
 
 console.log("\nE. the reference says which instrument it is");
