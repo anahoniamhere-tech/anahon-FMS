@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Drama } from "lucide-react";
 import Info from "./Info";
 import { ic } from "./nav";
+import { roleLabel } from "./roles";
 
 /**
  * Standing in for a vacant seat.
@@ -18,7 +19,7 @@ const SEAT_LABEL: Record<string, string> = {
   "Program Director": "Programme Director seat (held by the Executive Director)",
   "HR / Payroll Officer": "HR and Payroll",
 };
-const seatName = (role: string) => SEAT_LABEL[role] || role;
+const seatName = (role: string) => SEAT_LABEL[role] || roleLabel(role);
 type ActingLog = { id: string; userName: string; action: string; details: string; timestamp: string; actingAs: string | null };
 
 export default function RoleSwitch({ currentUser, onChange, compact = false }: {
@@ -88,7 +89,7 @@ export default function RoleSwitch({ currentUser, onChange, compact = false }: {
 
           {acting && (
             <button onClick={() => pick(null)} className="mb-2 w-full rounded bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white">
-              Stop acting — go back to {currentUser?.role}
+              Stop acting — go back to {roleLabel(currentUser?.role)}
             </button>
           )}
 

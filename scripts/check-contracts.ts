@@ -30,61 +30,74 @@ const FRAMEWORK = { reference: "ANH-EC-SK-2026-01", startDate: "2026-01-01", end
 const SUB = { reference: "TRF-2026-SC-SK-2026-02", project: TRF, monthlyFee: 800, contractTotal: 4000 };
 
 console.log("\nA. each instrument says what it is");
-ok("the yearly contract is an EMPLOYMENT CONTRACT", h1(FRAMEWORK) === "EMPLOYMENT CONTRACT");
+// AnaHon has no employees (Saad, 12 Sep 2026): the annual contract must not call anyone one.
+ok("the yearly contract is an ANNUAL SERVICE CONTRACT", h1(FRAMEWORK) === "ANNUAL SERVICE CONTRACT");
+ok("and the word employee appears nowhere on it", !/employee/i.test(text(FRAMEWORK)));
 ok("a project engagement is a SUBCONTRACT", h1({ ...SUB, parentReference: "ANH-EC-SK-2026-01" }) === "SUBCONTRACT");
 ok("a provider still signs a SERVICE AGREEMENT", h1({ kind: "Service", contractTotal: 2000 }) === "SERVICE AGREEMENT");
 // A service engagement on a project is still one agreement, never a subcontract.
 ok("a service agreement on a project is NOT turned into a subcontract",
   h1({ kind: "Service", project: TRF, contractTotal: 2000 }) === "SERVICE AGREEMENT");
 ok("the type row agrees with the title",
-  text({ ...SUB, parentReference: "ANH-EC-SK-2026-01" }).includes("Contract TypeSubcontract — employment, for one project"));
+  text({ ...SUB, parentReference: "ANH-EC-SK-2026-01" }).includes("Contract TypeSubcontract — one project, under the annual contract"));
+ok("nor on a subcontract", !/employee/i.test(text({ ...SUB, parentReference: "ANH-EC-SK-2026-01" })));
+ok("the counterparty is named a service provider, not an employee",
+  text(FRAMEWORK).includes("Service providerSally Kayyali"));
 
 console.log("\nB. a subcontract names the contract it sits under");
 const withParent = text({ ...SUB, parentReference: "ANH-EC-SK-2026-01" });
-ok("the framework reference is in the particulars", withParent.includes("Under framework contractANH-EC-SK-2026-01"));
+ok("the annual contract's reference is in the particulars", withParent.includes("Under annual contractANH-EC-SK-2026-01"));
 ok("and in the engagement clause, as a sentence",
-  withParent.includes("made under the yearly framework contract ANH-EC-SK-2026-01 between AnaHon Media Platform and Sally Kayyali"));
-ok("it says which document carries the money", withParent.includes("carries no remuneration of its own"));
-ok("and which one outlives the other", withParent.includes("the framework contract continues"));
+  withParent.includes("made under the annual contract ANH-EC-SK-2026-01 between AnaHon Media Platform and Sally Kayyali"));
+ok("it says which document carries the money", withParent.includes("carries no payment of its own"));
+ok("and that a subcontract BUYS a level of effort from it", withParent.includes("buys a level of effort from it for this project only"));
+ok("and which one outlives the other", withParent.includes("the annual contract remains active"));
 
 console.log("\nC. and says so plainly when there is none");
 // Every current engagement is in this state: nobody holds a framework contract yet. A
 // subcontract that quietly omitted the clause would read as if one existed.
 const noParent = text({ ...SUB, parentReference: null });
-ok("the particulars say none is on file", noParent.includes("Under framework contractNone on file"));
-ok("the clause names the person it is missing for", noParent.includes("No yearly framework contract is on file for Sally Kayyali"));
+ok("the particulars say none is on file", noParent.includes("Under annual contractNone on file"));
+ok("the clause names the person it is missing for", noParent.includes("No annual contract is on file for Sally Kayyali"));
 ok("and does not pretend the subcontract is incomplete", noParent.includes("this document stands alone"));
-ok("no framework reference is invented", !noParent.includes("made under the yearly framework contract"));
+ok("no framework reference is invented", !noParent.includes("made under the annual contract"));
 
 console.log("\nD. the rate lives on the framework, the share on the subcontract");
 // Saad, 5 Sep 2026: the yearly contract sets the full salary; a subcontract covers a project's
 // portion of it, which may be the whole thing or a level of effort. The framework must not read
 // as an unconditional monthly wage, and the subcontract must not recompute the fee from the rate.
 const rated = text({ reference: "ANH-EC-SK-2026-01", monthlyFee: 1560 });
-ok("the framework states a full monthly salary at 100% effort",
-  rated.includes("establishes a full monthly salary of $1,560.00 at a 100% level of effort"));
+ok("the annual contract states a total salary at 100% effort",
+  rated.includes("states a total salary of $1,560.00 per month at a 100% level of effort"));
+// Saad's own rule, in his words: no project, no payment; the contract stays active.
+ok("and states the pay rule the way Saad stated it",
+  rated.includes("with no project there is no payment, and this contract remains active regardless"));
 ok("and says plainly that it does not itself oblige payment", rated.includes("It does not by itself oblige payment"));
-ok("and that salary is drawn only through a subcontract", rated.includes("drawn only through a subcontract under which a project funds this role"));
+ok("and that payment comes only through a subcontract", rated.includes("payment is made only through a subcontract by which a project buys a level of effort from this contract"));
 ok("it does NOT carry the unconditional monthly-wage sentence",
-  !rated.includes("independent of the number of days attended"));
+  !rated.includes("independent of the number of days worked"));
+// "Attendance" is employment language; a service provider delivers effort, not attendance.
+ok("and the contract generator speaks of attendance nowhere",
+  !/attend/i.test(readFileSync(new URL("../docgen.ts", import.meta.url), "utf8")
+    .slice(0, readFileSync(new URL("../docgen.ts", import.meta.url), "utf8").indexOf("export function quotationHtml"))));
 ok("its particulars label the figure a full salary, not a fee",
   rated.includes("Full monthly salary (100% level of effort)$1,560.00"));
 ok("and it still has no fixed total", rated.includes("has no fixed value"));
 const unrated = text({ reference: "ANH-EC-SK-2026-01" });
-ok("with no rate on record the framework says so rather than implying zero",
-  unrated.includes("No full salary rate is recorded on it yet") && !unrated.includes("$0.00"));
+ok("with no rate on record the annual contract says so rather than implying zero",
+  unrated.includes("No total salary is stated on it yet") && !unrated.includes("$0.00"));
 
 const shared = { ...SUB, loePct: 20, monthlyFee: 312, parentReference: "ANH-EC-SK-2026-01" };
 const withRate = text({ ...shared, fullSalary: 1560 });
-ok("a subcontract quotes the framework's full salary as context",
-  withRate.includes("full monthly salary established by the framework contract is $1,560.00"));
-ok("and names the level of effort this project funds", withRate.includes("this project funds the 20% level of effort stated above"));
+ok("a subcontract quotes the annual contract's total salary as context",
+  withRate.includes("total salary stated in the annual contract is $1,560.00 per month"));
+ok("and names the level of effort this project buys", withRate.includes("this project buys the 20% level of effort stated above of it"));
 ok("the fee it charges is the typed one, not one recomputed from the rate",
   withRate.includes("fixed monthly fee of $312.00"));
 ok("the rate also appears in the particulars",
-  withRate.includes("Full monthly salary under the framework contract$1,560.00"));
+  withRate.includes("Full monthly salary under the annual contract$1,560.00"));
 ok("with no rate on record the subcontract simply omits it, inventing nothing",
-  !text({ ...shared, fullSalary: 0 }).includes("full monthly salary established by the framework"));
+  !text({ ...shared, fullSalary: 0 }).includes("total salary stated in the annual contract"));
 ok("a service agreement gains none of this", !text({ kind: "Service", contractTotal: 2000, loePct: 20 }).includes("framework"));
 
 console.log("\nE. the reference says which instrument it is");
@@ -122,16 +135,16 @@ console.log("\nG. a new yearly agreement says what it replaces");
 // two yearly agreements will sit in one person's file, and the newer must say it replaces the
 // older rather than leaving the dates to be compared.
 const replacing = text({ reference: "ANH-EC-SK-2027-01", monthlyFee: 1300, supersedesReference: "ANH-EC-SK-2026-09" });
-ok("the clause names the agreement it replaces", replacing.includes("replaces the yearly agreement ANH-EC-SK-2026-09"));
+ok("the clause names the agreement it replaces", replacing.includes("replaces the annual contract ANH-EC-SK-2026-09"));
 ok("and says from when the old one stops", replacing.includes("ceases to have effect from the start date above"));
 // Money has usually already moved on a subcontract; a new yearly agreement must not sweep it away.
 ok("it explicitly does NOT cancel subcontracts already issued",
   replacing.includes("does not affect any subcontract already issued") && replacing.includes("runs to the end of its own period"));
 ok("the particulars carry a Replaces row", replacing.includes("ReplacesANH-EC-SK-2026-09"));
 ok("a first agreement claims to replace nothing",
-  !text({ reference: "ANH-EC-SK-2026-09", monthlyFee: 1300 }).includes("replaces the yearly agreement"));
+  !text({ reference: "ANH-EC-SK-2026-09", monthlyFee: 1300 }).includes("replaces the annual contract"));
 ok("a subcontract never gets the clause, even when one is passed",
-  !text({ ...SUB, parentReference: "ANH-EC-SK-2027-01", supersedesReference: "ANH-EC-SK-2026-09" }).includes("replaces the yearly agreement"));
+  !text({ ...SUB, parentReference: "ANH-EC-SK-2027-01", supersedesReference: "ANH-EC-SK-2026-09" }).includes("replaces the annual contract"));
 ok("the server reuses one lookup for parent and predecessor — they are the same fact",
   /if \(isSub \|\| isFramework\) \{/.test(server) && /if \(isSub\) \{ parentReference = supersedesReference;/.test(server));
 ok("and refuses to let a reissued agreement supersede itself",
@@ -185,6 +198,41 @@ ok("a reference containing the party id still survives",
 ok("another party's document is refused", referenceOfContractDoc("doc-contract-ANH-EC-SK-2026-01-emp-3", "emp-9") === null);
 ok("a document that is not a contract is refused", referenceOfContractDoc("doc-1788451460939", "emp-3") === null);
 ok("an empty reference is null, not an empty citation", referenceOfContractDoc("doc-contract--emp-3", "emp-3") === null);
+
+console.log("\nJ. AnaHon has no employees, and no document says otherwise");
+// Saad's declaration, 12 Sep 2026: everyone on the team is a service provider on an annual
+// contract stating total salary and terms of reference; projects buy a level of effort from it
+// by subcontract; with no project there is no payment and the contract stays active. The role
+// strings, the Employee table and userEmail are permission and schema keys and DO NOT move —
+// this only guards what a person reads and signs.
+const gen = readFileSync(new URL("../docgen.ts", import.meta.url), "utf8");
+const fnSrc = (name: string) => {
+  const from = gen.indexOf(`export function ${name}`);
+  if (from < 0) return "";
+  const next = gen.indexOf("\nexport ", from + 10);
+  return gen.slice(from, next < 0 ? gen.length : next)
+    // strip the source comments: they legitimately say "employee" to explain why nothing else does
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+};
+const contractSrc = fnSrc("contractHtml");
+const payslipSrc = fnSrc("payslipHtml");
+ok("both generators were actually read, not truncated to their signatures",
+  contractSrc.length > 3000 && payslipSrc.length > 2000, `${contractSrc.length}/${payslipSrc.length}`);
+ok("the contract generator prints the word employee nowhere",
+  !/employee/i.test(contractSrc), (contractSrc.match(/.{0,40}employee.{0,40}/i) || [""])[0]);
+ok("the payslip prints it only to say a person is NOT one", (() => {
+  const prose = (payslipSrc.match(/.{0,70}employee.{0,30}/gi) || [])
+    .filter(h => !/employee:/.test(h));
+  return prose.length === 1 && prose[0].includes("not as an employee");
+})(), (payslipSrc.match(/.{0,70}employee.{0,30}/gi) || []).filter(h => !/employee:/.test(h)).join(" | "));
+ok("the payslip names the counterparty a service provider",
+  payslipSrc.includes("<caption>Service provider</caption>") && payslipSrc.includes("<div>Service provider — "));
+ok("a term with legal meaning is NOT quietly reworded — withholding still keys on isService",
+  /isService[\s\S]{0,400}7\.5% withholding tax/.test(gen));
+ok("and the nil month states the rule, not an entitlement",
+  payslipSrc.includes("with no project there is no payment") && payslipSrc.includes("the annual contract remains active"));
+ok("the payslip says the tax and social-security treatment is unconfirmed, not settled",
+  payslipSrc.includes("pending confirmation of the tax and social-security treatment"));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

@@ -489,7 +489,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
     >
       <option value="" disabled hidden>{t("— choose —")}</option>
       {includeOrg && <option value="org:">{t("The organisation itself")}</option>}
-      <optgroup label={t("An employee")}>
+      <optgroup label={t("A team member")}>
         {activeUsers.map(u => <option key={u.id} value={holderValue("employee", u.id)}>{u.name}</option>)}
       </optgroup>
       <optgroup label={t("A supplier")}>

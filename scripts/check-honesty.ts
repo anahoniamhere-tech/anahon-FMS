@@ -40,15 +40,15 @@ console.log("\na zero that is not a figure does not pretend to be one");
 // invented 98.5% above, inverted: a number that measures nothing, shown as if it did.
 const payroll = src("tabs/PayrollTab.tsx");
 ok("an unset base says so instead of showing $0.00",
-  /emp\.salary \|\| emp\.allowance \?/.test(payroll) && payroll.includes("No salary base set"));
+  /emp\.salary \|\| emp\.allowance \?/.test(payroll) && payroll.includes("No total salary stated yet"));
 ok("and the figures come back the moment either one is set",
   /<span dir="ltr">\{formatUSD\(emp\.salary\)\}<\/span>/.test(payroll));
 // A rate is not a wage: the figure is what 100% of this person costs, and what is actually
 // paid is the level of effort a project subcontracts. The card must not read as a monthly wage.
 ok("a stored figure is labelled the rate the yearly agreement sets, not a wage",
-  payroll.includes('{t("Full salary")}') && payroll.includes("The rate set by the yearly agreement"));
+  payroll.includes('{t("Full salary")}') && payroll.includes("The total salary stated in the annual contract"));
 ok("the sentence has Arabic, so it is not the English fallback",
-  /"No salary base set[^"]*":\s*"[^"]*[؀-ۿ]/.test(src("i18n.ts")));
+  /"No total salary stated yet[^"]*":\s*"[^"]*[؀-ۿ]/.test(src("i18n.ts")));
 // Same empty base, second screen: the co-funding sheet apportioned it into "40% ($0.00)".
 const projects = src("tabs/ProjectsTab.tsx");
 ok("a co-funding share with no base shows the percentage alone, not $0.00",
@@ -96,7 +96,7 @@ ok("an unregistered provider's withholding is still computed from a real total",
 ok("and reads as a sentence when there is no total to compute it from",
   contract({ kind: "Service" }).includes("computed on the contracted value of each engagement, unless the provider"));
 ok("the project select no longer forces one onto a framework contract",
-  /<select id=\{`ct-project-\$\{emp\.id\}`\} value=/.test(payroll) && payroll.includes("None: yearly framework contract"));
+  /<select id=\{`ct-project-\$\{emp\.id\}`\} value=/.test(payroll) && payroll.includes("None: annual service contract"));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

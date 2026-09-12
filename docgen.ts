@@ -207,7 +207,14 @@ export function contractHtml(o: {
   // instrument rather than hiding the row, so the deduction is never a surprise.
   const taxId = String(emp.taxId ?? "").trim();
   const registered = !!taxId && !/^n\/a$/i.test(taxId);
-  const title = isService ? "SERVICE AGREEMENT" : isSub ? "SUBCONTRACT" : "EMPLOYMENT CONTRACT";
+  /**
+  * What the paper calls itself. AnaHon has no employees — everyone on the team is a service
+  * provider on an annual contract stating total salary and terms of reference, and projects
+  * then buy a level of effort from it by subcontract (Saad, 12 Sep 2026). `kind` is still
+  * "Employment" on the wire and in the database, because it is a key; this is the title a
+  * person reads and signs, and it must not tell them they are an employee.
+  */
+  const title = isService ? "SERVICE AGREEMENT" : isSub ? "SUBCONTRACT" : "ANNUAL SERVICE CONTRACT";
 
   const row = (k: string, v: string) => `<tr><th scope="row">${esc(k)}</th><td>${v}</td></tr>`;
 
@@ -217,22 +224,23 @@ export function contractHtml(o: {
 <caption>Contract particulars.</caption>
 <tbody>
 ${row("Reference", esc(reference))}
-${row(isService ? "Service Provider" : "Employee", esc(emp.name))}
-${row(isService ? "Role / Scope of Services" : "Position / Role", esc(roleText))}
-${row("Contract Type", esc(isSub ? "Subcontract — employment, for one project" : kind))}
-${isSub ? row("Under framework contract", parentReference
+${row("Service provider", esc(emp.name))}
+${row(isService ? "Role / Scope of Services" : "Role / Terms of reference", esc(roleText))}
+${row("Contract Type", esc(isSub ? "Subcontract — one project, under the annual contract"
+      : isFramework ? "Annual service contract" : "Service agreement"))}
+${isSub ? row("Under annual contract", parentReference
       ? esc(parentReference)
-      : "<strong>None on file</strong> — no yearly framework contract has been issued to this person yet") : ""}
+      : "<strong>None on file</strong> — no annual contract has been issued to this person yet") : ""}
 ${row("Period", `${esc(longDate(startDate))} to ${esc(longDate(endDate))}`)}
 ${loePct ? row("Level of Effort", `${esc(loePct)}%`) : ""}
 ${monthlyFee ? row(isService ? "Fee per period" : isFramework ? "Full monthly salary (100% level of effort)" : "Monthly Fee", esc(money(monthlyFee))) : ""}
-${isSub && fullSalary ? row("Full monthly salary under the framework contract", esc(money(fullSalary))) : ""}
+${isSub && fullSalary ? row("Full monthly salary under the annual contract", esc(money(fullSalary))) : ""}
 ${isFramework && supersedesReference ? row("Replaces", esc(supersedesReference)) : ""}
 ${row("Contract Total", noFixedValue ? esc(TOTAL_TEXT) : `<strong>${esc(money(contractTotal))}</strong>`)}
 ${budgetLine ? row("Budget Line", esc(`${budgetLine.code} — ${budgetLine.description}`)) : ""}
 ${row("MoF Tax Registry ID", registered
       ? esc(taxId)
-      : `<strong>Not available</strong> — the ${isService ? "provider" : "employee"} is not registered with the Ministry of Finance${isService ? ", so 7.5% withholding tax is deducted at source from every payment under this agreement and remitted to the MoF by AnaHon" : ""}`)}
+      : `<strong>Not available</strong> — this service provider is not registered with the Ministry of Finance${isService ? ", so 7.5% withholding tax is deducted at source from every payment under this agreement and remitted to the MoF by AnaHon" : ""}`)}
 ${row("Paid From", account
       ? `${emp.paymentMethod === "Cash" ? "Cash withdrawn from" : "Bank transfer from"} ${esc(account.name)} <span>${esc(account.accountNo)}</span>`
       : isService
@@ -247,26 +255,26 @@ ${row("Paid From", account
 <h2 style="margin-top:22px;color:#1a1a1a;font-size:13px"><strong>1. Engagement</strong></h2>
 <p>AnaHon Media Platform engages ${esc(emp.name)} as <b>${esc(roleText)}</b>${p ? ` on project ${esc(p.code)} — ${esc(p.name)}` : ""}
 for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.${isFramework && supersedesReference
-      ? ` This agreement <b>replaces the yearly agreement ${esc(supersedesReference)}</b>, which ceases to have effect from the start date above. It does not affect any subcontract already issued: each of those runs to the end of its own period on its own terms.`
+      ? ` This contract <b>replaces the annual contract ${esc(supersedesReference)}</b>, which ceases to have effect from the start date above. It does not affect any subcontract already issued: each of those runs to the end of its own period on its own terms.`
       : ""}${isSub
       ? parentReference
-        ? ` This subcontract is made under the yearly framework contract <b>${esc(parentReference)}</b> between AnaHon Media Platform and ${esc(emp.name)}, which establishes the engagement but carries no remuneration of its own. This subcontract carries the remuneration for this project only, and governs for this project where the two differ. It ends with the period above; the framework contract continues.`
-        : ` <b>No yearly framework contract is on file for ${esc(emp.name)}.</b> Under AnaHon's engagement model this subcontract should sit under one; until it is issued, this document stands alone and is the whole of the engagement it describes.`
+        ? ` This subcontract is made under the annual contract <b>${esc(parentReference)}</b> between AnaHon Media Platform and ${esc(emp.name)}, which establishes the engagement and states the total salary but carries no payment of its own. This subcontract buys a level of effort from it for this project only, and governs for this project where the two differ. It ends with the period above; the annual contract remains active.`
+        : ` <b>No annual contract is on file for ${esc(emp.name)}.</b> Under AnaHon's engagement model this subcontract should sit under one; until it is issued, this document stands alone and is the whole of the engagement it describes.`
       : ""}</p>
 
 <h2 style="color:#1a1a1a;font-size:13px"><strong>2. ${isService ? "Fees" : "Remuneration"}</strong></h2>
 <p>${isFramework
       ? (monthlyFee
-        ? `This contract establishes a <b>full monthly salary of ${esc(money(monthlyFee))}</b> at a 100% level of effort. It does not by itself oblige payment: salary is drawn only through a subcontract under which a project funds this role, and each subcontract states the level of effort that project funds and the amount that follows from it. `
-        : `This contract establishes the engagement. <b>No full salary rate is recorded on it yet</b>; until one is, every project that funds this role states its own amount on its subcontract. `)
+        ? `This contract states a <b>total salary of ${esc(money(monthlyFee))} per month</b> at a 100% level of effort. It does not by itself oblige payment: <b>with no project there is no payment, and this contract remains active regardless</b> — payment is made only through a subcontract by which a project buys a level of effort from this contract, and each subcontract states that level of effort and the amount that follows from it. `
+        : `This contract establishes the engagement. <b>No total salary is stated on it yet</b>; until one is, every project that buys effort from it states its own amount on its subcontract. With no project there is no payment, and this contract remains active regardless. `)
       : `${loePct ? `The engagement is at a <b>${esc(loePct)}% level of effort</b>. ` : ""}${monthlyFee
         ? `It carries a <b>fixed ${isService ? "fee of" : "monthly fee of"} ${esc(money(monthlyFee))}${isService ? " per agreed period" : ""}</b>${isService
           ? ". Fees are payable on delivery and acceptance of the agreed outputs, against the provider's invoice."
-          : ", independent of the number of days attended in the month. Attendance is recorded on monthly timesheets; the timesheet records effort, not the billing amount."} `
+          : ", independent of the number of days worked in the month. Effort is recorded on monthly timesheets; the timesheet records the effort delivered, not the amount payable."} `
         : isService
           ? `It is a <b>lump-sum engagement</b>: the total below covers the agreed scope for the whole period, payable in instalments on delivery and acceptance of the agreed outputs, against the provider's invoice. `
           : ""}${isSub && fullSalary
-            ? `The full monthly salary established by the framework contract is <b>${esc(money(fullSalary))}</b>; this project funds ${loePct ? `the <b>${esc(loePct)}% level of effort</b> stated above` : "the share stated above"}. `
+            ? `The total salary stated in the annual contract is <b>${esc(money(fullSalary))}</b> per month; this project buys ${loePct ? `the <b>${esc(loePct)}% level of effort</b> stated above` : "the share stated above"} of it. `
             : ""}`}
 ${noFixedValue
       ? `This ${isService ? "agreement" : "contract"} has <b>${esc(TOTAL_TEXT[0].toLowerCase() + TOTAL_TEXT.slice(1))}</b>.`
@@ -509,7 +517,7 @@ ${wht > 0 ? `<p class="note"><strong>Withholding:</strong> ${money(wht, e.curren
 This form is prepared for the provider's signature because the provider does not issue their own invoices; it is <strong>not valid until signed by the provider</strong>. Retention 7 years per Policy §13.3.</p>`);
 }
 
-/** Monthly payslip / salary payment receipt, built from the employee record and the
+/** Monthly payslip / salary payment receipt, built from the service provider's record and the
  *  approved timesheet for that month. Shows which project funds which share of the cost —
  *  AnaHon's standing rule is that a role is only paid where a project funds it. */
 export function payslipHtml(o: {
@@ -532,7 +540,7 @@ export function payslipHtml(o: {
 <h1>ANAHON MEDIA PLATFORM — PAYSLIP</h1>
 <h2>${esc(monthLabel)} · ${esc(emp.name)}</h2>
 <table>
-  <caption>Employee</caption>
+  <caption>Service provider</caption>
   <tbody>
   <tr><th scope="row">Name</th><td><strong>${esc(emp.name)}</strong></td></tr>
   <tr><th scope="row">Position</th><td>${esc(emp.position)}</td></tr>
@@ -563,13 +571,13 @@ ${o.allocations.length ? `<table>
   <tr><th scope="row">Funds drawn from</th><td>${o.account ? `${esc(o.account.name)} ${esc(o.account.accountNo)}` : "—"}</td></tr>
   </tbody>
 </table>
-${gross === 0 ? `<p class="note"><strong>Nil payslip.</strong> No salary is recorded for this role in this month. Under AnaHon's standing rule a position carries a salary only while a project funds it; this record exists to document the month, not to assert a payment.</p>` : ""}
+${gross === 0 ? `<p class="note"><strong>Nil statement.</strong> No payment is recorded for this role in this month. Under AnaHon's standing rule, with no project there is no payment — and the annual contract remains active regardless. This record exists to document the month, not to assert a payment.</p>` : ""}
 <div class="sig">
-  <div>Employee — ${esc(emp.name)}<br>Signature &amp; date (received)</div>
+  <div>Service provider — ${esc(emp.name)}<br>Signature &amp; date (received)</div>
   <div>For AnaHon Media Platform — ${esc(o.countersignatory)}<br>Signature &amp; date</div>
 </div>
-<p class="note">System-generated from the employee record and the approved timesheet for ${esc(month)}; figures are not re-entered by hand.
-Statutory deductions are shown as nil because AnaHon's payroll-tax and CNSS treatment is pending the worker-classification decision with the accountant — this payslip must be reissued if that decision changes the month's figures. Unsigned until countersigned. Retention 7 years per Policy §13.3.</p>`);
+<p class="note">System-generated from the service provider's record and the approved timesheet for ${esc(month)}; figures are not re-entered by hand.
+AnaHon engages everyone on the team as a service provider on an annual contract, not as an employee. <strong>Statutory deductions are shown as nil pending confirmation of the tax and social-security treatment of that engagement with AnaHon's accountant</strong> — withholding on services and NSSF are not settled here, and this statement must be reissued if that confirmation changes the month's figures. Unsigned until countersigned. Retention 7 years per Policy §13.3.</p>`);
 }
 
 /** Next unique document reference (ANH-DOC-NNNNN). Max-based so deletions can't

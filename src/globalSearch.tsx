@@ -47,7 +47,7 @@ export function searchHits(query: string, state: DatabaseState, nav: SearchNav):
   (state.bankTransactions || []).filter(t => t.description.toLowerCase().includes(q)).slice(0, 3)
     .forEach(t => hits.push({ k: "Bank", label: t.description.slice(0, 64), sub: `${t.date} · ${t.type}`, go: () => { nav.setBankSearch(query); nav.setBankFilterAcc(""); nav.handleNavClick("banking"); } }));
   (state.employees || []).filter(emp => emp.name.toLowerCase().includes(q)).slice(0, 2)
-    .forEach(emp => hits.push({ k: "Employee", label: emp.name, sub: emp.position, go: () => nav.handleNavClick("payroll") }));
+    .forEach(emp => hits.push({ k: "Team member", label: emp.name, sub: emp.position, go: () => nav.handleNavClick("payroll") }));
   return hits;
 }
 

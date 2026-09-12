@@ -1786,7 +1786,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             </div>
 
                             {projTimesheets.length === 0 ? (
-                              <p className="text-[11px] text-slate-400 italic py-2">No employee salary timesheets have co-funded allocations mapped to this project yet.</p>
+                              <p className="text-[11px] text-slate-400 italic py-2">No salary timesheets have co-funded allocations mapped to this project yet.</p>
                             ) : (
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-40 overflow-y-auto">
                                 {projTimesheets.map(ts => {

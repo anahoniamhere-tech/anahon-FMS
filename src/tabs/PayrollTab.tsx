@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Donor, Employee, Project } from "../types";
 import { tr } from "../i18n";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
-import { DIRECTORS, HR, PAYROLL_VIEWERS, TIMESHEET_FILERS } from "../roles";
+import { DIRECTORS, HR, PAYROLL_VIEWERS, TIMESHEET_FILERS, roleLabel } from "../roles";
 import { maySeePersonnelFile, missingPersonnelDocs } from "../personnelDocs";
 
 export default function PayrollTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, formatUSD, handleGenerateContract, isSelfService, openDoc, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps) {
@@ -51,7 +51,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
       // has signed in is allowed, and silence about it is how a mismatch survives unnoticed.
       triggerToast(
         !d.userEmail ? "Self-service login removed."
-          : d.account ? `Linked to ${d.account.name} (${d.account.role})${d.account.active ? "" : " — that account is deactivated"}.`
+          : d.account ? `Linked to ${d.account.name} (${roleLabel(d.account.role)})${d.account.active ? "" : " — that account is deactivated"}.`
             : "Saved — but no account signs in with that address yet.",
         d.userEmail && !d.account ? "error" : undefined as any);
       setLoginDraft(prev => { const next = { ...prev }; delete next[empId]; return next; });
@@ -115,7 +115,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
   const handleEmployeeRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newEmpName || !newEmpPosition || !newEmpSalary) {
-      triggerToast("Employee name, position and base salary are required.", "error");
+      triggerToast("Name, role and total salary are required.", "error");
       return;
     }
 
@@ -130,7 +130,9 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
           allowance: newEmpAllowance || 0,
           paymentMethod: newEmpPaymentMethod,
           bankAccountId: newEmpBankAccountId,
-          contractType: newEmpContractType || "Regular Employee",
+          // AnaHon engages everyone as a service provider on an annual contract, never as an
+          // employee — so a new record says that rather than "Regular Employee".
+          contractType: newEmpContractType || "Annual service contract",
           userEmail: newEmpLogin,
           user: currentUser
         })
@@ -140,9 +142,9 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
         // Say what the login actually reached, the same way the card does — a registration
         // that silently records an address nobody signs in with is the old bug again.
         triggerToast(
-          `Employee ${newEmpName} registered on payroll` + (
+          `${newEmpName} added to the team` + (
             !newEmpLogin ? " — no self-service login, set one on their card."
-              : data.account ? `, signing in as ${data.account.name} (${data.account.role}).`
+              : data.account ? `, signing in as ${data.account.name} (${roleLabel(data.account.role)}).`
                 : " — but no account signs in with that address yet."),
           newEmpLogin && !data.account ? "error" : undefined as any);
         setNewEmpName("");
@@ -155,10 +157,10 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
         setNewEmpLogin("");
         refreshState();
       } else {
-        triggerToast(data.error || "Failed to register employee.", "error");
+        triggerToast(data.error || "Failed to add the team member.", "error");
       }
     } catch {
-      triggerToast("Error registering new employee.", "error");
+      triggerToast("Error adding the team member.", "error");
     }
   };
 
@@ -218,7 +220,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                 </p>
               </div>
 
-              {/* Register New Employee Form */}
+              {/* Add a team member (a service provider on an annual contract) */}
               {HR.includes(currentUser.role) && (
                 <form onSubmit={handleEmployeeRegister} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
                   <div>
@@ -295,7 +297,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                       className="finance-input w-full text-xs"
                       required
                     >
-                      <option value="Bank Transfer">🏦 Bank transfer to employee</option>
+                      <option value="Bank Transfer">🏦 Bank transfer to them</option>
                       <option value="Cash">💵 Cash withdrawn from that account</option>
                     </select>
                   </div>
@@ -312,7 +314,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                     />
                   </div>
                   <button type="submit" className="bg-slate-900 hover:bg-slate-950 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all">
-                    Register Employee
+                    Add team member
                   </button>
                 </form>
               )}
@@ -343,11 +345,11 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                                 {/* A rate is not a wage. It says what 100% of this person costs; what
                                     is actually paid is whatever level of effort a project subcontracts. */}
                                 <span className="block text-[10px] text-slate-500 italic">
-                                  {t("The rate set by the yearly agreement — paid only through a subcontract, at the level of effort that project funds.")}
+                                  {t("The total salary stated in the annual contract. No project, no payment — the contract stays active either way.")}
                                 </span>
                               </>
                             ) : (
-                              <span className="italic">{t("No salary base set — this role is paid only while a project funds it.")}</span>
+                              <span className="italic">{t("No total salary stated yet — and with no project there is no payment, whatever it says.")}</span>
                             )}
                           </p>
                           {(() => {
@@ -378,7 +380,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                               type="button"
                               onClick={() => generatePayslip(emp.id, emp.name, selectedTSMonth)}
                               className="block text-[10px] font-bold text-emerald-700 hover:underline mt-0.5 min-h-[24px]"
-                              title={`Payslip for ${selectedTSMonth} from the employee record and that month's timesheet`}
+                              title={`Payslip for ${selectedTSMonth} from this person's record and that month's timesheet`}
                             >
                               🧾 Payslip {selectedTSMonth}
                             </button>
@@ -513,7 +515,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                             <select id={`ct-project-${emp.id}`} value={contractForm.projectId}
                               onChange={(e) => setContractForm({ ...contractForm, projectId: e.target.value })}
                               className="finance-input w-full text-xs">
-                              <option value="">— None: yearly framework contract —</option>
+                              <option value="">— None: annual service contract —</option>
                               {state.projects.filter(p => p.status === "Active").map(p => (
                                 <option key={p.id} value={p.id}>{p.code} — {p.name}</option>
                               ))}
@@ -566,11 +568,11 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                           <p className="md:col-span-4 text-[10px] text-slate-500 italic">
                             Generated unsigned and filed in the project's vault folder. Countersignatory is taken
                             from the authorised signatories on record. Never backdate — issue a dated addendum instead (Policy §6.8).
-                            {" "}Leave the project as “None” and the fee and total at 0 for the <b>yearly framework contract</b>: it
-                            establishes the engagement and reads “no fixed value; each engagement is contracted separately per
-                            project”. Name a project and enter the money and you get a <b>Subcontract</b> instead — its own title,
-                            an <span dir="ltr">-SC-</span> reference, and a clause citing the framework contract it sits under.
-                            If that person has no framework contract yet, the subcontract says so on its face.
+                            {" "}Leave the project as “None” for the <b>annual service contract</b>: put the total monthly salary in
+                            the fee, leave the total at 0, and it states the salary and the terms of reference without obliging any
+                            payment. Name a project and enter the money and you get a <b>Subcontract</b> instead — its own title,
+                            an <span dir="ltr">-SC-</span> reference, and a clause buying a level of effort from the annual contract.
+                            If that person has no annual contract yet, the subcontract says so on its face.
                           </p>
                         </form>
                       )}
@@ -644,7 +646,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                         )}
                       </div>
 
-                      {/* Employee history: projects worked on + financial statement */}
+                      {/* History: projects worked on + financial statement */}
                       {(() => {
                         const ALIASES: Record<string, string[]> = {
                           "emp-1": ["saad matar"],

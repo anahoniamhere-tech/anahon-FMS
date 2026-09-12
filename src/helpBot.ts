@@ -24,7 +24,7 @@ import { HELP } from "./help";
 import { NAV, visibleNav } from "./nav";
 import { RULES, type DeskItem } from "./workflow";
 import { ROUTE_SEATS, ACTION_SEATS, ANY } from "./gates";
-import { ALL_ROLES } from "./roles";
+import { ALL_ROLES, roleLabel } from "./roles";
 
 /** A desk row stripped to what a question can be answered from. Nothing identifying. */
 export type SafeRow = { kind: string; status: string; verb: string; door: string; when: string | null };
@@ -74,7 +74,7 @@ export type Asker = { role: string; ownRole: string; doors: string[]; rows: Safe
 /** The person asking, in the terms the corpus is written in. */
 export const askerBlock = (a: Asker): string => [
   `## The person asking`,
-  `Role in force: ${a.role}${a.role !== a.ownRole ? ` (they are a ${a.ownRole} standing in for the ${a.role} seat — answer for the seat they are wearing)` : ""}`,
+  `Role in force: ${roleLabel(a.role)}${a.role !== a.ownRole ? ` (they are a ${roleLabel(a.ownRole)} standing in for the ${roleLabel(a.role)} seat — answer for the seat they are wearing)` : ""}`,
   `Doors they can open, by navKey: ${a.doors.join(", ") || "(none)"}`,
   `Today is ${a.today}.`,
   a.rows.length

@@ -4,7 +4,7 @@ import { RefreshCw, Settings, ShieldAlert } from "lucide-react";
 import { Project } from "../types";
 import { STREAMS } from "../constants";
 import { SharedProps } from "./shared";
-import { ALL_ROLES, SITE_EDITORS } from "../roles";
+import { ALL_ROLES, SITE_EDITORS, roleLabel } from "../roles";
 import MetaAccounts from "./MetaAccounts";
 
 export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput, refreshState, setEurRateInput, setLbpRateInput, state, t, triggerToast }: SharedProps) {
@@ -91,7 +91,7 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
                             className="finance-input text-xs py-1"
                             disabled={u.id === currentUser.id}
                           >
-                            {ALL_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                            {ALL_ROLES.map(r => <option key={r} value={r}>{roleLabel(r)}</option>)}
                           </select>
                           {u.role === "Project Officer" && (
                             <span className="flex flex-wrap items-center gap-2">

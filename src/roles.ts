@@ -96,4 +96,17 @@ export const FULL_VIEW = ALL_ROLES.filter(r => !RESTRICTED.includes(r));
 /** May read the financial statements. */
 export const REPORT_READERS = [...MANAGERS, AUDITOR];
 
+/**
+ * What a role is CALLED to a person, where the role string itself is a permission key.
+ *
+ * The key never moves. "Program Director" is the policies' name for the director seat, and
+ * "Employee (Self-Service)" is a permission — the right to see your own file and file your own
+ * timesheet — not a job title. AnaHon has no employees (Saad, 12 Sep 2026): everyone on the
+ * team is a service provider on an annual contract. So the string stays and the label changes.
+ */
+const ROLE_LABEL: Record<string, string> = {
+  [SELF]: "Team member (self-service)",
+};
+export const roleLabel = (role?: string | null) => ROLE_LABEL[String(role || "")] || String(role || "");
+
 export const has = (list: readonly string[], role?: string | null) => list.includes(role || "");
