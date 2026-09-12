@@ -8145,26 +8145,54 @@ Rules:
 - Anything not printed is an empty string — never a placeholder such as "generic", "unknown", "N/A" or "-".
 - warnings: anything cropped, blurred, reflective or ambiguous; name the characters you are unsure of.`;
 
+    const schema = {
+      type: "object",
+      properties: {
+        name: { type: "string" }, brand: { type: "string" }, model: { type: "string" },
+        serialNumber: { type: "string" }, specs: { type: "string" },
+        kind: { type: "string", enum: [...EQUIPMENT_KINDS, ""] },
+        confidence: { type: "string", enum: ["high", "medium", "low"] },
+        warnings: { type: "array", items: { type: "string" } }
+      },
+      required: ["name", "brand", "model", "serialNumber", "specs", "kind", "confidence"], additionalProperties: false
+    };
+    const readLabel = (prefer: "gemini" | "claude") => askJson(prompt, schema, { base64, mimeType }, "low", prefer);
+    // The free tier answers "high demand" (503) or "slow down" (429) at busy hours. Anything
+    // else — a refusal, a truncation, an unreadable photo — is a real failure, not a queue.
+    const busy = (e: any) => /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand/i.test(String(e?.message));
+    // Never the provider's raw JSON on a phone: it says nothing to the person holding the box.
+    const plainly = (e: any) => String(e?.message || "").replace(/[{}[\]"]/g, "").trim().slice(0, 120);
+    const unreadable = (e: any) => res.status(422).json({
+      error: `The label could not be read (${plainly(e)}). Type the details from the label instead.`
+    });
+
+    // Reading one label is a small request, and a person is standing in front of a box with a
+    // phone in their hand. So: ask the free reader, wait out a busy moment and ask it again,
+    // and only then spend — rather than sending them away to type a serial by hand. Which one
+    // answered goes in the audit line, so the spend is visible where the work is logged.
     let extracted: any;
+    let answeredBy = "free reader";
     try {
-      extracted = await askJson(prompt, {
-        type: "object",
-        properties: {
-          name: { type: "string" }, brand: { type: "string" }, model: { type: "string" },
-          serialNumber: { type: "string" }, specs: { type: "string" },
-          kind: { type: "string", enum: [...EQUIPMENT_KINDS, ""] },
-          confidence: { type: "string", enum: ["high", "medium", "low"] },
-          warnings: { type: "array", items: { type: "string" } }
-        },
-        required: ["name", "brand", "model", "serialNumber", "specs", "kind", "confidence"], additionalProperties: false
-      }, { base64, mimeType }, "low", "gemini");
-    } catch (e: any) {
-      // The free tier answers "high demand" (503) or "slow down" (429) at busy hours. That is a
-      // moment's wait, not a reason to type the label out — and its raw JSON is not for a phone.
-      const busy = /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand/i.test(String(e?.message));
-      return res.status(busy ? 503 : 422).json({ error: busy
-        ? "The label reader is busy for a moment — press Scan the label again, or type the details from the label."
-        : `The label could not be read (${e.message}). Type the details from the label instead.` });
+      extracted = await readLabel("gemini");
+    } catch (first: any) {
+      if (!busy(first)) return unreadable(first);
+      await new Promise(r => setTimeout(r, 1500));
+      try {
+        extracted = await readLabel("gemini");
+        answeredBy = "free reader, second try";
+      } catch (second: any) {
+        if (!busy(second)) return unreadable(second);
+        try {
+          extracted = await readLabel("claude");
+          answeredBy = "paid reader, after the free one was busy twice";
+        } catch (third: any) {
+          if (!busy(third)) return unreadable(third);
+          // Both unavailable. The original message, unchanged: it is still a moment's wait.
+          return res.status(503).json({
+            error: "The label reader is busy for a moment — press Scan the label again, or type the details from the label."
+          });
+        }
+      }
     }
 
     // A placeholder is an answer dressed as data. Blank it before it reaches a form a hurried
@@ -8177,7 +8205,7 @@ Rules:
     extracted.duplicateOfTag = twin ? (twin.tag || "An item on the register") : "";
 
     await createAuditLog(user.id, user.name, "AI Label Scan",
-      `Read "${filename || "photo"}" — ${[extracted.brand, extracted.model].filter(Boolean).join(" ") || "item"}, serial ${extracted.serialNumber || "(none legible)"} (confidence: ${extracted.confidence}). Prefill only; nothing registered.`);
+      `Read "${filename || "photo"}" — ${[extracted.brand, extracted.model].filter(Boolean).join(" ") || "item"}, serial ${extracted.serialNumber || "(none legible)"} (confidence: ${extracted.confidence}). Answered by the ${answeredBy}${takeUsage()}. Prefill only; nothing registered.`);
     res.json({ extracted });
   } catch (err: any) {
     res.status(500).json({ error: "Label scan failed: " + err.message });

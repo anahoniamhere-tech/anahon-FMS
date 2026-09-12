@@ -121,6 +121,30 @@ export const REQUIRED_SUPPLIER: {
     accepts: ["CV"],
     onlyIf: v => v.engageable === true && v.partyKind === "individual" && !isTeamMember(v),
   },
+  {
+    // §7.3 Vendor Selection Process, "when necessary" — and Saad decided on 12 Sep 2026 that
+    // for an organisation it is necessary. The twin of the identity paper above: where a person
+    // proves who they are with an ID, a company proves it with its commercial record.
+    //
+    // Asked of an organisation whether we engage it or buy from it, because the question is who
+    // the counterparty legally IS, which a purchase does not make less relevant. Known
+    // consequence, accepted with the decision: a foreign software vendor has no Lebanese record
+    // and this line will stand open against Adobe, OpenAI, Anthropic and Google until somebody
+    // files what they do have or marks the row inactive.
+    key: "commercial",
+    label: "Commercial registration",
+    accepts: ["Commercial Registration", "Commercial Register", "Commercial Circular", "Registration Certificate", "Certificate of Incorporation"],
+    onlyIf: v => v.partyKind === "organisation",
+  },
+  {
+    // The tax side of the same question. "Tax_Regularization" is here because it is the
+    // spelling the vault already holds; the rest are what a person would reach for when
+    // filing one. Nothing about the RATE is decided here — see the note below.
+    key: "vat",
+    label: "VAT / tax registration",
+    accepts: ["VAT Certificate", "VAT Registration", "Tax Registration", "Tax_Regularization", "MoF Registration"],
+    onlyIf: v => v.partyKind === "organisation",
+  },
 ];
 
 /**
@@ -130,10 +154,16 @@ export const REQUIRED_SUPPLIER: {
  * procure from, and chasing a registration form for a shop we stopped using in 2024 is
  * noise on somebody's desk.
  *
- * Deliberately NOT demanded: proof of legal or tax registration, which §7.3 requires
- * only "when necessary" — Adobe and OpenAI have no Lebanese MoF number and never will,
- * and the system already enforces the consequence by withholding 7.5% from any supplier
- * without a tax ID. And the conflict-of-interest declaration, which §7.7 binds *staff*
+ * Proof of legal and tax registration WAS excluded here, on the grounds that §7.3 requires it
+ * only "when necessary" and that Adobe and OpenAI have no Lebanese MoF number and never will.
+ * Saad overruled that on 12 Sep 2026: an organisation owes its commercial record and its VAT
+ * details, whether we engage it or buy from it. The old reasoning is kept above rather than
+ * deleted, because the consequence it predicted is real and was accepted knowingly — the
+ * foreign software vendors will carry an open line until somebody files what they do have or
+ * marks the row inactive. Nothing is demanded of a party whose kind nobody has said yet, so
+ * this arrives row by row as the register is classified rather than all at once.
+ *
+ * Still deliberately NOT demanded: the conflict-of-interest declaration, which §7.7 binds *staff*
  * involved in procurement rather than the vendor, and which `Vendor.declarationSigned`
  * already records on the record itself; a second copy is a second thing to disagree.
  */

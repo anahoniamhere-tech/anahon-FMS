@@ -67,10 +67,8 @@ ok("nor is a blocked one", gaps(BLOCKED) === "");
 
 console.log("\nD. what the list deliberately does not demand");
 const accepted = REQUIRED_SUPPLIER.flatMap(r => r.accepts);
-// §7.3 asks for legal registration only "when necessary"; a foreign software vendor has
-// no Lebanese MoF number, and the 7.5% withholding already enforces the consequence.
-ok("no tax or legal registration certificate",
-  !accepted.some(c => /tax|registr(y|ation) certificate|MoF/i.test(c)));
+// (§7.3's "when necessary" registration WAS excluded here; Saad made it necessary for
+// organisations on 12 Sep 2026 — see section Z, where the party kind that gates it is defined.)
 // §7.5's procurement file belongs to a purchase, and the voucher screen already checks it.
 ok("nothing that belongs to a single purchase — quotation, PO, GRN, invoice, receipt",
   !accepted.some(c => /quotation|purchase order|goods received|invoice|receipt|voucher/i.test(c)));
@@ -116,6 +114,20 @@ ok("any of the three identity spellings the vault actually holds will answer",
   ["National ID", "Passport", "Residency / Work Permit"].every(c =>
     !missingSupplierDocs([{ category: c, partyId: "ven-1" }], party({ partyKind: "individual" })).some(g => g.key === "identity")));
 
+// Saad overruled the old exclusion on 12 Sep 2026: an organisation owes its commercial record
+// and its VAT details. It is asked of an organisation only — never of a person, and never of a
+// party whose kind nobody has said — so it arrives as the register is classified, not all at once.
+ok("an organisation owes its commercial record and its VAT registration",
+  missingSupplierDocs([], party({ partyKind: "organisation" })).map(g => g.key).sort().join() === "agreement,commercial,registration,vat");
+ok("a person owes neither — an ID and a CV answer the same question about a human being",
+  !missingSupplierDocs([], party({ partyKind: "individual" })).some(g => ["commercial", "vat"].includes(g.key)));
+ok("and a party whose kind nobody has said is asked for neither, yet",
+  !missingSupplierDocs([], party({ partyKind: "" })).some(g => ["commercial", "vat"].includes(g.key)));
+ok("asked of an organisation we only BUY from as well — who the counterparty legally is does not depend on that",
+  missingSupplierDocs([], party({ partyKind: "organisation", engageable: false })).map(g => g.key).sort().join() === "commercial,registration,vat");
+ok("the spelling the vault already holds will answer the tax line",
+  !missingSupplierDocs([{ category: "Tax_Regularization", partyId: "ven-1" }], party({ partyKind: "organisation" })).some(g => g.key === "vat"));
+
 console.log("\nZ2. a team member is the normal arrangement, not an anomaly");
 // Saad, 12 Sep 2026: AnaHon has no employees — everyone is a service provider on an annual
 // contract. So a row that is also a login is two views of one person, and their identity papers
@@ -143,8 +155,10 @@ ok("a login that does not exist cannot be linked", /No account on this system us
 // why this axis matters to Finance — and exactly why nothing here touches it. Marwan's to answer.
 ok("the party kind is never used to compute a withholding rate",
   !/partyKind[^\n]*wht|wht[^\n]*partyKind/i.test(server) && !/partyKind[^\n]*wht|wht[^\n]*partyKind/i.test(supplierDocsSrc));
-ok("and this work invented no rate of its own — the 7.5% in the module is the pre-existing rule, described",
-  (supplierDocsSrc.match(/7\.5%/g) || []).length === 1 && /already enforces the consequence/.test(supplierDocsSrc));
+ok("and no withholding rate appears in this module at all — the rate is Finance's, elsewhere",
+  !/7\.5%|whtRate|withholdingRate/.test(supplierDocsSrc));
+ok("the overruled exclusion is kept in the comment rather than deleted, with the consequence named",
+  /Saad overruled that on 12 Sep 2026/.test(supplierDocsSrc) && /carry an open line until somebody files/.test(supplierDocsSrc));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

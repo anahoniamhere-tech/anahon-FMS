@@ -572,8 +572,6 @@ export const AR: Record<string, string> = {
   "Team member, engaged as a service provider (annual contract)": "من الفريق، متعاقَد معه كمقدّم خدمة (عقد سنوي)",
   "Same name as an account — is this a team member?": "الاسم نفسه لحساب على النظام — هل هو من الفريق؟",
   "unlink": "إلغاء الربط",
-  "Identity paper": "وثيقة هوية",
-  "CV": "السيرة الذاتية",
   // The Ledger door's reclassification panel (Books room, 8a4de81). Terms follow the chart's
   // own usage — مدين/دائن, دفتر الأستاذ, سجل التدقيق — and the four disabled-button labels stay
   // four separate keys: a disabled state explains itself in the label, never in a tooltip.
@@ -733,6 +731,8 @@ export const AR: Record<string, string> = {
   "CV": "السيرة الذاتية",
   "Signed contract": "عقد موقّع",
   "Vendor registration form": "استمارة تسجيل مورّد",
+  "Commercial registration": "السجل التجاري",
+  "VAT / tax registration": "التسجيل الضريبي / ضريبة القيمة المضافة",
   "Signed agreement": "اتفاقية موقّعة",
   "Identity paper, CV and a signed contract are all on file.": "وثيقة الهوية والسيرة الذاتية والعقد الموقّع كلها في الملف.",
   "The account that may open this person's own file, payslips and timesheets.": "الحساب الذي يمكنه فتح ملف هذا الشخص وقسائم راتبه وكشوف دوامه.",

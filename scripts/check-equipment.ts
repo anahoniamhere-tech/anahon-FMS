@@ -120,7 +120,8 @@ ok("the Procurement Officer's allowlist carries the scan, or the seat would refu
   server.includes('"/api/assets/register", "/api/assets/update", "/api/assets/scan-label",'));
 
 console.log("\nF. the scan reads, it never saves");
-ok("it uses the free Gemini path, which takes the photo as inlineData", /\{ base64, mimeType \}, "low", "gemini"\)/.test(scan));
+ok("it asks the free Gemini path first, which takes the photo as inlineData",
+  /askJson\(prompt, schema, \{ base64, mimeType \}, "low", prefer\)/.test(scan) && /readLabel\("gemini"\)/.test(scan));
 ok("and creates nothing", !/fixedAsset\.(create|update)/.test(scan));
 ok("it warns when the serial it read is already on the register", /extracted\.duplicateOfTag = twin/.test(scan));
 ok("the phone opens the camera for the label and for the item", (tab.match(/capture="environment"/g) || []).length >= 2);
@@ -678,6 +679,28 @@ ok("a proposal, an approval and a refusal are three different audit actions",
 ok("the line carries the item, the tag, what it was, what it became, the date and the reason",
   /\$\{label\} "\$\{asset\.name\}": \$\{equipmentStatus\(asset\)\} → \$\{kind\.label\} on \$\{when\}/.test(ended) && /\$\{note\}/.test(ended));
 ok("and who proposed it, beside who approved it", /proposed by \$\{proposer\}, approved by \$\{user\.name\}/.test(second));
+
+console.log("\nQQ. the label reader does not dead-end on a busy free tier — 12 Sep 2026");
+ok("the free reader is still asked first — nothing falls through to a paid call by accident",
+  /extracted = await readLabel\("gemini"\);/.test(scan) && (scan.match(/readLabel\("gemini"\)/g) || []).length === 2);
+ok("a busy answer is waited out and asked again before anything is spent",
+  /await new Promise\(r => setTimeout\(r, 1500\)\)/.test(scan));
+ok("and only then the paid one", /extracted = await readLabel\("claude"\);/.test(scan)
+  && scan.indexOf('readLabel("claude")') > scan.lastIndexOf('readLabel("gemini")'));
+ok("busy is 503/429 and its words — anything else is a real failure, not a queue",
+  scan.includes("503") && scan.includes("429") && scan.includes("RESOURCE_EXHAUSTED")
+  && scan.includes("UNAVAILABLE") && scan.includes("high demand"));
+ok("an unreadable photo never retries and never spends — it says so at once",
+  (scan.match(/if \(!busy\(\w+\)\) return unreadable\(\w+\)/g) || []).length === 3);
+ok("the failure message when BOTH are unavailable is the original, unchanged",
+  scan.includes("The label reader is busy for a moment — press Scan the label again, or type the details from the label."));
+ok("the provider's raw JSON never reaches a phone",
+  /replace\(\/\[\{\}\[\\\]"\]\/g, ""\)/.test(scan) && /\.slice\(0, 120\)/.test(scan));
+ok("which reader answered, and what it cost, go in the audit line",
+  /Answered by the \$\{answeredBy\}\$\{takeUsage\(\)\}/.test(scan));
+ok("what the scan writes is unchanged: placeholders blanked, prefill only, nothing registered",
+  /for \(const k of \["name", "brand", "model", "serialNumber", "specs"\]\) extracted\[k\] = blankIfPlaceholder/.test(scan)
+  && /Prefill only; nothing registered/.test(scan) && !/prisma\.fixedAsset\.create/.test(scan));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
