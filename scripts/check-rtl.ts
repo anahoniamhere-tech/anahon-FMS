@@ -29,8 +29,13 @@ const PHYSICAL: [string, string, string][] = [
   ["padding",   `${B}p[lr]-[\\w.\\[]`,                    "pl-/pr- → ps-/pe-"],
   ["alignment", `${B}text-(left|right)\\b`,               "text-left/right → text-start/end"],
   ["border",    `${B}border-[lr](?![a-z])`,               "border-l/r → border-s/e"],
-  ["radius",    `${B}rounded-[lr]-`,                      "rounded-l-/r- → rounded-s-/e-"],
+  // The trailing dash was doing two kinds of harm: bare `rounded-l`/`rounded-r` are valid
+  // Tailwind for a default radius on one side, and the four physical CORNERS were not covered
+  // at all. (?![a-z]) is what keeps `rounded-lg` a size and `rounded-t-lg` a legitimate
+  // vertical. Audited by the Books room, 12 Sep — latent, zero occurrences either way.
+  ["radius",    `${B}rounded-([lr]|[tb][lr])(?![a-z])`,   "rounded-l/r/tl/tr/bl/br → rounded-s/e/ss/se/es/ee"],
   ["position",  `${B}(left|right)-([\\d.]|full|auto|px|\\[)`, "left-/right- → start-/end-"],
+  ["flow",      `${B}(float|clear)-(left|right)\\b`,      "float-/clear-left/right → -start/-end"],
 ];
 
 /**
@@ -72,6 +77,21 @@ ok("a plain left-3 still is", flags("absolute left-3"));
 ok("right-0 still is", flags("absolute right-0"));
 ok("and left-1/2 with a positive x-translate still is — that is not the centring pair",
   flags("absolute left-1/2 translate-x-1/2"));
+
+console.log("\nand the radius rule tells a side from a size");
+// `rounded-lg` ends in an l that is a SIZE, and `rounded-t-lg` is a vertical pair with no
+// logical twin — a looser pattern breaks on exactly these two, which is why the original
+// demanded a trailing dash and went blind to bare sides and corners instead.
+const RADIUS = new RegExp(PHYSICAL.find(r => r[0] === "radius")![1]);
+const rad = (cls: string) => RADIUS.test(`<div className="${cls}">`);
+ok("rounded-lg is a size, not a side", !rad("rounded-lg"));
+ok("rounded-t-lg is vertical, and legitimate", !rad("rounded-t-lg"));
+ok("an already-logical corner passes", !rad("rounded-ss-lg") && !rad("rounded-e-xl"));
+ok("a bare physical side is caught", rad("rounded-l") && rad("rounded-r"));
+ok("so is a physical corner, bare or sized", rad("rounded-tl") && rad("rounded-br-lg"));
+const FLOW = new RegExp(PHYSICAL.find(r => r[0] === "flow")![1]);
+ok("float-left is caught, float-start is not", FLOW.test("float-left") && !FLOW.test("float-start"));
+ok("clear-right is caught, clear-end is not", FLOW.test("clear-right") && !FLOW.test("clear-end"));
 
 const app = read("src/App.tsx");
 console.log("\nthe page turns around");
