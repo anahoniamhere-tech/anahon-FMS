@@ -816,7 +816,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
 
           {/* Section 1 — the idea */}
           <div>
-            <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">1 · {t("Brief")}</span>
+            <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1" dir="ltr">1 · {t("Brief")}</span>
             <div className="flex gap-2">
               <textarea
                 value={chatInput}
@@ -835,7 +835,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
 
           {/* Section 2 — reference links with description */}
           <div>
-            <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">2 · {t("Links")}</span>
+            <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1" dir="ltr">2 · {t("Links")}</span>
             <div className="flex flex-wrap gap-2">
               <input placeholder="https://…" value={linkForm.url} onChange={e => setLinkForm({ ...linkForm, url: e.target.value })}
                 className="flex-1 min-w-[160px] bg-slate-950 text-xs px-3 py-1.5 rounded text-white border border-slate-800 outline-none" />
@@ -905,7 +905,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
 
           {/* Section 3 — upload files (into the vault) with description */}
           <div>
-            <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1">3 · {t("Upload material")}</span>
+            <span className="block text-[10px] font-bold uppercase text-slate-400 mb-1" dir="ltr">3 · {t("Upload material")}</span>
             <div className="flex flex-wrap items-center gap-2">
               <input placeholder={t("Description")} value={upDesc} onChange={e => setUpDesc(e.target.value)}
                 className="flex-1 min-w-[140px] bg-slate-950 text-xs px-3 py-1.5 rounded text-white border border-slate-800 outline-none" />

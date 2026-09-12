@@ -133,8 +133,19 @@ const maskStrings = (line: string) =>
   line.replace(/(["'`])(?:\\.|(?!\1)[\s\S])*?\1/g, (m, q) => q + " ".repeat(m.length - 2) + q);
 
 console.log("\nmachine text that leads with a number is isolated");
-// MEASURED, 12 Sep, Chrome at dir="rtl", token x-positions (plain text and spanned render
-// pixel-identical, so spans are transparent to the algorithm):
+// MEASURED, 12 Sep, Chrome at dir="rtl". The criterion that settled it, after three
+// instruments produced confident wrong answers between two rooms: render the string as
+// authored and again wrapped in dir="ltr" — the very fix this rule asks for — and fingerprint
+// the x of every character. If isolation changes nothing, there is no bug, whatever any
+// reading-order argument says. No judgement about what "correct" looks like enters into it.
+// (The wrong instruments, all worth avoiding: a Latin caption before the sample anchors the
+// run being measured; sorting token x descending to get "reading order" reverses every
+// multi-word Latin island; and an LTR-box/RTL-box comparison cannot judge a string that
+// contains Arabic, since the Arabic reorders in both boxes.)
+//
+// ISOLATION CHANGES IT — real cases:   1 · Brief / 1 · الملخص / 1. Budget vs Actual /
+//   1. الموازنة مقابل الفعلي / 1.08 MB / 1,250.00 USD / 7100 $5,000.00
+// NO CHANGE — safe:                    4b. Internal Movements / $5,000.00 / 100%
 //
 //   "-1,250.00 USD"            -> "USD -1,250.00"        inverts, ALONE in its own cell
 //   "1.08 MB"                  -> "MB 1.08"              inverts, alone
@@ -205,11 +216,18 @@ console.log("\nand a heading that opens with a number keeps it");
 // far end — while "4b. Internal Movements" is CORRECT untouched, because a digit followed
 // by a letter binds as one Latin token. Measured in a browser by the Books room, 12 Sep;
 // five of their report headings and one archive size were live cases.
-const LEADING = /^\s*[-−+]?\d[\d,.]*[.):]?\s+[A-Za-z{]/;
+// Followed by ANY next token, not just a Latin word: two NUMBER runs swap too — "7100
+// $5,000.00" renders "$5,000.00 7100" and "7100 7.5%" renders "7.5% 7100" (measured,
+// Books room's row, 12 Sep). A number alone with nothing after it never moves.
+const LEADING = /^\s*[-−+]?\d[\d,.]*[.):%]?\s+\S/;
+// The ">" has to CLOSE A TAG. Unguarded, `{docPages > 1 && ...}` reads as a text run
+// starting with "1 &&" and the rule reports 31 phantom hits across five files — every one a
+// JS comparison. A tag's ">" is never preceded by whitespace.
+const TEXT_RUN = /(?<=[A-Za-z0-9_"'}\/])>([^<>]{2,})</g;
 const leads = (raw: string) => {
   if (/dir="ltr"/.test(raw)) return false;
   const line = maskStrings(raw);
-  return [...line.matchAll(/>([^<>]{2,})</g)].some(m => LEADING.test(m[1]));
+  return [...line.matchAll(TEXT_RUN)].some(m => LEADING.test(m[1]));
 };
 const numbered: string[] = [];
 for (const f of files) {
@@ -225,7 +243,11 @@ ok("and a bare figure with no Latin word is fine", !leads("<td>1,250.00</td>"));
 // Both measured unchanged in the browser, and both would be flagged by a looser reading of
 // "starts with a number" — the first because the number is followed by another number, the
 // second because a Latin word comes first and the whole run is one LTR island.
-ok("a number followed by another number is fine", !leads("<span>7100 $5,000.00</span>"));
+ok("a second NUMBER run swaps too — not only a Latin word", leads("<span>7100 $5,000.00</span>"));
+ok("so does a percent after a code", leads("<span>7100 7.5%</span>"));
+// The guard that keeps a JS comparison from reading as a digit-leading text run.
+ok("a comparison is not a text run", !leads("{docPages > 1 && <p>{docPages} pages</p>}"));
+ok("nor is a length test", !leads("{gaps.length > 0 && <>missing {gaps.join(\", \")}. </>}"));
 ok("a Latin word before the number is fine", !leads("<span>Archive Size: 1.08 MB</span>"));
 ok("the date range on the payroll sheet is isolated",
   /<span dir="ltr">\{eng\[pid\]\.first\} → \{eng\[pid\]\.last\}<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
