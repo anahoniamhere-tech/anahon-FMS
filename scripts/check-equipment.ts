@@ -339,7 +339,7 @@ ok("ticking it clears cost and currency from the body, rather than sending an in
 ok("the inputs are disabled while ticked, so nothing typed there can leak through",
   /required=\{!f\.gift\} disabled=\{f\.gift\}/.test(tab) && (tab.match(/disabled=\{f\.gift\}/g) || []).length >= 2);
 ok("the card says \"Gift\" rather than three columns of \"0.00\" with no currency",
-  /a\.cost > 0 \? \(/.test(tab) && tab.includes('🎁 {t("Gift — no cost recorded")}'));
+  /a\.cost > 0 \? \(/.test(tab) && tab.includes('<Gift className="inline h-3.5 w-3.5" /> {t("Gift — no cost recorded")}'));
 ok("FixedAsset.currency admits the one honest case with no sum to name", /currency: "USD" \| "EUR" \| "LBP" \| "";/.test(types));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");

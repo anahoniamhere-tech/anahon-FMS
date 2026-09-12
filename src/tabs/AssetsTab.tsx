@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Camera, ClipboardList, Gift, History, LogIn, LogOut, Package, Printer, Receipt, Ruler, ScanLine, Search, Tag, Wrench } from "lucide-react";
 import { SharedProps } from "./shared";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS } from "../roles";
 import { withTicket } from "../docTicket";
@@ -280,7 +281,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
         <div className="flex flex-wrap items-center gap-2">
           {overriding && (
             <button type="button" aria-expanded={policyOpen} onClick={() => setPolicyOpen(!policyOpen)} className={btnGhost}>
-              📋 {t("Useful-life policy")}
+              <ClipboardList className="h-4 w-4" /> {t("Useful-life policy")}
             </button>
           )}
           {assets.some(a => a.tag) && (
@@ -293,7 +294,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               }}
               className={btnGhost}
             >
-              🏷 {t("Stickers")}
+              <Tag className="h-4 w-4" /> {t("Stickers")}
             </button>
           )}
         </div>
@@ -350,14 +351,14 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
             <div className="flex flex-wrap items-center gap-2">
               {picked.size > 0 ? (
                 <a href={withTicket(`/api/assets/stickers?size=${stickerMm}&ids=${[...picked].map(encodeURIComponent).join(",")}`)} target="_blank" rel="noreferrer" className={btn}>
-                  🖨 {t("Print {n} stickers").replace("{n}", String(picked.size))}
+                  <Printer className="h-4 w-4" /> {t("Print {n} stickers").replace("{n}", String(picked.size))}
                 </a>
               ) : (
-                <button type="button" disabled className={btnOff}>🖨 {t("Print")} — {t("choose at least one item")}</button>
+                <button type="button" disabled className={btnOff}><Printer className="h-4 w-4" /> {t("Print")} — {t("choose at least one item")}</button>
               )}
               {sample && (
                 <a href={withTicket(`/api/assets/stickers?strip=1&ids=${encodeURIComponent(sample.id)}`)} target="_blank" rel="noreferrer" className={btnGhost}>
-                  📏 {t("Test strip")} — <span dir="ltr">{sample.tag}</span>
+                  <Ruler className="h-4 w-4" /> {t("Test strip")} — <span dir="ltr">{sample.tag}</span>
                 </a>
               )}
             </div>
@@ -371,7 +372,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
           <div className="flex flex-wrap items-center gap-3">
             <h3 className="text-sm font-bold text-slate-900">{t("Receive equipment")}</h3>
             <label className={`inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded-lg px-4 text-xs font-bold text-white ${scan.busy ? "bg-slate-400" : "bg-slate-900 hover:bg-slate-950"}`}>
-              📷 {scan.busy ? t("Reading the label…") : labelPhoto ? t("Scan the label again") : t("Scan the label")}
+              <ScanLine className="h-4 w-4" /> {scan.busy ? t("Reading the label…") : labelPhoto ? t("Scan the label again") : t("Scan the label")}
               <input type="file" accept="image/*" capture="environment" className="hidden" disabled={scan.busy} onChange={handleScan} />
             </label>
             <span className="text-[11px] text-slate-500">{t("Fills the fields from a photo of the serial label — check every one before saving.")}</span>
@@ -532,7 +533,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
             <div>
               <span className={lbl}>{t("Photo of the item")}</span>
               <label className="inline-flex min-h-[44px] cursor-pointer items-center gap-2 rounded border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                📷 {itemPhoto ? t("Taken — retake") : t("Photograph the item")}
+                <Camera className="h-4 w-4" /> {itemPhoto ? t("Taken — retake") : t("Photograph the item")}
                 <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleItemPhoto} />
               </label>
             </div>
@@ -549,13 +550,13 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
       {receiving && justReceived.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
           <span className="text-xs font-bold text-emerald-900">
-            🏷 {t("{n} received just now — print their stickers when you have scanned the lot.").replace("{n}", String(justReceived.length))}
+            <Printer className="h-4 w-4" /> {t("{n} received just now — print their stickers when you have scanned the lot.").replace("{n}", String(justReceived.length))}
           </span>
           <select aria-label={t("Sticker size")} value={stickerMm} onChange={e => setStickerMm(Number(e.target.value))} className="finance-input min-h-[44px] bg-white text-xs md:min-h-0">
             {STICKER_SIZES.map(mm => <option key={mm} value={mm}>{t("QR {n} cm").replace("{n}", String(mm / 10))}</option>)}
           </select>
           <a href={withTicket(`/api/assets/stickers?size=${stickerMm}&ids=${justReceived.map(encodeURIComponent).join(",")}`)} target="_blank" rel="noreferrer" className={btn}>
-            🖨 {t("Print {n} stickers").replace("{n}", String(justReceived.length))}
+            <Printer className="h-4 w-4" /> {t("Print {n} stickers").replace("{n}", String(justReceived.length))}
           </a>
           <button type="button" onClick={() => setJustReceived([])} className={btnGhost}>{t("Done — clear the list")}</button>
         </div>
@@ -605,7 +606,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               <p className="text-[11px] text-slate-600">{t("Kept at")}: {a.location} · {t("Held by")}: {a.custodian}</p>
               {a.expenseId && (
                 <p className="text-[11px] text-slate-600">
-                  🧾 {v ? (<>
+                  <Receipt className="inline h-3.5 w-3.5" /> {v ? (<>
                     <span dir="ltr" className="font-mono">{v.voucherNo}</span> · {supplierOf(v.vendorId)} · <span dir="ltr">{a.purchaseDate}</span>
                     {projectOf(a.fundingProjectId) ? ` · ${projectOf(a.fundingProjectId)}` : ""}
                   </>) : t("Bought on a payment request on file")}
@@ -631,12 +632,12 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 // Zero cost never came from a purchase — it is only ever a gift, so it is
                 // said as one, not shown as three columns of "0.00" with no currency.
                 <p className="border-t border-slate-100 pt-2 text-[11px] font-semibold text-slate-500">
-                  🎁 {t("Gift — no cost recorded")}
+                  <Gift className="inline h-3.5 w-3.5" /> {t("Gift — no cost recorded")}
                 </p>
               )}
 
               {a.receivedAt && (
-                <p className="text-[11px] text-slate-600">📦 {t("Received by")} {nameOf(a.receivedBy)} · <span dir="ltr">{a.receivedAt.slice(0, 10)}</span></p>
+                <p className="flex items-center gap-1 text-[11px] text-slate-600"><Package className="h-3.5 w-3.5" /> {t("Received by")} {nameOf(a.receivedBy)} · <span dir="ltr">{a.receivedAt.slice(0, 10)}</span></p>
               )}
               {a.verifiedAt && (
                 <p className="text-[11px] text-emerald-800">✓ {t("Confirmed by")} {nameOf(a.verifiedBy)} · <span dir="ltr">{a.verifiedAt.slice(0, 10)}</span> · {t(a.condition)}</p>
@@ -644,7 +645,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
 
               {a.holderId && (
                 <p className={`rounded-lg px-3 py-2 text-xs font-bold ${a.dueBack && a.dueBack < today ? "bg-red-50 text-red-800" : "bg-sky-50 text-sky-900"}`}>
-                  📤 {t("With {name} — {purpose} — due {date}")
+                  <LogOut className="inline h-3.5 w-3.5" /> {t("With {name} — {purpose} — due {date}")
                     .replace("{name}", nameOf(a.holderId).split(/\s+/)[0])
                     .replace("{purpose}", a.heldFor || "")
                     .replace("{date}", dayFmt(a.dueBack))}
@@ -653,7 +654,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               )}
               {a.nextCheckDue && !a.holderId && (
                 <p className={`text-[11px] ${a.nextCheckDue < today ? "font-bold text-red-700" : "text-slate-500"}`}>
-                  🔎 {t("Next physical check")}: <span dir="ltr">{a.nextCheckDue}</span>
+                  <Search className="inline h-3.5 w-3.5" /> {t("Next physical check")}: <span dir="ltr">{a.nextCheckDue}</span>
                 </p>
               )}
 
@@ -670,7 +671,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                   ))}
                   {receiving && (
                     <label className="inline-flex h-16 min-w-16 cursor-pointer items-center justify-center rounded border border-dashed border-slate-300 px-2 text-[10px] font-bold text-slate-500 hover:bg-slate-50">
-                      📷 {t("Add photo")}
+                      <Camera className="h-4 w-4" /> {t("Add photo")}
                       <input type="file" accept="image/*" capture="environment" className="hidden" onChange={e => addPhoto(a.id, a.tag || "", e)} />
                     </label>
                   )}
@@ -680,16 +681,16 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               {receiving && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                   {a.holderId ? (
-                    <button type="button" onClick={() => openPanel(a.id, "in", { location: a.location })} className={btn}>📥 {t("Check in")}</button>
+                    <button type="button" onClick={() => openPanel(a.id, "in", { location: a.location })} className={btn}><LogIn className="h-4 w-4" /> {t("Check in")}</button>
                   ) : checkOutBlocker(a) ? (
                     // The route's own reason, as the label — never a tooltip a phone cannot show.
-                    <button type="button" disabled className={btnOff}>📤 {t("Check out")} — {t(checkOutBlocker(a)!)}</button>
+                    <button type="button" disabled className={btnOff}><LogOut className="h-4 w-4" /> {t("Check out")} — {t(checkOutBlocker(a)!)}</button>
                   ) : (
-                    <button type="button" onClick={() => openPanel(a.id, "out")} className={btn}>📤 {t("Check out")}</button>
+                    <button type="button" onClick={() => openPanel(a.id, "out")} className={btn}><LogOut className="h-4 w-4" /> {t("Check out")}</button>
                   )}
-                  <button type="button" onClick={() => openPanel(a.id, "repair", { date: today })} className={btnGhost}>🔧 {t("Log a repair")}</button>
+                  <button type="button" onClick={() => openPanel(a.id, "repair", { date: today })} className={btnGhost}><Wrench className="h-4 w-4" /> {t("Log a repair")}</button>
                   {a.tag && (
-                    <a href={withTicket(`/api/assets/stickers?ids=${encodeURIComponent(a.id)}`)} target="_blank" rel="noreferrer" className={btnGhost}>🏷 {t("Print sticker")}</a>
+                    <a href={withTicket(`/api/assets/stickers?ids=${encodeURIComponent(a.id)}`)} target="_blank" rel="noreferrer" className={btnGhost}><Printer className="h-4 w-4" /> {t("Print sticker")}</a>
                   )}
                 </div>
               )}
@@ -721,7 +722,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                     <label htmlFor={`out-due-${a.id}`} className={lbl}>{t("Due back")}</label>
                     <input id={`out-due-${a.id}`} type="date" required min={today} value={field("dueBack")} onChange={e => setField("dueBack", e.target.value)} className={inp} />
                   </div>
-                  <button type="submit" className={`${btn} justify-center md:col-span-2`}>📤 {t("Check out")}</button>
+                  <button type="submit" className={`${btn} justify-center md:col-span-2`}><LogOut className="h-4 w-4" /> {t("Check out")}</button>
                 </form>
               )}
 
@@ -745,7 +746,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                     <label htmlFor={`in-note-${a.id}`} className={lbl}>{t("Note")}</label>
                     <input id={`in-note-${a.id}`} value={field("note")} onChange={e => setField("note", e.target.value)} placeholder={t("e.g. lens cap missing")} className={inp} />
                   </div>
-                  <button type="submit" className={`${btn} justify-center md:col-span-3`}>📥 {t("Check in")}</button>
+                  <button type="submit" className={`${btn} justify-center md:col-span-3`}><LogIn className="h-4 w-4" /> {t("Check in")}</button>
                 </form>
               )}
 
@@ -790,7 +791,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                       </div>
                     </div>
                     <p className="self-end text-[10px] text-slate-500">{t("A repair is an expense — the item's cost does not change.")}</p>
-                    <button type="submit" className={`${btn} justify-center md:col-span-2`}>🔧 {t("Log the repair")}</button>
+                    <button type="submit" className={`${btn} justify-center md:col-span-2`}><Wrench className="h-4 w-4" /> {t("Log the repair")}</button>
                   </form>
                 );
               })()}
@@ -798,21 +799,21 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               {((a.movements?.length || 0) + (a.repairs?.length || 0)) > 0 && (
                 <div>
                   <button type="button" onClick={() => setHistoryFor(historyFor === a.id ? null : a.id)} aria-expanded={historyFor === a.id} className="text-[11px] font-bold text-slate-500 hover:underline min-h-[24px]">
-                    🗂 {t("History")} ({(a.movements?.length || 0) + (a.repairs?.length || 0)})
+                    <History className="inline h-3.5 w-3.5" /> {t("History")} ({(a.movements?.length || 0) + (a.repairs?.length || 0)})
                   </button>
                   {historyFor === a.id && (
                     <div className="mt-1 space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
                       {[...(a.movements || [])].reverse().map(m => (
                         <p key={m.id}>
-                          📤 <span dir="ltr">{m.outAt.slice(0, 10)}</span> → {nameOf(m.holderId)} · {m.heldFor} · {t("due")} <span dir="ltr">{m.dueBack}</span>
+                          <LogOut className="inline h-3.5 w-3.5" /> <span dir="ltr">{m.outAt.slice(0, 10)}</span> → {nameOf(m.holderId)} · {m.heldFor} · {t("due")} <span dir="ltr">{m.dueBack}</span>
                           {m.inAt
-                            ? <> · 📥 <span dir="ltr">{m.inAt.slice(0, 10)}</span> · {t(m.returnCondition || "")}{m.note ? ` — ${m.note}` : ""}</>
+                            ? <> · <LogIn className="inline h-3.5 w-3.5" /> <span dir="ltr">{m.inAt.slice(0, 10)}</span> · {t(m.returnCondition || "")}{m.note ? ` — ${m.note}` : ""}</>
                             : <> · <b>{t("still out")}</b></>}
                         </p>
                       ))}
                       {[...(a.repairs || [])].reverse().map(r => (
                         <p key={r.id}>
-                          🔧 <span dir="ltr">{r.date}</span> · {r.work} · {r.doneBy} · <span dir="ltr">{money(r.cost, r.currency)}</span>
+                          <Wrench className="inline h-3.5 w-3.5" /> <span dir="ltr">{r.date}</span> · {r.work} · {r.doneBy} · <span dir="ltr">{money(r.cost, r.currency)}</span>
                           {r.expenseId ? ` · ${state.expenses.find(e => e.id === r.expenseId)?.voucherNo || t("Bought on a payment request on file")}` : ""}
                         </p>
                       ))}
