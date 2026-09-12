@@ -257,7 +257,8 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                       const exp = (state.expenses || []).find((x: any) => x.id === rcVoucher);
                       return (
                         <p className="text-[11px] bg-slate-50 border border-slate-200 rounded px-3 py-2 text-slate-700 font-mono">
-                          {t("Will post")}: {t("debit")} {rcTo} {formatUSD(exp?.convertedAmount || 0)} · {t("credit")} {from} {formatUSD(exp?.convertedAmount || 0)}
+                          {t("Will post")}: {t("debit")} <span dir="ltr">{rcTo} {formatUSD(exp?.convertedAmount || 0)}</span>
+                          {" · "}{t("credit")} <span dir="ltr">{from} {formatUSD(exp?.convertedAmount || 0)}</span>
                         </p>
                       );
                     })()}
