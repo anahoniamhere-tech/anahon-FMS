@@ -288,6 +288,25 @@ model FixedAsset {
   /// The item's own log, oldest first: every check-out and return, every repair.
   movementsJson            String  @default("[]")
   repairsJson              String  @default("[]")
+  /// Registered in error but already physically confirmed, so the row is kept and marked
+  /// rather than deleted — a confirmation is evidence a second person saw it.
+  writtenOffAt             String?
+  writtenOffBy             String?
+  writeOffReason           String  @default("")
+}
+
+/// A row the register removed. Kept so a sticker number is never issued twice — the series
+/// counts from the highest tag ever issued, deleted ones included — and so a deletion leaves
+/// a record of itself behind, not only a line in the audit log.
+model RemovedAsset {
+  id            String @id
+  tag           String @unique
+  name          String
+  serialNumber  String
+  reason        String
+  removedAt     String
+  removedBy     String
+  removedByName String
 }
 
 model PartnerAccount {

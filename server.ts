@@ -20,7 +20,7 @@ import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/
 import { NAV } from "./src/nav.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
-import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
+import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, deleteBlocker, writeOffBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
@@ -131,7 +131,7 @@ const PLO_ALLOWED_POSTS = new Set([
   "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone",
   "/api/expense/new", "/api/expense/scan-invoice",
   "/api/document/upload", "/api/materials/link",
-  "/api/assets/register", "/api/assets/update", "/api/assets/scan-label", "/api/assets/checkout", "/api/assets/checkin", "/api/assets/move", "/api/assets/repair",
+  "/api/assets/register", "/api/assets/update", "/api/assets/scan-label", "/api/assets/checkout", "/api/assets/checkin", "/api/assets/move", "/api/assets/repair", "/api/assets/delete", "/api/assets/write-off",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/activities/save", "/api/activities/generate", "/api/activities/delete", "/api/activities/import-timetable",
   "/api/vendor/scan",
@@ -8063,7 +8063,12 @@ app.post("/api/assets/register", async (req, res) => {
     // two people receiving in the same instant collide there, and the second takes the next.
     let asset: any = null;
     for (let attempt = 0; !asset; attempt++) {
-      const tag = nextEquipmentTag((await prisma.fixedAsset.findMany({ select: { tag: true } })).map(a => a.tag));
+      // The highest EVER issued, not the highest still on file: a removed row keeps its
+      // number out of circulation so two things never wear the same sticker.
+      const tag = nextEquipmentTag([
+        ...(await prisma.fixedAsset.findMany({ select: { tag: true } })).map(a => a.tag),
+        ...(await prisma.removedAsset.findMany({ select: { tag: true } })).map(a => a.tag),
+      ]);
       try {
         const receivedAt = new Date().toISOString();
         // The item's first custody entry — never edited afterward, only superseded.
@@ -8341,6 +8346,107 @@ app.post("/api/assets/move", async (req, res) => {
 
     await createAuditLog(user.id, user.name, "Equipment Moved",
       `${label} "${asset.name}" — was with ${wasWith} at ${wasAt}, now with ${holder.name} at ${loc.location}.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Removing an item registered in error, and the line that cannot be crossed.
+//
+// Editing (f472456) fixes a wrong field. This is for a row that is wrong in every field — a
+// duplicate, a scan of somebody else's box, a test that was never a thing. The row goes.
+//
+// What does not go: the number, and anything anybody else vouched for. A CONFIRMED item
+// carries a second person's word that they stood in front of it, and that word is evidence,
+// not a field; an item that has been out, or repaired, has a history of events that happened.
+// Those are written off instead — marked, with a reason, and left readable. deleteBlocker in
+// src/equipment.ts holds the rule, and the button shows the same sentence the route refuses
+// with, so the screen and the server cannot tell different stories.
+app.post("/api/assets/delete", async (req, res) => {
+  try {
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to remove an item." });
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: String(req.body.assetId || "") } });
+    if (!asset) return res.status(404).json({ error: "That item is not on the register." });
+    const label = asset.tag || asset.name;
+
+    const movements: Movement[] = JSON.parse(asset.movementsJson || "[]");
+    const repairs: Repair[] = JSON.parse(asset.repairsJson || "[]");
+    const blocker = deleteBlocker({ ...asset, movements, repairs });
+    if (blocker) {
+      return res.status(409).json({
+        error: `${label} cannot be removed — ${blocker}. Write it off instead: the record stays, with your reason on it.`,
+        writeOffInstead: true
+      });
+    }
+    // A removal nobody has to explain is a removal nobody can question afterwards.
+    const reason = String(req.body.reason || "").trim();
+    if (reason.length < 10) return res.status(400).json({ error: "Say why this item is being removed — a sentence, not a word." });
+
+    // Its photos are not its own: they are papers in the vault, and they outlive the row.
+    // They stay filed, re-pointed at the project that funded it (or the general drawer),
+    // each one carrying the tag it used to belong to so it is still findable by number.
+    const docs = await prisma.appDoc.findMany({ where: { linkedRecordType: "FixedAsset", linkedRecordId: asset.id } });
+    const home = asset.fundingProjectId || "GENERAL";
+    for (const d of docs) {
+      await prisma.appDoc.update({
+        where: { id: d.id },
+        data: {
+          linkedRecordType: "Project", linkedRecordId: home,
+          note: `${d.note ? d.note + " — " : ""}was ${label} "${asset.name}", removed from the register ${localDate()}`
+        }
+      });
+    }
+
+    const now = new Date().toISOString();
+    // The tombstone is what keeps the number out of circulation. Written before the delete so
+    // a failure here cannot leave the row gone and its number free.
+    if (asset.tag) {
+      await prisma.removedAsset.create({
+        data: {
+          id: `rm-${Date.now()}`, tag: asset.tag, name: asset.name, serialNumber: asset.serialNumber,
+          reason, removedAt: now, removedBy: user.id, removedByName: user.name
+        }
+      });
+    }
+    await prisma.fixedAsset.delete({ where: { id: asset.id } });
+
+    await createAuditLog(user.id, user.name, "Equipment Removed",
+      `${label} "${asset.name}" (serial ${asset.serialNumber}) removed from the register by ${user.name}. Reason: ${reason}.` +
+      ` Its number is not reissued.${docs.length ? ` ${docs.length} document(s) kept in the vault, filed under ${home === "GENERAL" ? "the general papers" : home}.` : ""}`);
+    res.json({ success: true, keptDocuments: docs.length, filedUnder: home });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The honest alternative for an item somebody confirmed. Nothing is erased: the row, its
+// history and the confirmation all stay where they are, and the item simply stops counting as
+// part of the working register — equipmentStatus reports "Written off", which is what takes it
+// off every desk, so no counter has to remember to exclude it.
+app.post("/api/assets/write-off", async (req, res) => {
+  try {
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to write an item off." });
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: String(req.body.assetId || "") } });
+    if (!asset) return res.status(404).json({ error: "That item is not on the register." });
+    const label = asset.tag || asset.name;
+    const blocker = writeOffBlocker(asset);
+    if (blocker) return res.status(409).json({ error: `${label} cannot be written off — ${blocker}.` });
+    const reason = String(req.body.reason || "").trim();
+    if (reason.length < 10) return res.status(400).json({ error: "Say why this item is being written off — a sentence, not a word." });
+
+    const now = new Date().toISOString();
+    const done = await prisma.fixedAsset.updateMany({
+      where: { id: asset.id, writtenOffAt: null },
+      data: { writtenOffAt: now, writtenOffBy: user.id, writeOffReason: reason }
+    });
+    if (done.count !== 1) return res.status(409).json({ error: `${label} changed a moment ago — reload and look again.` });
+
+    await createAuditLog(user.id, user.name, "Equipment Written Off",
+      `${label} "${asset.name}" written off as registered in error by ${user.name}. Reason: ${reason}.` +
+      `${asset.verifiedAt ? ` Its confirmation of ${String(asset.verifiedAt).slice(0, 10)} is kept — the record is marked, not erased.` : ""}`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

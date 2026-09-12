@@ -104,19 +104,26 @@ export function parseTag(tag: string | null | undefined): number | null {
  * receipt series numbers itself. Never a count of rows: a removed item must not free its
  * number, or two stickers in the office end up saying the same thing.
  */
+/** The next sticker number: the highest EVER issued plus one. Removed items' tags are passed
+ *  in alongside the live ones — deleting the newest row must not hand its number to the next
+ *  item, or two different things end up wearing the same sticker. */
 export function nextEquipmentTag(tags: (string | null | undefined)[]): string {
   const highest = tags.reduce<number>((max, t) => Math.max(max, parseTag(t) ?? 0), 0);
   return `EQ-${String(highest + 1).padStart(3, "0")}`;
 }
 
-export type EquipmentStatus = "Registered" | "Received" | "Verified" | "Out";
+export type EquipmentStatus = "Registered" | "Received" | "Verified" | "Out" | "Written off";
 
 /**
  * Out = somebody has it; otherwise Verified, Received or Registered by what has been
  * recorded. Derived in loadState and never stored: the desk keys its rules on it, and a
  * stored copy would be one more thing to disagree with the facts it is read from.
  */
-export function equipmentStatus(a: { receivedAt?: string | null; verifiedAt?: string | null; holderId?: string | null }): EquipmentStatus {
+export function equipmentStatus(a: { receivedAt?: string | null; verifiedAt?: string | null; holderId?: string | null; writtenOffAt?: string | null }): EquipmentStatus {
+  // Written off comes first and stops everything: the desk rules key on this status, so an
+  // item registered in error falls off every turn list by saying what it is, not by a filter
+  // somebody has to remember to write in each place that counts equipment.
+  if (a.writtenOffAt) return "Written off";
   return a.holderId ? "Out" : a.verifiedAt ? "Verified" : a.receivedAt ? "Received" : "Registered";
 }
 
@@ -266,6 +273,38 @@ export type Repair = {
 export function checkOutBlocker(a: { holderId?: string | null; verifiedAt?: string | null }): "already out" | "not confirmed yet" | null {
   if (a.holderId) return "already out";
   if (!a.verifiedAt) return "not confirmed yet";
+  return null;
+}
+
+/**
+ * An item registered in error — and why deletion is not always the answer (12 Sep 2026).
+ *
+ * Editing covers a wrong field. A row that is wrong in every field should be removable, not
+ * nursed. But a CONFIRMED item is different in kind: the confirmation is a second person's
+ * word that they stood in front of the thing. Deleting that erases somebody's evidence, so a
+ * confirmed item is never deleted — it is written off, with a reason, and stays readable.
+ *
+ * The same goes for an item with a life behind it: once it has been out with somebody, or
+ * been repaired, its history is a record of events that happened, whatever the row says.
+ */
+export function deleteBlocker(a: {
+  verifiedAt?: string | null; writtenOffAt?: string | null;
+  movements?: Movement[]; repairs?: Repair[];
+}): "somebody has confirmed it" | "it has been out" | "it has a repair on it" | "it is already written off" | null {
+  if (a.writtenOffAt) return "it is already written off";
+  if (a.verifiedAt) return "somebody has confirmed it";
+  if ((a.movements || []).length > 1) return "it has been out";
+  if ((a.repairs || []).length > 0) return "it has a repair on it";
+  return null;
+}
+
+/** Why this item may not be written off, or null when it may. Something out with somebody is
+ *  not yours to write off until it is back — write it off and its holder disappears with it. */
+export function writeOffBlocker(a: {
+  writtenOffAt?: string | null; holderId?: string | null;
+}): "it is already written off" | "it is out with somebody" | null {
+  if (a.writtenOffAt) return "it is already written off";
+  if (a.holderId) return "it is out with somebody";
   return null;
 }
 

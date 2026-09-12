@@ -14,7 +14,8 @@ import { NO_SERIAL, nextEquipmentTag, parseTag, sameSerial, equipmentStatus, may
   CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS,
   EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, DEFAULT_KIND, normalizeKind, usefulLifeFor, mayOverrideUsefulLife,
   HOLDER_KINDS, EQUIPMENT_LOCATIONS, OTHER_LOCATION, resolveLocation, currentMovement,
-  EDITABLE_FIELDS, LOCKED_FIELDS, VERIFIED_FIELDS, equipmentChanges, verificationLapses } from "../src/equipment.js";
+  EDITABLE_FIELDS, LOCKED_FIELDS, VERIFIED_FIELDS, equipmentChanges, verificationLapses,
+  deleteBlocker, writeOffBlocker } from "../src/equipment.js";
 import { RULES, deskItems } from "../src/workflow.js";
 import { ROUTE_SEATS } from "../src/gates.js";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS, PLO, AUDITOR, FINANCE } from "../src/roles.js";
@@ -37,7 +38,9 @@ const edit = between('app.post("/api/assets/update"', 'app.post("/api/assets/ver
 const ver = between('app.post("/api/assets/verify"', 'app.post("/api/assets/checkout"');
 const out = between('app.post("/api/assets/checkout"', 'app.post("/api/assets/checkin"');
 const back = between('app.post("/api/assets/checkin"', 'app.post("/api/assets/move"');
-const moved = between('app.post("/api/assets/move"', 'app.post("/api/assets/repair"');
+const moved = between('app.post("/api/assets/move"', 'app.post("/api/assets/delete"');
+const gone = between('app.post("/api/assets/delete"', 'app.post("/api/assets/write-off"');
+const off = between('app.post("/api/assets/write-off"', 'app.post("/api/assets/repair"');
 const fix = between('app.post("/api/assets/repair"', "// Stickers to print:");
 const stick = between('app.get("/api/assets/stickers"', 'app.get("/e/:tag"');
 const short = between('app.get("/e/:tag"', "// Partner drawings & contributions");
@@ -530,6 +533,73 @@ ok("the audit line says where it was and where it is now", /was with \$\{wasWith
 ok("the button is offered only while the item is in", /\{!a\.holderId && \(\s*<button type="button" onClick=\{\(\) => openPanel\(a\.id, "move"/.test(tab));
 ok("it opens on what the card already says, so an unchanged field really is unchanged",
   /holderKind: cm\?\.holderKind \|\| "org", holderId: cm\?\.holderId \|\| "", location: cm\?\.location \|\| a\.location \|\| ""/.test(tab));
+
+/* ── Removing an item registered in error (12 Sep 2026) ──────────────────────────────────
+   Editing fixes a wrong field; a row wrong in every field should go. What must never go is
+   somebody else's evidence — and the number, which belongs to a sticker in the world. ──── */
+
+console.log("\nKK. a mistake can be removed — but only a mistake nobody has vouched for");
+ok("the keepers may remove, and Super Admin is one of them",
+  ROUTE_SEATS["/api/assets/delete"] === SUPPLIER_EDITORS && server.includes('"/api/assets/delete"'));
+ok("a fresh unconfirmed registration may go", deleteBlocker({ movements: [{} as any] }) === null);
+ok("a confirmed item may NOT — that is a second person's word", deleteBlocker({ verifiedAt: "2026-09-12", movements: [{} as any] }) === "somebody has confirmed it");
+ok("nor one that has been out", deleteBlocker({ movements: [{}, {}] as any }) === "it has been out");
+ok("nor one with a repair on it", deleteBlocker({ movements: [{} as any], repairs: [{} as any] }) === "it has a repair on it");
+ok("nor one already written off", deleteBlocker({ writtenOffAt: "2026-09-12" }) === "it is already written off");
+ok("the route asks the same predicate the button does, and answers 409 with the way out",
+  /const blocker = deleteBlocker\(\{ \.\.\.asset, movements, repairs \}\)/.test(gone)
+  && /res\.status\(409\)/.test(gone) && /writeOffInstead: true/.test(gone));
+ok("a removal must be explained — a word is not a reason",
+  /if \(reason\.length < 10\)/.test(gone) && /Say why this item is being removed/.test(gone));
+ok("the audit line names the tag, the item, the serial, the person and the reason",
+  /"Equipment Removed"/.test(gone) && /\$\{label\} "\$\{asset\.name\}" \(serial \$\{asset\.serialNumber\}\) removed from the register by \$\{user\.name\}\. Reason: \$\{reason\}/.test(gone));
+
+console.log("\nLL. the number is not reissued, and the papers are not destroyed");
+ok("the series is told every tag ever issued, removed ones included",
+  /prisma\.removedAsset\.findMany\(\{ select: \{ tag: true \} \}\)/.test(reg) && /nextEquipmentTag\(\[/.test(reg));
+ok("removing the newest row does not hand its number back — EQ-003 gone still means EQ-004 next",
+  nextEquipmentTag(["EQ-001", "EQ-002", "EQ-003"]) === "EQ-004");
+ok("the tombstone is written BEFORE the row is deleted, so a failure cannot free a number",
+  gone.indexOf("removedAsset.create") < gone.indexOf("fixedAsset.delete") && gone.indexOf("removedAsset.create") > 0);
+ok("and it is unique on the tag, so the database refuses a second claim on one",
+  /CREATE UNIQUE INDEX "RemovedAsset_tag_key" ON "RemovedAsset"\("tag"\)/.test(read("prisma/migrations/20260912140000_equipment_removal/migration.sql")));
+ok("documents filed against the item are re-pointed, never deleted",
+  /prisma\.appDoc\.update\(/.test(gone) && !/appDoc\.delete/.test(gone)
+  && /linkedRecordType: "Project", linkedRecordId: home/.test(gone));
+ok("each one keeps the tag it belonged to, so it is still findable by number",
+  /was \$\{label\} "\$\{asset\.name\}", removed from the register/.test(gone));
+ok("and the screen says where they went", tab.includes('t("removed. Its photos stay in the vault.")')
+  && tab.includes("stay in the vault under the project that funded it"));
+
+console.log("\nMM. what cannot be deleted is written off instead — never silently");
+ok("the keepers may write off too", ROUTE_SEATS["/api/assets/write-off"] === SUPPLIER_EDITORS);
+ok("an item out with somebody is not yours to write off until it is back",
+  writeOffBlocker({ holderId: "u-7" }) === "it is out with somebody" && writeOffBlocker({}) === null);
+ok("a write-off must be explained too", /if \(reason\.length < 10\)/.test(off) && /Say why this item is being written off/.test(off));
+ok("nothing is erased — it writes the mark, the person and the reason, and touches nothing else",
+  /data: \{ writtenOffAt: now, writtenOffBy: user\.id, writeOffReason: reason \}/.test(off)
+  && !/verifiedAt: null|delete\(|movementsJson|cost:/.test(off));
+ok("the confirmation it keeps is said out loud in the audit line",
+  /"Equipment Written Off"/.test(off) && /Its confirmation of .* is kept — the record is marked, not erased/.test(off));
+ok("writing off twice cannot happen — the write lands only on a row not already marked",
+  /where: \{ id: asset\.id, writtenOffAt: null \}/.test(off) && /if \(done\.count !== 1\)/.test(off));
+
+console.log("\nNN. a written-off item leaves the working register by saying what it is");
+ok("the status says it, ahead of everything else", equipmentStatus({ writtenOffAt: "x", verifiedAt: "y", holderId: "u-1" }) === "Written off");
+ok("so no desk rule matches it — none of them mentions the state",
+  !RULES.filter(r => r.kind === "fixedAssets").some(r => r.status === "Written off"));
+ok("it is not offered for lending, correcting or confirming", /\{receiving && !a\.writtenOffAt && \(/.test(tab) && /\{verifier && !a\.writtenOffAt && \(/.test(tab));
+ok("and its sticker is not printed again", /assets\.filter\(a => a\.tag && !a\.writtenOffAt\)/.test(tab));
+ok("the card says it plainly, with who, when and why", tab.includes('t("Written off — registered in error")') && /a\.writeOffReason \?/.test(tab));
+
+console.log("\nOO. the screen offers the right one of the two, and never a dead button");
+ok("Remove shows only when the route would accept it", /\{deleteBlocker\(a\) === null \? \(/.test(tab));
+ok("otherwise it is GONE, replaced by the write-off — a greyed Delete invites a way round it",
+  /: !a\.writtenOffAt && writeOffBlocker\(a\) === null \? \(/.test(tab) && /\) : null\}/.test(tab));
+ok("both sit behind a form that names the tag", tab.includes('t("Remove {tag} from the register?")') && tab.includes('t("Write {tag} off as registered in error?")'));
+ok("the write-off panel repeats the reason removal was refused, in the person's own words",
+  /\$\{t\("It cannot simply be removed —"\)\} \$\{t\(why\)\}/.test(tab));
+ok("neither can be submitted without a real reason", /disabled=\{reason\.trim\(\)\.length < 10\}/.test(tab));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

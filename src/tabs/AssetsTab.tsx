@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Camera, ClipboardList, Gift, History, Lock, LogIn, LogOut, MapPin, Package, Pencil, Printer, Receipt, Ruler, ScanLine, Search, Tag, Wrench } from "lucide-react";
+import { Archive, Camera, ClipboardList, Gift, History, Lock, LogIn, LogOut, MapPin, Package, Pencil, Printer, Receipt, Ruler, ScanLine, Search, Tag, Trash2, Wrench } from "lucide-react";
 import { SharedProps } from "./shared";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS } from "../roles";
 import { withTicket } from "../docTicket";
-import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, EQUIPMENT_LOCATIONS, OTHER_LOCATION, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, LOCKED_FIELDS, checkOutBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife, currentMovement } from "../equipment";
+import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, EQUIPMENT_LOCATIONS, OTHER_LOCATION, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, LOCKED_FIELDS, checkOutBlocker, deleteBlocker, writeOffBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife, currentMovement } from "../equipment";
 import { addDays, localToday } from "../workflow";
 
 /** A request equipment can be booked against: the money is committed. The route asks the same. */
@@ -68,6 +68,7 @@ const STATUS_CHIP: Record<string, string> = {
   Registered: "bg-slate-100 text-slate-700",
   Received: "bg-amber-100 text-amber-800",
   Verified: "bg-emerald-100 text-emerald-800",
+  "Written off": "bg-slate-200 text-slate-600 line-through",
 };
 
 export default function AssetsTab({ currentUser, focusId, lang, openDoc, refreshState, setFocusId, state, t, triggerToast }: SharedProps) {
@@ -82,7 +83,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   const [saving, setSaving] = useState(false);
   const [verifyDraft, setVerifyDraft] = useState<Record<string, { condition: string; months: string }>>({});
   // One open panel at a time — check out, check in or a repair — and its fields.
-  const [panel, setPanel] = useState<{ id: string; kind: "out" | "in" | "repair" | "move" } | null>(null);
+  const [panel, setPanel] = useState<{ id: string; kind: "out" | "in" | "repair" | "move" | "remove" } | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   // A correction in progress. Its own copy of the form, seeded from the item: nothing is
@@ -249,6 +250,36 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
       ? t("Corrected — and it must be confirmed again.")
       : t("Corrected."));
     setEdit(null);
+    refreshState();
+  };
+
+  // Removing a mistake, and the alternative when the mistake has been confirmed. Both name
+  // the tag back to the person, because "deleted" with no number in it is not a confirmation.
+  const handleRemove = async (a: any, reason: string) => {
+    const res = await fetch("/api/assets/delete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assetId: a.id, reason }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return triggerToast(data.error || "The removal was refused.", "error");
+    triggerToast(data.keptDocuments
+      ? `${a.tag} — ${t("removed. Its photos stay in the vault.")}`
+      : `${a.tag} — ${t("removed.")}`);
+    setPanel(null);
+    setDraft({});
+    refreshState();
+  };
+
+  const handleWriteOff = async (a: any, reason: string) => {
+    const res = await fetch("/api/assets/write-off", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assetId: a.id, reason }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return triggerToast(data.error || "The write-off was refused.", "error");
+    triggerToast(`${a.tag} — ${t("written off. The record stays.")}`);
+    setPanel(null);
+    setDraft({});
     refreshState();
   };
 
@@ -484,7 +515,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
     return () => clearTimeout(off);
   }, [focusId, assets.length]);
 
-  const openPanel = (id: string, kind: "out" | "in" | "repair" | "move", seed: Record<string, string> = {}) => {
+  const openPanel = (id: string, kind: "out" | "in" | "repair" | "move" | "remove", seed: Record<string, string> = {}) => {
     setPanel(panel?.id === id && panel.kind === kind ? null : { id, kind });
     setDraft(seed);
   };
@@ -523,7 +554,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               <ClipboardList className="h-4 w-4" /> {t("Useful-life policy")}
             </button>
           )}
-          {assets.some(a => a.tag) && (
+          {assets.some(a => a.tag && !a.writtenOffAt) && (
             <button
               type="button" aria-expanded={stickersOpen}
               onClick={() => {
@@ -561,7 +592,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
       )}
 
       {stickersOpen && (() => {
-        const tagged = assets.filter(a => a.tag).sort((x, y) => String(y.receivedAt || "").localeCompare(String(x.receivedAt || "")));
+        const tagged = assets.filter(a => a.tag && !a.writtenOffAt).sort((x, y) => String(y.receivedAt || "").localeCompare(String(x.receivedAt || "")));
         const sample = tagged.find(a => picked.has(a.id)) || tagged[0];
         return (
           <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
@@ -715,6 +746,17 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 {a.specs && <p className="mt-1 whitespace-pre-line text-[11px] text-slate-500">{a.specs}</p>}
               </div>
 
+              {/* Written off: the record is kept and readable, and says so in the open. */}
+              {a.writtenOffAt && (
+                <p className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-[11px] text-slate-700">
+                  <Archive className="inline h-3.5 w-3.5" /> <b>{t("Written off — registered in error")}</b>
+                  {" · "}{nameOf(a.writtenOffBy)} · <span dir="ltr">{String(a.writtenOffAt).slice(0, 10)}</span>
+                  {a.writeOffReason ? <><br /><span dir="auto">{a.writeOffReason}</span></> : null}
+                  <br />
+                  <span className="text-slate-500">{t("It stays on the record with its history. It is out of the working register and off everyone's desk.")}</span>
+                </p>
+              )}
+
               {a.holderId ? (
                 // On a loan — cm is guaranteed by the mirrored holderId column.
                 <p className={`rounded-lg px-3 py-2 text-xs font-bold ${a.dueBack && a.dueBack < today ? "bg-red-50 text-red-800" : "bg-sky-50 text-sky-900"}`}>
@@ -808,7 +850,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 </div>
               )}
 
-              {receiving && (
+              {receiving && !a.writtenOffAt && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                   {a.holderId ? (
                     <button type="button" onClick={() => openPanel(a.id, "in", { holderKind: "org", holderId: "", location: a.location || "" })} className={btn}><LogIn className="h-4 w-4" /> {t("Check in")}</button>
@@ -823,6 +865,15 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                   )}
                   <button type="button" onClick={() => openPanel(a.id, "repair", { date: today })} className={btnGhost}><Wrench className="h-4 w-4" /> {t("Log a repair")}</button>
                   <button type="button" aria-expanded={edit?.id === a.id} onClick={() => startEdit(a)} className={btnGhost}><Pencil className="h-4 w-4" /> {t("Correct the details")}</button>
+                  {/* Removing is offered only for a mistake nobody has vouched for. Once an
+                      item is confirmed, out, or repaired, the button is GONE rather than
+                      greyed — a disabled Delete invites somebody to go looking for the way
+                      round it — and the write-off it is replaced by says what the way is. */}
+                  {deleteBlocker(a) === null ? (
+                    <button type="button" aria-expanded={panel?.id === a.id && panel.kind === "remove"} onClick={() => openPanel(a.id, "remove", { mode: "remove" })} className={`${btnGhost} text-red-700`}><Trash2 className="h-4 w-4" /> {t("Remove")}</button>
+                  ) : !a.writtenOffAt && writeOffBlocker(a) === null ? (
+                    <button type="button" aria-expanded={panel?.id === a.id && panel.kind === "remove"} onClick={() => openPanel(a.id, "remove", { mode: "writeoff" })} className={btnGhost}><Archive className="h-4 w-4" /> {t("Write it off")}</button>
+                  ) : null}
                   {a.tag && (
                     <a href={withTicket(`/api/assets/stickers?ids=${encodeURIComponent(a.id)}`)} target="_blank" rel="noreferrer" className={btnGhost}><Printer className="h-4 w-4" /> {t("Print sticker")}</a>
                   )}
@@ -951,6 +1002,52 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 );
               })()}
 
+              {panel?.id === a.id && panel.kind === "remove" && (() => {
+                const removing = field("mode") === "remove";
+                const why = deleteBlocker(a);
+                const reason = field("reason");
+                return (
+                  <form
+                    onSubmit={e => { e.preventDefault(); removing ? handleRemove(a, reason) : handleWriteOff(a, reason); }}
+                    className={`space-y-3 rounded-lg border p-3 ${removing ? "border-red-200 bg-red-50" : "border-slate-300 bg-slate-100"}`}
+                  >
+                    {removing ? (<>
+                      <p className="text-xs font-bold text-red-900">
+                        <Trash2 className="inline h-3.5 w-3.5" /> {t("Remove {tag} from the register?").replace("{tag}", a.tag || a.name)}
+                      </p>
+                      <p className="text-[11px] text-red-800">
+                        {t("The row goes for good. Its sticker number is never given to another item, and any photos filed against it stay in the vault under the project that funded it.")}
+                      </p>
+                    </>) : (<>
+                      <p className="text-xs font-bold text-slate-800">
+                        <Archive className="inline h-3.5 w-3.5" /> {t("Write {tag} off as registered in error?").replace("{tag}", a.tag || a.name)}
+                      </p>
+                      <p className="text-[11px] text-slate-600">
+                        {why
+                          ? `${t("It cannot simply be removed —")} ${t(why)}. ${t("Writing it off keeps the record and its history readable, and takes it out of the working register.")}`
+                          : t("Writing it off keeps the record and its history readable, and takes it out of the working register.")}
+                      </p>
+                    </>)}
+                    <div>
+                      <label htmlFor={`rm-why-${a.id}`} className={lbl}>{t("Why")}</label>
+                      <input
+                        id={`rm-why-${a.id}`} required minLength={10} value={reason}
+                        onChange={e => setField("reason", e.target.value)}
+                        placeholder={t("e.g. scanned the same box twice — this row is a duplicate of EQ-004")}
+                        className={inp}
+                      />
+                      <span className="text-[10px] text-slate-500">{t("A sentence, not a word. It goes on the record with your name.")}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="submit" disabled={reason.trim().length < 10} className={reason.trim().length < 10 ? btnOff : removing ? `${btn} bg-red-700 hover:bg-red-800` : btn}>
+                        {removing ? <><Trash2 className="h-4 w-4" /> {t("Remove it")}</> : <><Archive className="h-4 w-4" /> {t("Write it off")}</>}
+                      </button>
+                      <button type="button" onClick={() => { setPanel(null); setDraft({}); }} className={btnGhost}>{t("Cancel")}</button>
+                    </div>
+                  </form>
+                );
+              })()}
+
               {/* A correction describes the item. What happened to it — the sticker, the delivery,
                   the confirmation, the log — is shown here as read-only, with the reason. */}
               {edit?.id === a.id && (() => {
@@ -1023,7 +1120,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
 
               {/* The same predicate the route asks. The keeper of the register is not a
                   verifier at all; a verifier who took delivery sees why they cannot confirm. */}
-              {verifier && (a.holderId ? (
+              {verifier && !a.writtenOffAt && (a.holderId ? (
                 <button type="button" disabled className="w-full cursor-not-allowed rounded bg-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-500">
                   ✓ {t("Confirm it is here")} — {t("it is out; confirm it once it is back")}
                 </button>

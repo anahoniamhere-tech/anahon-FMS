@@ -82,6 +82,8 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/assets/checkout": SUPPLIER_EDITORS,
   "/api/assets/checkin": SUPPLIER_EDITORS,
   "/api/assets/move": SUPPLIER_EDITORS,                // where a resting item is; a loan still goes out and comes back
+  "/api/assets/delete": SUPPLIER_EDITORS,              // only an unconfirmed mistake; the route itself refuses the rest
+  "/api/assets/write-off": SUPPLIER_EDITORS,           // the honest alternative once somebody has confirmed it
   "/api/assets/repair": SUPPLIER_EDITORS,
   "/api/assets/verify": EQUIPMENT_VERIFIERS,          // never the keeper of the register
 
