@@ -798,8 +798,8 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
 
                         {exp.currency !== "USD" && (
                           <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
-                            <span>Raw Transaction Value: <strong className="text-slate-800">{exp.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</strong></span>
-                            <span>Traceable Exchanger/FX Conversion Rate: <strong className="text-slate-800">1 {exp.currency} = {exp.rate} USD</strong></span>
+                            <span>Raw Transaction Value: <strong className="text-slate-800" dir="ltr">{exp.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</strong></span>
+                            <span>Traceable Exchanger/FX Conversion Rate: <strong className="text-slate-800" dir="ltr">1 {exp.currency} = {exp.rate} USD</strong></span>
                           </div>
                         )}
 
@@ -829,7 +829,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                       </div>
                                       <div className="text-end">
                                         <span className="text-[10px] text-slate-400 block">Split Amount</span>
-                                        <span className="font-bold text-slate-900">{(alloc.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
+                                        <span className="font-bold text-slate-900" dir="ltr">{(alloc.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
                                       </div>
                                     </div>
                                   </div>
@@ -844,19 +844,19 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                           <div className={`p-3 border rounded-lg text-xs font-mono grid grid-cols-3 gap-2 ${exp.whtAmount > 0 ? "bg-amber-50 border-amber-200" : "bg-emerald-50 border-emerald-200"}`}>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>Gross Amount</span>
-                              <span className="font-bold text-slate-900">{(exp.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
+                              <span className="font-bold text-slate-900" dir="ltr">{(exp.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
                             </div>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>
                                 {exp.whtAmount > 0 ? "WHT Withheld (7.5%)" : "WHT Withheld (0% Registered)"}
                               </span>
-                              <span className={`font-bold ${exp.whtAmount > 0 ? "text-amber-700" : "text-emerald-700"}`}>
+                              <span className={`font-bold ${exp.whtAmount > 0 ? "text-amber-700" : "text-emerald-700"}`} dir="ltr">
                                 {exp.whtAmount > 0 ? `-${(exp.whtAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "0.00"} {exp.currency}
                               </span>
                             </div>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>Net Paid Amount</span>
-                              <span className="font-bold text-slate-950">{(exp.netAmount || ((exp.amount || 0) - (exp.whtAmount || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
+                              <span className="font-bold text-slate-950" dir="ltr">{(exp.netAmount || ((exp.amount || 0) - (exp.whtAmount || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })} {exp.currency}</span>
                             </div>
                           </div>
                         )}
@@ -963,11 +963,11 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                   </div>
                                   <div>
                                     <span className="text-[10px] text-slate-500 uppercase block font-bold">WHT Withheld (7.5%)</span>
-                                    <span className="font-bold text-red-600 font-bold">-{whtVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {exp.currency}</span>
+                                    <span className="font-bold text-red-600" dir="ltr">-{whtVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {exp.currency}</span>
                                   </div>
                                   <div>
                                     <span className="text-[10px] text-slate-500 uppercase block font-bold">Net Payout Amount</span>
-                                    <span className="font-bold text-emerald-700 font-bold">{netVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {exp.currency}</span>
+                                    <span className="font-bold text-emerald-700" dir="ltr">{netVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {exp.currency}</span>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-2 border-t border-slate-200 pt-2 mt-1">

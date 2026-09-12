@@ -113,12 +113,28 @@ const risky: string[] = [];
 for (const f of files) {
   const lines = read(f).split("\n");
   lines.forEach((line, i) => {
-    if (!/toLocaleString\(\)\} \{[^}]*[Cc]urrency/.test(line)) return;
+    // House style is toLocaleString(undefined, { minimumFractionDigits: 2 }), so demanding
+    // EMPTY parens here meant the rule never saw a single house-style figure: sixteen
+    // genuine cases shipped past it (Books room, 12 Sep). Any argument list counts now,
+    // and the currency may sit a few characters further along — "0.00"} {exp.currency}.
+    // The `<` keeps it to JSX: the same run inside a WhatsApp message string
+    // (ExpensesTab, ProductionTab) has no element to carry dir, and isolating it there
+    // is not a thing you can do.
+    if (!/toLocaleString\([^)]*\)[\s\S]{0,30}?[Cc]urrency/.test(line) || !line.includes("<")) return;
     const window = lines.slice(Math.max(0, i - 2), i + 1).join(" ");
     if (!/dir="ltr"/.test(window)) risky.push(`${f}:${i + 1}`);
   });
 }
 ok("every amount + currency pair is isolated", risky.length === 0, risky.join(", "));
+// Isolation goes on an INNER span, never on the <td> — dir on the cell inverts that
+// column's alignment — and never on a paragraph, which would flip the Arabic prose
+// around the figure. Both verified by hand in Banking/Reports (Books room, 12 Sep).
+ok("a table cell isolates on an inner span, not the cell",
+  !/<td[^>]*dir="ltr"/.test(read("src/tabs/BankingTab.tsx")));
+// ponytail: formatUSD() embeds its own symbol, so this rule cannot see it — 72 lines
+// carry one unisolated today. Most are a lone figure in its own cell, which does not
+// scramble; the ones that bite sit inside a sentence. Widen to formatUSD only with a
+// way to tell those apart, or it is 72 false positives.
 ok("the date range on the payroll sheet is isolated",
   /<span dir="ltr">\{eng\[pid\]\.first\} → \{eng\[pid\]\.last\}<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
 ok("so is the LOE percentage", /<span dir="ltr">\{eng\[pid\]\.pct\}% \(payroll\)<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
