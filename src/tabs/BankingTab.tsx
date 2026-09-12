@@ -133,7 +133,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                             <div key={tx.id} className="px-4 py-2.5">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="font-mono text-[11px] text-slate-500">{tx.date}</span>
-                                <span className={`font-mono font-bold text-sm ${isOut ? "text-red-600" : "text-emerald-700"}`}>
+                                <span dir="ltr" className={`font-mono font-bold text-sm ${isOut ? "text-red-600" : "text-emerald-700"}`}>
                                   {isOut ? "−" : "+"}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {ba?.currency}
                                 </span>
                               </div>
@@ -166,7 +166,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                                 <td className="px-4 py-2 text-slate-600 hidden md:table-cell whitespace-nowrap">{ba?.name.replace("BLOM Business Plus ", "BLOM ")}</td>
                                 <td className="px-4 py-2 text-slate-700 hidden md:table-cell">{tx.description}</td>
                                 <td className={`px-4 py-2 text-end font-mono font-bold whitespace-nowrap ${isOut ? "text-red-600" : "text-emerald-700"}`}>
-                                  {isOut ? "−" : "+"}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {ba?.currency}
+                                  <span dir="ltr">{isOut ? "−" : "+"}{tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {ba?.currency}</span>
                                 </td>
                               </tr>
                             );

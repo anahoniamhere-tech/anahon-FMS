@@ -278,28 +278,28 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-1">
                         <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Opening Balance</span>
-                        <span className="text-xl font-bold font-mono text-slate-800">
+                        <span dir="ltr" className="text-xl font-bold font-mono text-slate-800">
                           {openingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
                         </span>
                         <p className="text-[10px] text-slate-400">Opening reserve for {dailySelectedDate}</p>
                       </div>
                       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-1">
                         <span className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider block">Daily Inflows (+)</span>
-                        <span className="text-xl font-bold font-mono text-emerald-600">
+                        <span dir="ltr" className="text-xl font-bold font-mono text-emerald-600">
                           +{dailyDeposits.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
                         </span>
                         <p className="text-[10px] text-slate-400">Total receipts / drawing inputs</p>
                       </div>
                       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-1">
                         <span className="text-[10px] text-amber-700 font-bold uppercase tracking-wider block">Daily Outflows (-)</span>
-                        <span className="text-xl font-bold font-mono text-amber-600">
+                        <span dir="ltr" className="text-xl font-bold font-mono text-amber-600">
                           -{dailyWithdrawals.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
                         </span>
                         <p className="text-[10px] text-slate-400">Settled vouchers / petty cash out</p>
                       </div>
                       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm space-y-1 text-white">
                         <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Closing Balance</span>
-                        <span className="text-xl font-bold font-mono text-white">
+                        <span dir="ltr" className="text-xl font-bold font-mono text-white">
                           {closingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
                         </span>
                         <p className="text-[10px] text-slate-400">End-of-day reconciled reserve</p>
@@ -543,7 +543,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                                       </td>
                                       <td className={`px-4 py-4 text-end font-mono font-bold ${t.type === "Deposit" ? "text-emerald-600" : "text-slate-900"
                                         }`}>
-                                        {t.type === "Deposit" ? "+" : "-"} {t.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}
+                                        <span dir="ltr">{t.type === "Deposit" ? "+" : "-"} {t.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedAccount?.currency}</span>
                                       </td>
                                     </tr>
                                   );

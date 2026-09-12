@@ -238,8 +238,8 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                             almost none of the bank balance is actually yours to spend. */}
                         <p className="text-[10px] bg-slate-900 text-white rounded px-3 py-2 mt-2 leading-relaxed">
                           <span className="text-red-300 font-bold">{t("Solvency is a cash question, not a surplus question.")} </span>
-                          {t("Of the")} {formatUSD(bs.cash)} {t("in the bank,")} {formatUSD(bs.unspentRestricted)} {t("is restricted grant committed to work not yet delivered — about")} {formatUSD(bs.freeCash)} {t("is genuinely free.")}
-                          {bs.receivable > 0 && <> {formatUSD(bs.receivable)} {t("owed to the outlet has not arrived.")}</>}
+                          {t("Of the")} <span dir="ltr">{formatUSD(bs.cash)}</span> {t("in the bank,")} <span dir="ltr">{formatUSD(bs.unspentRestricted)}</span> {t("is restricted grant committed to work not yet delivered — about")} <span dir="ltr">{formatUSD(bs.freeCash)}</span> {t("is genuinely free.")}
+                          {bs.receivable > 0 && <> <span dir="ltr">{formatUSD(bs.receivable)}</span> {t("owed to the outlet has not arrived.")}</>}
                         </p>
                       </div>
                     );
