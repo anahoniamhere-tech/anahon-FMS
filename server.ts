@@ -8187,9 +8187,14 @@ Rules:
           answeredBy = "paid reader, after the free one was busy twice";
         } catch (third: any) {
           if (!busy(third)) return unreadable(third);
-          // Both unavailable. The original message, unchanged: it is still a moment's wait.
+          // Both unavailable. "Busy for a moment" is true of a rate limit and a lie about a
+          // spent daily quota — and telling somebody to press Scan again until tomorrow is the
+          // dead end this fallback exists to remove. So the exhausted case says what it is.
+          const spent = /RESOURCE_EXHAUSTED|exceeded your current quota|quota/i.test(String(second?.message) + String(third?.message));
           return res.status(503).json({
-            error: "The label reader is busy for a moment — press Scan the label again, or type the details from the label."
+            error: spent
+              ? "The label reader has used up today's free reading, and the paid one did not answer. Type the details from the label — or ask Saad to check the reader's key."
+              : "The label reader is busy for a moment — press Scan the label again, or type the details from the label."
           });
         }
       }

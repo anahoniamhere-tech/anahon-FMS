@@ -694,6 +694,10 @@ ok("an unreadable photo never retries and never spends — it says so at once",
   (scan.match(/if \(!busy\(\w+\)\) return unreadable\(\w+\)/g) || []).length === 3);
 ok("the failure message when BOTH are unavailable is the original, unchanged",
   scan.includes("The label reader is busy for a moment — press Scan the label again, or type the details from the label."));
+// A rate limit is a moment; a spent daily quota is until tomorrow. Telling somebody to press
+// Scan again until then is the dead end this whole fallback exists to remove.
+ok("and a spent daily quota says so instead of promising a moment",
+  /exceeded your current quota\|quota/i.test(scan) && scan.includes("has used up today's free reading"));
 ok("the provider's raw JSON never reaches a phone",
   /replace\(\/\[\{\}\[\\\]"\]\/g, ""\)/.test(scan) && /\.slice\(0, 120\)/.test(scan));
 ok("which reader answered, and what it cost, go in the audit line",
