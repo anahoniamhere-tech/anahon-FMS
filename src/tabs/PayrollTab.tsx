@@ -526,8 +526,8 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                             <select id={`ct-kind-${emp.id}`} value={contractForm.kind}
                               onChange={(e) => setContractForm({ ...contractForm, kind: e.target.value })}
                               className="finance-input w-full text-xs">
-                              <option value="Employment">Employment contract</option>
-                              <option value="Service">Service agreement (staff on deliverables)</option>
+                              <option value="Employment">Annual contract, or a subcontract if you name a project</option>
+                              <option value="Service">Service agreement — a one-off engagement</option>
                             </select>
                           </div>
                           <div>

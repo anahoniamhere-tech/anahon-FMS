@@ -247,6 +247,12 @@ ok("the payslip prints it only to say a person is NOT one", (() => {
     .filter(h => !/employee:/.test(h));
   return prose.length === 1 && prose[0].includes("not as an employee");
 })(), (payslipSrc.match(/.{0,70}employee.{0,30}/gi) || []).filter(h => !/employee:/.test(h)).join(" | "));
+ok("the form's Type options describe what comes out, and never say employment contract", (() => {
+  const payroll = readFileSync(new URL("../src/tabs/PayrollTab.tsx", import.meta.url), "utf8");
+  const opts = [...payroll.matchAll(/<option value="(Employment|Service)">([^<]*)</g)].map(m => m[2]);
+  return opts.length === 2 && opts.every(o => !/employment/i.test(o))
+    && opts[0].includes("Annual contract") && opts[1].includes("Service agreement");
+})());
 ok("the payslip names the counterparty a service provider",
   /cap\("Service provider", "مقدّم الخدمة"\)/.test(payslipSrc) && payslipSrc.includes("<div>Service provider — "));
 ok("a term with legal meaning is NOT quietly reworded — withholding still keys on isService",
