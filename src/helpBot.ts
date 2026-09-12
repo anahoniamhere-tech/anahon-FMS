@@ -91,19 +91,79 @@ You are the help desk inside AnaHon's management system. Everything you know is 
 - When a door would take them to the answer, put its navKey in "door" — but only a navKey from the list of doors they can open. Otherwise "door" must be null. Never invent a navKey.
 - "mydesk" is a destination only for a question about the desk as a whole. For a question about one record, the door is the one that record opens — they are already looking at their desk, so sending them back to it helps nobody.
 - When the material above does not answer it, say so in one sentence and name the seat to ask (from the role list) in "askSeat". Do not guess, do not reason from what systems usually do, and do not describe a screen or a button that is not written down above. This holds for the policy manual too: "that is not in the policies" is a complete and correct answer, and far better than an answer built from what such a policy usually says.
-- When you answer from the manual, cite the policy: its number and the section, as the handbook writes them — "Accounting & Business Policy 020, Section 7.2". A staff member has to be able to go and read it.
-- **When two policies disagree, say so plainly. Quote both, name both documents, and never silently choose between them.** You are not the one who settles which governs; that is for the Executive Director and the accountant. Where the system itself enforces one of the two, say which one it enforces — that is a fact about the software, not a ruling about the policy.
+- When you answer from the policies, cite the policy: its number and the section, as it is written — "Accounting and Business Policy 020, Section 7.2". A staff member has to be able to go and read it. You may also say which handbook the policy is filed in, from the index — but the source of the rule is always the policy and its number, never the handbook. Do not write "the Finance and Controls Handbook says…"; write "Policy 020 says…, filed in the Finance and Controls Handbook."
+- **When two policies disagree, say so plainly. Quote both, name both by number, and never silently choose between them.** You are not the one who settles which governs; that is for the Executive Director and the accountant. Where the system itself enforces one of the two, say which one it enforces — that is a fact about the software, not a ruling about the policy.
+- **A "known conflicts and gaps" section may sit below the policies, one excerpt per handbook.** These are not policies and cannot be cited as one — they are the editor's own notes on where a policy's wording does not match how AnaHon actually works (a seat that is vacant, a committee that does not exist, a recipient still to be named). When a question touches something a note flags, give the policy's own text first — that is still what the rule says — and then add plainly that it is flagged as unresolved, in your own words. Do not quote the note itself as if it were policy text, and do not raise a note the question did not touch.
 - Never state or invent a record's title, vendor, amount or reference — you have not been given them, by design. Speak about a row by its kind, status and date only.
 - Reply in the same language the question is written in: English question, English answer; Arabic question, Arabic answer.
 
 Reply as JSON only: {"answer": "...", "door": "navKey or null", "askSeat": "role name or null"}`;
 
+/* ── Assembling the policy manual out of numbered policies and compilations ───
+ * 12 Sep 2026: the nineteen numbered policies were also compiled into six handbook
+ * documents (the same category the bot reads), containing the SAME text — reading both
+ * would have doubled the corpus and had the bot quote a rule twice, or quote a
+ * compilation and call it the source. The pure shape of the fix lives here, so
+ * scripts/check-helpbot.ts can run it against real extracted text rather than grepping
+ * server.ts for the right words; server.ts only does the DB lookup and the file reads.
+ */
+
+/** Ids under this prefix are the 12 Sep 2026 compilations, never the governing text. */
+export const COMPILED_POLICY_PREFIX = "doc-hb-compiled-";
+/** The one compiled document that is navigation rather than a duplicate: the index. */
+export const POLICY_INDEX_ID = "doc-hb-compiled-anahon-policies-index";
+
+/** A policy or handbook's heading in the prompt, from its filename — carries the number. */
+export const policyHeading = (filename: string): string =>
+  filename.replace(/\.(docx|pdf)$/i, "").replace(/_/g, " ");
+
+/**
+ * The "what does not match reality" list each compiled handbook — bar the index — opens
+ * with, and only that: never the compiled policy text that follows it, which is the same
+ * wording the numbered policy already carries above.
+ *
+ * Every one of the five documents writes the note as one unbroken run of bullets right
+ * after an "Editor's note" heading, with no blank line inside a bullet or between two of
+ * them; the policy text that follows always starts past a blank line. So the first blank
+ * line after the heading is where the note ends, in all five — checked against the real
+ * documents rather than assumed, and true even for the one of the five with no "Part
+ * One" marker to fall back on.
+ */
+export function extractEditorsNote(text: string): string {
+  const start = text.indexOf("Editor's note");
+  if (start < 0) return "";
+  const rest = text.slice(start);
+  const end = rest.indexOf("\n\n");
+  return (end < 0 ? rest : rest.slice(0, end)).trim();
+}
+
+/**
+ * The three ingredients into one block: the numbered policies (already headed, already
+ * extracted by the caller), the index whole, and the excerpted notes. Assembly is the
+ * only thing that needs testing without a database — the extraction itself is server.ts's
+ * file I/O and stays there.
+ */
+export function assemblePolicyManual(policyParts: string[], indexText: string, noteParts: string[]): string {
+  return [
+    policyParts.join("\n\n"),
+    indexText.trim()
+      ? `## Where each policy lives — the handbooks' own index (navigation only: which handbook a policy sits in. The source of a rule is always the policy and its number above, never the handbook.)\n${indexText.trim()}`
+      : "",
+    noteParts.length
+      ? `## Known conflicts and gaps the handbooks' editor has already flagged (excerpts only — the policy text above is still what governs)\n${noteParts.join("\n\n")}`
+      : "",
+  ].filter(Boolean).join("\n\n");
+}
+
 export function helpPrompt(question: string, a: Asker, policies = ""): string {
-  // The manual goes in whole and unedited. It is the organisation's own writing, so it is
-  // quoted rather than paraphrased, and it sits after the system's own tables because when
-  // the two disagree the reader needs to see both — see RULES_FOR_THE_BOT.
+  // `policies` is assemblePolicyManual()'s output: the nineteen numbered policies in
+  // full, then the handbooks' own index (navigation only), then excerpted editor's notes
+  // on where a handbook's wording is known to be out of date — never the compiled
+  // handbook text itself, which would just be the same policies again. Quoted rather
+  // than paraphrased, and it sits after the system's own tables because when the two
+  // disagree the reader needs to see both — see RULES_FOR_THE_BOT.
   const manual = policies.trim()
-    ? `## The policy manual, in full — AnaHon's own handbooks, numbered 001-022\n${policies.trim()}`
+    ? `## The policies — AnaHon's own numbered policies, their index, and known open points\n${policies.trim()}`
     : "";
   return [corpus(), manual, askerBlock(a), RULES_FOR_THE_BOT, `## The question\n${question}`]
     .filter(Boolean).join("\n\n");
