@@ -180,7 +180,7 @@ export default function IcontentInvPage() {
             </div>
             <div className="text-center px-4 border-e border-slate-800">
               <span className="block text-xs text-slate-500 font-mono uppercase">Archive Size</span>
-              <span className="text-xl font-bold text-red-500">1.08 MB</span>
+              <span className="text-xl font-bold text-red-500" dir="ltr">1.08 MB</span>
             </div>
             <div className="text-center px-4">
               <span className="block text-xs text-slate-500 font-mono uppercase">Availability</span>

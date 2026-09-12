@@ -190,6 +190,31 @@ ok("a lone figure in a cell is not", !mixesWithT("<td>{formatUSD(x)}</td>"));
 ok("and wrapping clears it — the span comes between", !mixesWithT('<span dir="ltr">{formatUSD(x)}</span>'));
 ok("a figure inside a message string is not a case",
   !mixesWithT('const msg = `owed ${formatUSD(x)} to ${t("them")}`;'));
+
+console.log("\nand a heading that opens with a number keeps it");
+// The third family, and the one no anchor can find: a text run that simply STARTS with a
+// digit and a separator. No toLocaleString, no formatUSD to hang a rule on. In an RTL
+// container "1. Budget vs Actual" renders "Budget vs Actual .1" — the number thrown to the
+// far end — while "4b. Internal Movements" is CORRECT untouched, because a digit followed
+// by a letter binds as one Latin token. Measured in a browser by the Books room, 12 Sep;
+// five of their report headings and one archive size were live cases.
+const LEADING = /^\s*[-−+]?\d[\d,.]*[.):]?\s+[A-Za-z{]/;
+const leads = (raw: string) => {
+  if (/dir="ltr"/.test(raw)) return false;
+  const line = maskStrings(raw);
+  return [...line.matchAll(/>([^<>]{2,})</g)].some(m => LEADING.test(m[1]));
+};
+const numbered: string[] = [];
+for (const f of files) {
+  read(f).split("\n").forEach((line, i) => { if (leads(line)) numbered.push(`${f}:${i + 1}`); });
+}
+ok("no run opens with a bare number beside a Latin word", numbered.length === 0, numbered.join(", "));
+ok("a numbered heading is the case", leads("<h3>1. Budget vs Actual by Project</h3>"));
+ok("a size is too", leads('<span className="text-xl">1.08 MB</span>'));
+// The one that must not move: "fixing" it would isolate a run that already reads correctly.
+ok("but 4b. binds as one token and is correct", !leads("<h3>4b. Internal Movements — excluded</h3>"));
+ok("a number not at the start is fine", !leads("<span>Asset (1000s)</span>"));
+ok("and a bare figure with no Latin word is fine", !leads("<td>1,250.00</td>"));
 ok("the date range on the payroll sheet is isolated",
   /<span dir="ltr">\{eng\[pid\]\.first\} → \{eng\[pid\]\.last\}<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
 ok("so is the LOE percentage", /<span dir="ltr">\{eng\[pid\]\.pct\}% \(payroll\)<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
