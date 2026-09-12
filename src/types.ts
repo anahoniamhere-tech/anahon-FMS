@@ -296,6 +296,8 @@ export interface FixedAsset {
   receivedBy?: string | null;
   verifiedAt?: string | null;
   verifiedBy?: string | null;
+  /** camera/lens/audio/lighting/computer/storage/network/furniture/other — see equipment.ts. */
+  kind?: string;
   /** Derived in loadState from the facts on the row — never stored. The desk keys on it. */
   status?: "Registered" | "Received" | "Verified" | "Out";
   /** Who has it now (a User.id), what for and until when. Empty while it is in. */

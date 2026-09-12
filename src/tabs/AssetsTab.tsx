@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { SharedProps } from "./shared";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS } from "../roles";
 import { withTicket } from "../docTicket";
-import { CONDITIONS, CURRENCIES, NO_SERIAL, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, checkOutBlocker, equipmentStatus, mayVerifyEquipment } from "../equipment";
+import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, checkOutBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife } from "../equipment";
 import { addDays, localToday } from "../workflow";
 
 /** A request equipment can be booked against: the money is committed. The route asks the same. */
@@ -43,8 +43,16 @@ const extOf = (p: Photo) => p.filename.match(/\.\w+$/)?.[0] || "";
 
 const BLANK = {
   name: "", brand: "", model: "", serial: "", noSerial: false, specs: "",
+  kind: "", lifeOverride: "",
   expenseId: "", cost: "", currency: "", purchaseDate: "", projectId: "",
-  life: "3", custodian: "", location: "", condition: "",
+  custodian: "", location: "", condition: "",
+};
+
+/** Kinds a receiver understands at a glance, not the internal keys. */
+const KIND_LABELS: Record<string, string> = {
+  camera: "Camera", lens: "Lens", audio: "Audio", lighting: "Lighting",
+  computer: "Computer, phone or tablet", storage: "Storage", network: "Network",
+  furniture: "Furniture", other: "Other",
 };
 
 const STATUS_CHIP: Record<string, string> = {
@@ -56,6 +64,9 @@ const STATUS_CHIP: Record<string, string> = {
 export default function AssetsTab({ currentUser, focusId, lang, openDoc, refreshState, setFocusId, state, t, triggerToast }: SharedProps) {
   const [f, setF] = useState({ ...BLANK, custodian: currentUser?.name || "" });
   const set = (k: keyof typeof BLANK, v: string | boolean) => setF(prev => ({ ...prev, [k]: v }));
+  const setKind = (kind: string) => setF(prev => ({ ...prev, kind, lifeOverride: "" }));
+  const policyLife = usefulLifeFor(f.kind);
+  const overriding = mayOverrideUsefulLife(currentUser);
   const [labelPhoto, setLabelPhoto] = useState<Photo | null>(null);
   const [itemPhoto, setItemPhoto] = useState<Photo | null>(null);
   const [scan, setScan] = useState<{ busy: boolean; confidence?: string; warnings?: string[]; duplicateOfTag?: string }>({ busy: false });
@@ -68,6 +79,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   const [highlight, setHighlight] = useState<string | null>(null);
   // Which items to print stickers for, and at what size.
   const [stickersOpen, setStickersOpen] = useState(false);
+  const [policyOpen, setPolicyOpen] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [stickerMm, setStickerMm] = useState<number>(DEFAULT_STICKER_MM);
   // Print after scan: every item registered since this screen opened, printed in one go.
@@ -119,6 +131,11 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
         name: x.name || "", brand: x.brand || "", model: x.model || "",
         serial: x.serialNumber || "", noSerial: x.serialNumber ? false : prev.noSerial,
         specs: x.specs || "",
+        // A guess is fine here — the person checks it, and a wrong kind only changes a
+        // suggested useful life, never a fact filed in the register. Unrecognised → blank,
+        // which usefulLifeFor already reads as "other".
+        kind: (EQUIPMENT_KINDS as readonly string[]).includes(x.kind) ? x.kind : prev.kind,
+        lifeOverride: "",
       }));
       setScan({ busy: false, confidence: x.confidence, warnings: x.warnings || [], duplicateOfTag: x.duplicateOfTag });
     } catch (err: any) {
@@ -149,11 +166,12 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: f.name, brand: f.brand, model: f.model, specs: f.specs,
+          name: f.name, brand: f.brand, model: f.model, specs: f.specs, kind: f.kind,
           serialNumber: f.serial, noSerial: f.noSerial,
           expenseId: f.expenseId, cost: f.cost, currency: f.currency,
           purchaseDate: f.purchaseDate, fundingProjectId: f.projectId,
-          usefulLifeYears: f.life, custodian: f.custodian, location: f.location, condition: f.condition,
+          ...(overriding && f.lifeOverride ? { usefulLifeYears: f.lifeOverride } : {}),
+          custodian: f.custodian, location: f.location, condition: f.condition,
         }),
       });
       const data = await res.json();
@@ -259,20 +277,48 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
             {t("Photograph the label when equipment arrives. The person who took delivery registers it; somebody else confirms it is really here.")}
           </p>
         </div>
-        {assets.some(a => a.tag) && (
-          <button
-            type="button" aria-expanded={stickersOpen}
-            onClick={() => {
-              // Opens on the new ones: whatever arrived this week, the usual reason to print.
-              if (!stickersOpen) setPicked(new Set(assets.filter(a => a.tag && (a.receivedAt || "").slice(0, 10) >= addDays(today, -7)).map(a => a.id)));
-              setStickersOpen(!stickersOpen);
-            }}
-            className={btnGhost}
-          >
-            🏷 {t("Stickers")}
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {overriding && (
+            <button type="button" aria-expanded={policyOpen} onClick={() => setPolicyOpen(!policyOpen)} className={btnGhost}>
+              📋 {t("Useful-life policy")}
+            </button>
+          )}
+          {assets.some(a => a.tag) && (
+            <button
+              type="button" aria-expanded={stickersOpen}
+              onClick={() => {
+                // Opens on the new ones: whatever arrived this week, the usual reason to print.
+                if (!stickersOpen) setPicked(new Set(assets.filter(a => a.tag && (a.receivedAt || "").slice(0, 10) >= addDays(today, -7)).map(a => a.id)));
+                setStickersOpen(!stickersOpen);
+              }}
+              className={btnGhost}
+            >
+              🏷 {t("Stickers")}
+            </button>
+          )}
+        </div>
       </div>
+
+      {policyOpen && overriding && (
+        <div className="rounded-lg border border-slate-200 bg-white p-4">
+          <h3 className="mb-2 text-sm font-bold text-slate-900">{t("Useful-life policy")}</h3>
+          <p className="mb-3 text-[11px] text-slate-500">
+            {t("What the receiving desk fills in automatically, by kind. Change a number here (in the code, src/equipment.ts) and every item that reads it agrees.")}
+          </p>
+          <table className="w-full max-w-sm text-xs">
+            <tbody>
+              {EQUIPMENT_KINDS.map(k => (
+                <tr key={k} className="border-t border-slate-100">
+                  <td className="py-1 text-slate-700">{t(KIND_LABELS[k])}</td>
+                  <td dir="ltr" className="py-1 text-end font-mono font-bold text-slate-900">
+                    {USEFUL_LIFE_BY_KIND[k]} {t("years")}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {stickersOpen && (() => {
         const tagged = assets.filter(a => a.tag).sort((x, y) => String(y.receivedAt || "").localeCompare(String(x.receivedAt || "")));
@@ -423,10 +469,33 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               </div>
             </>)}
             <div>
-              <label htmlFor="eq-life" className={lbl}>{t("Useful Life (Years)")}</label>
-              <select id="eq-life" value={f.life} onChange={e => set("life", e.target.value)} className={`${inp} bg-white`}>
-                {[2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+              <label htmlFor="eq-kind" className={lbl}>{t("What kind of equipment")}</label>
+              <select id="eq-kind" value={f.kind} onChange={e => setKind(e.target.value)} className={`${inp} bg-white`}>
+                <option value="">{t("— choose —")}</option>
+                {EQUIPMENT_KINDS.map(k => <option key={k} value={k}>{t(KIND_LABELS[k])}</option>)}
               </select>
+            </div>
+            <div>
+              <label htmlFor="eq-life" className={lbl}>{t("Useful Life (Years)")}</label>
+              {overriding ? (
+                <select
+                  id="eq-life" value={f.lifeOverride || String(policyLife)}
+                  onChange={e => set("lifeOverride", e.target.value === String(policyLife) ? "" : e.target.value)}
+                  className={`${inp} bg-white`}
+                >
+                  {[...new Set([2, 3, 4, 5, 6, 7, 10, policyLife])].sort((a, b) => a - b).map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              ) : (
+                <p id="eq-life" dir="ltr" className="finance-input flex w-full items-center bg-slate-50 text-xs text-slate-700">
+                  {policyLife} {t("years")}
+                </p>
+              )}
+              <span className="text-[10px] text-slate-500">
+                {t("{n} years — {kind}, AnaHon policy")
+                  .replace("{n}", String(policyLife))
+                  .replace("{kind}", t(KIND_LABELS[f.kind ? (EQUIPMENT_KINDS as readonly string[]).includes(f.kind) ? f.kind : "other" : "other"]))}
+                {overriding && f.lifeOverride && ` — ${t("overridden")}`}
+              </span>
             </div>
             <div>
               <label htmlFor="eq-custodian" className={lbl}>{t("Held by")}</label>

@@ -18,7 +18,7 @@ import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
-import { NO_SERIAL, CONDITIONS, CURRENCIES, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type Movement, type Repair } from "./src/equipment.js";
+import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type Movement, type Repair } from "./src/equipment.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -7689,6 +7689,7 @@ Rules:
 - brand and model: as printed (the model number, e.g. "ILME-FX6V").
 - name: a short plain name a person would use, e.g. "Sony FX6 cinema camera".
 - specs: only what the label itself states — capacity, power, voltage, resolution, storage — one per line. Empty if it states none. Never add specifications from your own knowledge.
+- kind: which of these it is — ${EQUIPMENT_KINDS.filter(k => k !== "other").join(", ")} — or "other" if none fit, or leave it blank if you cannot tell. Never guess a useful-life or depreciation figure; that comes from AnaHon's own policy, not from you.
 - Anything not printed is an empty string — never a placeholder such as "generic", "unknown", "N/A" or "-".
 - warnings: anything cropped, blurred, reflective or ambiguous; name the characters you are unsure of.`;
 
@@ -7699,10 +7700,11 @@ Rules:
         properties: {
           name: { type: "string" }, brand: { type: "string" }, model: { type: "string" },
           serialNumber: { type: "string" }, specs: { type: "string" },
+          kind: { type: "string", enum: [...EQUIPMENT_KINDS, ""] },
           confidence: { type: "string", enum: ["high", "medium", "low"] },
           warnings: { type: "array", items: { type: "string" } }
         },
-        required: ["name", "brand", "model", "serialNumber", "specs", "confidence"], additionalProperties: false
+        required: ["name", "brand", "model", "serialNumber", "specs", "kind", "confidence"], additionalProperties: false
       }, { base64, mimeType }, "low", "gemini");
     } catch (e: any) {
       // The free tier answers "high demand" (503) or "slow down" (429) at busy hours. That is a
@@ -7751,8 +7753,21 @@ app.post("/api/assets/register", async (req, res) => {
     const location = String(b.location || "").trim();
     const custodian = String(b.custodian || "").trim();
     if (!location || !custodian) return res.status(400).json({ error: "Say where it is kept and who holds it." });
-    const usefulLifeYears = Number(b.usefulLifeYears);
-    if (!Number.isInteger(usefulLifeYears) || usefulLifeYears < 1) return res.status(400).json({ error: "Useful life must be a whole number of years." });
+    // Useful life comes from Finance's own policy table, keyed on what the item is — never a
+    // guess made at the receiving desk, and never blocked for want of a category: an unknown
+    // or missing kind falls back to "other". Only Finance may put a different figure on the
+    // item; the field the receiving desk sees is not even editable for anyone else.
+    const kind = normalizeKind(b.kind);
+    const policyLife = usefulLifeFor(kind);
+    let usefulLifeYears = policyLife;
+    if (b.usefulLifeYears !== undefined && b.usefulLifeYears !== null && String(b.usefulLifeYears).trim() !== "") {
+      const requested = Number(b.usefulLifeYears);
+      if (!Number.isInteger(requested) || requested < 1) return res.status(400).json({ error: "Useful life must be a whole number of years." });
+      if (requested !== policyLife && !mayOverrideUsefulLife(user)) {
+        return res.status(403).json({ error: "Only Finance may put a different useful life than AnaHon's policy on an item." });
+      }
+      usefulLifeYears = requested;
+    }
     const cost = Number(b.cost);
     if (!(cost > 0)) return res.status(400).json({ error: "Give the cost of this item." });
 
@@ -7792,7 +7807,7 @@ app.post("/api/assets/register", async (req, res) => {
       try {
         asset = await prisma.fixedAsset.create({
           data: {
-            id: `asset-${Date.now()}`, tag, name,
+            id: `asset-${Date.now()}`, tag, name, kind,
             brand: String(b.brand || "").trim(), model: String(b.model || "").trim(), specs: String(b.specs || "").trim(),
             serialNumber, expenseId: String(b.expenseId || ""),
             fundingProjectId, purchaseDate, cost, currency, usefulLifeYears,

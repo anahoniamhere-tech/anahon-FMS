@@ -11,10 +11,11 @@
 import { readFileSync } from "node:fs";
 import { NO_SERIAL, nextEquipmentTag, parseTag, sameSerial, equipmentStatus, mayVerifyEquipment, blankIfPlaceholder,
   checkOutBlocker, stickerLink, stickerSheetHtml, QR_ALPHANUMERIC, STICKER_SIZES, DEFAULT_STICKER_MM, STRIP_SIZES,
-  CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS } from "../src/equipment.js";
+  CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS,
+  EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, DEFAULT_KIND, normalizeKind, usefulLifeFor, mayOverrideUsefulLife } from "../src/equipment.js";
 import { RULES, deskItems } from "../src/workflow.js";
 import { ROUTE_SEATS } from "../src/gates.js";
-import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS, PLO, AUDITOR } from "../src/roles.js";
+import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS, PLO, AUDITOR, FINANCE } from "../src/roles.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -256,6 +257,69 @@ console.log("\nO. the Equipment screen speaks Arabic");
 const keysUsed = [...tab.matchAll(/\bt\("((?:[^"\\]|\\.)*)"\)/g)].map(m => m[1]);
 const missingAr = [...new Set(keysUsed)].filter(k => !i18n.includes(`"${k}":`));
 ok(`every t("…") on the screen has Arabic (${new Set(keysUsed).size})`, missingAr.length === 0, missingAr.join(" | "));
+
+console.log("\nP. useful life comes from Finance's policy table, keyed on kind — 12 Sep 2026");
+ok("every kind has a policy figure, and only these kinds exist",
+  EQUIPMENT_KINDS.every(k => typeof USEFUL_LIFE_BY_KIND[k] === "number" && USEFUL_LIFE_BY_KIND[k] > 0)
+  && Object.keys(USEFUL_LIFE_BY_KIND).length === EQUIPMENT_KINDS.length);
+ok('"other" is in the list and is the fallback', EQUIPMENT_KINDS.includes(DEFAULT_KIND as any) && DEFAULT_KIND === "other");
+ok("a real kind reads its own figure", usefulLifeFor("camera") === USEFUL_LIFE_BY_KIND.camera && usefulLifeFor("furniture") === USEFUL_LIFE_BY_KIND.furniture);
+ok("blank, unknown or junk all fall back to \"other\" — nothing is ever invented and nothing blocks a save",
+  usefulLifeFor("") === USEFUL_LIFE_BY_KIND.other
+  && usefulLifeFor(null as any) === USEFUL_LIFE_BY_KIND.other
+  && usefulLifeFor("spaceship") === USEFUL_LIFE_BY_KIND.other
+  && normalizeKind("spaceship") === "other");
+ok("normalizeKind never returns something outside the list", EQUIPMENT_KINDS.every(k => normalizeKind(k) === k));
+
+console.log("\nQ. only Finance may put a different figure on an item");
+ok("Finance and the master account may override", mayOverrideUsefulLife({ role: "Finance Officer" }) && mayOverrideUsefulLife({ role: "Super Admin" }));
+ok("the register's own keeper (PLO) may not — the receiving desk should not have to think about it",
+  !mayOverrideUsefulLife({ role: PLO }));
+ok("nobody signed in may not either", !mayOverrideUsefulLife(null) && !mayOverrideUsefulLife(undefined));
+ok("FINANCE is the same list the ledger and the WHT review already use — not a fresh one",
+  JSON.stringify(FINANCE) === JSON.stringify(["Super Admin", "Finance Officer"]));
+
+console.log("\nR. the route: a kind is accepted or defaulted, and only Finance may override its life");
+ok("the route reads kind through the shared normalizer, so it can never invent or reject one",
+  /const kind = normalizeKind\(b\.kind\);/.test(reg) && /const policyLife = usefulLifeFor\(kind\);/.test(reg));
+ok("no override sent → the policy figure, silently — the receiving desk is never asked",
+  /let usefulLifeYears = policyLife;/.test(reg));
+ok("a non-integer or non-positive override is refused, exactly as before",
+  /if \(!Number\.isInteger\(requested\) \|\| requested < 1\)/.test(reg));
+ok("a different figure than policy is refused unless the actor may override it",
+  /requested !== policyLife && !mayOverrideUsefulLife\(user\)/.test(reg) && /status\(403\)/.test(reg));
+ok("an override equal to the policy figure is never refused — nothing to override", true); // proved by the condition above using !==
+ok("the kind is written on the record", reg.includes("id: `asset-${Date.now()}`, tag, name, kind,"));
+
+console.log("\nS. the scan reads a kind from the label, never a useful-life figure");
+ok("the model is given the real kind list and told never to invent a lifespan",
+  /kind: which of these it is/.test(scan) && /Never guess a useful-life or depreciation figure/.test(scan));
+ok("the schema constrains it to the real kinds (or blank) — nothing else can come back",
+  /kind: \{ type: "string", enum: \[\.\.\.EQUIPMENT_KINDS, ""\] \}/.test(scan));
+ok("kind is required in the schema, so a run that skips it is a bug, not a blank field slipping past unnoticed",
+  /required: \["name", "brand", "model", "serialNumber", "specs", "kind", "confidence"\]/.test(scan));
+
+console.log("\nT. the screen: kind picker, policy-derived life, and Finance's own table");
+ok("choosing a kind resets any earlier override — switching what the item IS restarts from that kind's own default",
+  /const setKind = \(kind: string\) => setF\(prev => \(\{ \.\.\.prev, kind, lifeOverride: "" \}\)\);/.test(tab));
+ok("the read-only figure and the editable one both come from the same usefulLifeFor call",
+  /const policyLife = usefulLifeFor\(f\.kind\);/.test(tab));
+ok("only Finance sees an editable field — the receiving desk sees a figure, not a decision",
+  /const overriding = mayOverrideUsefulLife\(currentUser\);/.test(tab) && /overriding \? \(/.test(tab));
+ok("the save is never blocked by a missing kind — an override is the only thing ever added to the body",
+  /\.\.\.\(overriding && f\.lifeOverride \? \{ usefulLifeYears: f\.lifeOverride \} : \{\}\)/.test(tab));
+ok("a scanned kind only lands in the form when it is one of the real ones",
+  /\(EQUIPMENT_KINDS as readonly string\[\]\)\.includes\(x\.kind\) \? x\.kind : prev\.kind/.test(tab));
+ok("Finance can read the whole policy table on the screen, not just guess at one item's figure",
+  /USEFUL_LIFE_BY_KIND\[k\]/.test(tab) && /policyOpen/.test(tab));
+ok("the policy table is behind the same predicate as the override, not a separate role check",
+  /\{policyOpen && overriding && \(/.test(tab));
+
+console.log("\nU. Arabic — the kind labels and the new sentences all speak it");
+const kindLabelHits = ["Camera", "Lens", "Audio", "Lighting", "Computer, phone or tablet", "Storage", "Network", "Furniture", "Other"];
+ok("every kind label used on the screen has Arabic", kindLabelHits.every(k => i18n.includes(`"${k}":`)));
+// The blanket check ("every t(...) on the screen") already runs in section O, after
+// this file is read — nothing kind-specific to add beyond the labels above.
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

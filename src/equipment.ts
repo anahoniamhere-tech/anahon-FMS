@@ -1,4 +1,4 @@
-import { EQUIPMENT_VERIFIERS } from "./roles";
+import { EQUIPMENT_VERIFIERS, FINANCE } from "./roles";
 /**
  * Receiving equipment — the rules the server enforces and the screen shows, in one place.
  *
@@ -11,6 +11,53 @@ export const NO_SERIAL = "No serial on item";
 
 export const CONDITIONS = ["Excellent", "Good", "Needs Repair", "Damaged"] as const;
 export const CURRENCIES = ["USD", "EUR", "LBP"] as const;
+
+/**
+ * What kind of thing this is, and how many years it depreciates over — Finance's policy,
+ * not a guess made at the receiving desk. One place, so a number changes once and every
+ * item that reads it agrees. Proposed 12 Sep 2026, pending Marwan's confirmation of the
+ * years; the kinds themselves are not in question.
+ *
+ * "other" is the fallback for anything that does not fit, and it is also what an unknown
+ * or missing kind resolves to — a save is never blocked for want of a category.
+ */
+export const EQUIPMENT_KINDS = [
+  "camera", "lens", "audio", "lighting", "computer", "storage", "network", "furniture", "other",
+] as const;
+export type EquipmentKind = typeof EQUIPMENT_KINDS[number];
+export const DEFAULT_KIND: EquipmentKind = "other";
+
+export const USEFUL_LIFE_BY_KIND: Record<EquipmentKind, number> = {
+  computer: 3,   // laptops, phones, tablets
+  camera: 5,
+  lens: 5,
+  audio: 5,
+  lighting: 5,
+  storage: 4,    // drives, cards, NAS units
+  network: 4,    // routers, switches, access points
+  furniture: 7,
+  other: 5,
+};
+
+/** A kind the form or the scan actually offered, or the fallback — never blank, never invented. */
+export function normalizeKind(k: string | null | undefined): EquipmentKind {
+  return (EQUIPMENT_KINDS as readonly string[]).includes(String(k)) ? (k as EquipmentKind) : DEFAULT_KIND;
+}
+
+/** Finance's policy figure for a kind — the number the form fills in and explains itself with. */
+export function usefulLifeFor(kind: string | null | undefined): number {
+  return USEFUL_LIFE_BY_KIND[normalizeKind(kind)];
+}
+
+/**
+ * Only Finance may put a different number than the policy table on an item — the receiving
+ * desk should not have to think about depreciation at all, so the choice is closed to
+ * everyone else, not merely hidden. The same list that reviews withholding tax and posts
+ * the ledger; equipment life is exactly that kind of figure.
+ */
+export function mayOverrideUsefulLife(viewer: { role?: string } | null | undefined): boolean {
+  return FINANCE.includes(String(viewer?.role));
+}
 
 /** EQ-007 → 7; anything else → null. */
 export function parseTag(tag: string | null | undefined): number | null {

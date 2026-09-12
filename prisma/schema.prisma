@@ -273,6 +273,10 @@ model FixedAsset {
   receivedBy               String?
   verifiedAt               String?
   verifiedBy               String?
+  /// camera/lens/audio/lighting/computer/storage/network/furniture/other — Finance's
+  /// useful-life policy keys on this (src/equipment.ts). Blank on items received before
+  /// this existed; the read side treats blank the same as an unrecognised value.
+  kind                     String  @default("")
   /// Who has it now (a User.id), what for and until when — empty while it is in.
   holderId                 String?
   heldFor                  String  @default("")
