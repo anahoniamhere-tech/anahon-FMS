@@ -986,7 +986,7 @@ app.post("/api/employees/phone", async (req, res) => {
   try {
     const { employeeId, phone, user } = req.body;
     const target = await prisma.employee.findUnique({ where: { id: employeeId } });
-    if (!target) return res.status(404).json({ error: "Employee not found." });
+    if (!target) return res.status(404).json({ error: "That person is not on the team list." });
     if (!maySeePersonnelFile(user, [target], employeeId)) {
       return res.status(403).json({ error: "Only the personnel file holders, or the person themselves, may set this number." });
     }
@@ -1041,7 +1041,7 @@ app.post("/api/employees/login", async (req, res) => {
       return res.status(403).json({ error: "Needs the master account or the HR / Payroll Officer." });
     }
     const target = await prisma.employee.findUnique({ where: { id: employeeId } });
-    if (!target) return res.status(404).json({ error: "Employee not found." });
+    if (!target) return res.status(404).json({ error: "That person is not on the team list." });
     const resolved = await employeeLogin(userEmail, employeeId);
     if (resolved.error) return res.status(400).json({ error: resolved.error });
     const next = resolved.email;
@@ -1073,7 +1073,7 @@ app.post("/api/employees/start-date", async (req, res) => {
       return res.status(403).json({ error: "Needs the master account or the HR / Payroll Officer." });
     }
     const target = await prisma.employee.findUnique({ where: { id: employeeId } });
-    if (!target) return res.status(404).json({ error: "Employee not found." });
+    if (!target) return res.status(404).json({ error: "That person is not on the team list." });
     const next = String(startDate ?? "").trim();
     // Empty clears it. Anything else must be a real calendar date, not just date-shaped:
     // a contract period is computed from this, and "2026-02-31" would quietly become March.
@@ -1099,7 +1099,7 @@ app.post("/api/employees/set-active", async (req, res) => {
     const { employeeId, active, user } = req.body;
     if (!["Super Admin", "HR / Payroll Officer"].includes(user?.role)) return res.status(403).json({ error: "Needs the master account or the HR / Payroll Officer." });
     const target = await prisma.employee.findUnique({ where: { id: employeeId } });
-    if (!target) return res.status(404).json({ error: "Employee not found." });
+    if (!target) return res.status(404).json({ error: "That person is not on the team list." });
     const updated = await prisma.employee.update({ where: { id: employeeId }, data: { active: !!active } });
     await createAuditLog(user.id, user.name, active ? "Employee Reactivated" : "Employee Deactivated",
       `${target.name} (${target.position}) marked ${active ? "active" : "inactive"}.`);
@@ -2078,7 +2078,7 @@ app.post("/api/employees/new", async (req, res) => {
   try {
     const { name, position, salary, allowance, paymentMethod, bankAccountId, contractType, phone, userEmail, user } = req.body;
     if (!name || !position || salary === undefined) {
-      return res.status(400).json({ error: "Employee name, position, and base salary are required." });
+      return res.status(400).json({ error: "Name, role, and total salary are required." });
     }
 
     // Payroll must always name a real account. Cash salaries are withdrawn from one of the
@@ -2108,7 +2108,9 @@ app.post("/api/employees/new", async (req, res) => {
         allowance: Number(allowance) || 0,
         paymentMethod: method,
         bankAccountId: account.id,
-        contractType: contractType || "Regular Employee",
+        // Printed on the payslip as "Engagement". AnaHon has no employees — everyone on the
+        // team is a service provider on an annual contract (Saad, 12 Sep 2026).
+        contractType: contractType || "Annual service contract",
         userEmail: login.email,
         active: true
       }
@@ -2199,10 +2201,10 @@ app.post("/api/contracts/generate", async (req, res) => {
     //   vendorId   -> Service agreement  (external provider, invoice-based)
     // A plain purchase needs neither and never reaches this endpoint.
     if (!employeeId && !vendorId) {
-      return res.status(400).json({ error: "Select either an employee (employment contract) or a service provider (service agreement)." });
+      return res.status(400).json({ error: "Select either a team member (annual contract or subcontract) or an outside service provider (service agreement)." });
     }
     if (employeeId && vendorId) {
-      return res.status(400).json({ error: "A contract has one counterparty — pass an employee or a vendor, not both." });
+      return res.status(400).json({ error: "A contract has one counterparty — pass a team member or a supplier, not both." });
     }
     if (!startDate || !endDate || monthlyFee === undefined || contractTotal === undefined) {
       return res.status(400).json({ error: "Start date, end date, fee and total value are required." });
@@ -2211,7 +2213,7 @@ app.post("/api/contracts/generate", async (req, res) => {
     let party: any, partyKey: string, forcedKind: "Employment" | "Service" | null = null;
     if (employeeId) {
       const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
-      if (!employee) return res.status(404).json({ error: "Employee not found." });
+      if (!employee) return res.status(404).json({ error: "That person is not on the team list." });
       party = { name: employee.name, position: employee.position, paymentMethod: employee.paymentMethod, salary: employee.salary };
       party.bankAccountId = employee.bankAccountId;
       partyKey = employee.id;
@@ -6015,7 +6017,7 @@ app.post("/api/payroll/payslip", async (req, res) => {
     if (!employeeId || !month) return res.status(400).json({ error: "Employee and month (YYYY-MM) are required." });
     if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: "Month must be in YYYY-MM format." });
     const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
-    if (!employee) return res.status(404).json({ error: "Employee not found." });
+    if (!employee) return res.status(404).json({ error: "That person is not on the team list." });
 
     const timesheet = await prisma.timesheet.findFirst({ where: { employeeId, month } });
     const account = employee.bankAccountId ? await prisma.bankAccount.findUnique({ where: { id: employee.bankAccountId } }) : null;
@@ -7911,7 +7913,7 @@ app.post("/api/timesheets/submit", async (req, res) => {
       const emp = await prisma.employee.findUnique({ where: { id: employeeId } });
       const email = (user?.email || "").toLowerCase();
       if (!emp || !email || (emp as any).userEmail?.toLowerCase() !== email) {
-        return res.status(403).json({ error: "You can only submit your own timesheet (Policy 8.5). Ask HR to link your login email to your employee record." });
+        return res.status(403).json({ error: "You can only submit your own timesheet (Policy 8.5). Ask HR to link your login email to your team record." });
       }
     }
 
@@ -8093,7 +8095,7 @@ Rules:
 // keep in step with this one. Strict: used whenever a custody entry is written.
 async function resolveHolder(holderKind: string, holderId: string, allowOrg: boolean): Promise<{ ok: boolean; name: string; error: string }> {
   if (holderKind === "org") {
-    if (!allowOrg) return { ok: false, name: "", error: "Say who is taking it — an employee or a supplier." };
+    if (!allowOrg) return { ok: false, name: "", error: "Say who is taking it — a team member or a supplier." };
     return { ok: true, name: "AnaHon", error: "" };
   }
   if (holderKind === "employee") {
@@ -8106,7 +8108,7 @@ async function resolveHolder(holderKind: string, holderId: string, allowOrg: boo
     if (!v || v.blocked) return { ok: false, name: "", error: "Choose a supplier that is not blocked." };
     return { ok: true, name: v.name, error: "" };
   }
-  return { ok: false, name: "", error: "Say who has it — the organisation, an employee or a supplier." };
+  return { ok: false, name: "", error: "Say who has it — the organisation, a team member or a supplier." };
 }
 
 // A lenient counterpart for messages about an item's PAST or PRESENT holder — a display
@@ -8209,7 +8211,7 @@ app.post("/api/assets/register", async (req, res) => {
     // Who has it and where — the organisation itself, an employee or a supplier, and a
     // place from the fixed list or typed. This is the item's FIRST custody entry; every
     // later change happens through check-out and check-in, never by editing this record.
-    if (!(HOLDER_KINDS as readonly string[]).includes(String(b.holderKind))) return res.status(400).json({ error: "Say who has it — the organisation, an employee or a supplier." });
+    if (!(HOLDER_KINDS as readonly string[]).includes(String(b.holderKind))) return res.status(400).json({ error: "Say who has it — the organisation, a team member or a supplier." });
     const holderKind = b.holderKind as HolderKind;
     const holderId = holderKind === "org" ? "" : String(b.holderId || "");
     if (holderKind !== "org" && !holderId) return res.status(400).json({ error: "Choose who has it." });
@@ -8382,7 +8384,7 @@ app.post("/api/assets/checkout", async (req, res) => {
     if (blocker) return res.status(400).json({ error: `${label} has not been confirmed yet — it can go out once somebody else has checked it is here.` });
     // Who is taking it — an employee or a supplier; never the organisation, which is what
     // it is leaving. Something nobody has checked is here cannot be handed to anyone.
-    if (!["employee", "vendor"].includes(String(req.body.holderKind))) return res.status(400).json({ error: "Choose who is taking it — an employee or a supplier." });
+    if (!["employee", "vendor"].includes(String(req.body.holderKind))) return res.status(400).json({ error: "Choose who is taking it — a team member or a supplier." });
     const holderKind = req.body.holderKind as HolderKind;
     const holderId = String(req.body.holderId || "");
     const holder = await resolveHolder(holderKind, holderId, false);
@@ -8427,7 +8429,7 @@ app.post("/api/assets/checkin", async (req, res) => {
     // Coming back settles it somewhere: who has it now — the organisation, an employee or
     // a supplier — and where. Not typed text: the same picker registration uses, because
     // this is exactly the same kind of fact, and every later change happens right here.
-    if (!(HOLDER_KINDS as readonly string[]).includes(String(req.body.holderKind))) return res.status(400).json({ error: "Say who has it now — the organisation, an employee or a supplier." });
+    if (!(HOLDER_KINDS as readonly string[]).includes(String(req.body.holderKind))) return res.status(400).json({ error: "Say who has it now — the organisation, a team member or a supplier." });
     const restKind = req.body.holderKind as HolderKind;
     const restId = restKind === "org" ? "" : String(req.body.holderId || "");
     if (restKind !== "org" && !restId) return res.status(400).json({ error: "Choose who has it now." });
@@ -8477,7 +8479,7 @@ app.post("/api/assets/move", async (req, res) => {
     const label = asset.tag || asset.name;
     if (asset.holderId) return res.status(409).json({ error: `${label} is out on a loan — check it in instead, so the condition it comes back in is recorded.` });
 
-    if (!(HOLDER_KINDS as readonly string[]).includes(String(req.body.holderKind))) return res.status(400).json({ error: "Say who has it — the organisation, an employee or a supplier." });
+    if (!(HOLDER_KINDS as readonly string[]).includes(String(req.body.holderKind))) return res.status(400).json({ error: "Say who has it — the organisation, a team member or a supplier." });
     const holderKind = req.body.holderKind as HolderKind;
     const holderId = holderKind === "org" ? "" : String(req.body.holderId || "");
     if (holderKind !== "org" && !holderId) return res.status(400).json({ error: "Choose who has it." });
