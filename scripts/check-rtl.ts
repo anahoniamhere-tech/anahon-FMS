@@ -219,7 +219,25 @@ ok("a table cell isolates on an inner span, not the cell",
 //   "عدد 22000 سجل"  (no symbol)                                                  no change
 //
 // So the condition is a symbol-bearing figure inside ARABIC prose — which in source is a
-// figure sharing its element with a t() call, since t() is what becomes Arabic at runtime.
+// figure sharing its ELEMENT with a t() call, since t() is what becomes Arabic at runtime.
+// The element, not the row, and that is why this rule's 0 hits is right rather than lucky:
+//
+//   <div class="flex"><span>{t("Total assets")}</span><span>{formatUSD(x)}</span></div>
+//                                                          -> safe, isolation changes nothing
+//   <div>            <span>{t("Total assets")}</span><span>{formatUSD(x)}</span></div>
+//                                                          -> CHANGES
+//
+// display:flex blockifies its children, so each figure is alone in its own bidi paragraph with
+// no Arabic beside it — the same trap as display:block, from the opposite direction and far
+// more common here (measured, Books room's balance-sheet rows, 12 Sep). Four rows identical in
+// source to a fifth are safe purely because of a layout class on the parent, so "there is
+// Arabic in the row" is never the test. An element-bounded rule sidesteps all of it.
+//
+// KNOWN BLIND SPOT: a figure built inside a template literal and then rendered as text —
+// `${u.code} (${formatUSD(u.amount)})` joined into a sentence — is masked by maskStrings and
+// invisible here, yet it DOES have an element to carry dir. Books found one that way by
+// running the criterion over their own door by hand. Telling that from a toast string needs
+// more than a line regex, so this rule will not catch it; look for it in review instead.
 // A trailing 22,000.00$ is not bad Arabic typography; plenty of Arabic sets the symbol after
 // the figure. It is inconsistent with every other figure in this app, which reads $22,000.00
 // in both languages, and consistency is the call being made here. If the palette ever decides
