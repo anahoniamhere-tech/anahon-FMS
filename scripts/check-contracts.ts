@@ -276,10 +276,38 @@ ok("figures and Latin names inside the Arabic prose are isolated", (() => {
   return !/\$[\d,]/.test(bare) && !/ANH-EC-|TRF-2026/.test(bare) && !/Sally Kayyali/.test(bare);
 })());
 ok("Arabic dates use Arabic month names and Western digits",
-  arFramework.includes("كانون الأول") && /\d{4}/.test(arFramework) && !/[٠-٩]/.test(arFramework.replace(/[١٢٣٤]\./g, "")));
+  arFramework.includes("كانون الأول") && /\d{1,2} [\u0600-\u06FF ]+ \d{4}/.test(arFramework));
+ok("and no date or amount smuggles in Arabic-Indic digits", (() => {
+  const runs = [...doc({ ...SUB, loePct: 20, monthlyFee: 312, parentReference: "ANH-EC-SK-2026-01", fullSalary: 1560 })
+    .matchAll(/<span dir="ltr" class="num">([\s\S]*?)<\/span>/g)].map(m => m[1]);
+  return runs.length > 0 && runs.every(r => !/[٠-٩]/.test(r));
+})());
 ok("the document says it is bilingual, and why the figures appear once",
   arFramework.includes("هذا المستند ثنائي اللغة") && arFramework.includes("مرة واحدة فقط"));
 ok("no Arabic string fell back to English inside the Arabic section", !/Remuneration|Engagement|Other terms/.test(arFramework));
+
+console.log("\nL. which text governs");
+// Saad's decision, 12 Sep 2026: the Arabic governs. It is an article of the contract, not a
+// footnote about it — and the Arabic is printed first for the same reason.
+const govEn = text(FRAMEWORK), govAr = arText(FRAMEWORK);
+ok("the English text has a numbered Language clause", govEn.includes("5. Language"));
+ok("and says the Arabic is binding", govEn.includes("the Arabic text is the binding text"));
+ok("and which prevails on a difference of meaning", govEn.includes("the Arabic text prevails"));
+ok("the Arabic text has the same clause, numbered ٥", govAr.includes("٥. اللغة"));
+ok("and says the same thing", govAr.includes("النص العربي هو النص الملزم") && govAr.includes("يُعمل بالنص العربي"));
+ok("a service agreement gets it too", text({ kind: "Service", contractTotal: 2000 }).includes("5. Language")
+  && arText({ kind: "Service", contractTotal: 2000 }).includes("٥. اللغة"));
+ok("a subcontract gets it too", text(SUB).includes("5. Language") && arText(SUB).includes("٥. اللغة"));
+ok("the closing note points at the clause rather than restating a different rule",
+  govEn.includes("the Arabic text governs") && govEn.includes("clause 5"));
+// The Arabic text is binding, so it must be the text a reader meets first.
+ok("the Arabic section is printed BEFORE the English one", (() => {
+  const h = doc(FRAMEWORK);
+  return h.indexOf('class="lang ar"') < h.indexOf('class="lang en"');
+})());
+const ps = fnSrc("payslipHtml");
+ok("the payslip says it too, in both languages",
+  ps.includes("the Arabic text governs") && ps.includes("والنص العربي هو الملزم"));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
