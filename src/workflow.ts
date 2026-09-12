@@ -131,6 +131,9 @@ export const RULES: Rule[] = [
   // keeper who is holding it.
   { kind: "fixedAssets", status: "Out", seat: null, person: "holderId", when: "dueBack", horizon: 0, door: "mydesk", verb: "Bring the equipment back" },
   { kind: "fixedAssets", status: "Out", seat: SUPPLIER_EDITORS, exclude: ["holderId"], when: "dueBack", horizon: 0, door: "assets", verb: "Chase the return" },
+  // Policy 017: a disposal takes two signatures. The proposal sits on the OTHER seat's desk —
+  // exclude keeps it off the proposer's own, which is what stops one person doing both halves.
+  { kind: "fixedAssets", status: "Awaiting disposal approval", seat: MANAGERS, exclude: ["endBy"], door: "assets", verb: "Approve or refuse the disposal" },
 ];
 
 /** The status column per kind — everything is `status` except the funnel. */

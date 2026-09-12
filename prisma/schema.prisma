@@ -292,11 +292,26 @@ model FixedAsset {
   /// The item's own log, oldest first: every check-out and return, every repair.
   movementsJson            String  @default("[]")
   repairsJson              String  @default("[]")
-  /// Registered in error but already physically confirmed, so the row is kept and marked
-  /// rather than deleted — a confirmation is evidence a second person saw it.
+  /// SUPERSEDED 12 Sep 2026 by the endKind block below, and never read again. Kept, not
+  /// dropped, so the original write-off text stays on disk beside what it was migrated into.
   writtenOffAt             String?
   writtenOffBy             String?
   writeOffReason           String  @default("")
+  /// What became of the item: "" while it is in use, else broken/sold/given/lost/stolen/
+  /// returned (src/equipment.ts END_KINDS). endAt is when it happened, endNote the person's
+  /// own words, endAmount the price when it was sold.
+  endKind                  String  @default("")
+  endAt                    String?
+  endNote                  String  @default("")
+  endAmount                Float?
+  /// Policy 017: a disposal needs the Executive Director AND the Finance Officer. One proposes
+  /// (endBy/endAs), the other confirms (endConfirmedBy/As/At), and they must be two people.
+  /// An event — lost, stolen, returned — is recorded by one person and confirms itself.
+  endBy                    String?
+  endAs                    String?
+  endConfirmedBy           String?
+  endConfirmedAs           String?
+  endConfirmedAt           String?
 }
 
 /// A row the register removed. Kept so a sticker number is never issued twice — the series

@@ -20,7 +20,7 @@ import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/
 import { NAV } from "./src/nav.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
-import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, deleteBlocker, writeOffBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
+import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, deleteBlocker, endBlocker, endIsEffective, isDisposal, endKindOf, END_KINDS, mayEndEquipment, confirmDisposalBlocker, disposalSides, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
 import { costAccountFor } from "./src/costAccount.js";
@@ -133,7 +133,7 @@ const PLO_ALLOWED_POSTS = new Set([
   "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone",
   "/api/expense/new", "/api/expense/scan-invoice",
   "/api/document/upload", "/api/materials/link",
-  "/api/assets/register", "/api/assets/update", "/api/assets/scan-label", "/api/assets/checkout", "/api/assets/checkin", "/api/assets/move", "/api/assets/repair", "/api/assets/delete", "/api/assets/write-off",
+  "/api/assets/register", "/api/assets/update", "/api/assets/scan-label", "/api/assets/checkout", "/api/assets/checkin", "/api/assets/move", "/api/assets/repair", "/api/assets/delete", "/api/assets/end", "/api/assets/end-confirm",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/activities/save", "/api/activities/generate", "/api/activities/delete", "/api/activities/import-timetable",
   "/api/vendor/scan",
@@ -8490,32 +8490,116 @@ app.post("/api/assets/delete", async (req, res) => {
   }
 });
 
-// The honest alternative for an item somebody confirmed. Nothing is erased: the row, its
-// history and the confirmation all stay where they are, and the item simply stops counting as
-// part of the working register — equipmentStatus reports "Written off", which is what takes it
-// off every desk, so no counter has to remember to exclude it.
-app.post("/api/assets/write-off", async (req, res) => {
+// What became of an item. "Written off" used to cover all of it in one word; sold, given away,
+// thrown away, lost, stolen and returned to its owner are six different facts, and the register
+// is worth more when it says which.
+//
+// Nothing is erased either way: the row, its movement log, its repairs and its confirmation all
+// stay exactly where they are. The item simply stops counting as part of the working register —
+// equipmentStatus reports what became of it, which is what takes it off every desk, so no
+// counter has to remember to exclude it.
+//
+// Resources and Assets Policy 017 (12 Sep 2026): the organisation does not give up something it
+// owns on one signature. Sold, Given away and Broken — thrown away are DISPOSALS: one of the two
+// policy seats proposes, the other confirms, and they must be two people. Lost, Stolen and
+// Returned to its owner are events — nobody decided them, so one person writes them down.
+app.post("/api/assets/end", async (req, res) => {
   try {
     const user = req.body.user;
-    if (!user?.id) return res.status(401).json({ error: "Sign in to write an item off." });
+    if (!user?.id) return res.status(401).json({ error: "Sign in to record what became of an item." });
     const asset = await prisma.fixedAsset.findUnique({ where: { id: String(req.body.assetId || "") } });
     if (!asset) return res.status(404).json({ error: "That item is not on the register." });
     const label = asset.tag || asset.name;
-    const blocker = writeOffBlocker(asset);
-    if (blocker) return res.status(409).json({ error: `${label} cannot be written off — ${blocker}.` });
-    const reason = String(req.body.reason || "").trim();
-    if (reason.length < 10) return res.status(400).json({ error: "Say why this item is being written off — a sentence, not a word." });
 
+    const kind = endKindOf(String(req.body.endKind || ""));
+    if (!kind) return res.status(400).json({ error: "Say what became of it." });
+    if (!mayEndEquipment(user, kind.key)) {
+      await createAuditLog(user.id, user.name, "Action Refused",
+        `${user.name} tried to record "${kind.label}" on ${label} from the ${user.role} seat.`);
+      return res.status(403).json({ error: kind.disposal
+        ? "A disposal is the Executive Director's and the Finance Officer's to decide."
+        : "Only the keepers of the register record this." });
+    }
+    // The old write-off rule, kept: something out with somebody is not yours to end.
+    const blocker = endBlocker(asset);
+    if (blocker) return res.status(409).json({ error: `${label} — ${blocker}.` });
+
+    const when = String(req.body.endAt || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(when)) return res.status(400).json({ error: "Give the date it happened." });
+    if (when > localDate()) return res.status(400).json({ error: "That date is in the future." });
+    const note = String(req.body.endNote || "").trim();
+    if (note.length < 10) return res.status(400).json({ error: "Say what happened in a sentence — it goes on the record with your name." });
+    let amount: number | null = null;
+    if (kind.amount) {
+      amount = Number(req.body.endAmount);
+      if (!(amount >= 0)) return res.status(400).json({ error: "Record what it sold for." });
+    }
+
+    // The seat the proposer is counted as. A person who holds both sides carries both, and the
+    // confirm rule still refuses them a second signature — two hats are not two people.
+    const sides = disposalSides(user.role).join("+");
     const now = new Date().toISOString();
+    const selfConfirming = !kind.disposal;
     const done = await prisma.fixedAsset.updateMany({
-      where: { id: asset.id, writtenOffAt: null },
-      data: { writtenOffAt: now, writtenOffBy: user.id, writeOffReason: reason }
+      where: { id: asset.id, endKind: "", holderId: null },
+      data: {
+        endKind: kind.key, endAt: when, endNote: note, endAmount: amount,
+        endBy: user.id, endAs: sides || "keeper",
+        ...(selfConfirming ? { endConfirmedBy: user.id, endConfirmedAs: sides || "keeper", endConfirmedAt: now } : {})
+      }
     });
     if (done.count !== 1) return res.status(409).json({ error: `${label} changed a moment ago — reload and look again.` });
 
-    await createAuditLog(user.id, user.name, "Equipment Written Off",
-      `${label} "${asset.name}" written off as registered in error by ${user.name}. Reason: ${reason}.` +
-      `${asset.verifiedAt ? ` Its confirmation of ${String(asset.verifiedAt).slice(0, 10)} is kept — the record is marked, not erased.` : ""}`);
+    await createAuditLog(user.id, user.name, kind.disposal ? "Equipment Disposal Proposed" : "Equipment Ended",
+      `${label} "${asset.name}": ${equipmentStatus(asset)} → ${kind.label} on ${when}${amount !== null ? `, for ${amount.toFixed(2)} ${asset.currency || "USD"}` : ""}. ${note}` +
+      (kind.disposal ? ` Proposed by ${user.name} — Policy 017 needs the second approval before it takes effect.` : ""));
+    res.json({ success: true, awaitingSecondApproval: kind.disposal });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The second signature. Policy 017 again: the other one of the two seats, and a different
+// person — the master account holds both sides at once, so without that rule one person could
+// propose as the director and confirm as Finance, which is one signature wearing two hats.
+app.post("/api/assets/end-confirm", async (req, res) => {
+  try {
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to confirm a disposal." });
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: String(req.body.assetId || "") } });
+    if (!asset) return res.status(404).json({ error: "That item is not on the register." });
+    const label = asset.tag || asset.name;
+    const kind = endKindOf(asset.endKind);
+
+    const blocker = confirmDisposalBlocker(user, asset);
+    if (blocker) {
+      if (blocker === "you proposed it — the other signature must be somebody else" || blocker === "this seat is not one of the two the policy names") {
+        await createAuditLog(user.id, user.name, "Action Refused",
+          `${user.name} tried to be the second approval on ${label}'s disposal — ${blocker}.`);
+      }
+      return res.status(403).json({ error: `${label}: ${blocker}.` });
+    }
+
+    // Refusing is a real answer, and it leaves no half-ended item behind: the proposal is
+    // cleared and the item goes back to being in use, with the refusal on the record.
+    const refuse = req.body.refuse === true;
+    const reason = String(req.body.reason || "").trim();
+    if (refuse && reason.length < 10) return res.status(400).json({ error: "Say why the disposal is refused — a sentence." });
+
+    const now = new Date().toISOString();
+    const done = await prisma.fixedAsset.updateMany({
+      where: { id: asset.id, endKind: asset.endKind, endConfirmedAt: null },
+      data: refuse
+        ? { endKind: "", endAt: null, endNote: "", endAmount: null, endBy: null, endAs: null }
+        : { endConfirmedBy: user.id, endConfirmedAs: disposalSides(user.role).join("+"), endConfirmedAt: now }
+    });
+    if (done.count !== 1) return res.status(409).json({ error: `${label} changed a moment ago — reload and look again.` });
+
+    const proposer = (await prisma.user.findUnique({ where: { id: String(asset.endBy || "") } }))?.name || "somebody";
+    await createAuditLog(user.id, user.name, refuse ? "Equipment Disposal Refused" : "Equipment Disposal Approved",
+      refuse
+        ? `${label} "${asset.name}": ${user.name} refused the ${kind?.label || asset.endKind} proposed by ${proposer}. Reason: ${reason}. The item stays on the register.`
+        : `${label} "${asset.name}": ${kind?.label || asset.endKind} proposed by ${proposer}, approved by ${user.name}. Policy 017's two approvals are complete and it leaves the working register.`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Archive, Camera, ClipboardList, Gift, History, Lock, LogIn, LogOut, MapPin, Package, Pencil, Printer, Receipt, Ruler, ScanLine, Search, Tag, Trash2, Wrench } from "lucide-react";
+import { Archive, Camera, CheckCheck, ClipboardList, Gift, History, Lock, LogIn, LogOut, MapPin, Package, Pencil, Printer, Receipt, Ruler, ScanLine, Search, Tag, Trash2, Wrench } from "lucide-react";
 import { SharedProps } from "./shared";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS } from "../roles";
 import { withTicket } from "../docTicket";
-import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, EQUIPMENT_LOCATIONS, OTHER_LOCATION, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, LOCKED_FIELDS, checkOutBlocker, deleteBlocker, writeOffBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife, currentMovement } from "../equipment";
+import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, EQUIPMENT_LOCATIONS, OTHER_LOCATION, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, LOCKED_FIELDS, END_KINDS, endKindOf, checkOutBlocker, deleteBlocker, endBlocker, endIsEffective, isDisposal, mayEndEquipment, confirmDisposalBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife, currentMovement } from "../equipment";
 import { addDays, localToday } from "../workflow";
 
 /** A request equipment can be booked against: the money is committed. The route asks the same. */
@@ -68,7 +68,9 @@ const STATUS_CHIP: Record<string, string> = {
   Registered: "bg-slate-100 text-slate-700",
   Received: "bg-amber-100 text-amber-800",
   Verified: "bg-emerald-100 text-emerald-800",
-  "Written off": "bg-slate-200 text-slate-600 line-through",
+  "Awaiting disposal approval": "bg-amber-100 text-amber-800",
+  // Whatever became of it: the register is finished with the item, and the chip says so plainly.
+  ...Object.fromEntries(END_KINDS.map(k => [k.label, "bg-slate-200 text-slate-600"])),
 };
 
 export default function AssetsTab({ currentUser, focusId, lang, openDoc, refreshState, setFocusId, state, t, triggerToast }: SharedProps) {
@@ -83,7 +85,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   const [saving, setSaving] = useState(false);
   const [verifyDraft, setVerifyDraft] = useState<Record<string, { condition: string; months: string }>>({});
   // One open panel at a time — check out, check in or a repair — and its fields.
-  const [panel, setPanel] = useState<{ id: string; kind: "out" | "in" | "repair" | "move" | "remove" } | null>(null);
+  const [panel, setPanel] = useState<{ id: string; kind: "out" | "in" | "repair" | "move" | "remove" | "end" } | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   // A correction in progress. Its own copy of the form, seeded from the item: nothing is
@@ -270,17 +272,33 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
     refreshState();
   };
 
-  const handleWriteOff = async (a: any, reason: string) => {
-    const res = await fetch("/api/assets/write-off", {
+  // What became of an item, and — for a disposal — the second signature Policy 017 asks for.
+  const handleEnd = async (a: any) => {
+    const kind = endKindOf(field("endKind"));
+    const res = await fetch("/api/assets/end", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assetId: a.id, reason }),
+      body: JSON.stringify({
+        assetId: a.id, endKind: field("endKind"), endAt: field("endAt"),
+        endNote: field("endNote"), endAmount: field("endAmount"),
+      }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return triggerToast(data.error || "The write-off was refused.", "error");
-    triggerToast(`${a.tag} — ${t("written off. The record stays.")}`);
-    setPanel(null);
-    setDraft({});
-    refreshState();
+    if (!res.ok) return triggerToast(data.error || "That was refused.", "error");
+    triggerToast(data.awaitingSecondApproval
+      ? `${a.tag} — ${t("proposed. It needs the second approval before it takes effect.")}`
+      : `${a.tag} — ${t(kind?.label || "recorded")}`);
+    setPanel(null); setDraft({}); refreshState();
+  };
+
+  const handleEndDecision = async (a: any, refuse: boolean, reason: string) => {
+    const res = await fetch("/api/assets/end-confirm", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assetId: a.id, refuse, reason }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return triggerToast(data.error || "That was refused.", "error");
+    triggerToast(refuse ? `${a.tag} — ${t("the disposal is refused; the item stays on the register.")}` : `${a.tag} — ${t("approved.")}`);
+    setPanel(null); setDraft({}); refreshState();
   };
 
   const handleVerify = async (a: { id: string; condition: string }) => {
@@ -515,7 +533,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
     return () => clearTimeout(off);
   }, [focusId, assets.length]);
 
-  const openPanel = (id: string, kind: "out" | "in" | "repair" | "move" | "remove", seed: Record<string, string> = {}) => {
+  const openPanel = (id: string, kind: "out" | "in" | "repair" | "move" | "remove" | "end", seed: Record<string, string> = {}) => {
     setPanel(panel?.id === id && panel.kind === kind ? null : { id, kind });
     setDraft(seed);
   };
@@ -554,7 +572,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               <ClipboardList className="h-4 w-4" /> {t("Useful-life policy")}
             </button>
           )}
-          {assets.some(a => a.tag && !a.writtenOffAt) && (
+          {assets.some(a => a.tag && !endIsEffective(a)) && (
             <button
               type="button" aria-expanded={stickersOpen}
               onClick={() => {
@@ -592,7 +610,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
       )}
 
       {stickersOpen && (() => {
-        const tagged = assets.filter(a => a.tag && !a.writtenOffAt).sort((x, y) => String(y.receivedAt || "").localeCompare(String(x.receivedAt || "")));
+        const tagged = assets.filter(a => a.tag && !endIsEffective(a)).sort((x, y) => String(y.receivedAt || "").localeCompare(String(x.receivedAt || "")));
         const sample = tagged.find(a => picked.has(a.id)) || tagged[0];
         return (
           <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
@@ -746,16 +764,35 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 {a.specs && <p className="mt-1 whitespace-pre-line text-[11px] text-slate-500">{a.specs}</p>}
               </div>
 
-              {/* Written off: the record is kept and readable, and says so in the open. */}
-              {a.writtenOffAt && (
-                <p className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-[11px] text-slate-700">
-                  <Archive className="inline h-3.5 w-3.5" /> <b>{t("Written off — registered in error")}</b>
-                  {" · "}{nameOf(a.writtenOffBy)} · <span dir="ltr">{String(a.writtenOffAt).slice(0, 10)}</span>
-                  {a.writeOffReason ? <><br /><span dir="auto">{a.writeOffReason}</span></> : null}
-                  <br />
-                  <span className="text-slate-500">{t("It stays on the record with its history. It is out of the working register and off everyone's desk.")}</span>
-                </p>
-              )}
+              {/* What became of it — kept, readable, and said in the open. A disposal that is
+                  only proposed says exactly that: nothing has happened to the item yet. */}
+              {a.endKind && (() => {
+                const k = endKindOf(a.endKind);
+                const settled = endIsEffective(a);
+                return (
+                  <div className={`rounded-lg border px-3 py-2 text-[11px] ${settled ? "border-slate-300 bg-slate-100 text-slate-700" : "border-amber-300 bg-amber-50 text-amber-900"}`}>
+                    <p>
+                      <Archive className="inline h-3.5 w-3.5" /> <b>{t(k?.label || a.endKind)}</b>
+                      {a.endAt ? <> · <span dir="ltr">{a.endAt}</span></> : null}
+                      {a.endAmount != null ? <> · <span dir="ltr">{money(a.endAmount, a.currency || "USD")}</span></> : null}
+                      {" · "}{nameOf(a.endBy)}
+                    </p>
+                    {a.endNote && <p className="mt-0.5" dir="auto">{a.endNote}</p>}
+                    {settled ? (
+                      <p className="mt-0.5 text-slate-500">
+                        {a.endConfirmedBy && a.endConfirmedBy !== a.endBy
+                          ? t("Approved by {name} — the two approvals Policy 017 asks for are complete.").replace("{name}", nameOf(a.endConfirmedBy))
+                          : t("Recorded as an event — it needed one person, not two.")}
+                        {" "}{t("It stays on the record with its history, and is out of the working register.")}
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 font-bold">
+                        ⚠ {t("Awaiting the second approval — Policy 017 needs the Executive Director and the Finance Officer, and they must be two people. Nothing has happened to the item yet.")}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
 
               {a.holderId ? (
                 // On a loan — cm is guaranteed by the mirrored holderId column.
@@ -850,7 +887,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 </div>
               )}
 
-              {receiving && !a.writtenOffAt && (
+              {receiving && !endIsEffective(a) && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
                   {a.holderId ? (
                     <button type="button" onClick={() => openPanel(a.id, "in", { holderKind: "org", holderId: "", location: a.location || "" })} className={btn}><LogIn className="h-4 w-4" /> {t("Check in")}</button>
@@ -869,11 +906,18 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                       item is confirmed, out, or repaired, the button is GONE rather than
                       greyed — a disabled Delete invites somebody to go looking for the way
                       round it — and the write-off it is replaced by says what the way is. */}
-                  {deleteBlocker(a) === null ? (
+                  {deleteBlocker(a) === null && (
                     <button type="button" aria-expanded={panel?.id === a.id && panel.kind === "remove"} onClick={() => openPanel(a.id, "remove", { mode: "remove" })} className={`${btnGhost} text-red-700`}><Trash2 className="h-4 w-4" /> {t("Remove")}</button>
-                  ) : !a.writtenOffAt && writeOffBlocker(a) === null ? (
-                    <button type="button" aria-expanded={panel?.id === a.id && panel.kind === "remove"} onClick={() => openPanel(a.id, "remove", { mode: "writeoff" })} className={btnGhost}><Archive className="h-4 w-4" /> {t("Write it off")}</button>
-                  ) : null}
+                  )}
+                  {/* What became of it. Offered to the seats that may record something — a
+                      disposal is the two policy seats', an event is the keepers'. */}
+                  {!a.endKind && endBlocker(a) === null && END_KINDS.some(k => mayEndEquipment(currentUser, k.key)) && (
+                    <button type="button" aria-expanded={panel?.id === a.id && panel.kind === "end"} onClick={() => openPanel(a.id, "end", { endAt: today })} className={btnGhost}><Archive className="h-4 w-4" /> {t("What became of it")}</button>
+                  )}
+                  {/* The old rule, kept, and said rather than left as a missing button. */}
+                  {!a.endKind && a.holderId && (
+                    <span className="text-[11px] text-slate-500">{t("It is out with somebody — check it in before recording what became of it.")}</span>
+                  )}
                   {a.tag && (
                     <a href={withTicket(`/api/assets/stickers?ids=${encodeURIComponent(a.id)}`)} target="_blank" rel="noreferrer" className={btnGhost}><Printer className="h-4 w-4" /> {t("Print sticker")}</a>
                   )}
@@ -1003,31 +1047,18 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
               })()}
 
               {panel?.id === a.id && panel.kind === "remove" && (() => {
-                const removing = field("mode") === "remove";
-                const why = deleteBlocker(a);
                 const reason = field("reason");
                 return (
                   <form
-                    onSubmit={e => { e.preventDefault(); removing ? handleRemove(a, reason) : handleWriteOff(a, reason); }}
-                    className={`space-y-3 rounded-lg border p-3 ${removing ? "border-red-200 bg-red-50" : "border-slate-300 bg-slate-100"}`}
+                    onSubmit={e => { e.preventDefault(); handleRemove(a, reason); }}
+                    className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-3"
                   >
-                    {removing ? (<>
-                      <p className="text-xs font-bold text-red-900">
-                        <Trash2 className="inline h-3.5 w-3.5" /> {t("Remove {tag} from the register?").replace("{tag}", a.tag || a.name)}
-                      </p>
-                      <p className="text-[11px] text-red-800">
-                        {t("The row goes for good. Its sticker number is never given to another item, and any photos filed against it stay in the vault under the project that funded it.")}
-                      </p>
-                    </>) : (<>
-                      <p className="text-xs font-bold text-slate-800">
-                        <Archive className="inline h-3.5 w-3.5" /> {t("Write {tag} off as registered in error?").replace("{tag}", a.tag || a.name)}
-                      </p>
-                      <p className="text-[11px] text-slate-600">
-                        {why
-                          ? `${t("It cannot simply be removed —")} ${t(why)}. ${t("Writing it off keeps the record and its history readable, and takes it out of the working register.")}`
-                          : t("Writing it off keeps the record and its history readable, and takes it out of the working register.")}
-                      </p>
-                    </>)}
+                    <p className="text-xs font-bold text-red-900">
+                      <Trash2 className="inline h-3.5 w-3.5" /> {t("Remove {tag} from the register?").replace("{tag}", a.tag || a.name)}
+                    </p>
+                    <p className="text-[11px] text-red-800">
+                      {t("The row goes for good. Its sticker number is never given to another item, and any photos filed against it stay in the vault under the project that funded it.")}
+                    </p>
                     <div>
                       <label htmlFor={`rm-why-${a.id}`} className={lbl}>{t("Why")}</label>
                       <input
@@ -1039,12 +1070,86 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                       <span className="text-[10px] text-slate-500">{t("A sentence, not a word. It goes on the record with your name.")}</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <button type="submit" disabled={reason.trim().length < 10} className={reason.trim().length < 10 ? btnOff : removing ? `${btn} bg-red-700 hover:bg-red-800` : btn}>
-                        {removing ? <><Trash2 className="h-4 w-4" /> {t("Remove it")}</> : <><Archive className="h-4 w-4" /> {t("Write it off")}</>}
+                      <button type="submit" disabled={reason.trim().length < 10} className={reason.trim().length < 10 ? btnOff : `${btn} bg-red-700 hover:bg-red-800`}>
+                        <Trash2 className="h-4 w-4" /> {t("Remove it")}
                       </button>
                       <button type="button" onClick={() => { setPanel(null); setDraft({}); }} className={btnGhost}>{t("Cancel")}</button>
                     </div>
                   </form>
+                );
+              })()}
+
+              {/* What became of it. The list is the same six words everywhere, and a disposal
+                  says up front that it needs a second person before anything happens. */}
+              {panel?.id === a.id && panel.kind === "end" && (() => {
+                const chosen = endKindOf(field("endKind"));
+                const note = field("endNote");
+                const offered = END_KINDS.filter(k => mayEndEquipment(currentUser, k.key));
+                const ready = chosen && field("endAt") && note.trim().length >= 10 && (!chosen.amount || field("endAmount") !== "");
+                return (
+                  <form onSubmit={e => { e.preventDefault(); handleEnd(a); }} className="space-y-3 rounded-lg border border-slate-300 bg-slate-50 p-3">
+                    <p className="text-xs font-bold text-slate-800">
+                      <Archive className="inline h-3.5 w-3.5" /> {t("What became of {tag}?").replace("{tag}", a.tag || a.name)}
+                    </p>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                      <div>
+                        <label htmlFor={`end-kind-${a.id}`} className={lbl}>{t("What happened")}</label>
+                        <select id={`end-kind-${a.id}`} required value={field("endKind")} onChange={e => setField("endKind", e.target.value)} className={`${inp} bg-white`}>
+                          <option value="">{t("— choose —")}</option>
+                          {offered.map(k => <option key={k.key} value={k.key}>{t(k.label)}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor={`end-at-${a.id}`} className={lbl}>{t("When it happened")}</label>
+                        <input id={`end-at-${a.id}`} type="date" required max={today} value={field("endAt")} onChange={e => setField("endAt", e.target.value)} className={inp} />
+                      </div>
+                      {chosen?.amount && (
+                        <div>
+                          <label htmlFor={`end-amt-${a.id}`} className={lbl}>{t("What it sold for")}</label>
+                          <input id={`end-amt-${a.id}`} type="number" step="0.01" min="0" required dir="ltr" value={field("endAmount")} onChange={e => setField("endAmount", e.target.value)} className={`${inp} font-mono`} />
+                        </div>
+                      )}
+                      <div className={chosen?.amount ? "" : "md:col-span-2"}>
+                        <label htmlFor={`end-note-${a.id}`} className={lbl}>{t("What happened, in a sentence")}</label>
+                        <input id={`end-note-${a.id}`} required minLength={10} value={note} onChange={e => setField("endNote", e.target.value)} placeholder={t("e.g. the screen cracked beyond repair and it went in the skip")} className={inp} />
+                      </div>
+                    </div>
+                    {chosen && isDisposal(chosen.key) && (
+                      <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] font-bold text-amber-900">
+                        ⚠ {t("This is a disposal. Policy 017 needs the Executive Director and the Finance Officer, and they must be two people — you are proposing it, and somebody else confirms before anything takes effect.")}
+                      </p>
+                    )}
+                    {chosen && !isDisposal(chosen.key) && (
+                      <p className="text-[11px] text-slate-600">{t("This is an event, not a decision — one person records it. A loss or a theft is reported to the Executive Director as well.")}</p>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      <button type="submit" disabled={!ready} className={ready ? btn : btnOff}>
+                        <Archive className="h-4 w-4" /> {chosen && isDisposal(chosen.key) ? t("Propose it") : t("Record it")}
+                      </button>
+                      <button type="button" onClick={() => { setPanel(null); setDraft({}); }} className={btnGhost}>{t("Cancel")}</button>
+                    </div>
+                  </form>
+                );
+              })()}
+
+              {/* The second signature. Shown only to somebody who may actually give it, and
+                  never to the person who proposed it — which is the whole rule. */}
+              {a.endKind && !endIsEffective(a) && confirmDisposalBlocker(currentUser, a) === null && (() => {
+                const reason = field("reason");
+                return (
+                  <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+                    <p className="text-xs font-bold text-amber-900">
+                      <CheckCheck className="inline h-3.5 w-3.5" /> {t("Your approval is the second one — Policy 017")}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button type="button" onClick={() => handleEndDecision(a, false, "")} className={btn}><CheckCheck className="h-4 w-4" /> {t("Approve the disposal")}</button>
+                      <input
+                        aria-label={t("Why it is refused")} value={reason} onChange={e => setField("reason", e.target.value)}
+                        placeholder={t("or say why you refuse it")} className={`${inp} max-w-xs`}
+                      />
+                      <button type="button" disabled={reason.trim().length < 10} onClick={() => handleEndDecision(a, true, reason)} className={reason.trim().length < 10 ? btnOff : btnGhost}>{t("Refuse it")}</button>
+                    </div>
+                  </div>
                 );
               })()}
 
@@ -1120,7 +1225,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
 
               {/* The same predicate the route asks. The keeper of the register is not a
                   verifier at all; a verifier who took delivery sees why they cannot confirm. */}
-              {verifier && !a.writtenOffAt && (a.holderId ? (
+              {verifier && !endIsEffective(a) && (a.holderId ? (
                 <button type="button" disabled className="w-full cursor-not-allowed rounded bg-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-500">
                   ✓ {t("Confirm it is here")} — {t("it is out; confirm it once it is back")}
                 </button>

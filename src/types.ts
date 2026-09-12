@@ -306,8 +306,22 @@ export interface FixedAsset {
   /** camera/lens/audio/lighting/computer/storage/network/furniture/other — see equipment.ts. */
   kind?: string;
   /** Derived in loadState from the facts on the row — never stored. The desk keys on it. */
-  status?: "Registered" | "Received" | "Verified" | "Out" | "Written off";
-  /** Registered in error but already confirmed, so it is marked rather than deleted. */
+  /** Derived in loadState, never stored. The desk keys on it — src/equipment.ts holds the
+   *  same list, and scripts/check-desk.ts pins that the two agree. */
+  status?: "Registered" | "Received" | "Verified" | "Out" | "Awaiting disposal approval"
+    | "Broken — thrown away" | "Sold" | "Given away" | "Lost" | "Stolen" | "Returned to its owner";
+  /** What became of it: "" while in use, else one of END_KINDS (src/equipment.ts). A disposal
+   *  only takes effect once the second approval is on it — Resources and Assets Policy 017. */
+  endKind?: string;
+  endAt?: string | null;
+  endNote?: string;
+  endAmount?: number | null;
+  endBy?: string | null;
+  endAs?: string | null;
+  endConfirmedBy?: string | null;
+  endConfirmedAs?: string | null;
+  endConfirmedAt?: string | null;
+  /** SUPERSEDED by endKind and never read — kept so the original text survives. */
   writtenOffAt?: string | null;
   writtenOffBy?: string | null;
   writeOffReason?: string;

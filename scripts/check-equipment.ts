@@ -15,7 +15,8 @@ import { NO_SERIAL, nextEquipmentTag, parseTag, sameSerial, equipmentStatus, may
   EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, DEFAULT_KIND, normalizeKind, usefulLifeFor, mayOverrideUsefulLife,
   HOLDER_KINDS, EQUIPMENT_LOCATIONS, OTHER_LOCATION, resolveLocation, currentMovement,
   EDITABLE_FIELDS, LOCKED_FIELDS, VERIFIED_FIELDS, equipmentChanges, verificationLapses,
-  deleteBlocker, writeOffBlocker } from "../src/equipment.js";
+  deleteBlocker, endBlocker, endIsEffective, isDisposal, endKindOf, END_KINDS, mayEndEquipment,
+  confirmDisposalBlocker, disposalSides } from "../src/equipment.js";
 import { RULES, deskItems } from "../src/workflow.js";
 import { ROUTE_SEATS } from "../src/gates.js";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS, PLO, AUDITOR, FINANCE } from "../src/roles.js";
@@ -40,7 +41,8 @@ const out = between('app.post("/api/assets/checkout"', 'app.post("/api/assets/ch
 const back = between('app.post("/api/assets/checkin"', 'app.post("/api/assets/move"');
 const moved = between('app.post("/api/assets/move"', 'app.post("/api/assets/delete"');
 const gone = between('app.post("/api/assets/delete"', 'app.post("/api/assets/write-off"');
-const off = between('app.post("/api/assets/write-off"', 'app.post("/api/assets/repair"');
+const ended = between('app.post("/api/assets/end"', 'app.post("/api/assets/end-confirm"');
+const second = between('app.post("/api/assets/end-confirm"', 'app.post("/api/assets/repair"');
 const fix = between('app.post("/api/assets/repair"', "// Stickers to print:");
 const stick = between('app.get("/api/assets/stickers"', 'app.get("/e/:tag"');
 const short = between('app.get("/e/:tag"', "// Partner drawings & contributions");
@@ -545,7 +547,7 @@ ok("a fresh unconfirmed registration may go", deleteBlocker({ movements: [{} as 
 ok("a confirmed item may NOT — that is a second person's word", deleteBlocker({ verifiedAt: "2026-09-12", movements: [{} as any] }) === "somebody has confirmed it");
 ok("nor one that has been out", deleteBlocker({ movements: [{}, {}] as any }) === "it has been out");
 ok("nor one with a repair on it", deleteBlocker({ movements: [{} as any], repairs: [{} as any] }) === "it has a repair on it");
-ok("nor one already written off", deleteBlocker({ writtenOffAt: "2026-09-12" }) === "it is already written off");
+ok("nor one that has already ended, however it ended", deleteBlocker({ endKind: "sold" }) === "its life here has already ended");
 ok("the route asks the same predicate the button does, and answers 409 with the way out",
   /const blocker = deleteBlocker\(\{ \.\.\.asset, movements, repairs \}\)/.test(gone)
   && /res\.status\(409\)/.test(gone) && /writeOffInstead: true/.test(gone));
@@ -571,35 +573,105 @@ ok("each one keeps the tag it belonged to, so it is still findable by number",
 ok("and the screen says where they went", tab.includes('t("removed. Its photos stay in the vault.")')
   && tab.includes("stay in the vault under the project that funded it"));
 
-console.log("\nMM. what cannot be deleted is written off instead — never silently");
-ok("the keepers may write off too", ROUTE_SEATS["/api/assets/write-off"] === SUPPLIER_EDITORS);
-ok("an item out with somebody is not yours to write off until it is back",
-  writeOffBlocker({ holderId: "u-7" }) === "it is out with somebody" && writeOffBlocker({}) === null);
-ok("a write-off must be explained too", /if \(reason\.length < 10\)/.test(off) && /Say why this item is being written off/.test(off));
-ok("nothing is erased — it writes the mark, the person and the reason, and touches nothing else",
-  /data: \{ writtenOffAt: now, writtenOffBy: user\.id, writeOffReason: reason \}/.test(off)
-  && !/verifiedAt: null|delete\(|movementsJson|cost:/.test(off));
-ok("the confirmation it keeps is said out loud in the audit line",
-  /"Equipment Written Off"/.test(off) && /Its confirmation of .* is kept — the record is marked, not erased/.test(off));
-ok("writing off twice cannot happen — the write lands only on a row not already marked",
-  /where: \{ id: asset\.id, writtenOffAt: null \}/.test(off) && /if \(done\.count !== 1\)/.test(off));
+console.log("\nMM. what became of it — six facts, not one euphemism (12 Sep 2026)");
+ok("the six Saad named, and nothing invented beside them",
+  END_KINDS.map(k => k.label).join(" · ") === "Broken — thrown away · Sold · Given away · Lost · Stolen · Returned to its owner");
+ok("only Sold asks what it fetched", END_KINDS.filter(k => k.amount).map(k => k.key).join() === "sold");
+ok("giving a thing up is a disposal; losing one is not",
+  ["broken","sold","given"].every(isDisposal) && !["lost","stolen","returned"].some(isDisposal));
+ok("an unknown word is not a status", endKindOf("scrapped") === null && !isDisposal("scrapped"));
+ok("the route refuses one too", /const kind = endKindOf\(String\(req\.body\.endKind \|\| ""\)\);/.test(ended) && /Say what became of it/.test(ended));
+ok("a date that already happened, and a sentence, are required",
+  /if \(when > localDate\(\)\)/.test(ended) && /That date is in the future/.test(ended) && /if \(note\.length < 10\)/.test(ended));
+ok("Sold records the money", /if \(kind\.amount\)/.test(ended) && /Record what it sold for/.test(ended));
+ok("nothing is erased — the row, its log and its confirmation stay exactly where they are",
+  !/fixedAsset\.delete|movementsJson|repairsJson|verifiedAt: null/.test(ended));
 
-console.log("\nNN. a written-off item leaves the working register by saying what it is");
-ok("the status says it, ahead of everything else", equipmentStatus({ writtenOffAt: "x", verifiedAt: "y", holderId: "u-1" }) === "Written off");
-ok("so no desk rule matches it — none of them mentions the state",
-  !RULES.filter(r => r.kind === "fixedAssets").some(r => r.status === "Written off"));
-ok("it is not offered for lending, correcting or confirming", /\{receiving && !a\.writtenOffAt && \(/.test(tab) && /\{verifier && !a\.writtenOffAt && \(/.test(tab));
-ok("and its sticker is not printed again", /assets\.filter\(a => a\.tag && !a\.writtenOffAt\)/.test(tab));
-ok("the card says it plainly, with who, when and why", tab.includes('t("Written off — registered in error")') && /a\.writeOffReason \?/.test(tab));
+console.log("\nNN. Policy 017: the organisation does not give up what it owns on one signature");
+ok("a disposal is the two policy seats'; an event is the keepers' to write down",
+  mayEndEquipment({ role: "Finance Officer" }, "sold") && mayEndEquipment({ role: "Program Director" }, "sold")
+  && !mayEndEquipment({ role: PLO }, "sold") && mayEndEquipment({ role: PLO }, "lost"));
+ok("the two sides are the Executive Director's and Finance's, and the master account holds both",
+  disposalSides("Program Director").join() === "director" && disposalSides("Finance Officer").join() === "finance"
+  && disposalSides("Super Admin").join() === "director,finance" && disposalSides(PLO).length === 0);
+const proposed = (by: string, as: string) => ({ endKind: "sold", endBy: by, endAs: as, endConfirmedAt: null });
+ok("Finance proposes, a director confirms", confirmDisposalBlocker({ id: "u-sa", role: "Program Director" }, proposed("u-fo", "finance")) === null);
+ok("a director proposes, Finance confirms", confirmDisposalBlocker({ id: "u-fo", role: "Finance Officer" }, proposed("u-pd", "director")) === null);
+ok("the proposer may NEVER be the second signature — not even holding both seats",
+  confirmDisposalBlocker({ id: "u-sa", role: "Super Admin" }, proposed("u-sa", "director+finance"))
+    === "you proposed it — the other signature must be somebody else");
+ok("a seat outside the policy cannot confirm, however senior it feels",
+  confirmDisposalBlocker({ id: "u-plo", role: PLO }, proposed("u-fo", "finance")) === "this seat is not one of the two the policy names");
+ok("two people are not enough if they are the same side",
+  confirmDisposalBlocker({ id: "u-fo2", role: "Finance Officer" }, proposed("u-fo", "finance")) === "this seat is not one of the two the policy names");
+ok("nothing proposed, nothing to confirm; confirmed once, not twice",
+  confirmDisposalBlocker({ id: "u-sa", role: "Super Admin" }, { endKind: "" }) === "nothing is proposed"
+  && confirmDisposalBlocker({ id: "u-sa", role: "Super Admin" }, { endKind: "sold", endBy: "u-fo", endAs: "finance", endConfirmedAt: "2026-09-12" }) === "it is already confirmed");
+ok("an event needs nobody's second word", confirmDisposalBlocker({ id: "u-sa", role: "Super Admin" }, { endKind: "lost", endBy: "u-plo" }) === "nothing is proposed");
+ok("the route asks the same predicate, and logs a refusal",
+  /const blocker = confirmDisposalBlocker\(user, asset\);/.test(second) && /"Action Refused"/.test(second));
+ok("refusing is a real answer: the proposal is cleared and the item stays on the register",
+  /endKind: "", endAt: null, endNote: "", endAmount: null, endBy: null, endAs: null/.test(second) && /Say why the disposal is refused/.test(second));
+ok("neither half can land twice — each write names the state it expects to find",
+  /where: \{ id: asset\.id, endKind: "", holderId: null \}/.test(ended)
+  && /where: \{ id: asset\.id, endKind: asset\.endKind, endConfirmedAt: null \}/.test(second));
 
-console.log("\nOO. the screen offers the right one of the two, and never a dead button");
-ok("Remove shows only when the route would accept it", /\{deleteBlocker\(a\) === null \? \(/.test(tab));
-ok("otherwise it is GONE, replaced by the write-off — a greyed Delete invites a way round it",
-  /: !a\.writtenOffAt && writeOffBlocker\(a\) === null \? \(/.test(tab) && /\) : null\}/.test(tab));
-ok("both sit behind a form that names the tag", tab.includes('t("Remove {tag} from the register?")') && tab.includes('t("Write {tag} off as registered in error?")'));
-ok("the write-off panel repeats the reason removal was refused, in the person's own words",
-  /\$\{t\("It cannot simply be removed —"\)\} \$\{t\(why\)\}/.test(tab));
-ok("neither can be submitted without a real reason", /disabled=\{reason\.trim\(\)\.length < 10\}/.test(tab));
+console.log("\nNN2. a proposal changes nothing until the second signature");
+ok("proposed is not ended", !endIsEffective({ endKind: "sold", endConfirmedAt: null }) && endIsEffective({ endKind: "sold", endConfirmedAt: "2026-09-12" }));
+ok("an event ends the moment it is written down", endIsEffective({ endKind: "lost" }));
+ok("and the status says which", equipmentStatus({ endKind: "sold" } as any) === "Awaiting disposal approval"
+  && equipmentStatus({ endKind: "sold", endConfirmedAt: "x" } as any) === "Sold"
+  && equipmentStatus({ endKind: "lost" } as any) === "Lost");
+ok("an item in use is untouched by any of it", equipmentStatus({ receivedAt: "x", verifiedAt: "y" } as any) === "Verified");
+ok("the proposal waits on the OTHER seat's desk, never the proposer's",
+  RULES.some(r => r.kind === "fixedAssets" && r.status === "Awaiting disposal approval" && (r.exclude || []).includes("endBy")));
+ok("an item out with somebody cannot be ended at all — the old rule, kept",
+  endBlocker({ holderId: "u-7" }) === "it is out with somebody — check it in first"
+  && endBlocker({}) === null && endBlocker({ endKind: "sold" }) === "a disposal is already proposed"
+  && endBlocker({ endKind: "lost" }) === "its life here has already ended");
+ok("and the screen says so rather than hiding the button with no explanation",
+  tab.includes('t("It is out with somebody — check it in before recording what became of it.")'));
+
+console.log("\nNN3. an ended item leaves the working register, and takes nothing with it");
+ok("no desk rule matches a finished state", !RULES.filter(r => r.kind === "fixedAssets").some(r => END_KINDS.some(k => k.label === r.status)));
+ok("it is not offered for lending, correcting or confirming", /\{receiving && !endIsEffective\(a\) && \(/.test(tab) && /\{verifier && !endIsEffective\(a\) && \(/.test(tab));
+ok("and its sticker is not printed again", /assets\.filter\(a => a\.tag && !endIsEffective\(a\)\)/.test(tab));
+ok("a deletion is refused once anything has become of it", deleteBlocker({ endKind: "lost", movements: [{} as any] }) === "its life here has already ended");
+
+console.log("\nNN4. the write-off is gone, and what it recorded was carried across");
+const mig = read("prisma/migrations/20260912160000_equipment_end_of_life/migration.sql");
+ok("every written-off row becomes the closest of the six — thrown away", /SET "endKind" = 'broken'/.test(mig));
+ok("the person's own words are kept exactly, never rewritten", /ELSE "writeOffReason" END/.test(mig));
+ok("and the record says it predates the two approvals rather than pretending it had them",
+  /before Resources and Assets Policy 017 asked for two approvals; migrated/.test(mig));
+ok("it stays in force — it was already in force yesterday", /"endConfirmedAt" = "writtenOffAt"/.test(mig));
+ok("the old columns are kept, not dropped, so the migration can be checked against its source",
+  !/DROP COLUMN/.test(mig) && /SUPERSEDED 12 Sep 2026/.test(read("prisma/schema.prisma")));
+ok("and nothing reads them any more", !/writtenOff/.test(read("src/equipment.ts")) && !/writtenOff/.test(read("src/tabs/AssetsTab.tsx")) && !/writtenOff/.test(server));
+ok("the words 'write it off' are gone from the screen", !/Write it off|Written off/.test(tab));
+
+console.log("\nOO. the screen offers what the route would accept, and never a dead button");
+ok("Remove shows only for an entry that should never have existed", /\{deleteBlocker\(a\) === null && \(/.test(tab));
+ok("and it still names the tag and demands a sentence",
+  tab.includes('t("Remove {tag} from the register?")') && /disabled=\{reason\.trim\(\)\.length < 10\}/.test(tab));
+ok("what became of it is offered only to a seat that may record something",
+  /END_KINDS\.some\(k => mayEndEquipment\(currentUser, k\.key\)\)/.test(tab)
+  && /const offered = END_KINDS\.filter\(k => mayEndEquipment\(currentUser, k\.key\)\)/.test(tab));
+ok("a disposal warns, before anything is typed, that it takes two people",
+  tab.includes("you are proposing it, and somebody else confirms before anything takes effect"));
+ok("an event says it is one person's to record", tab.includes('t("This is an event, not a decision — one person records it. A loss or a theft is reported to the Executive Director as well.")'));
+ok("the button says which of the two it is doing", tab.includes('t("Propose it") : t("Record it")'));
+ok("the second approval is shown only to somebody who may actually give it",
+  /confirmDisposalBlocker\(currentUser, a\) === null/.test(tab) && tab.includes('t("Approve the disposal")'));
+ok("refusing needs a reason too", /disabled=\{reason\.trim\(\)\.length < 10\} onClick=\{\(\) => handleEndDecision\(a, true, reason\)\}/.test(tab));
+
+console.log("\nPP. every status change is on the record");
+ok("a proposal, an approval and a refusal are three different audit actions",
+  /"Equipment Disposal Proposed"/.test(ended) && /"Equipment Ended"/.test(ended)
+  && /"Equipment Disposal Approved"/.test(second) && /"Equipment Disposal Refused"/.test(second));
+ok("the line carries the item, the tag, what it was, what it became, the date and the reason",
+  /\$\{label\} "\$\{asset\.name\}": \$\{equipmentStatus\(asset\)\} → \$\{kind\.label\} on \$\{when\}/.test(ended) && /\$\{note\}/.test(ended));
+ok("and who proposed it, beside who approved it", /proposed by \$\{proposer\}, approved by \$\{user\.name\}/.test(second));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

@@ -1,4 +1,4 @@
-import { EQUIPMENT_VERIFIERS, FINANCE } from "./roles";
+import { EQUIPMENT_VERIFIERS, FINANCE, DIRECTORS, SUPPLIER_EDITORS } from "./roles";
 /**
  * Receiving equipment — the rules the server enforces and the screen shows, in one place.
  *
@@ -112,18 +112,24 @@ export function nextEquipmentTag(tags: (string | null | undefined)[]): string {
   return `EQ-${String(highest + 1).padStart(3, "0")}`;
 }
 
-export type EquipmentStatus = "Registered" | "Received" | "Verified" | "Out" | "Written off";
+export type EquipmentStatus =
+  | "Registered" | "Received" | "Verified" | "Out"
+  | "Awaiting disposal approval"
+  | typeof END_KINDS[number]["label"];
 
 /**
  * Out = somebody has it; otherwise Verified, Received or Registered by what has been
  * recorded. Derived in loadState and never stored: the desk keys its rules on it, and a
  * stored copy would be one more thing to disagree with the facts it is read from.
  */
-export function equipmentStatus(a: { receivedAt?: string | null; verifiedAt?: string | null; holderId?: string | null; writtenOffAt?: string | null }): EquipmentStatus {
-  // Written off comes first and stops everything: the desk rules key on this status, so an
-  // item registered in error falls off every turn list by saying what it is, not by a filter
-  // somebody has to remember to write in each place that counts equipment.
-  if (a.writtenOffAt) return "Written off";
+export function equipmentStatus(a: { receivedAt?: string | null; verifiedAt?: string | null; holderId?: string | null; endKind?: string | null; endConfirmedAt?: string | null }): EquipmentStatus {
+  // What became of it comes first and stops everything: the desk rules key on this status, so
+  // an item whose life here has ended falls off every turn list by saying what it is, not by a
+  // filter somebody has to remember to write in each place that counts equipment. A disposal
+  // that is only proposed says exactly that, and is still a live item until the second
+  // signature arrives — one person does not dispose of an asset.
+  if (endIsEffective(a)) return endKindOf(a.endKind)!.label;
+  if (a.endKind) return "Awaiting disposal approval";
   return a.holderId ? "Out" : a.verifiedAt ? "Verified" : a.receivedAt ? "Received" : "Registered";
 }
 
@@ -277,34 +283,125 @@ export function checkOutBlocker(a: { holderId?: string | null; verifiedAt?: stri
 }
 
 /**
+ * What happened to an item after it was registered (12 Sep 2026).
+ *
+ * This replaces "write it off", which was one word for six different things. A thing that was
+ * sold, a thing that broke and went in the skip, and a thing somebody stole are not the same
+ * event, and an auditor asking "where is EQ-007?" deserves the real answer, not a euphemism.
+ *
+ * "" is the ordinary state: the item is in use. Every other value is the end of its life here,
+ * and the item leaves the working register — but its whole history stays readable, which is
+ * the whole point of ending it rather than deleting it.
+ */
+export const END_KINDS = [
+  { key: "broken",   label: "Broken — thrown away",   disposal: true,  amount: false },
+  { key: "sold",     label: "Sold",                   disposal: true,  amount: true  },
+  { key: "given",    label: "Given away",             disposal: true,  amount: false },
+  { key: "lost",     label: "Lost",                   disposal: false, amount: false },
+  { key: "stolen",   label: "Stolen",                 disposal: false, amount: false },
+  { key: "returned", label: "Returned to its owner",  disposal: false, amount: false },
+] as const;
+export type EndKind = typeof END_KINDS[number]["key"];
+
+export function endKindOf(key: string | null | undefined) {
+  return END_KINDS.find(k => k.key === key) || null;
+}
+
+/**
+ * A DISPOSAL is the organisation giving up something it owns — sold, given away, or thrown
+ * away. Resources and Assets Policy 017 (approved 12 Sep 2026) needs two signatures for that:
+ * the Executive Director and the Finance Officer. One proposes, the other confirms.
+ *
+ * Lost, Stolen and Returned to its owner are not disposals. Nobody decided them; they are
+ * events being written down, and one person records them. (Loss and theft are reported to the
+ * Executive Director under the same policy — that is a duty on a person, not a state here.)
+ */
+export function isDisposal(key: string | null | undefined): boolean {
+  return endKindOf(key)?.disposal === true;
+}
+
+/** The two signatures Policy 017 asks for. A person may hold one side, or both. */
+export type DisposalSide = "director" | "finance";
+export function disposalSides(role: string | null | undefined): DisposalSide[] {
+  const r = String(role || "");
+  const sides: DisposalSide[] = [];
+  if (DIRECTORS.includes(r)) sides.push("director");
+  if (FINANCE.includes(r)) sides.push("finance");
+  return sides;
+}
+
+/** May this seat put a disposal or an event on the record at all? */
+export function mayEndEquipment(viewer: { role?: string } | null | undefined, key: string): boolean {
+  if (!viewer?.role) return false;
+  // A disposal is the two policy seats'. An event is a fact anybody keeping the register may write down.
+  return isDisposal(key) ? disposalSides(viewer.role).length > 0 : SUPPLIER_EDITORS.includes(String(viewer.role));
+}
+
+/**
+ * Why this person may not confirm this disposal, or null when they may.
+ *
+ * Two conditions, and the second is the one that bites — the same shape as confirming a
+ * delivery. Between the two people, both signatures must be covered; and they must be two
+ * PEOPLE. The master account holds both sides at once, so without that rule one person could
+ * propose as the director and confirm as Finance, which is one signature wearing two hats.
+ */
+export function confirmDisposalBlocker(
+  viewer: { id?: string; role?: string } | null | undefined,
+  a: { endKind?: string | null; endBy?: string | null; endAs?: string | null; endConfirmedAt?: string | null }
+): "nothing is proposed" | "it is already confirmed" | "you proposed it — the other signature must be somebody else" | "this seat is not one of the two the policy names" | null {
+  if (!a.endKind || !isDisposal(a.endKind)) return "nothing is proposed";
+  if (a.endConfirmedAt) return "it is already confirmed";
+  if (!viewer?.id || !viewer.role) return "this seat is not one of the two the policy names";
+  if (a.endBy && a.endBy === viewer.id) return "you proposed it — the other signature must be somebody else";
+  const mine = disposalSides(viewer.role);
+  if (!mine.length) return "this seat is not one of the two the policy names";
+  const theirs = (a.endAs || "").split("+").filter(Boolean) as DisposalSide[];
+  const covered = new Set<DisposalSide>([...mine, ...theirs]);
+  return covered.has("director") && covered.has("finance") ? null : "this seat is not one of the two the policy names";
+}
+
+/** Has this item's life here actually ended? A disposal only ends once it is confirmed —
+ *  a proposal on its own changes nothing, or one signature would dispose of an asset. */
+export function endIsEffective(a: { endKind?: string | null; endConfirmedAt?: string | null }): boolean {
+  if (!a.endKind) return false;
+  return isDisposal(a.endKind) ? !!a.endConfirmedAt : true;
+}
+
+/**
+ * Why this item's life cannot be ended right now, or null when it may be.
+ *
+ * The old write-off rule was right about one thing and it is kept: something out with somebody
+ * is not yours to end. Sell an item that is in Ahmad's bag and its holder vanishes with it,
+ * and nobody is left accountable for a thing that is still in the world.
+ */
+export function endBlocker(a: {
+  endKind?: string | null; endConfirmedAt?: string | null; holderId?: string | null;
+}): "it is out with somebody — check it in first" | "its life here has already ended" | "a disposal is already proposed" | null {
+  if (endIsEffective(a)) return "its life here has already ended";
+  if (a.endKind) return "a disposal is already proposed";
+  if (a.holderId) return "it is out with somebody — check it in first";
+  return null;
+}
+
+/**
  * An item registered in error — and why deletion is not always the answer (12 Sep 2026).
  *
  * Editing covers a wrong field. A row that is wrong in every field should be removable, not
  * nursed. But a CONFIRMED item is different in kind: the confirmation is a second person's
  * word that they stood in front of the thing. Deleting that erases somebody's evidence, so a
- * confirmed item is never deleted — it is written off, with a reason, and stays readable.
+ * confirmed item is never deleted — it is given the status that says what became of it.
  *
  * The same goes for an item with a life behind it: once it has been out with somebody, or
  * been repaired, its history is a record of events that happened, whatever the row says.
  */
 export function deleteBlocker(a: {
-  verifiedAt?: string | null; writtenOffAt?: string | null;
+  verifiedAt?: string | null; endKind?: string | null;
   movements?: Movement[]; repairs?: Repair[];
-}): "somebody has confirmed it" | "it has been out" | "it has a repair on it" | "it is already written off" | null {
-  if (a.writtenOffAt) return "it is already written off";
+}): "somebody has confirmed it" | "it has been out" | "it has a repair on it" | "its life here has already ended" | null {
+  if (a.endKind) return "its life here has already ended";
   if (a.verifiedAt) return "somebody has confirmed it";
   if ((a.movements || []).length > 1) return "it has been out";
   if ((a.repairs || []).length > 0) return "it has a repair on it";
-  return null;
-}
-
-/** Why this item may not be written off, or null when it may. Something out with somebody is
- *  not yours to write off until it is back — write it off and its holder disappears with it. */
-export function writeOffBlocker(a: {
-  writtenOffAt?: string | null; holderId?: string | null;
-}): "it is already written off" | "it is out with somebody" | null {
-  if (a.writtenOffAt) return "it is already written off";
-  if (a.holderId) return "it is out with somebody";
   return null;
 }
 
