@@ -64,7 +64,7 @@ export const DONOR_OBLIGATIONS: Obligation[] = [
   {
     projectId: "proj-trf", key: "final-report",
     title: "Second and Final report — narrative filed, FINANCIAL STILL OUT",
-    detail: "Annex A as amended: \"30th of June 2026 — Second and Final report\". The narrative is filed (TRF_Partner_Final_Report_Anahon_June_2026.docx); the financial side is not delivered — final invoice 04/2026 is written but unsent, and Annex A caps the grant at $10,000, so the defensible figure is $4,970.57, not $4,990.57. This is AnaHon's most overdue donor obligation.",
+    detail: "Annex A as amended: \"30th of June 2026 — Second and Final report\". The narrative is filed (TRF_Partner_Final_Report_Anahon_June_2026.docx); the financial side is not delivered — final invoice 04/2026 is written but unsent, and Annex A caps the grant at $10,000, so the defensible figure is $4,970.57, not $4,990.57. This is AnaHon's most overdue REPORTING obligation (the older unmet item is Asfari 2024's partner video).",
     due: "2026-06-30",
     source: "TRF-2025-IMS/Agreement/Sub Grant Amendment 001- Anahon TRF signed.pdf"
   },
@@ -101,6 +101,56 @@ export const DONOR_OBLIGATIONS: Obligation[] = [
     detail: "Deadline 18 March 2026. Delivered: Voices_Unseen_Final_Report_Anahon_v4 plus FPU_Corrected_Financial_reporting_Anahon.xlsx, and the final instalment arrived 2 July 2026 — which the agreement pays only after FPU approves this report.",
     due: "2026-03-18", done: true,
     source: "FPU-2025-SUBGRANT/Agreement/FPU-Anahon Subgrant for countersignature.pdf"
+  },
+  // ── Asfari Foundation 2024 — the Performance Excellence Grant (£7,000) ─────
+  {
+    projectId: "proj-asfari-2024", key: "final-report",
+    title: "Final Report (End of Grant Report)",
+    detail: "Grant Offer: \"Submit a Final Report: by 11 July 2025\"; the Grant Period ran to 2 June 2025. Asfari extended the deadline to 31 July 2025 for all partners, and Saad confirmed submission on 5 August 2025 — delivered, after both dates. No report document is filed against the project in the vault; the evidence is the email confirmation.",
+    due: "2025-07-11", done: true,
+    source: "ASFARI-2024/Agreement/Anahon Media_PE Grant Agreement (2024)_FINAL.pdf + Asfari thread \"PEG End of Grant Report\", 5 Aug 2025"
+  },
+  {
+    // The deliverable nobody was tracking, because the timeline only ever knew about reports.
+    projectId: "proj-asfari-2024", key: "partner-video",
+    title: "'Partner Experience' video — NOT DELIVERED",
+    detail: "The same Grant Offer lists a second dated deliverable: \"Submit a 'Partner Experience' video: by 11 July 2025\" — a short film about AnaHon's experience of the grant, for the Foundation's network. On 5 August 2025 AnaHon sent Asfari a storyboard and said it was \"ready to begin production\"; nothing in the mail since shows the film was delivered. Open against a closed grant.",
+    due: "2025-07-11",
+    source: "ASFARI-2024/Agreement/Anahon Media_PE Grant Agreement (2024)_FINAL.pdf"
+  },
+
+  // ── SKF — Investigative Report (SKF-AH-06/2025) ────────────────────────────
+  {
+    projectId: "proj-skf-invj", key: "interim-narrative",
+    title: "Interim Narrative Report (15–30 June 2025)",
+    detail: "Section 5.02 Reporting Schedule: due 1 July 2025. Treated as delivered and accepted: §4.01(b) releases the second disbursement (25%) only on submission of the progress narrative by that date, and the money was received.",
+    due: "2025-07-01", done: true,
+    source: "SKF-2025-INVJ/Agreement/Grant Agreement_SKF-Anahon_MIIM Inv_June 2025-signed.pdf"
+  },
+  {
+    projectId: "proj-skf-invj", key: "final-report",
+    title: "Final Narrative and Financial Reports (15 Jun – 31 Aug 2025)",
+    detail: "Section 5.02 Reporting Schedule: due 10 September 2025. Filed: Anahon_Final Narrative Report_Sept 2025.docx and Annex 2 - Financial Report - AnaHon.xlsx; §4.01(c) releases the final 15% only against them. Note for the audit: §5 requires records to be kept for three years from the date the final expenditure report was submitted.",
+    due: "2025-09-10", done: true,
+    source: "SKF-2025-INVJ/Agreement/Grant Agreement_SKF-Anahon_MIIM Inv_June 2025-signed.pdf"
+  },
+
+  // ── Basmeh & Zeitooneh — FRL small grant ───────────────────────────────────
+  {
+    projectId: "proj-bwz-frl", key: "final-report",
+    title: "Final financial + narrative report",
+    detail: "The agreement gives 15/04/2023–15/09/2023 as implementation and 16/09/2023–30/09/2023 as \"the period for submitting all reports and wrapping up the project\", with the final financial report and its supporting documents due \"15 days after the completion of the project. 30/09/2023\". Monthly financial reports were also due on the fifth of each month during implementation; those are not separately filed. A Financial Report row exists on the project, but its file is one of the August 2026 vault casualties — the obligation was met, the paper is gone.",
+    due: "2023-09-30", done: true,
+    source: "BWZ-2023-FRL/Contract/agreements ana hon.pdf (Clause 4, Time frame) + BWZ-2023-FRL/Agreement/CSEU - CBOs Agreement (AnaHon-bwz).docx"
+  },
+
+  // ── FPU iContent 2 — no agreement in the vault ─────────────────────────────
+  {
+    projectId: "proj-fpu-icontent2", key: "reporting-unknown",
+    title: "Reporting schedule UNKNOWN — no agreement on file (reports delivered)",
+    detail: "The vault holds only a budget workbook and reconstructed vouchers for this grant; the subgrant contract (2WWEU21/50675/23057) is nowhere, so no due date can be stated. What is known: the final financial and narrative reports were delivered — Emilie Bisson of Free Press Unlimited acknowledged them on 8 April 2024 (\"Many thanks for the report\"). The obligation was met; the schedule it was measured against is not on record.",
+    due: "", unknown: true, done: true,
+    source: "no agreement on file — FPU thread \"Final_financial_report\", 8 Apr 2024"
   }
 ];
 

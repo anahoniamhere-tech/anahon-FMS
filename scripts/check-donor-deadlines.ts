@@ -48,17 +48,24 @@ assert.ok(/29 June 2026/.test(yp.detail), "the approval must carry its date");
 
 // E — overdue arithmetic. TRF's final is the worst open obligation AnaHon has.
 const rows = DONOR_OBLIGATIONS.map(o => ({ ...o, dueDate: o.due, status: o.done ? "Done" : "Planned" }));
-const late = overdueObligations(rows as any, "2026-09-12");
-assert.equal(late[0].projectId, "proj-trf", "TRF's final report is the most overdue obligation");
-assert.equal(late[0].key, "final-report");
+const late: any[] = overdueObligations(rows as any, "2026-09-12");
+// Oldest first. The longest-unmet item is NOT a report: Asfari 2024's partner video,
+// which no timeline ever tracked because the generator only knew about "reports".
+assert.equal(late[0].key, "partner-video", "the oldest open deliverable is the Asfari partner video");
+assert.equal(late[0].projectId, "proj-asfari-2024");
+assert.equal(daysLate("2025-07-11", "2026-09-12"), 428);
+// Among REPORTS, TRF's final is the worst.
+const lateReports = late.filter((r: any) => /report/i.test(r.title));
+assert.equal(lateReports[0].projectId, "proj-trf", "TRF's final report is the most overdue reporting obligation");
 assert.equal(daysLate("2026-06-30", "2026-09-12"), 74);
-assert.ok(!late.some(r => !r.dueDate), "an obligation with no date can never be 'overdue'");
+assert.equal(late.length, 2, "exactly two obligations are open and past their date");
+assert.ok(!late.some((r: any) => !r.dueDate), "an obligation with no date can never be 'overdue'");
 
 // F — the generator must not write its guessed report row over a documented grant.
 const server = fs.readFileSync("server.ts", "utf8");
 assert.ok(/DOCUMENTED_PROJECT_IDS\.includes\(projectId\) \? \[\] : \[/.test(server),
   "the invented 'Final report' step must be skipped where the agreement has been read");
-assert.equal(DOCUMENTED_PROJECT_IDS.length, 5);
+assert.equal(DOCUMENTED_PROJECT_IDS.length, 9, "every project with a read agreement — all of them now");
 
 // G — a register row whose file is gone cannot fill a core slot (MediaMig's agreement).
 const core = fs.readFileSync("src/coreDocs.ts", "utf8");
@@ -71,4 +78,4 @@ assert.ok(tab.includes("o.dueDate || UNKNOWN_DUE"), "an unknown deadline must re
 assert.ok(tab.includes("a.lateReport"), "an overdue donor report must show on the project card");
 assert.equal(UNKNOWN_DUE, "deadline unknown");
 
-console.log(`✓ check-donor-deadlines: ${DONOR_OBLIGATIONS.length} obligations, each sourced; ${late.length} overdue, worst = TRF final (${daysLate("2026-06-30", "2026-09-12")} days)`);
+console.log(`✓ check-donor-deadlines: ${DONOR_OBLIGATIONS.length} obligations across ${DOCUMENTED_PROJECT_IDS.length} projects, each sourced; ${late.length} open and late — Asfari partner video (${daysLate("2025-07-11", "2026-09-12")}d), TRF final report (${daysLate("2026-06-30", "2026-09-12")}d)`);
