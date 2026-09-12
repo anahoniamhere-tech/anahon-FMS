@@ -13,6 +13,7 @@
 import { readFileSync } from "node:fs";
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "../src/procurementPolicy.js";
 import { NO_SUPPLIER_CHOICE, noSupplierChoice, costAccountChoices } from "../src/spendKind.js";
+import { debitedExpenseAccounts } from "../src/costAccount.js";
 import { CATEGORY_ACCOUNT, costAccountFor } from "../src/costAccount.js";
 
 let failed = 0;
@@ -93,8 +94,8 @@ ok("a MIXED voucher is not exempt — paying the rent and buying a lens still co
 ok("an unposted voucher, with no account behind it yet, stays on the list — silence is not an exemption",
   noSupplierChoice([]) === "");
 ok("the counter asks the books, not the wording of a voucher title",
-  /state\.journalEntries\s*\n?\s*\.filter\(j => j\.referenceNo === e\.voucherNo\)/.test(app)
-  && /i\.debit > 0/.test(app) && /a\.type === "Expense"/.test(app));
+  /state\.journalEntries\.filter\(j => j\.referenceNo === e\.voucherNo\)/.test(app)
+  && /debitedExpenseAccounts\(items\)/.test(app) && /a\.type === "Expense"/.test(app));
 ok("and only the ones with a real supplier choice are counted as a gap",
   /const noProcurement = overThreshold\.filter\(x => !x\.notASupplierChoice\)/.test(app));
 ok("the set-aside ones are shown, with their reason — excluded, never hidden",
@@ -185,6 +186,33 @@ ok("every account the derivation can produce is a real postable expense code",
 ok("the screen shows the approver where the account came from before they sign",
   /not named on the voucher — from the budget line/.test(expenses)
   && /raised as \$\{exp\.costAccountCode\}/.test(expenses));
+
+console.log("\nJ. a corrected cost reads as where it is now, not everywhere it has been");
+// A ledger correction never edits the posted entry: it credits the wrong account and debits the
+// right one beside it, so a corrected voucher carries debit legs on BOTH. Reading gross would put
+// a cost properly moved onto rent back on the missing-documents list as an uncompeted purchase.
+const posting = (code: string, amount: number) => ({ accountCode: code, debit: amount, credit: 0 });
+const correction = (from: string, to: string, amount: number) => [
+  { accountCode: from, debit: 0, credit: amount }, { accountCode: to, debit: amount, credit: 0 },
+];
+const movedToRent = [posting("6000", 5000), ...correction("6000", "7100", 5000)];
+ok("a voucher posted to 6000 and corrected onto rent sits on 7100 alone", debitedExpenseAccounts(movedToRent).join() === "7100");
+ok("and is therefore exempt, as rent is", noSupplierChoice(debitedExpenseAccounts(movedToRent)) === "rent under a signed lease");
+const movedToKit = [posting("7100", 5000), ...correction("7100", "6300", 5000)];
+ok("corrected the other way, onto equipment, it becomes a gap again", debitedExpenseAccounts(movedToKit).join() === "6300" && noSupplierChoice(debitedExpenseAccounts(movedToKit)) === "");
+ok("corrected twice, it reads the last account only, not the sum of every debit it has held",
+  debitedExpenseAccounts([posting("6000", 5000), ...correction("6000", "7100", 5000), ...correction("7100", "5100", 5000)]).join() === "5100");
+ok("a genuinely split cost still reads as two — one correction cannot express that",
+  debitedExpenseAccounts([posting("6000", 3000), posting("6300", 2000)]).sort().join() === "6000,6300");
+ok("the bank, payable and withholding legs were never the cost and are ignored",
+  debitedExpenseAccounts([posting("6000", 5000), { accountCode: "1120", debit: 0, credit: 5000 }, { accountCode: "2100", debit: 0, credit: 5000 }]).join() === "6000");
+ok("the counter reads it netted, through the books' own module",
+  /debitedExpenseAccounts\(items\)\.filter\(c => expenseCodes\.has\(c\)\)/.test(app)
+  && !/\.filter\(i => i\.debit > 0\)\.map\(i => i\.accountCode\)/.test(app));
+ok("and still keeps the chart as the filter, which is stricter than a code prefix", /a\.type === "Expense"/.test(app));
+ok("a fully reversed voucher falls through to the answer on the voucher itself",
+  debitedExpenseAccounts([posting("6000", 5000), { accountCode: "6000", debit: 0, credit: 5000 }]).length === 0
+  && /e\.costAccountCode && expenseCodes\.has\(e\.costAccountCode\)/.test(app));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
