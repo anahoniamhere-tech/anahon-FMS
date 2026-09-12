@@ -12,6 +12,7 @@
 // are about how money leaves the building, not how a supplier was chosen.
 import { readFileSync } from "node:fs";
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "../src/procurementPolicy.js";
+import { NO_SUPPLIER_CHOICE, noSupplierChoice } from "../src/spendKind.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -72,6 +73,26 @@ ok("the refusal names the number this purchase actually needs",
   /requires \$\{wanted\} compared quotations at this value/.test(server));
 ok("a single-source waiver is still the only way to lodge fewer, and still needs a written reason",
   /if \(!singleSource\)/.test(server) && /at least 30 characters/.test(server));
+
+console.log("\nF. an RFQ is a question about choosing a supplier — 12 Sep 2026");
+ok("a salary, the rent, CNSS, utilities, bank charges and an FX loss had no supplier to choose",
+  ["5100", "5110", "7100", "7200", "7400", "7700"].every(c => NO_SUPPLIER_CHOICE[c]));
+ok("a consultant or a freelancer still does — that choice is competed",
+  !NO_SUPPLIER_CHOICE["5120"] && !NO_SUPPLIER_CHOICE["5130"]);
+ok("so do project costs and equipment", !NO_SUPPLIER_CHOICE["6000"] && !NO_SUPPLIER_CHOICE["6300"] && !NO_SUPPLIER_CHOICE["6400"]);
+ok("a salary voucher is set aside, with the reason said", noSupplierChoice(["5100"]) === "a salary under an employment contract");
+ok("rent and utilities together read as one sentence", /and/.test(noSupplierChoice(["7100", "7200"])));
+ok("a MIXED voucher is not exempt — paying the rent and buying a lens still contains a purchase",
+  noSupplierChoice(["7100", "6300"]) === "");
+ok("an unposted voucher, with no account behind it yet, stays on the list — silence is not an exemption",
+  noSupplierChoice([]) === "");
+ok("the counter asks the books, not the wording of a voucher title",
+  /state\.journalEntries\s*\n?\s*\.filter\(j => j\.referenceNo === voucherNo\)/.test(app)
+  && /i\.debit > 0/.test(app) && /a\.type === "Expense"/.test(app));
+ok("and only the ones with a real supplier choice are counted as a gap",
+  /const noProcurement = overThreshold\.filter\(x => !x\.notASupplierChoice\)/.test(app));
+ok("the set-aside ones are shown, with their reason — excluded, never hidden",
+  /notProcurable\.length > 0 && \(/.test(app) && /no supplier to choose/.test(app));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

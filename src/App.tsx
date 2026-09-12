@@ -52,6 +52,7 @@ import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, B
 import { PROPOSAL_SECTIONS, STREAMS, OPP_STAGES, QUOTE_STATUSES, SERVICE_CATALOG, FINANCIAL_TERMS, PRODUCTION_NOTE, TECHNICAL_NOTE, EXTRAS_DEFAULT } from "./constants";
 import { tr } from "./i18n";
 import { THRESHOLD_LABEL, needsProcurement } from "./procurementPolicy";
+import { noSupplierChoice } from "./spendKind";
 import IcontentInvPage from "./IcontentInvPage";
 import ProjectsTab from "./tabs/ProjectsTab";
 import ExpensesTab from "./tabs/ExpensesTab";
@@ -979,9 +980,23 @@ export default function App() {
       .filter(e => COUNTED.includes(e.status) && !hasProof(e.id) && !isReconstructed(e.id))
       .sort((a, b) => b.convertedAmount - a.convertedAmount);
 
-    const noProcurement = state.expenses
+    // An RFQ is a question about choosing a supplier. Where the books show there was no
+    // supplier to choose — a salary, the rent, a bank charge — the question does not apply,
+    // so the item is set aside with its reason rather than demanded forever. The account the
+    // entry debited is the signal; an unposted voucher has none, and stays on the list.
+    const expenseCodes = new Set(state.accounts.filter(a => a.type === "Expense").map(a => a.code));
+    const debitedAccounts = (voucherNo: string): string[] => [...new Set<string>(
+      state.journalEntries
+        .filter(j => j.referenceNo === voucherNo)
+        .flatMap(j => (j.items || []).filter(i => i.debit > 0).map(i => i.accountCode))
+        .filter(c => expenseCodes.has(c))
+    )];
+    const overThreshold = state.expenses
       .filter(e => COUNTED.includes(e.status) && needsProcurement(e.convertedAmount) && !e.procurementId)
-      .sort((a, b) => b.convertedAmount - a.convertedAmount);
+      .map(e => ({ e, notASupplierChoice: noSupplierChoice(debitedAccounts(e.voucherNo)) }))
+      .sort((a, b) => b.e.convertedAmount - a.e.convertedAmount);
+    const noProcurement = overThreshold.filter(x => !x.notASupplierChoice).map(x => x.e);
+    const notProcurable = overThreshold.filter(x => x.notASupplierChoice);
 
     // Money proven in the bank against a project that has never had a voucher raised.
     const received = (pid: string) => state.bankTransactions
@@ -994,7 +1009,7 @@ export default function App() {
     const pettyGap = state.accounts.find(a => a.code === "1120")?.balance || 0;
 
     return {
-      noEvidence, reconstructed, noProcurement, unspent, pettyGap, money, proj,
+      noEvidence, reconstructed, noProcurement, notProcurable, unspent, pettyGap, money, proj,
       total: noEvidence.length + noProcurement.length + unspent.length + (pettyGap > 0 ? 1 : 0)
     };
   })();
@@ -1504,6 +1519,30 @@ export default function App() {
                   </p>
                   <button onClick={() => { setGapsOpen(false); handleNavClick("banking"); }}
                     className="mt-2 text-[11px] font-bold text-red-700 hover:underline">Open Banking →</button>
+                </div>
+              )}
+
+              {/* Set aside, not hidden: an RFQ is a question about choosing a supplier, and
+                  these had none to choose. The reason comes from the account the books
+                  debited, so it is Finance's own classification, not a guess. */}
+              {evidenceGaps.notProcurable.length > 0 && (
+                <div className="p-3 bg-slate-100 border border-slate-300 rounded-lg">
+                  <p className="text-xs font-bold text-slate-800">
+                    Over the threshold, but no supplier to choose — {evidenceGaps.notProcurable.length} · {evidenceGaps.money(evidenceGaps.notProcurable.reduce((s, x) => s + x.e.convertedAmount, 0))}
+                  </p>
+                  <p className="text-[11px] text-slate-600 mt-1">
+                    Nobody compares three quotations for a salary or for the rent. These are listed
+                    so they are visible, and not counted as a gap.
+                  </p>
+                  <div className="mt-2 space-y-0.5">
+                    {evidenceGaps.notProcurable.map(({ e, notASupplierChoice }) => (
+                      <p key={e.id} className="text-[11px] text-slate-600">
+                        <span dir="ltr" className="font-mono font-bold">{e.voucherNo}</span>
+                        {" · "}<span dir="ltr">{evidenceGaps.money(e.convertedAmount)}</span>
+                        {" — "}{notASupplierChoice}
+                      </p>
+                    ))}
+                  </div>
                 </div>
               )}
 
