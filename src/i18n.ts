@@ -2,6 +2,15 @@
 // Main navigation and primary actions only — data, documents and financial
 // records stay in the language they were entered in.
 export const AR: Record<string, string> = {
+  // donor reporting deadlines
+  "donor report": "تقرير المانح",
+  "days overdue": "يوماً متأخر",
+  "reporting": "التقارير",
+  "deadline unknown": "الموعد غير معروف",
+  "the agreement is not on file": "الاتفاقية غير محفوظة",
+  "next donor report": "تقرير المانح القادم",
+  "Donor reporting obligations": "التزامات التقارير للمانح",
+  "read from the agreement": "مقروءة من الاتفاقية",
   // receipt log (Clients & quotations)
   "signed quote": "عرض موقّع",
   "Attach the signed QUOTATION returned by the client — a signed receipt goes on its own row in the receipt log below": "أرفق عرض السعر الموقّع من العميل — الإيصال الموقّع يوضع في صفّه الخاص في سجل الإيصالات أدناه",

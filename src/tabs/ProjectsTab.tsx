@@ -9,6 +9,7 @@ import { SharedProps } from "./shared";
 import { ACTIVITY_EDITORS, DIRECTORS, FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
 import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES, CORE_SLOTS, missingCoreDocs } from "../coreDocs";
+import { overdueObligations, daysLate, UNKNOWN_DUE } from "../donorDeadlines";
 
 /** The pages of a project's workspace, in the order they are shown. */
 type WorkspaceTab = "overview" | "papers" | "money" | "reconciliation";
@@ -111,7 +112,16 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
       .reduce((sum: number, bl: any) => sum + (bl.actualUSD || 0), 0);
     const unspent = Math.max(0, (proj.budgetUSD || 0) - spent);
     const lapsed = proj.status !== "Completed" && !!proj.endDate && proj.endDate < today ? unspent : 0;
-    return { open, overdue, docs, missing, missingDocs, spent, unspent, lapsed };
+    // What the donor's own agreement says is due, as opposed to what the timeline generator
+    // guessed. An obligation with no date is not "nothing due" — it is a deadline nobody can
+    // state, which is its own kind of exposure and is shown as one.
+    const obligations = state.projectActivities.filter((a: any) => a.projectId === proj.id && a.source === "agreement");
+    const lateReport = overdueObligations(obligations as any, today)[0] || null;
+    const unknownDue = obligations.find((a: any) => a.status !== "Done" && !a.dueDate) || null;
+    const nextReport = obligations
+      .filter((a: any) => a.status !== "Done" && a.dueDate >= today)
+      .sort((a: any, b: any) => a.dueDate.localeCompare(b.dueDate))[0] || null;
+    return { open, overdue, docs, missing, missingDocs, spent, unspent, lapsed, obligations, lateReport, unknownDue, nextReport };
   };
   // The door lists every project the viewer may see. `requestableProjects` is the PICKER list
   // — it drops completed grants so a settled budget cannot take a new charge — and using it
@@ -176,6 +186,21 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             ⏳ ended {proj.endDate} and still open
                           </p>
                         )}
+                        {/* The donor's own deadline, read from the agreement. Late first, then a
+                            deadline nobody can state, then the next one coming. */}
+                        {a.lateReport ? (
+                          <p className="text-[10px] font-bold text-red-700 mb-1">
+                            📄 <span dir="ltr">{a.lateReport.dueDate}</span> · {t("donor report")} {daysLate(a.lateReport.dueDate, today)} {t("days overdue")}
+                          </p>
+                        ) : a.unknownDue ? (
+                          <p className="text-[10px] font-bold text-amber-700 mb-1">
+                            📄 {t("reporting")} {UNKNOWN_DUE} — {t("the agreement is not on file")}
+                          </p>
+                        ) : a.nextReport ? (
+                          <p className="text-[10px] text-slate-500 mb-1">
+                            📄 {t("next donor report")} <span dir="ltr">{a.nextReport.dueDate}</span>
+                          </p>
+                        ) : null}
                         <h4 className="text-sm font-bold text-slate-900 font-sans mb-1">{proj.name}</h4>
                         <p className="text-xs text-slate-500 mb-1">{t("Donor Partner")}: {donor?.name || "Restricted Donor"}</p>
                         <p className="text-[10px] text-slate-400 mb-3">🏛 {proj.stream || "— program unassigned"}</p>
@@ -1230,6 +1255,41 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                         to scroll. The sections themselves are untouched. */}
                       {projectWorkspaceTab === "overview" && (
                         <div className="space-y-6">
+                        {/* ── Donor reporting obligations ───────────────────
+                            Read out of the signed agreement, each row naming the file it came
+                            from. Where the agreement is missing the row says the deadline is
+                            unknown rather than leaving a blank that reads as "nothing due". */}
+                        {(() => {
+                          const obs = state.projectActivities
+                            .filter((a: any) => a.projectId === selectedProjectId && a.source === "agreement")
+                            .sort((a: any, b: any) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"));
+                          if (!obs.length) return null;
+                          return (
+                            <div className="space-y-2">
+                              <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">
+                                📄 {t("Donor reporting obligations")} <span className="text-[10px] font-normal normal-case text-slate-400">— {t("read from the agreement")}</span>
+                              </h4>
+                              <div className="border border-slate-200 rounded-lg divide-y divide-slate-100">
+                                {obs.map((o: any) => {
+                                  const late = o.status !== "Done" && !!o.dueDate && o.dueDate < today;
+                                  return (
+                                    <div key={o.id} className="p-3 flex gap-3 items-start">
+                                      <span className={`text-[10px] font-mono font-bold whitespace-nowrap ${late ? "text-red-700" : o.status === "Done" ? "text-emerald-700" : o.dueDate ? "text-slate-600" : "text-amber-700"}`} dir={o.dueDate ? "ltr" : undefined}>
+                                        {o.dueDate || UNKNOWN_DUE}
+                                      </span>
+                                      <div className="min-w-0">
+                                        <p className={`text-xs font-bold ${late ? "text-red-800" : "text-slate-800"}`}>
+                                          {o.status === "Done" ? "✓ " : late ? `⚠ ${daysLate(o.dueDate, today)} ${t("days overdue")} — ` : ""}{o.title}
+                                        </p>
+                                        <p className="text-[11px] text-slate-500 whitespace-pre-line">{o.detail}</p>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         {/* ── Core project documents ───────────────────────
                             The four papers a project must always carry: what we promised
                             (proposal), when (timetable), for how much (budget), and on what

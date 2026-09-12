@@ -14,7 +14,11 @@
  * single row.
  */
 
-export type CoreDoc = { category: string; filename: string; refNo?: string | null; created_at?: string };
+export type CoreDoc = {
+  category: string; filename: string; refNo?: string | null; created_at?: string;
+  /** The register row survived the August 2026 vault loss but its bytes did not. */
+  fileMissing?: boolean;
+};
 
 /** Lowercase, drop bracketed suffixes and punctuation, collapse spaces. */
 export const normCategory = (s: string) =>
@@ -67,6 +71,10 @@ export const newestFirst = (a: CoreDoc, b: CoreDoc) =>
  */
 export function pickCoreDoc<T extends CoreDoc>(key: string, re: RegExp, docs: T[]): T | undefined {
   const wanted = CORE_CATEGORIES[key] || [];
+  // A row pointing at a file that is gone cannot fill a slot — the paper is what an
+  // auditor asks for, not the register entry. This is how MediaMig's missing agreement
+  // becomes visible instead of silently counting.
+  docs = docs.filter(d => !d.fileMissing);
   const byCategory = docs.filter(d => {
     const c = normCategory(d.category);
     return wanted.some(w => c === w || c === `${w}s`);

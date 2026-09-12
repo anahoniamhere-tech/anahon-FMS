@@ -17,6 +17,7 @@ import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITOR
 import { deskItems } from "./src/workflow.js";
 import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
+import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
 import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type Movement, type Repair } from "./src/equipment.js";
 import webpush from "web-push";
@@ -796,7 +797,12 @@ async function loadState(viewer?: any) {
       contentHash: d.contentHash,
       note: d.note,
       receiptNo: d.receiptNo,
-      receiptSigned: d.receiptSigned
+      receiptSigned: d.receiptSigned,
+      // A register row whose file is gone is not a filed document: SKF MediaMig's
+      // "signed agreement" is one of the ~107 August-2026 casualties, and while the row
+      // counted, the project looked papered. One stat per document per state load.
+      // ponytail: stat on the read path, cache if state ever gets slow.
+      fileMissing: (() => { const f = vaultPathFromPointer(d.base64 || ""); return !!f && !fs.existsSync(f); })()
     })),
     auditLogs,
     auditLogTotal: auditTotal,
@@ -3547,8 +3553,13 @@ async function buildTimelineFor(projectId: string) {
       done: burn >= 0.5, evidence: `burn is ${(burn * 100).toFixed(0)}% of the approved budget` },
     { key: "end", title: "Activities end", kind: "Milestone", due: project.endDate,
       done: past(project.endDate), evidence: "the end date has passed" },
-    { key: "report", title: "Final report submitted to the donor", kind: "Report", due: project.endDate ? addMonths(project.endDate, 1) : "",
-      done: has(/report/), evidence: "a report document is filed against the project" },
+    // The invented reporting date — end date plus a month — only stands where nobody has
+    // read the agreement. Once a grant's real obligations are on file (src/donorDeadlines.ts)
+    // this step would contradict them, and its "any file called a report closes it" test is
+    // what let TRF read as reported while its financial report was ten weeks late.
+    ...(DOCUMENTED_PROJECT_IDS.includes(projectId) ? [] : [
+      { key: "report", title: "Final report submitted to the donor", kind: "Report", due: project.endDate ? addMonths(project.endDate, 1) : "",
+        done: has(/report/), evidence: "a report document is filed against the project" }]),
     { key: "closeout", title: "Grant closed out", kind: "Milestone", due: project.endDate ? addMonths(project.endDate, 2) : "",
       done: project.status === "Completed", evidence: "the project is marked Completed" }
   ];
