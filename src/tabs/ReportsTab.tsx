@@ -178,7 +178,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                       )}
                       {!!reportData.statement.unclassified?.length && (
                         <p className="text-[10px] text-red-800 bg-red-50 border border-red-200 rounded px-2 py-1.5 mt-2">
-                          {t("Postings the statement could not place")}: {reportData.statement.unclassified.map((u: any) => `${u.code} (${formatUSD(u.amount)})`).join(", ")}
+                          {t("Postings the statement could not place")}: <span dir="ltr">{reportData.statement.unclassified.map((u: any) => `${u.code} (${formatUSD(u.amount)})`).join(", ")}</span>
                         </p>
                       )}
                       <details className="mt-2">
