@@ -38,6 +38,21 @@ mkdir -p "$PULL" "$STAGE"
 trap 'rm -rf "$PULL"' EXIT
 
 echo "== $(date '+%F %T') start"
+
+# Already a complete set for today? Then this is a catch-up trigger firing after a good run.
+#
+# The triggers exist because 03:00 is missed whenever the laptop is asleep or off, and a
+# LaunchAgent's missed calendar event does not reliably fire later: on 12 Sep 2026 launchd
+# reported runs = 0 for the day and the newest set on Drive was 11 Sep. A backup that silently
+# does not happen is the one failure this script exists to prevent, so it is now triggered more
+# than once and made cheap to re-run rather than trusted to a single moment in the night.
+if [ -f "$DRIVE/fms-database-$STAMP.db.enc" ] \
+   && [ -f "$DRIVE/document-vault-$STAMP.tar.gz.enc" ] \
+   && [ -f "$DRIVE/workbench-$STAMP.tar.gz.enc" ] \
+   && [ "${FORCE:-}" != "1" ]; then
+  echo "today's set is already on Drive — nothing to do"; exit 0
+fi
+
 newest() {  # newest <mount path> -> youngest snapshot name, by creation time. Never by name: the
   # hand-named pre-<thing>-<stamp> safety snapshots other rooms leave sort after the hourly ones.
   ssh -o BatchMode=yes -o ConnectTimeout=15 "$NAS" "/usr/sbin/zfs list -H -t snapshot -o name -s creation ${1#/mnt/} | tail -1 | cut -d@ -f2"
@@ -90,6 +105,19 @@ cp "$(dirname "$0")/../RESTORE-FMS-BACKUP.txt" "$DRIVE/" 2>/dev/null || true
 # in a local ledger and pruned by name; the Drive folder is never listed.
 LEDGER="$STAGE/drive-sets.txt"
 echo "$STAMP" >> "$LEDGER"
+# ...but a ledger drifts, and on 12 Sep 2026 it had: it listed 10 and 12 while Drive actually
+# held 10, 11 and 12. Set 11 was orphaned — invisible to prune, so never removed, so "keep the
+# newest two" had quietly become "keep the two I remember, plus any I forgot". A slow leak
+# rather than a risk to the data, but the promise was not being kept.
+#
+# So: when the folder CAN be listed, believe the folder and rewrite the ledger from it. Under
+# launchd TCC refuses the listing and this is a no-op, which is exactly the case the ledger was
+# written for — it just stops being the only source of truth when a better one is available.
+PRESENT=$(ls "$DRIVE" 2>/dev/null | sed -n 's/^fms-database-\(.*\)\.db\.enc$/\1/p' || true)
+if [ -n "$PRESENT" ]; then
+  printf '%s\n' $PRESENT "$STAMP" | sort -u > "$LEDGER"
+  echo "  ledger reconciled from the folder: $(sort -ur "$LEDGER" | tr '\n' ' ')"
+fi
 prune() {
   sort -ur "$LEDGER" | tail -n +$((KEEP+1)) | while read -r s; do
     [ "$s" = "$STAMP" ] && continue   # never the set just uploaded
