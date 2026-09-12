@@ -233,6 +233,16 @@ ok("a table cell isolates on an inner span, not the cell",
 // source to a fifth are safe purely because of a layout class on the parent, so "there is
 // Arabic in the row" is never the test. An element-bounded rule sidesteps all of it.
 //
+// DO NOT "fix" a symbol's side inside an Arabic string by reading the source. Inside RTL text
+// the stored side is the OPPOSITE of the displayed side, measured on the real strings:
+//
+//   i18n "…تعديلان مشمولان، +30$ للإضافي"   stored 30$  ->  renders $30   (correct as stored)
+//   the same string rewritten to "+$30"     stored $30  ->  renders 30$   (would break it)
+//
+// So a translated string that looks wrong in the editor is usually right on screen, and
+// editing it to match the English source inverts it. Measure, never eyeball. No rule guards
+// this: it is one line of prose per translator, and the check cannot read intent.
+//
 // KNOWN BLIND SPOT: a figure built inside a template literal and then rendered as text —
 // `${u.code} (${formatUSD(u.amount)})` joined into a sentence — is masked by maskStrings and
 // invisible here, yet it DOES have an element to carry dir. Books found one that way by
