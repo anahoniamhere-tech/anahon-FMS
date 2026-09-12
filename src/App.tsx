@@ -76,7 +76,6 @@ import EditorialTab from "./tabs/EditorialTab";
 import NetworkTab from "./tabs/NetworkTab";
 import ToolsTab from "./tabs/ToolsTab";
 import ArchiveTab from "./tabs/ArchiveTab";
-import SocialTab from "./tabs/SocialTab";
 import LiveTab from "./tabs/LiveTab";
 import RoleSwitch, { ActingBanner } from "./RoleSwitch";
 import { searchHits, SearchHits } from "./globalSearch";
@@ -535,6 +534,10 @@ export default function App() {
     // What a role may open is decided by the sidebar data, never by a second list here.
     const role = u?.role || "";
     const allowed = visibleNav(role).flatMap(sec => sec.items.map(i => i.navKey));
+    // "social" was a door of its own until 12 Sep 2026, when it merged into the Newsroom. An old
+    // bookmark, push notification or calendar link still carries it; send it to the door that
+    // holds that work now rather than bouncing the person home.
+    if (activeTab === "social" && allowed.includes("editorial")) return setActiveTab("editorial");
     if (!allowed.includes(activeTab)) setActiveTab(LANDING[role] || allowed[0] || "doors");
   }, [state, activeUserId, activeTab]);
 
@@ -1441,7 +1444,6 @@ export default function App() {
           {activeTab === "network" && <NetworkTab {...shared} />}
           {activeTab === "tools" && <ToolsTab {...shared} />}
           {activeTab === "archive" && <ArchiveTab {...shared} />}
-          {activeTab === "social" && <SocialTab {...shared} />}
           {activeTab === "live" && <LiveTab {...shared} />}
           {activeTab === "handbooks" && <HandbooksTab {...shared} />}
           {activeTab === "help" && <HelpTab {...shared} />}

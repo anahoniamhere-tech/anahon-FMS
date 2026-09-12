@@ -190,9 +190,9 @@ assert.strictEqual(improvised.text, "T\n\nB", "with no Caption, title and brief 
 assert.strictEqual(socialRendition(null).source, "improvised", "no piece, no caption");
 assert.strictEqual(socialRendition({ title: "T", brief: "" }).text, "T", "an empty brief adds no blank lines");
 // The composer must read the rule, not assemble its own text.
-const socialSrc = readFileSync(new URL("../src/tabs/SocialTab.tsx", import.meta.url), "utf8");
+const socialSrc = readFileSync(new URL("../src/tabs/ChannelPanel.tsx", import.meta.url), "utf8");
 assert.ok(/setMessage\(socialRendition\(/.test(socialSrc),
-  "SocialTab must fill the message from socialRendition(), not from title + brief");
+  "the channel panel must fill the message from socialRendition(), not from title + brief");
 assert.ok(!/setMessage\(`\$\{it\.title\}/.test(socialSrc),
   "the old title+brief assembly must be gone from the composer");
 

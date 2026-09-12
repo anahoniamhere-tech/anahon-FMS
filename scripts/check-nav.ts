@@ -46,9 +46,12 @@ const addedSelf = ["doors", "handbooks", "help", "mydesk"]; // self-service had 
 // Seats placed in phase 2 (they had no login before, so there is no "before" to compare):
 const placed: Record<string, string[]> = {
   "Procurement and Logistics Officer": ["doors", "mydesk", "help", "handbooks", "projects", "network", "procurement", "vendors", "subscriptions", "expenses", "assets", "payroll"],
-  "Digital Officer": ["doors", "mydesk", "help", "handbooks", "social", "live", "archive", "tools", "network", "payroll"],
-  "Chief Editor": ["doors", "mydesk", "help", "handbooks", "editorial", "social", "live", "archive", "payroll"],
-  "Production Manager": ["doors", "mydesk", "help", "handbooks", "editorial", "social", "live", "archive", "payroll"],
+  // The Social desk merged into the Newsroom (navKey "editorial") on 12 Sep 2026, so the
+  // Digital Officer reaches the same work through one door instead of two. The server already
+  // sent this seat every content item, and /api/content/* is still not in DIGITAL_ALLOWED_POSTS.
+  "Digital Officer": ["doors", "mydesk", "help", "handbooks", "editorial", "live", "archive", "tools", "network", "payroll"],
+  "Chief Editor": ["doors", "mydesk", "help", "handbooks", "editorial", "live", "archive", "payroll"],
+  "Production Manager": ["doors", "mydesk", "help", "handbooks", "editorial", "live", "archive", "payroll"],
   "Graphic Designer": ["editorial", "help", "handbooks", "mydesk", "doors"],
 };
 for (const [role, want] of Object.entries(placed)) ok(`${role}: ${want.length} doors`, same(keys(role), [...want].sort()), `got ${keys(role).join(",")}`);

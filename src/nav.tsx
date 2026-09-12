@@ -1,7 +1,7 @@
 import React from "react";
 import {
   Activity, Archive, BookOpen, Briefcase, Building, Coins, FileText, FolderGit2, HardDrive,
-  Layers, LayoutGrid, Megaphone, Newspaper, PencilLine, RefreshCw, Share2,
+  Layers, LayoutGrid, Newspaper, PencilLine, RefreshCw, Share2,
   ShieldAlert, Sliders, User, UserCheck, Users,
 } from "lucide-react";
 
@@ -57,8 +57,13 @@ export const NAV: NavSection[] = [
     section: "Editorial",
     roles: ["*full", ...OFFICER, ...CREW, ...EDITORS, ...DIGITAL],
     items: [
-      { navKey: "editorial", label: "Editorial desk", icon: ic(Newspaper), roles: ["*full", ...OFFICER, ...CREW, ...EDITORS] },
-      { navKey: "social", label: "Social desk", icon: ic(Megaphone), roles: ["*full", ...EDITORS, ...DIGITAL] },
+      // One door, 12 Sep 2026: the piece is the unit of work and the website, Facebook and
+      // Instagram are its channels, so the Social desk folded into this screen. The navKey stays
+      // "editorial" on purpose — workflow.ts routes its editorial rules to door "editorial", and
+      // that file belongs to Home & desk. The Digital Officer joins the door they used to reach
+      // through "social"; the server already sends them every content item, and /api/content/* is
+      // still not in DIGITAL_ALLOWED_POSTS, so they see the register and work the channels only.
+      { navKey: "editorial", label: "Newsroom", icon: ic(Newspaper), roles: ["*full", ...OFFICER, ...CREW, ...EDITORS, ...DIGITAL] },
     ],
   },
   {

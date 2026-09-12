@@ -193,3 +193,44 @@ assert.ok(/contentHash/.test(pub), "the published filename must derive from the 
 assert.ok(!/Date\.now\(\)/.test(pub), "…so no timestamp in the name");
 
 console.log("check-social: image-public asserts passed");
+
+/* ── the Newsroom merge (12 Sep 2026) ─────────────────────────────────────────
+ * The Social desk folded into the Editorial screen: the piece is the unit of work and
+ * Facebook/Instagram are its channels. These asserts pin the SHAPE of that merge — that the
+ * gate did not move with it, and that configuration left the daily door. They deliberately do
+ * not restate any rule; editorialGates.ts is checked by check-editorial-gates.ts. */
+import { readFileSync, existsSync } from "node:fs";
+const at = (p: string) => new URL(p, import.meta.url);
+const src = (p: string) => readFileSync(at(p), "utf8");
+
+assert.ok(!existsSync(at("../src/tabs/SocialTab.tsx")), "the separate Social desk screen is gone");
+const nav = src("../src/nav.tsx");
+assert.ok(!/navKey: "social"/.test(nav), "…and so is its door");
+assert.ok(/navKey: "editorial", label: "Newsroom"/.test(nav), "the merged door is the Newsroom");
+assert.ok(/navKey: "editorial"[\s\S]{0,200}?DIGITAL/.test(nav),
+  "the Digital Officer reaches it — losing the social door must not cost them the work");
+const app = src("../src/App.tsx");
+assert.ok(/activeTab === "social"[\s\S]{0,120}?setActiveTab\("editorial"\)/.test(app),
+  "an old ?door=social link lands on the Newsroom, not back at the doors screen");
+
+// The channel panel is where the composer lives now, and it asks the SAME two functions the
+// Social desk asked — imported from editorialGates, not reimplemented beside it.
+const panel = src("../src/tabs/ChannelPanel.tsx");
+assert.ok(/from "\.\.\/editorialGates"/.test(panel), "the channel panel imports the gate, it does not restate it");
+assert.ok(/socialPostBlockers\(item\)/.test(panel), "…and asks it about the piece it belongs to");
+assert.ok(/socialRendition\(item\)/.test(panel), "…and takes the caption from the piece");
+assert.ok(!/socialPostBlockers\s*=\s*|function socialPostBlockers/.test(panel), "no local copy of the blocker list");
+
+// Connecting a Page, its tokens and removing an account are configuration: they are in Admin.
+const admin = src("../src/tabs/MetaAccounts.tsx");
+for (const r of ["/api/social/meta/connect", "/api/social/accounts/remove"]) {
+  assert.ok(admin.includes(r), `${r} belongs to Settings & compliance`);
+  assert.ok(!src("../src/tabs/EditorialTab.tsx").includes(r) && !panel.includes(r),
+    `${r} must not be reachable from the daily door`);
+}
+assert.ok(/MetaAccounts/.test(src("../src/tabs/ComplianceTab.tsx")), "…and Settings & compliance actually renders it");
+// What editors still need to see there: whether the tokens are healthy, read-only.
+assert.ok(/export function TokenHealth/.test(panel) && /<TokenHealth/.test(src("../src/tabs/EditorialTab.tsx")),
+  "the Newsroom keeps a read-only token-health line");
+
+console.log("check-social: Newsroom merge asserts passed");

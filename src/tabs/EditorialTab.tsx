@@ -9,6 +9,9 @@ import Info from "../Info";
 import { CONTENT_EDITORS, CREW, ALL_ROLES } from "../roles";
 import { withTicket } from "../docTicket";
 import EditorialMap from "./EditorialMap";
+import ChannelPanel, { TokenHealth } from "./ChannelPanel";
+import NetworkPanel from "./NetworkPanel";
+import { SITE_EDITORS } from "../roles";
 
 // Editorial pipeline (Policies 002 & 005). The tab renders the register and the
 // buttons; every rule lives server-side — the same publishBlockers() the server
@@ -136,6 +139,17 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
   };
 
   const isEditor = EDITOR_ROLES.includes(currentUser.role);
+  // Facebook/Instagram, merged in from the old Social desk (12 Sep 2026): the connected Pages and
+  // the post queue are loaded once for the door and handed to whichever piece's drawer is open.
+  // Connecting and disconnecting a Page is configuration and lives in Settings & compliance; what
+  // stays here is read-only health, plus the per-piece composer and its rows.
+  const canPost = SITE_EDITORS.includes(currentUser.role);
+  const [social, setSocial] = useState<{ status: any; rows: any[] }>({ status: null, rows: [] });
+  const loadSocial = () => {
+    fetch("/api/social/status").then(r => r.json()).then(st => setSocial(s0 => ({ ...s0, status: st }))).catch(() => setSocial(s0 => ({ ...s0, status: { ok: false } })));
+    fetch("/api/social/queue").then(r => r.json()).then(d => setSocial(s0 => ({ ...s0, rows: d.ok ? d.rows : [] }))).catch(() => setSocial(s0 => ({ ...s0, rows: [] })));
+  };
+  useEffect(() => { loadSocial(); const t0 = setInterval(loadSocial, 60_000); return () => clearInterval(t0); }, []);
   // The seat worn right now (Act as…), else the person's own role. On a REHEARSAL the server checks
   // each step against this seat, so the drawer does too; on a real piece nothing here changes.
   const seat: string = (window as any).__actingAs || currentUser.role;
@@ -471,11 +485,13 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-bold flex items-center gap-2"><Newspaper className="h-5 w-5" /> {t("Editorial Desk")}</h2>
+        <h2 className="text-xl font-bold flex items-center gap-2"><Newspaper className="h-5 w-5" /> {t("Newsroom")}</h2>
         <p className="text-xs text-slate-500">
+          One chain for every channel — the website, Facebook and Instagram are outputs of the same piece.
           Policies 002 & 005, enforced: named independent fact-checker, dual approval (Production Manager + Programs Director),
           legal review when flagged, public dated corrections. The server refuses what the policy refuses.
         </p>
+        <TokenHealth status={social.status} t={t} />
       </div>
 
       {/* Stage 1 of the visual builder: the chain, drawn live from workflow.ts + editorialGates.ts.
@@ -1153,6 +1169,36 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       Array.from(e.dataTransfer.files).forEach((f: File) => uploadItemFile(item, f));
                     }}>
                     {item.brief && <p className="text-slate-600">{item.brief}</p>}
+
+                    {/* Where it stands, in one strip: the step, who owes it, and what still blocks
+                        publication. The blocker list is publishBlockers() — the same sentences the
+                        server refuses with, shown here from the first day rather than only at the
+                        last gate, so nobody reaches Approved and discovers the work left. */}
+                    {(() => {
+                      const OWES: Record<string, [string, string]> = {
+                        "Assigned": [nameOf(item.assigneeUserId), t("to start production")],
+                        "In Production": [nameOf(item.assigneeUserId), t("to send it to fact-check")],
+                        "Fact-Check": [item.rehearsal ? (item.factCheckerAs || "—") : nameOf(item.factCheckerUserId), t("to pass the fact-check")],
+                        "Editorial Review": [t("the Production Manager and the Programs Director"), t("to approve it — two different people")],
+                        "Approved": [t("an editor"), t("to publish it")],
+                        "Published": ["", ""]
+                      };
+                      const [who, what] = OWES[item.status] || ["", ""];
+                      return (
+                        <div className="rounded border border-slate-200 bg-slate-50 p-2 space-y-1">
+                          {who && <p className="text-[11px] text-slate-700"><b>{t("Next")}</b>: {who} — {what}</p>}
+                          {item.status === "Published" && <p className="text-[11px] text-emerald-700">{t("Published")} {item.publishedAt ? item.publishedAt.slice(0, 10) : ""}</p>}
+                          {blockers.length > 0 && item.status !== "Published" && (
+                            <>
+                              <p className="text-[10px] font-bold uppercase text-slate-500">{t("Still blocking publication")}</p>
+                              <ul className="text-[10px] text-red-600 list-disc ms-4">
+                                {blockers.map((b, i) => <li key={i}>{b}</li>)}
+                              </ul>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
                     <p className="text-[10px] text-slate-400 font-mono flex flex-wrap items-center gap-2">
                       <span>
                         {t("Channels")}: {item.channels.join(", ") || "—"} · daily meeting {item.assignedMeetingDate || "—"}
@@ -1492,6 +1538,12 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       </div>
                     )}
 
+                    {/* The piece's channels. Facebook and Instagram were a separate desk until
+                        12 Sep 2026; the gate they answer to did not change with the move. */}
+                    <ChannelPanel item={item} accounts={social.status?.accounts || []}
+                      rows={social.rows.filter((r: any) => r.contentItemId === item.id)}
+                      reload={loadSocial} canPost={canPost} triggerToast={triggerToast} t={t} />
+
                     {item.rehearsal && (
                       <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">
                         <p className="font-bold"><span className="inline-flex items-center gap-1 align-middle">{ic(Drama, "h-3 w-3")}{t("REHEARSAL")}</span> — {t("Rehearsal — walk the whole chain alone, taking each step in a different seat with Act as…. Publishing it never leaves the FMS.")}</p>
@@ -1538,6 +1590,14 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                           title={blockers.join("\n")}
                           className="bg-red-600 hover:bg-red-700 text-white rounded px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
                           🚀 {t("Publish")}
+                          {/* One action, and it says where it goes: the site only when Website is a
+                              channel of the piece (the server's own rule), plus every social post
+                              already drafted against it, which the gate releases at the same moment. */}
+                          <span className="opacity-70"> · {item.rehearsal ? t("nothing leaves the FMS") : [
+                            (!item.channels.length || item.channels.includes("Website")) ? t("the website") : "",
+                            social.rows.filter((r: any) => r.contentItemId === item.id && r.state === "Draft").length
+                              ? `${social.rows.filter((r: any) => r.contentItemId === item.id && r.state === "Draft").length} ${t("waiting social post(s)")}` : ""
+                          ].filter(Boolean).join(" + ") || t("nothing — no channel ticked")}</span>
                         </button><Info id="two-approvers" lang={lang} /></>
                       )}
                       {(item.status !== "Published" || item.rehearsal) && isEditor && (
@@ -1545,11 +1605,6 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                           className="text-red-600 hover:bg-red-50 rounded px-3 py-1.5">{t("Delete")}</button>
                       )}
                     </div>
-                    {item.status === "Approved" && blockers.length > 0 && (
-                      <ul className="text-[10px] text-red-600 list-disc ms-4">
-                        {blockers.map((b, i) => <li key={i}>{b}</li>)}
-                      </ul>
-                    )}
                   </div>
                 )}
               </div>
@@ -1557,6 +1612,9 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
           })}
         </div>
       </div>
+
+      <NetworkPanel accounts={social.status?.accounts || []} role={currentUser?.role}
+        canPost={canPost} triggerToast={triggerToast} t={t} />
     </div>
   );
 }

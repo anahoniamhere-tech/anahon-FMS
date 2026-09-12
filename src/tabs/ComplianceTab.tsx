@@ -4,7 +4,8 @@ import { RefreshCw, Settings, ShieldAlert } from "lucide-react";
 import { Project } from "../types";
 import { STREAMS } from "../constants";
 import { SharedProps } from "./shared";
-import { ALL_ROLES } from "../roles";
+import { ALL_ROLES, SITE_EDITORS } from "../roles";
+import MetaAccounts from "./MetaAccounts";
 
 export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput, refreshState, setEurRateInput, setLbpRateInput, state, t, triggerToast }: SharedProps) {
   // Gemini Compliance scan response
@@ -128,6 +129,10 @@ export default function ComplianceTab({ currentUser, eurRateInput, lbpRateInput,
                   </div>
                 </div>
               )}
+
+              {/* The Pages the Newsroom publishes to — connection and tokens are configuration,
+                  moved out of the daily door 12 Sep 2026. */}
+              <MetaAccounts canManage={SITE_EDITORS.includes(currentUser.role)} triggerToast={triggerToast} t={t} />
 
               {/* Org broad FX update configuration details inline */}
               <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm space-y-4">
