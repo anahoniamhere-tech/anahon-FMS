@@ -23,8 +23,18 @@ const BASE = {
 };
 const TRF = { code: "TRF-2026", name: "Trust Fund for Media" };
 const doc = (o: any) => contractHtml({ ...BASE, ...o } as any);
-const text = (o: any) => doc(o).replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
-const h1 = (o: any) => (doc(o).match(/<h1>([^<]*)<\/h1>/) || [, "?"])[1];
+const dropAr = (h: string) => h
+  .replace(/<span class="alt"[^>]*>[\s\S]*?<\/span>/g, "")
+  .replace(/<section class="lang ar"[\s\S]*?<\/section>/g, "")
+  .replace(/<p class="note ar"[\s\S]*?<\/p>/g, "");
+const text = (o: any) => dropAr(doc(o)).replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+/** The Arabic section and Arabic notes only. */
+const arText = (o: any) => {
+  const h = doc(o);
+  return [...h.matchAll(/<section class="lang ar"[\s\S]*?<\/section>|<span class="alt"[^>]*>[\s\S]*?<\/span>|<p class="note ar"[\s\S]*?<\/p>/g)]
+    .map(m => m[0]).join(" ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+};
+const h1 = (o: any) => (dropAr(doc(o)).match(/<h1>([\s\S]*?)<\/h1>/) || [, "?"])[1].replace(/<[^>]+>/g, "").trim();
 
 const FRAMEWORK = { reference: "ANH-EC-SK-2026-01", startDate: "2026-01-01", endDate: "2026-12-31" };
 const SUB = { reference: "TRF-2026-SC-SK-2026-02", project: TRF, monthlyFee: 800, contractTotal: 4000 };
@@ -226,13 +236,50 @@ ok("the payslip prints it only to say a person is NOT one", (() => {
   return prose.length === 1 && prose[0].includes("not as an employee");
 })(), (payslipSrc.match(/.{0,70}employee.{0,30}/gi) || []).filter(h => !/employee:/.test(h)).join(" | "));
 ok("the payslip names the counterparty a service provider",
-  payslipSrc.includes("<caption>Service provider</caption>") && payslipSrc.includes("<div>Service provider — "));
+  /cap\("Service provider", "مقدّم الخدمة"\)/.test(payslipSrc) && payslipSrc.includes("<div>Service provider — "));
 ok("a term with legal meaning is NOT quietly reworded — withholding still keys on isService",
   /isService[\s\S]{0,400}7\.5% withholding tax/.test(gen));
 ok("and the nil month states the rule, not an entitlement",
   payslipSrc.includes("with no project there is no payment") && payslipSrc.includes("the annual contract remains active"));
 ok("the payslip says the tax and social-security treatment is unconfirmed, not settled",
   payslipSrc.includes("pending confirmation of the tax and social-security treatment"));
+
+console.log("\nK. the Arabic text of the same instrument");
+// The documents are bilingual: Arabic text first, then the English text of the same contract.
+// Figures and dates are NOT repeated per language — they live once in the particulars — so the
+// two readings cannot state different amounts, and nobody has to decide which copy governs.
+const arFramework = arText(FRAMEWORK);
+const arSub = arText({ ...SUB, loePct: 20, monthlyFee: 312, parentReference: "ANH-EC-SK-2026-01", fullSalary: 1560 });
+ok("the annual contract carries an Arabic title", arFramework.includes("عقد خدمات سنوي"));
+ok("a subcontract carries its own", arText(SUB).includes("عقد فرعي"));
+ok("a service agreement carries its own", arText({ kind: "Service", contractTotal: 2000 }).includes("اتفاقية خدمات"));
+ok("every particulars label has an Arabic twin",
+  ["المرجع", "مقدّم الخدمة", "الشروط المرجعية", "نوع العقد", "المدة", "إجمالي قيمة العقد", "يُدفع من"]
+    .every(l => arFramework.includes(l)));
+ok("the four clauses are numbered in Arabic", ["١. الارتباط", "٣. الدفع", "٤. أحكام أخرى"].every(h => arFramework.includes(h)));
+// Saad's rule has to survive translation, not just appear in it.
+ok("the pay rule is stated in Arabic", arText({ reference: "ANH-EC-SK-2026-01", monthlyFee: 1560 })
+  .includes("بلا مشروع لا يوجد دفع، ويبقى هذا العقد سارياً في كل الأحوال"));
+ok("the Arabic says a subcontract BUYS a level of effort", arSub.includes("يشتري هذا العقد الفرعي نسبة جهد منه لهذا المشروع وحده"));
+ok("and that the annual contract survives it", arSub.includes("ويبقى العقد السنوي سارياً"));
+ok("a missing annual contract is stated in Arabic too",
+  arText({ ...SUB, parentReference: null }).includes("لا يوجد عقد سنوي في ملف"));
+ok("the Arabic replaces-clause names the contract it replaces",
+  arText({ reference: "ANH-EC-SK-2027-01", monthlyFee: 1300, supersedesReference: "ANH-EC-SK-2026-09" })
+    .includes("محلّ العقد السنوي"));
+// A number or a Latin name inside RTL prose must be bidi-isolated or an adjacent comma jumps.
+ok("figures and Latin names inside the Arabic prose are isolated", (() => {
+  const raw = doc({ ...SUB, loePct: 20, monthlyFee: 312, parentReference: "ANH-EC-SK-2026-01", fullSalary: 1560 });
+  const arSection = (raw.match(/<section class="lang ar"[\s\S]*?<\/section>/) || [""])[0];
+  const bare = arSection.replace(/<span dir="ltr" class="num">[\s\S]*?<\/span>/g, "");
+  // no unisolated $ amount, no unisolated reference, no unisolated Latin name
+  return !/\$[\d,]/.test(bare) && !/ANH-EC-|TRF-2026/.test(bare) && !/Sally Kayyali/.test(bare);
+})());
+ok("Arabic dates use Arabic month names and Western digits",
+  arFramework.includes("كانون الأول") && /\d{4}/.test(arFramework) && !/[٠-٩]/.test(arFramework.replace(/[١٢٣٤]\./g, "")));
+ok("the document says it is bilingual, and why the figures appear once",
+  arFramework.includes("هذا المستند ثنائي اللغة") && arFramework.includes("مرة واحدة فقط"));
+ok("no Arabic string fell back to English inside the Arabic section", !/Remuneration|Engagement|Other terms/.test(arFramework));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
