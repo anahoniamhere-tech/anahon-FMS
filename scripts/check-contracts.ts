@@ -309,5 +309,27 @@ const ps = fnSrc("payslipHtml");
 ok("the payslip says it too, in both languages",
   ps.includes("the Arabic text governs") && ps.includes("والنص العربي هو الملزم"));
 
+console.log("\nM. the initials in a reference");
+// Every word's first letter, with an override where the person is known by something else.
+// Abdul Rahman El Ibrahim signs as AR, not AREI (Saad, 12 Sep 2026).
+const initSrc = (server.match(/const REFERENCE_INITIALS[\s\S]*?join\(""\)\.toUpperCase\(\);/) || [""])[0];
+const initials = (id: string, name: string) => {
+  const m = initSrc.match(new RegExp(`"${id}": "([A-Z]+)"`));
+  return m ? m[1] : name.trim().split(/\s+/).map(n => n[0]).join("").toUpperCase();
+};
+ok("the override exists and is keyed by party id, not by name",
+  /"emp-abdulrahman": "AR"/.test(initSrc) && !/Abdul Rahman/.test(initSrc));
+ok("Abdul Rahman El Ibrahim is AR", initials("emp-abdulrahman", "Abdul Rahman El Ibrahim") === "AR");
+// The others must be untouched: nobody asked for their references to move.
+ok("Saad Matar is still SM", initials("emp-1", "Saad Matar") === "SM");
+ok("Ahmad Ayshan is still AA", initials("emp-2", "Ahmad Ayshan") === "AA");
+ok("Marwan El Cheikh is still MEC — no rule was applied behind his back",
+  initials("emp-marwan", "Marwan El Cheikh") === "MEC");
+ok("the route uses it", /\$\{initialsFor\(partyKey, party\.name\)\}/.test(server));
+// Initials are cosmetic to the machinery, and this proves the claim rather than assuming it:
+// the parent/supersede lookup compares the trailing YYYY-MM, never the initials.
+ok("changing initials cannot disturb the parent lookup, which compares months",
+  /r\.slice\(-7\) <= startMonth/.test(server) && !/slice\(0, *7\)[\s\S]{0,40}initials/i.test(server));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

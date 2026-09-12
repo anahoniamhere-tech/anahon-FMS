@@ -2275,6 +2275,24 @@ app.post("/api/vendors/phone", async (req, res) => {
 // Nothing is inferred: every figure comes from the request or the database, because an
 // invented number in a signed instrument is a real liability. Countersignatory is looked up
 // from the User table (Policy §4.2 authorised signatories), never hardcoded.
+/**
+ * The initials in a document reference.
+ *
+ * Every word's first letter, with an override where the person is known by something else.
+ * Abdul Rahman El Ibrahim signs as AR, not AREI (Saad, 12 Sep 2026). There is no rule that
+ * yields AR and still leaves "Marwan El Cheikh" as MEC — dropping particles gives MC, capping
+ * at two gives ME — so this is stated as the preference it is rather than dressed up as a rule.
+ *
+ * Keyed by the party's id and never by their name: a name gets re-typed, and a reference must
+ * not shift under a person. References already filed are untouched either way — the reference
+ * is written into the document id when it is archived and read back from there.
+ */
+const REFERENCE_INITIALS: Record<string, string> = {
+  "emp-abdulrahman": "AR",
+};
+const initialsFor = (partyId: string, name: string) =>
+  REFERENCE_INITIALS[partyId] || String(name).trim().split(/\s+/).map(n => n[0]).join("").toUpperCase();
+
 app.post("/api/contracts/generate", async (req, res) => {
   try {
     const { employeeId, vendorId, projectId, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLineId, role, user } = req.body;
@@ -2336,7 +2354,7 @@ app.post("/api/contracts/generate", async (req, res) => {
     const isSub = kindVal === "Employment" && !!project;
     /** The yearly agreement: employment, no project. It is where the full salary is stated. */
     const isFramework = kindVal === "Employment" && !project && !!employeeId;
-    const reference = `${project?.code || "ANH"}-${kindVal === "Service" ? "SA" : isSub ? "SC" : "EC"}-${party.name.split(/\s+/).map((n: string) => n[0]).join("").toUpperCase()}-${startDate.slice(0, 7)}`;
+    const reference = `${project?.code || "ANH"}-${kindVal === "Service" ? "SA" : isSub ? "SC" : "EC"}-${initialsFor(partyKey, party.name)}-${startDate.slice(0, 7)}`;
 
     // The framework contract this subcontract sits under: the same person's most recent
     // project-less employment contract. `undefined` would mean "not looked for"; we always
