@@ -77,9 +77,14 @@ ok("a single-source waiver is still the only way to lodge fewer, and still needs
 console.log("\nF. an RFQ is a question about choosing a supplier — 12 Sep 2026");
 ok("a salary, the rent, CNSS, utilities, bank charges and an FX loss had no supplier to choose",
   ["5100", "5110", "7100", "7200", "7400", "7700"].every(c => NO_SUPPLIER_CHOICE[c]));
-ok("a consultant or a freelancer still does — that choice is competed",
-  !NO_SUPPLIER_CHOICE["5120"] && !NO_SUPPLIER_CHOICE["5130"]);
-ok("so do project costs and equipment", !NO_SUPPLIER_CHOICE["6000"] && !NO_SUPPLIER_CHOICE["6300"] && !NO_SUPPLIER_CHOICE["6400"]);
+// Saad's ruling, 12 Sep 2026: a freelancer or consultant on a grant budget line is engaged
+// under an agreement, not bought. The engagement contract is the paper that supports the fee.
+ok("a freelancer's or a consultant's fee is an engagement, not a purchase",
+  NO_SUPPLIER_CHOICE["5120"] === "a freelancer's fee under an agreement" && NO_SUPPLIER_CHOICE["5130"] === "a consultant's fee under an agreement");
+ok("everything bought from a supplier still is a purchase — project costs, equipment, software, travel",
+  !NO_SUPPLIER_CHOICE["6000"] && !NO_SUPPLIER_CHOICE["6300"] && !NO_SUPPLIER_CHOICE["6400"] && !NO_SUPPLIER_CHOICE["6200"]);
+ok("the exempt list is personnel and premises and nothing else — every code is 5xxx or 7xxx",
+  Object.keys(NO_SUPPLIER_CHOICE).every(c => /^[57]/.test(c)));
 ok("a salary voucher is set aside, with the reason said", noSupplierChoice(["5100"]) === "a salary under an employment contract");
 ok("rent and utilities together read as one sentence", /and/.test(noSupplierChoice(["7100", "7200"])));
 ok("a MIXED voucher is not exempt — paying the rent and buying a lens still contains a purchase",

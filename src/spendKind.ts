@@ -13,14 +13,22 @@
  * account it touches is in this list: a mixed voucher that pays rent and buys a lens still
  * has a purchase in it, and still deserves the question.
  *
- * NOT exempt, deliberately: 5120 Freelancers and 5130 Consultants. A consultant IS chosen,
- * most donors expect that choice to be competed, and Saad's instruction was "salaries and
- * rent". Five of the twenty-eight sit there; if AnaHon decides consultant selection is not a
- * procurement, this is the one line to add.
+ * Freelancers (5120) and consultants (5130) were left OUT of this list when it was first
+ * written, on the reasoning that a consultant is chosen and most donors expect that choice to
+ * be competed. Saad ruled otherwise on 12 Sep 2026: at AnaHon a named researcher or trainer on
+ * a grant budget line is engaged under an agreement, not bought, so the fee is a personnel
+ * cost like any other. His call, recorded here because it is the one line in this file a donor
+ * auditor might question — the answer is that the engagement contract, not a quotation
+ * comparison, is the paper that supports it.
+ *
+ * Still NOT exempt, and this is the whole of the rest: anything bought from a supplier —
+ * project costs (6000), equipment (6300), software (6400), travel (6200), catering, printing.
  */
 export const NO_SUPPLIER_CHOICE: Record<string, string> = {
   "5100": "a salary under an employment contract",
   "5110": "the employer's CNSS contribution, set by law",
+  "5120": "a freelancer's fee under an agreement",
+  "5130": "a consultant's fee under an agreement",
   "7100": "rent under a signed lease",
   "7200": "utilities from the local provider",
   "7400": "bank charges",
