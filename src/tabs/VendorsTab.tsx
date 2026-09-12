@@ -5,7 +5,7 @@ import { Account, Vendor } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { MANAGERS, SUPPLIER_EDITORS } from "../roles";
-import { missingSupplierDocs } from "../supplierDocs";
+import { missingSupplierDocs, PARTY_KINDS, partyKindLabel, isTeamMember } from "../supplierDocs";
 
 export default function VendorsTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, only, formatUSD, handleGenerateContract, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps & { only?: "subscriptions" | "suppliers" }) {
   // Subscriptions sheet (Vendor Registry) — renewal tracking with alerts.
@@ -53,6 +53,34 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
     } catch (err: any) {
       triggerToast(err.message, "error");
     }
+  };
+
+  // A person or an organisation. No confirmation and no reason: unlike engageable, saying what
+  // a party IS permits nothing — it decides which papers the file is asked for, and getting it
+  // wrong is corrected by saying the other one.
+  const handleSetPartyKind = async (vendorId: string, vendorName: string, partyKind: string) => {
+    const res = await fetch("/api/vendors/party-kind", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vendorId, partyKind, user: currentUser }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return triggerToast(data.error || "That was refused.", "error");
+    triggerToast(`${vendorName} — ${partyKind ? partyKindLabel(partyKind).toLowerCase() : "not said yet"}.`);
+    refreshState();
+  };
+
+  // The same person, seen from the register. Suggested by a matching name, confirmed by a human:
+  // the system never decides two rows are one person because the words look alike.
+  const handleLinkLogin = async (vendorId: string, vendorName: string, userEmail: string) => {
+    if (userEmail && !window.confirm(`Is "${vendorName}" the same person as the account ${userEmail}?\n\nAnaHon has no employees — everyone on the team is engaged as a service provider under an annual contract — so this records the normal arrangement and points this row at their personnel file.`)) return;
+    const res = await fetch("/api/vendors/link-login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vendorId, userEmail, user: currentUser }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return triggerToast(data.error || "That was refused.", "error");
+    triggerToast(userEmail ? `${vendorName} — team member, engaged as a service provider.` : `${vendorName} — unlinked.`);
+    refreshState();
   };
 
   // Marking a vendor engageable permits a signed agreement in their name, so it asks for
@@ -600,6 +628,47 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                           >
                             {partyFileFor === v.id ? "▾ close file" : "📂 open file (agreement + invoices)"}
                           </button>
+                          {/* Who this party IS. Blank until somebody says, and blank is never
+                              read as either — the papers below wait for the answer. */}
+                          {(() => {
+                            const canManage = MANAGERS.includes(currentUser.role);
+                            const team = isTeamMember(v);
+                            return (
+                              <div className="mt-0.5 space-y-0.5">
+                                {canManage ? (
+                                  <select
+                                    aria-label={`${t("A person or an organisation")} — ${v.name}`}
+                                    value={v.partyKind || ""}
+                                    onChange={e => handleSetPartyKind(v.id, v.name, e.target.value)}
+                                    className={`finance-input py-0.5 text-[10px] ${v.partyKind ? "bg-white" : "bg-amber-50 text-amber-800"}`}
+                                  >
+                                    <option value="">{t("Not said yet")}</option>
+                                    {PARTY_KINDS.map(k => <option key={k.key} value={k.key}>{t(k.label)}</option>)}
+                                  </select>
+                                ) : (
+                                  <span className={`text-[10px] ${v.partyKind ? "text-slate-500" : "text-amber-700"}`}>{t(partyKindLabel(v.partyKind))}</span>
+                                )}
+                                {team ? (
+                                  <p className="text-[10px] text-emerald-800">
+                                    {t("Team member, engaged as a service provider (annual contract)")}
+                                    {" · "}<span dir="ltr" className="font-mono">{v.userEmail}</span>
+                                    {canManage && (
+                                      <button type="button" onClick={() => handleLinkLogin(v.id, v.name, "")} className="ms-1 text-slate-400 hover:underline">{t("unlink")}</button>
+                                    )}
+                                  </p>
+                                ) : canManage && v.partyKind === "individual" && (() => {
+                                  // A SUGGESTION, never a match: same name, different records.
+                                  const hit = (state.users || []).find(u => u.active && u.name.trim().toLowerCase() === v.name.trim().toLowerCase());
+                                  if (!hit) return null;
+                                  return (
+                                    <button type="button" onClick={() => handleLinkLogin(v.id, v.name, hit.email)} className="text-[10px] text-slate-500 hover:text-red-650 hover:underline">
+                                      {t("Same name as an account — is this a team member?")}
+                                    </button>
+                                  );
+                                })()}
+                              </div>
+                            );
+                          })()}
                           {/* What the file is missing, from the procurement policy. Derived —
                               no list is stored — so filing the paper answers it with no second
                               step. Ungated: a supplier record is not a personnel file, and

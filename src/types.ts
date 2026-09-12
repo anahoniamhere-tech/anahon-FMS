@@ -132,6 +132,9 @@ export interface Vendor {
   blocked: boolean;
   /** True only for parties we ENGAGE under a service agreement, never for suppliers we buy from. */
   engageable?: boolean;
+  /** A person or an organisation — "individual" | "organisation", blank until somebody says.
+   *  Never inferred from the category string (src/supplierDocs.ts). */
+  partyKind?: string;
   /** Login email, when this provider is also a system user. Empty for ordinary suppliers. */
   userEmail?: string;
   /** WhatsApp number, full international form. Empty means no WhatsApp button — see waLink. */

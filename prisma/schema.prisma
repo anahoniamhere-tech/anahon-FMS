@@ -117,6 +117,11 @@ model Vendor {
   // makes for timesheets — here it lets the approval queue spot a voucher whose requester
   // is its own payee. Empty for ordinary suppliers, which is nearly all of them.
   userEmail         String  @default("")
+  /// A person or an organisation — "individual" | "organisation", blank until somebody says.
+  /// Never inferred, least of all from `category`: "Service Provider" is worn by a freelance
+  /// editor and by a production company alike. It decides which papers the file is asked for,
+  /// and it is the axis Lebanese withholding on services turns on (a Finance question, open).
+  partyKind         String  @default("")
   /// WhatsApp number in full international form (+961…). Separate from `contact`, which is
   /// free text and holds "N/A" for most rows, an address for one and a number for another —
   /// nothing a link can be built from without guessing. Empty means no WhatsApp button.

@@ -1,0 +1,12 @@
+-- Is this party a person or an organisation? (12 Sep 2026)
+--
+-- The register already separates ENGAGED under an agreement from BOUGHT FROM (Vendor.engageable).
+-- The axis it never had is who the party IS: "Assem Nairab" and "Apple" are both rows with a
+-- category string, and the papers a policy asks of each are different — as is the way Lebanese
+-- withholding lands on a service bought from a person.
+--
+-- Blank on every row on purpose. Nothing here is inferred, least of all from the category
+-- string: "Service Provider" is worn by Khaled, by Kaynoona and by Magedz alike, and a wrong
+-- guess here is a wrong paper demanded or a real one never asked for. Thirty-four rows is a
+-- morning's work for a person who knows them.
+ALTER TABLE "Vendor" ADD COLUMN "partyKind" TEXT NOT NULL DEFAULT '';

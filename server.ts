@@ -24,6 +24,7 @@ import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, norma
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
 import { costAccountFor, reclassifyLegs, debitedExpenseAccounts, costPositions } from "./src/costAccount.js";
+import { PARTY_KINDS, partyKindLabel } from "./src/supplierDocs.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -130,7 +131,7 @@ const CREW_ALLOWED_POSTS = new Set([
 const PLO_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
   "/api/procurement/new", "/api/procurement/waiver-inline",
-  "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone",
+  "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone", "/api/vendors/party-kind", "/api/vendors/link-login",
   "/api/expense/new", "/api/expense/scan-invoice",
   "/api/document/upload", "/api/materials/link",
   "/api/assets/register", "/api/assets/update", "/api/assets/scan-label", "/api/assets/checkout", "/api/assets/checkin", "/api/assets/move", "/api/assets/repair", "/api/assets/delete", "/api/assets/end", "/api/assets/end-confirm",
@@ -2184,6 +2185,60 @@ app.post("/api/vendors/engageable", async (req, res) => {
       `${reason ? `. Reason: ${reason}` : ""}.`
     );
     res.json({ success: true, vendorId, engageable: next });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// A person or an organisation. The register's second axis, and the one it never had.
+//
+// Set by a human, one row at a time, and never inferred — least of all from the category
+// string, where "Service Provider" covers a freelance editor and a production company alike.
+// It decides which papers the file is asked for (src/supplierDocs.ts), and it is the axis the
+// Lebanese withholding question turns on, which is Finance's to answer and is NOT answered here.
+app.post("/api/vendors/party-kind", async (req, res) => {
+  try {
+    const { vendorId, partyKind, user } = req.body;
+    if (!vendorId) return res.status(400).json({ error: "Vendor is required." });
+    const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
+    if (!vendor) return res.status(404).json({ error: "Vendor not found." });
+    const next = String(partyKind || "");
+    if (next && !(PARTY_KINDS as readonly { key: string }[]).some(k => k.key === next)) {
+      return res.status(400).json({ error: "A party is a person or an organisation." });
+    }
+    await prisma.vendor.update({ where: { id: vendorId }, data: { partyKind: next } });
+    await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", "Vendor Party Kind Set",
+      `${vendor.name} (${vendor.category}) recorded as ${next ? partyKindLabel(next).toLowerCase() : "not said yet"}` +
+      `${vendor.partyKind ? `, was ${partyKindLabel(vendor.partyKind).toLowerCase()}` : ""}.`);
+    res.json({ success: true, vendorId, partyKind: next });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The login a party is also known by, when they are one of the team. AnaHon has no employees —
+// everyone works under an annual service contract — so this link RECORDS the normal arrangement
+// rather than flagging an anomaly. Explicit: the screen may SUGGEST a login whose name matches,
+// but only a person confirms it.
+app.post("/api/vendors/link-login", async (req, res) => {
+  try {
+    const { vendorId, userEmail, user } = req.body;
+    if (!vendorId) return res.status(400).json({ error: "Vendor is required." });
+    const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
+    if (!vendor) return res.status(404).json({ error: "Vendor not found." });
+    const email = String(userEmail || "").trim().toLowerCase();
+    if (email) {
+      const account = await prisma.user.findFirst({ where: { email } });
+      if (!account) return res.status(400).json({ error: "No account on this system uses that address." });
+      const taken = await prisma.vendor.findFirst({ where: { userEmail: email, NOT: { id: vendorId } } });
+      if (taken) return res.status(409).json({ error: `${taken.name} is already linked to that account — one person, one row.` });
+    }
+    await prisma.vendor.update({ where: { id: vendorId }, data: { userEmail: email } });
+    await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", "Vendor Login Linked",
+      email
+        ? `${vendor.name} linked to the account ${email} — a team member engaged as a service provider.`
+        : `${vendor.name} unlinked from ${vendor.userEmail || "an account"}.`);
+    res.json({ success: true, vendorId, userEmail: email });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

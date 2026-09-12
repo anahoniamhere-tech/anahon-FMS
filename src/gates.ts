@@ -71,6 +71,8 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/vendors/new": SUPPLIER_EDITORS,
   "/api/vendors/engageable": SUPPLIER_EDITORS,
   "/api/vendors/phone": SUPPLIER_EDITORS,
+  "/api/vendors/party-kind": SUPPLIER_EDITORS,        // a person or an organisation; never inferred
+  "/api/vendors/link-login": SUPPLIER_EDITORS,        // the same person, seen from the register
   "/api/vendors/payment-doc": SUPPLIER_EDITORS,
   "/api/vendor/scan": SUPPLIER_EDITORS,
   "/api/subscriptions/save": SUPPLIER_EDITORS,

@@ -8,7 +8,7 @@
 // checklist into a colour people stop reading: a taxi has no service agreement, and it
 // must not be asked for one. Run: npx tsx scripts/check-supplier-docs.ts
 import { readFileSync } from "node:fs";
-import { REQUIRED_SUPPLIER, missingSupplierDocs } from "../src/supplierDocs.js";
+import { REQUIRED_SUPPLIER, missingSupplierDocs, PARTY_KINDS, partyKindLabel, isTeamMember } from "../src/supplierDocs.js";
 import { REQUIRED_PERSONNEL, missingPersonnelDocs } from "../src/personnelDocs.js";
 
 let failed = 0;
@@ -16,6 +16,8 @@ const ok = (label: string, cond: boolean, detail = "") => {
   if (!cond) { failed++; console.error(`  FAIL  ${label}${detail ? " — " + detail : ""}`); } else console.log(`  ok    ${label}`);
 };
 const vendorsTab = readFileSync(new URL("../src/tabs/VendorsTab.tsx", import.meta.url), "utf8");
+const server = readFileSync(new URL("../server.ts", import.meta.url), "utf8");
+const supplierDocsSrc = readFileSync(new URL("../src/supplierDocs.ts", import.meta.url), "utf8");
 
 // A shop we buy from, a consultant we engage, and the same two with papers on file.
 const SHOP = { id: "ven-shop", active: true, engageable: false };
@@ -95,6 +97,54 @@ ok("ungated — a supplier file is not a personnel file",
   !/maySee\w+\([^)]*\) && \(\(\) => \{\s*const gaps = missingSupplierDocs/.test(vendorsTab));
 ok("silent when there is nothing missing, on a table thirty rows deep",
   /const gaps = missingSupplierDocs\(state\.documents \|\| \[\], v\);\s*\n\s*if \(!gaps\.length\) return null;/.test(vendorsTab));
+
+console.log("\nZ. a person or an organisation — the register's second axis (12 Sep 2026)");
+const party = (over: Partial<Parameters<typeof missingSupplierDocs>[1]> = {}) =>
+  ({ id: "ven-1", active: true, blocked: false, engageable: true, partyKind: "", userEmail: "", ...over }) as any;
+ok("two kinds, and nothing else", PARTY_KINDS.map(k => k.key).join() === "individual,organisation");
+ok("blank is its own answer, and it reads as one", partyKindLabel("") === "Not said yet" && partyKindLabel("individual") === "A person");
+ok("an unknown word is not a kind", partyKindLabel("company") === "Not said yet");
+ok("nothing is asked of a party whose kind nobody has said — the papers wait for the answer",
+  !missingSupplierDocs([], party({ partyKind: "" })).some(g => ["identity", "cv"].includes(g.key)));
+ok("a person we engage owes identity and a CV",
+  missingSupplierDocs([], party({ partyKind: "individual" })).map(g => g.key).sort().join() === "agreement,cv,identity,registration");
+ok("an organisation owes neither — they are papers about a human being",
+  !missingSupplierDocs([], party({ partyKind: "organisation" })).some(g => ["identity", "cv"].includes(g.key)));
+ok("nor does a party we only BUY from, whatever they are",
+  !missingSupplierDocs([], party({ partyKind: "individual", engageable: false })).some(g => ["identity", "cv"].includes(g.key)));
+ok("any of the three identity spellings the vault actually holds will answer",
+  ["National ID", "Passport", "Residency / Work Permit"].every(c =>
+    !missingSupplierDocs([{ category: c, partyId: "ven-1" }], party({ partyKind: "individual" })).some(g => g.key === "identity")));
+
+console.log("\nZ2. a team member is the normal arrangement, not an anomaly");
+// Saad, 12 Sep 2026: AnaHon has no employees — everyone is a service provider on an annual
+// contract. So a row that is also a login is two views of one person, and their identity papers
+// live in the personnel file; demanding a second copy here makes a second thing to disagree.
+ok("the link is explicit, never a name that merely looks alike",
+  isTeamMember(party({ userEmail: "omar@x" })) && !isTeamMember(party({ userEmail: "" })) && !isTeamMember(party({ userEmail: "   " })));
+ok("a team member is not asked for identity or a CV again",
+  !missingSupplierDocs([], party({ partyKind: "individual", userEmail: "omar@x" })).some(g => ["identity", "cv"].includes(g.key)));
+ok("but still owes the papers that are about the ENGAGEMENT, not the person",
+  missingSupplierDocs([], party({ partyKind: "individual", userEmail: "omar@x" })).map(g => g.key).sort().join() === "agreement,registration");
+ok("the screen says what it is rather than flagging it unresolved",
+  vendorsTab.includes('t("Team member, engaged as a service provider (annual contract)")')
+  && !/classification unresolved/i.test(vendorsTab));
+ok("and the suggestion is a question a person answers, not a match the system asserts",
+  vendorsTab.includes('t("Same name as an account — is this a team member?")') && /window\.confirm\(/.test(vendorsTab));
+
+console.log("\nZ3. nothing is inferred, and the withholding question is left open");
+ok("the kind is never derived from the category string",
+  !/partyKind = .*category|category.*=>.*partyKind/.test(server) && !/CATEGORY_TO_KIND|kindFromCategory/.test(supplierDocsSrc));
+ok("the route accepts only the two kinds, or blank",
+  /if \(next && !\(PARTY_KINDS as readonly \{ key: string \}\[\]\)\.some\(k => k\.key === next\)\)/.test(server));
+ok("one login belongs to one row", /is already linked to that account — one person, one row/.test(server));
+ok("a login that does not exist cannot be linked", /No account on this system uses that address/.test(server));
+// Lebanese withholding lands differently on a service bought from a person, which is exactly
+// why this axis matters to Finance — and exactly why nothing here touches it. Marwan's to answer.
+ok("the party kind is never used to compute a withholding rate",
+  !/partyKind[^\n]*wht|wht[^\n]*partyKind/i.test(server) && !/partyKind[^\n]*wht|wht[^\n]*partyKind/i.test(supplierDocsSrc));
+ok("and this work invented no rate of its own — the 7.5% in the module is the pre-existing rule, described",
+  (supplierDocsSrc.match(/7\.5%/g) || []).length === 1 && /already enforces the consequence/.test(supplierDocsSrc));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

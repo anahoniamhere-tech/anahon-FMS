@@ -564,6 +564,16 @@ export const AR: Record<string, string> = {
   "Gift — no cost recorded": "هدية — لا تكلفة مسجّلة",
   // Correcting a registered item — 12 Sep 2026.
   "Correct the details": "تصحيح البيانات",
+  // The Suppliers door's party axis — a person or an organisation (12 Sep 2026).
+  "A person or an organisation": "شخص أم مؤسسة",
+  "A person": "شخص",
+  "An organisation": "مؤسسة",
+  "Not said yet": "لم يُحدَّد بعد",
+  "Team member, engaged as a service provider (annual contract)": "من الفريق، متعاقَد معه كمقدّم خدمة (عقد سنوي)",
+  "Same name as an account — is this a team member?": "الاسم نفسه لحساب على النظام — هل هو من الفريق؟",
+  "unlink": "إلغاء الربط",
+  "Identity paper": "وثيقة هوية",
+  "CV": "السيرة الذاتية",
   // The Ledger door's reclassification panel (Books room, 8a4de81). Terms follow the chart's
   // own usage — مدين/دائن, دفتر الأستاذ, سجل التدقيق — and the four disabled-button labels stay
   // four separate keys: a disabled state explains itself in the label, never in a tooltip.
