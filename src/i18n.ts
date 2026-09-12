@@ -564,6 +564,25 @@ export const AR: Record<string, string> = {
   "Gift — no cost recorded": "هدية — لا تكلفة مسجّلة",
   // Correcting a registered item — 12 Sep 2026.
   "Correct the details": "تصحيح البيانات",
+  // The Ledger door's reclassification panel (Books room, 8a4de81). Terms follow the chart's
+  // own usage — مدين/دائن, دفتر الأستاذ, سجل التدقيق — and the four disabled-button labels stay
+  // four separate keys: a disabled state explains itself in the label, never in a tooltip.
+  "Reclassify a posted cost": "إعادة تصنيف كلفة مُرحَّلة",
+  "Moves a cost already in the ledger onto the account it belongs to. The original entry is never changed — a balanced correcting entry is posted beside it, carrying the reason.": "ينقل كلفة مُرحَّلة في دفتر الأستاذ إلى الحساب الذي تنتمي إليه. القيد الأصلي لا يُعدَّل أبداً — بل يُرحَّل بجانبه قيد تصحيحي متوازن يحمل السبب.",
+  "Select a voucher with a cost in the books": "اختر سنداً له كلفة في الدفاتر",
+  "Belongs on": "ينتمي إلى الحساب",
+  "Choose the account": "اختر الحساب",
+  "Why it belongs there": "لماذا ينتمي إلى هذا الحساب",
+  "e.g. engaged as a trainer under an agreement, not a purchase": "مثال: مُتعاقَد معه كمدرّب باتفاقية، وليس عملية شراء",
+  "This sentence is the only record of why the books changed their mind. It goes on the correcting entry and in the audit log.": "هذه الجملة هي السجل الوحيد لسبب تغيّر رأي الدفاتر. تُدوَّن على القيد التصحيحي وفي سجل التدقيق.",
+  "Will post": "سيُرحَّل",
+  "debit": "مدين",
+  "credit": "دائن",
+  "Posting the correction…": "جارٍ ترحيل التصحيح…",
+  "Post correction — choose a voucher first": "ترحيل التصحيح — اختر سنداً أولاً",
+  "Post correction — choose the account first": "ترحيل التصحيح — اختر الحساب أولاً",
+  "Post correction — say why first": "ترحيل التصحيح — اذكر السبب أولاً",
+  "Post the correcting entry": "رحّل القيد التصحيحي",
   // Removing a mistake, and writing off one that was already confirmed — 12 Sep 2026.
   "Remove": "حذف",
   "Remove it": "احذفه",
