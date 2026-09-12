@@ -132,6 +132,13 @@ ok("the Word export's selector matches the JSX", proj.includes(".text-end {") &&
 const maskStrings = (line: string) =>
   line.replace(/(["'`])(?:\\.|(?!\1)[\s\S])*?\1/g, (m, q) => q + " ".repeat(m.length - 2) + q);
 
+// The ">" has to CLOSE A TAG, and the lookbehind is worth its ugliness: WITHOUT it this rule
+// reports 31 hits across five files and every one is a JS comparison — `{docPages > 1 && ...}`
+// reads as a text run starting with "1 &&". WITH it, 3 hits, all three real. That is the
+// difference between a rule nobody can run and three findings. A tag's ">" is never preceded
+// by whitespace.
+const TEXT_RUN = /(?<=[A-Za-z0-9_"'}\/])>([^<>]{2,})</g;
+
 console.log("\nmachine text that leads with a number is isolated");
 // MEASURED, 12 Sep, Chrome at dir="rtl". The criterion that settled it, after three
 // instruments produced confident wrong answers between two rooms: render the string as
@@ -201,13 +208,37 @@ ok("every amount + currency pair is isolated", risky.length === 0, risky.join(",
 // around the figure. Both verified by hand in Banking/Reports (Books room, 12 Sep).
 ok("a table cell isolates on an inner span, not the cell",
   !/<td[^>]*dir="ltr"/.test(read("src/tabs/BankingTab.tsx")));
-// formatUSD() embeds its own symbol and is followed by no Latin word, so by the measurement
-// above it is SAFE — including inside Arabic prose, which is where it was said to break.
-// The real ReportsTab sentence, with the real Arabic from i18n and the figures unwrapped,
-// renders correctly: "من أصل $22,000.00 الموجودة في المصرف،" keeps its figure intact, as does
-// "مدين 7100 $5,000.00 دائن". A t()-neighbour rule over the 85 call sites was added here on
-// 12 Sep and REMOVED the same day when the browser disagreed with it: it would have made
-// authors wrap figures that never move. Re-add it only against a row that actually inverts.
+// A SECOND, milder family: the attached SYMBOL changes side. No words reorder, so the rule
+// above cannot see it, and it took the isolation criterion to find at all — I had this rule,
+// deleted it as unfounded, and put it back when the measurement came in (Books room, 12 Sep):
+//
+//   "من أصل $22,000.00 الموجودة"   authored: 22,000.00$   isolated: $22,000.00   CHANGES
+//   "Of the $22,000.00 in the bank"                                              no change
+//   "$22,000.00" with nothing around it                                          no change
+//   "نسبة 7.5% من المبلغ"                                                          CHANGES
+//   "عدد 22000 سجل"  (no symbol)                                                  no change
+//
+// So the condition is a symbol-bearing figure inside ARABIC prose — which in source is a
+// figure sharing its element with a t() call, since t() is what becomes Arabic at runtime.
+// A trailing 22,000.00$ is not bad Arabic typography; plenty of Arabic sets the symbol after
+// the figure. It is inconsistent with every other figure in this app, which reads $22,000.00
+// in both languages, and consistency is the call being made here. If the palette ever decides
+// on trailing symbols in Arabic, this rule goes with that decision, not against it.
+const SYMBOL_FIGURE = /formatUSD\(|\$\d|\d\s*%/;
+const symboled = (raw: string) => {
+  const line = maskStrings(raw);
+  return [...line.matchAll(TEXT_RUN)].some(m => SYMBOL_FIGURE.test(m[1]) && /\bt\(/.test(m[1]));
+};
+const mixed: string[] = [];
+for (const f of files) {
+  read(f).split("\n").forEach((line, i) => { if (symboled(line)) mixed.push(`${f}:${i + 1}`); });
+}
+ok("a symbol-bearing figure never shares an element with a t() call", mixed.length === 0, mixed.join(", "));
+ok("a figure beside t() is the case", symboled('<p>{t("Of the")} {formatUSD(bs.cash)} {t("in the bank")}</p>'));
+ok("a percent beside t() too", symboled('<p>{t("rate")} 7.5% {t("of the amount")}</p>'));
+ok("an English-only neighbour is not", !symboled("<span>ledger 1120 book: {formatUSD(x)}</span>"));
+ok("nor is a plain number beside t() — no symbol to move", !symboled('<p>{t("count")} 22000 {t("records")}</p>'));
+ok("and wrapping clears it — the span comes between", !symboled('<span dir="ltr">{formatUSD(x)}</span>'));
 
 console.log("\nand a heading that opens with a number keeps it");
 // The third family, and the one no anchor can find: a text run that simply STARTS with a
@@ -220,10 +251,6 @@ console.log("\nand a heading that opens with a number keeps it");
 // $5,000.00" renders "$5,000.00 7100" and "7100 7.5%" renders "7.5% 7100" (measured,
 // Books room's row, 12 Sep). A number alone with nothing after it never moves.
 const LEADING = /^\s*[-−+]?\d[\d,.]*[.):%]?\s+\S/;
-// The ">" has to CLOSE A TAG. Unguarded, `{docPages > 1 && ...}` reads as a text run
-// starting with "1 &&" and the rule reports 31 phantom hits across five files — every one a
-// JS comparison. A tag's ">" is never preceded by whitespace.
-const TEXT_RUN = /(?<=[A-Za-z0-9_"'}\/])>([^<>]{2,})</g;
 const leads = (raw: string) => {
   if (/dir="ltr"/.test(raw)) return false;
   const line = maskStrings(raw);
