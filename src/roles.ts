@@ -38,8 +38,22 @@ export const EDITORS = ["Chief Editor", "Production Manager"];
 export const REQUESTERS = ["Super Admin", "Finance Officer", "Project Lead", "Project Officer", PLO];
 /** May onboard suppliers and keep the equipment register. */
 export const SUPPLIER_EDITORS = ["Super Admin", "Finance Officer", PLO];
-/** Physical verification of equipment is never done by the keeper of the register. */
-export const EQUIPMENT_VERIFIERS = ["Super Admin", "Auditor / Read-Only Reviewer"];
+/**
+ * Physical verification of equipment is never done by the person who took delivery.
+ *
+ * It was "never by the keeper of the register" — a seat-level rule — until 12 Sep 2026. That
+ * left the register deadlocked: the auditor account is dormant, so only the master account
+ * could confirm anything, and it may not confirm what it received itself. Nothing Saad
+ * registered could ever be confirmed, and nothing Ahmad registered could be confirmed unless
+ * Saad did it.
+ *
+ * Saad opened it to the Finance Officer on 12 Sep 2026. That does put a keeper of the register
+ * (SUPPLIER_EDITORS) in this list — but the master account was always in both, which is why
+ * the real control has never been the seat: mayVerifyEquipment compares the PERSON against
+ * receivedBy, so whoever took delivery of an item still cannot be the one who confirms it.
+ * Two people remain involved in every confirmed item.
+ */
+export const EQUIPMENT_VERIFIERS = ["Super Admin", "Finance Officer", "Auditor / Read-Only Reviewer"];
 /** Project timeline steps and core documents. */
 export const ACTIVITY_EDITORS = [...MANAGERS, "Project Officer", PLO];
 

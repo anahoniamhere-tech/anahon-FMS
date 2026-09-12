@@ -123,11 +123,11 @@ export function equipmentStatus(a: { receivedAt?: string | null; verifiedAt?: st
 /**
  * May this person, in the seat they hold right now, confirm this item physically?
  *
- * Two conditions, and the second is the one that bites. The seat must be a verifier's —
- * the keepers of the register (SUPPLIER_EDITORS) are not. And the PERSON must not be the
- * one who took delivery: the master account sits in both lists, and standing in another
- * seat changes the role, never the id, so one person wearing two hats is still one
- * person and cannot confirm their own receipt.
+ * Two conditions, and the second is the one that bites. The seat must be a verifier's. And
+ * the PERSON must not be the one who took delivery — which is the condition that actually
+ * does the work, because the master account and (since 12 Sep 2026) the Finance Officer sit
+ * in both lists. Standing in another seat changes the role, never the id, so one person
+ * wearing two hats is still one person and cannot confirm their own receipt.
  */
 export function mayVerifyEquipment(
   viewer: { id?: string; role?: string } | null | undefined,

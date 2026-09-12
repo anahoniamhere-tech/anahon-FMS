@@ -95,11 +95,18 @@ ok("the master account may confirm what somebody else received", mayVerifyEquipm
 ok("the master account may NOT confirm what it received itself", !mayVerifyEquipment(as("u-1", "Super Admin"), item("u-1")));
 ok("standing in as the auditor does not change who took delivery", !mayVerifyEquipment(as("u-1", AUDITOR), item("u-1")));
 ok("the keeper of the register may not confirm, even an item somebody else received", !mayVerifyEquipment(as("u-ahmad", PLO), item("u-1")));
-ok("nor may the Finance Officer, who also keeps it", !mayVerifyEquipment(as("u-7", "Finance Officer"), item("u-1")));
+// 12 Sep 2026: Saad opened confirming to the Finance Officer, because the auditor account is
+// dormant and the register was deadlocked — he cannot confirm what he registered himself.
+ok("the Finance Officer may confirm an item somebody else received", mayVerifyEquipment(as("u-7", "Finance Officer"), item("u-1")));
+ok("but not one they received themselves — the rule is about the person, never the seat",
+  !mayVerifyEquipment(as("u-7", "Finance Officer"), item("u-7")));
+ok("the keepers who may also confirm are exactly the two seats Saad chose — nobody drifted in",
+  JSON.stringify(SUPPLIER_EDITORS.filter(r => EQUIPMENT_VERIFIERS.includes(r))) === JSON.stringify(["Super Admin", "Finance Officer"]));
+ok("every confirmed item still had two different people on it — enforced per item, not per seat",
+  EQUIPMENT_VERIFIERS.every(role => !mayVerifyEquipment(as("u-same", role), item("u-same"))));
 ok("an item entered before receiving existed can still be confirmed", mayVerifyEquipment(as("u-2", AUDITOR), item(null)));
 ok("nobody signed in confirms nothing", !mayVerifyEquipment(null, item(null)) && !mayVerifyEquipment({ role: AUDITOR }, item(null)));
-ok("the master account is the one seat in both lists — which is why the rule is about the person",
-  JSON.stringify(SUPPLIER_EDITORS.filter(r => EQUIPMENT_VERIFIERS.includes(r))) === JSON.stringify(["Super Admin"]));
+
 ok("the route asks the same predicate the button does", /if \(!mayVerifyEquipment\(user, asset\)\)/.test(ver) && /mayVerifyEquipment\(currentUser, a\)/.test(tab));
 ok("a refusal is written to the audit log", /"Action Refused"/.test(ver));
 ok("the gate keeps verifying with the verifiers", ROUTE_SEATS["/api/assets/verify"] === EQUIPMENT_VERIFIERS);
@@ -190,16 +197,27 @@ ok("overdue reads as overdue", deskOf("u-po", [outItem("u-po", "2026-09-08")])[0
 ok("not before it is due", ["u-po", "u-plo", "u-fo", "u-sa"].every(id => deskOf(id, [outItem("u-po", "2026-09-12")]).length === 0));
 ok("a keeper holding it gets one row, not two", deskOf("u-plo", [outItem("u-plo", TODAY)]).length === 1);
 const checkDue = (receivedBy: string, nextCheckDue: string) => ({ id: "a2", tag: "EQ-002", name: "Tripod", status: "Verified", receivedBy, nextCheckDue });
-ok("a periodic check falls due on the verifier's desk — the master account covers the vacant auditor seat",
-  deskOf("u-sa", [checkDue("u-plo", TODAY)]).some(i => i.group === "cover" && i.door === "assets" && i.verb === "Check it is still here"));
+// Until 12 Sep 2026 this landed on the master account as "cover", because the auditor seat was
+// vacant and nobody else could confirm. Opening it to the Finance Officer gives it a real
+// owner: it is Marwan's turn, and Saad sees it only as a note about somebody else's week.
+ok("a periodic check falls due on the Finance Officer's own desk",
+  deskOf("u-fo", [checkDue("u-plo", TODAY)]).some(i => i.group === "mine" && i.door === "assets" && i.verb === "Check it is still here"));
+ok("and is no longer the master account's to cover — it has an owner now",
+  deskOf("u-sa", [checkDue("u-plo", TODAY)]).every(i => i.group === "week"));
 ok("not before it is due", deskOf("u-sa", [checkDue("u-plo", "2026-10-11")]).length === 0);
 // deskItems shows anyone a near-due item on somebody else's desk as a "this week" note; what the
 // exclusion guarantees is that it is never the receiver's own turn.
 ok("never the turn of the person who received it — at most a 'due this week' note, never mine or cover",
   deskOf("u-sa", [checkDue("u-sa", TODAY)]).every(i => i.group === "week"));
-ok("a received item waits on the verifier's desk, and never on its receiver's",
-  deskOf("u-sa", [{ id: "a3", tag: "EQ-003", name: "Mic", status: "Received", receivedBy: "u-plo" }]).some(i => i.verb === "Confirm it is here")
-  && deskOf("u-sa", [{ id: "a3", tag: "EQ-003", name: "Mic", status: "Received", receivedBy: "u-sa" }]).length === 0);
+const received = (receivedBy: string) => ({ id: "a3", tag: "EQ-003", name: "Mic", status: "Received", receivedBy });
+ok("a received item waits on a verifier's desk, and never on its receiver's",
+  deskOf("u-fo", [received("u-plo")]).some(i => i.verb === "Confirm it is here")
+  && deskOf("u-fo", [received("u-fo")]).length === 0
+  && deskOf("u-sa", [received("u-sa")]).length === 0);
+// The deadlock this broke: nothing the master account received could be confirmed by anybody,
+// because it was the only working verifier and may not confirm its own receipt.
+ok("what Saad received is now somebody's turn — Marwan's", deskOf("u-fo", [received("u-sa")]).some(i => i.group === "mine" && i.verb === "Confirm it is here"));
+ok("and what Ahmad received still is", deskOf("u-fo", [received("u-plo")]).some(i => i.group === "mine"));
 const eqRules = RULES.filter(r => r.kind === "fixedAssets");
 ok("the dated rows use `when` with a zero horizon — they appear on the day, not before",
   eqRules.filter(r => r.when).every(r => r.horizon === 0) && eqRules.some(r => r.when === "dueBack") && eqRules.some(r => r.when === "nextCheckDue"));
