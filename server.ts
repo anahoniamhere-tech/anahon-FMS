@@ -525,6 +525,7 @@ async function loadState(viewer?: any) {
     documents,
     auditLogs,
     complianceTasks,
+    mailHits,
     opportunities,
     cashCounts,
     subscriptions,
@@ -561,6 +562,7 @@ async function loadState(viewer?: any) {
     // screen honest about what it is not showing.
     prisma.auditLog.findMany({ orderBy: { timestamp: "desc" }, take: 500 }),
     prisma.complianceTask.findMany(),
+    prisma.mailHit.findMany({ where: { status: "Pending" } }),
     prisma.opportunity.findMany(),
     prisma.cashCount.findMany({ orderBy: { date: "desc" } }),
     prisma.subscription.findMany({ orderBy: { nextRenewal: "asc" } }),
@@ -639,7 +641,7 @@ async function loadState(viewer?: any) {
       employees: employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase()),
       timesheets: formattedTimesheets.filter(t => employees.some(e => e.id === t.employeeId && e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase())),
       fixedAssets: heldByViewer,
-      partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [],
+      partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [],
       opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
@@ -664,7 +666,7 @@ async function loadState(viewer?: any) {
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
-      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: [], editorialMeetings: [],
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
@@ -699,7 +701,7 @@ async function loadState(viewer?: any) {
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
-      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], opportunities: [], cashCounts: [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [],
       subscriptions: buys ? subscriptions : [],
       projectActivities: projectActivities.filter((a: any) => visibleIds.has(a.projectId)),
       clients: [], quotations: [],
@@ -743,7 +745,7 @@ async function loadState(viewer?: any) {
           linkedRecordId: d.linkedRecordId, partyId: d.partyId, created_at: d.created_at,
           contentHash: d.contentHash, note: d.note
         })),
-      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [],
       opportunities: [], cashCounts: [], subscriptions: [],
       projectActivities: projectActivities.filter(a => myProjectIds.has(a.projectId)),
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
@@ -807,6 +809,8 @@ async function loadState(viewer?: any) {
     auditLogs,
     auditLogTotal: auditTotal,
     complianceTasks,
+    // Sender, subject, date, link — never a body. The watcher is read-only.
+    mailHits,
     // Funding funnel — forward-looking pipeline only, never financial data.
     opportunities: opportunities.map(o => ({
       ...o,
@@ -1610,6 +1614,155 @@ if (!process.env.VERCEL && process.env.REMINDERS_NIGHTLY !== "off") {
   setInterval(nightlyReminders, 10 * 60 * 1000).unref();
   setTimeout(nightlyReminders, 30 * 1000).unref();                    // and once shortly after boot, in case the hour already passed
 }
+
+// ---------------------------------------------------------------------------------
+// The mail watcher — READ-ONLY.
+//
+// It checks ONE mailbox on a schedule, finds mail matching a narrow query, and puts a row
+// on somebody's desk saying "this is waiting". That is the whole feature.
+//
+// What it will never do, and the code is arranged so it cannot drift into doing it:
+//   * It never sends, replies, forwards, labels, archives or deletes. The only Gmail call
+//     in this file is a GET, and the scope asked for at consent is gmail.readonly.
+//     Saad sends everything himself (anahon-draft-never-send).
+//   * It never asks Google for a body. The metadata fetch names the three headers it
+//     wants; `format=metadata` means Google does not return the payload at all. Gmail
+//     still puts a `snippet` on the message resource — it is deliberately not read here
+//     and never stored. To read the mail you open it in Gmail.
+//   * It never hands mail to a model. No summarising, no extraction, no AI of any kind.
+//   * It creates no project, deadline, invoice or contact. A person settles each row.
+//
+// Disabled until MAIL_WATCH_QUERY is set, so it cannot start by reading a whole inbox.
+const mailQuery = () => String(process.env.MAIL_WATCH_QUERY || "").trim();
+const MAIL_WATCH_EVERY_MIN = Math.max(1, Number(process.env.MAIL_WATCH_EVERY_MIN ?? 15));
+const GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me";
+
+/** Whose desk the mail lands on. Default: the Executive Director (the master account). */
+async function mailAssignee(): Promise<string> {
+  const named = String(process.env.MAIL_WATCH_ASSIGNEE || "").trim();
+  if (named) {
+    const u = await prisma.user.findUnique({ where: { id: named } });
+    if (u && u.active) return u.id;
+  }
+  const master = await prisma.user.findFirst({ where: { role: "Super Admin", active: true }, orderBy: { id: "asc" } });
+  return master?.id || "u-1";
+}
+
+/** The health row. A watcher that has gone blind says so on the desk; it never goes quiet. */
+async function mailWatchUnknown(why: string) {
+  const day = localDate();
+  const id = `watcher-error-${day}`;
+  const assigneeUserId = await mailAssignee();
+  await prisma.mailHit.upsert({
+    where: { messageId: id },
+    // One row a day, its reason kept current, so a failing poll every 15 minutes does not spam.
+    update: { subject: `The mail watcher cannot see the mailbox — ${why}`.slice(0, 300), receivedAt: new Date().toISOString() },
+    create: {
+      id: `mail-${id}`, messageId: id, threadId: "", kind: "watcher",
+      sender: "AnaHon system", subject: `The mail watcher cannot see the mailbox — ${why}`.slice(0, 300),
+      receivedAt: new Date().toISOString(), link: "", status: "Pending",
+      assigneeUserId, createdAt: new Date().toISOString(),
+    },
+  });
+}
+
+/**
+ * One pass over the mailbox. Returns what it found so the caller can log it.
+ * `matched` is what Gmail returned for the query; `created` is what was new to us.
+ */
+async function pollMail(trigger: string): Promise<{ matched: number; created: number; skipped: number }> {
+  const q = mailQuery();
+  if (!q) throw new Error("MAIL_WATCH_QUERY is not set, so there is no query to run.");
+  const token = await googleAccessToken();
+  const auth = { Authorization: `Bearer ${token}` };
+
+  const listUrl = `${GMAIL_API}/messages?${new URLSearchParams({ q, maxResults: "25" })}`;
+  const lr = await fetch(listUrl, { headers: auth });
+  if (!lr.ok) {
+    const detail = await lr.text().catch(() => "");
+    // A 403 here is almost always the scope: the refresh token predates gmail.readonly.
+    throw new Error(`Gmail refused the search (${lr.status})${/insufficient|scope/i.test(detail) ? " — the saved consent has no gmail.readonly scope; re-run scripts/google-consent.mjs" : ""}`);
+  }
+  const list: any = await lr.json();
+  const ids: string[] = (list.messages || []).map((m: any) => m.id);
+  let created = 0, skipped = 0;
+
+  for (const id of ids) {
+    const already = await prisma.mailHit.findUnique({ where: { messageId: id } });
+    if (already) { skipped++; continue; }                 // dedup: a re-run never doubles a row
+    // format=metadata + named headers: Google returns no payload, so no body ever arrives.
+    const mUrl = `${GMAIL_API}/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`;
+    const mr = await fetch(mUrl, { headers: auth });
+    if (!mr.ok) continue;
+    const m: any = await mr.json();
+    const header = (name: string) => String((m.payload?.headers || []).find((h: any) => h.name?.toLowerCase() === name)?.value || "");
+    const threadId = String(m.threadId || id);
+    await prisma.mailHit.create({
+      data: {
+        id: `mail-${id}`, messageId: id, threadId, kind: "mail",
+        // Only these three. `m.snippet` exists on the response and is deliberately not read.
+        sender: header("from").slice(0, 300),
+        subject: (header("subject") || "(no subject)").slice(0, 300),
+        receivedAt: m.internalDate ? new Date(Number(m.internalDate)).toISOString() : new Date().toISOString(),
+        link: `https://mail.google.com/mail/u/0/#all/${threadId}`,
+        status: "Pending", assigneeUserId: await mailAssignee(), createdAt: new Date().toISOString(),
+      },
+    });
+    created++;
+  }
+  // Seeing the mailbox again clears the "cannot see it" rows; the desk should not keep
+  // warning about a blindness that has passed.
+  await prisma.mailHit.updateMany({ where: { kind: "watcher", status: "Pending" }, data: { status: "Done" } });
+  await createAuditLog("u-1", "System", "Mail Checked",
+    `${trigger}: ${ids.length} matched "${q}", ${created} new on the desk, ${skipped} already known.`);
+  return { matched: ids.length, created, skipped };
+}
+
+async function mailWatchTick() {
+  if (!mailQuery()) return;                                // disabled until a query is set
+  try {
+    await pollMail("scheduled");
+  } catch (err: any) {
+    await mailWatchUnknown(err.message).catch(() => {});
+    await createAuditLog("u-1", "System", "Mail Check Failed", `The mail watcher could not read the mailbox: ${err.message}`).catch(() => {});
+  }
+}
+if (!process.env.VERCEL && process.env.MAIL_WATCH !== "off") {
+  setInterval(mailWatchTick, MAIL_WATCH_EVERY_MIN * 60 * 1000).unref();
+  setTimeout(mailWatchTick, 45 * 1000).unref();            // and once shortly after boot
+}
+
+/** Run a check now. Reading only — the same pass the schedule makes. */
+app.post("/api/mail/poll", async (req, res) => {
+  try {
+    if (!mailQuery()) return res.status(400).json({ error: "No mail query is set, so the watcher is off. Set MAIL_WATCH_QUERY on the server first." });
+    const r = await pollMail(`asked for by ${(req as any).dbUser?.name || "someone"}`);
+    res.json({ success: true, ...r });
+  } catch (err: any) {
+    await mailWatchUnknown(err.message).catch(() => {});
+    res.status(502).json({ error: err.message });
+  }
+});
+
+/** A person has looked. "confirm" = I acted on it; "dismiss" = nothing to do. Both close it. */
+app.post("/api/mail/settle", async (req, res) => {
+  try {
+    const me = (req as any).dbUser;
+    const { id, action } = req.body || {};
+    const row = await prisma.mailHit.findUnique({ where: { id: String(id) } });
+    if (!row) return res.status(404).json({ error: "That item is not on the desk." });
+    if (row.assigneeUserId && row.assigneeUserId !== me.id && !isDirector(me.role)) {
+      return res.status(403).json({ error: "That item is on somebody else's desk." });
+    }
+    if (action !== "confirm" && action !== "dismiss") return res.status(400).json({ error: "Say confirm or dismiss." });
+    await prisma.mailHit.update({ where: { id: row.id }, data: { status: "Done" } });
+    await createAuditLog(me.id, me.name, action === "confirm" ? "Mail Acted On" : "Mail Dismissed",
+      `"${row.subject}" from ${row.sender}. Nothing was created from it by the system.`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post("/api/calendar/feed", async (req, res) => {
   try {

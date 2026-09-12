@@ -734,3 +734,33 @@ model SocialPeriod {
   recordedBy      String  @default("")
   created_at      String
 }
+
+/// One labelled Gmail message the watcher noticed, as a thing for a person to look at.
+///
+/// DELIBERATELY THE MINIMUM: who it is from, what it is called, when it arrived, and a
+/// link that opens it in Gmail. There is NO body, NO snippet and NO attachment here, and
+/// none is ever requested from Google (the fetch asks for format=metadata). To read the
+/// mail you open it in Gmail — this table only says "something is waiting".
+///
+/// Nothing here becomes a project, invoice, deadline or contact by itself. A person
+/// confirms or dismisses each row; that is the whole contract.
+model MailHit {
+  id        String @id
+  /// Gmail's own message id — the dedup key, so a re-poll never doubles a row.
+  /// Health rows use "watcher-error-YYYY-MM-DD" so a failing poll writes one a day.
+  messageId String @unique
+  threadId  String
+  /// "mail" = a real message. "watcher" = the watcher itself could not see the mailbox.
+  kind      String @default("mail")
+  sender    String
+  subject   String
+  /// When Gmail says it arrived (ISO); for health rows, when the failure was seen.
+  receivedAt String
+  /// Opens the thread in Gmail. Empty for health rows.
+  link      String @default("")
+  /// "Pending" while it waits for a person, "Done" once confirmed or dismissed.
+  status    String @default("Pending")
+  /// Whose turn it is to look. Empty = the master account's own list.
+  assigneeUserId String?
+  createdAt String
+}

@@ -422,6 +422,29 @@ export interface ComplianceTask {
   createdBy?: string;
 }
 
+/**
+ * One labelled Gmail message the watcher noticed — the minimum needed to decide whether
+ * to go and read it. There is no body and no snippet here by design: open it in Gmail.
+ * Nothing becomes a record until a person confirms it.
+ */
+export interface MailHit {
+  id: string;
+  /** Gmail's message id; the dedup key. Health rows use "watcher-error-YYYY-MM-DD". */
+  messageId: string;
+  threadId: string;
+  /** "mail" = a real message; "watcher" = the watcher could not see the mailbox. */
+  kind: "mail" | "watcher";
+  sender: string;
+  subject: string;
+  receivedAt: string;
+  /** Opens the thread in Gmail. Empty for health rows. */
+  link: string;
+  status: "Pending" | "Done";
+  /** Whose turn it is to look. Empty = the master account's own list. */
+  assigneeUserId?: string;
+  createdAt: string;
+}
+
 export interface OrgSettings {
   profileName: string;
   legalEntity: string;
@@ -588,6 +611,7 @@ export interface DatabaseState {
   /** How many rows the archive really holds — auditLogs carries only the newest 500. */
   auditLogTotal?: number;
   complianceTasks: ComplianceTask[];
+  mailHits: MailHit[];
   opportunities: Opportunity[];
   cashCounts: CashCount[];
   subscriptions: Subscription[];

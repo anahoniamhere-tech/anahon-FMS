@@ -171,6 +171,10 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/contracts/generate": [...HR, ...SUPPLIER_EDITORS],
 
   // ---- The desk and the diary ----------------------------------------------
+  // The read-only mail watcher. Polling only reads Gmail; settling only closes a desk row.
+  // There is no route here that sends, replies to, labels or deletes mail — by design.
+  "/api/mail/poll": DIRECTORS,          // check the mailbox now
+  "/api/mail/settle": ANY,              // the route checks the item is mine
   "/api/compliance/save": DIRECTORS,
   "/api/compliance/delete": DIRECTORS,
   "/api/calendar/connect": ANY,        // everyone connects their own diary

@@ -10,8 +10,15 @@
  * file next to this repo — .google-calendar.env, readable by this user only. The token is
  * never printed: the file is copied to the server's .env and then deleted here.
  *
- * The scope asked for is calendar.events: permission to add, change and remove entries.
- * It cannot read anyone else's calendar and cannot touch calendar settings.
+ * Two scopes are asked for, together, because one consent replaces the other:
+ *   calendar.events  — add, change and remove entries on the connected calendar.
+ *   gmail.readonly   — READ the connected mailbox. Read is the whole of it: this grant
+ *                      cannot send, reply, forward, label, archive or delete, and the
+ *                      server never tries to (see the mail watcher in server.ts).
+ * Neither scope can reach anyone else's calendar or mailbox.
+ *
+ * RE-CONSENTING REPLACES THE OLD REFRESH TOKEN, so calendar writes must be re-tested
+ * straight afterwards — a silently broken calendar is the likely failure here.
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -39,7 +46,7 @@ const url = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParam
   client_id: clientId,
   redirect_uri: redirect,
   response_type: "code",
-  scope: "https://www.googleapis.com/auth/calendar.events",
+  scope: "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.readonly",
   access_type: "offline",
   prompt: "consent",                 // force a refresh token even on a repeat consent
 });
