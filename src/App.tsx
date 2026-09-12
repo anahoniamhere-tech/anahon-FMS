@@ -51,6 +51,7 @@ import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, B
 
 import { PROPOSAL_SECTIONS, STREAMS, OPP_STAGES, QUOTE_STATUSES, SERVICE_CATALOG, FINANCIAL_TERMS, PRODUCTION_NOTE, TECHNICAL_NOTE, EXTRAS_DEFAULT } from "./constants";
 import { tr } from "./i18n";
+import { THRESHOLD_LABEL, needsProcurement } from "./procurementPolicy";
 import IcontentInvPage from "./IcontentInvPage";
 import ProjectsTab from "./tabs/ProjectsTab";
 import ExpensesTab from "./tabs/ExpensesTab";
@@ -979,7 +980,7 @@ export default function App() {
       .sort((a, b) => b.convertedAmount - a.convertedAmount);
 
     const noProcurement = state.expenses
-      .filter(e => COUNTED.includes(e.status) && e.convertedAmount > 300 && !e.procurementId)
+      .filter(e => COUNTED.includes(e.status) && needsProcurement(e.convertedAmount) && !e.procurementId)
       .sort((a, b) => b.convertedAmount - a.convertedAmount);
 
     // Money proven in the bank against a project that has never had a voucher raised.
@@ -1523,8 +1524,8 @@ export default function App() {
               {[
                 { key: "ev", title: "Posted spend with no third-party evidence", rows: evidenceGaps.noEvidence,
                   note: "No invoice, receipt or contract on file. The app's own digitized copy of the voucher does not count." },
-                { key: "pr", title: "Over $300 with no procurement record", rows: evidenceGaps.noProcurement,
-                  note: "Policy requires an RFQ or an approved single-source waiver above USD 300." }
+                { key: "pr", title: `Over ${THRESHOLD_LABEL} with no procurement record`, rows: evidenceGaps.noProcurement,
+                  note: `Policy 020 requires an RFQ or an approved single-source waiver above ${THRESHOLD_LABEL}.` }
               ].map(group => group.rows.length > 0 && (
                 <div key={group.key} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
                   <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">

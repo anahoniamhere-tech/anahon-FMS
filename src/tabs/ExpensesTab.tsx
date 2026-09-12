@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { selfDealingRequester } from "../selfDealing";
 import { Search } from "lucide-react";
 import { Procurement, Project, Vendor } from "../types";
+import { THRESHOLD_LABEL, needsProcurement } from "../procurementPolicy";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import Info from "../Info";
 import { DIRECTORS, FINANCE, REQUESTERS } from "../roles";
@@ -21,7 +22,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
 
   const [expenseBudgetLine, setExpenseBudgetLine] = useState("");
 
-  // Approved procurement authorising a >USD 300 purchase (Policy 7.2).
+  // Approved procurement authorising a purchase above the Policy 020 threshold (7.2).
   const [expenseProcurement, setExpenseProcurement] = useState("");
 
   // Inline single-source waiver raised from the voucher form (null = panel closed).
@@ -326,10 +327,10 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                         className="finance-input w-full"
                       />
                     </div>
-                    {Number(expenseAmount) > 300 && (
+                    {needsProcurement(Number(expenseAmount)) && (
                       <div className="md:col-span-2">
                         <label htmlFor="exp-procurement" className="block text-xs font-bold text-slate-700 mb-1">
-                          Procurement authority <span className="font-normal text-slate-500">(required above USD 300 — Policy 7.2)</span>
+                          Procurement authority <span className="font-normal text-slate-500">(required above {THRESHOLD_LABEL} — Policy 7.2)</span>
                         </label>
                         <select
                           id="exp-procurement"

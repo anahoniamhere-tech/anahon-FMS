@@ -184,7 +184,7 @@ export interface Procurement {
   }[];
   justification: string;
   conflictDeclared: boolean;
-  /** Waiver: fewer than 3 quotations, allowed only with a written justification. */
+  /** Waiver: fewer quotations than the purchase calls for, allowed only with a written justification. */
   singleSource?: boolean;
   approvedBy?: string;
   approvedById?: string; approvedAs?: string;

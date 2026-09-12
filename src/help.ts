@@ -91,19 +91,19 @@ export const HELP: HelpEntry[] = [
   },
   // ---- Buying ------------------------------------------------------------------
   {
-    id: "procurement-300", area: "Buying",
-    q: { en: "Why does a request above USD 300 refuse to submit?", ar: "لماذا يرفض طلب يتجاوز 300 دولار الإرسال؟" },
+    id: "procurement-threshold", area: "Buying",
+    q: { en: "Why does a request above USD 1,000 refuse to submit?", ar: "لماذا يرفض طلب يتجاوز 1,000 دولار الإرسال؟" },
     a: {
-      en: "Policy 7.2: purchases above USD 300 need three quotes compared and approved first, or a written single-source waiver. Go to Quotes & bids, lodge the comparison, have it approved, then raise the payment request and pick that comparison as its authority.",
-      ar: "السياسة 7.2: المشتريات التي تتجاوز 300 دولار تحتاج أولاً إلى مقارنة ثلاثة عروض والموافقة عليها، أو إلى إعفاء مكتوب من المصدر الوحيد. اذهب إلى «العروض والمناقصات»، سجّل المقارنة، احصل على الموافقة، ثم ارفع طلب الدفع واختر تلك المقارنة مرجعاً له.",
+      en: "Policy 020: purchases above USD 1,000 need three quotes compared and approved first, or a written single-source waiver. Between USD 150 and USD 1,000 two compared quotes are the rule, and the payment request itself goes through without naming one. Go to Quotes & bids, lodge the comparison, have it approved, then raise the payment request and pick that comparison as its authority. (The threshold was USD 300 until 12 September 2026.)",
+      ar: "السياسة 020: المشتريات التي تتجاوز 1,000 دولار تحتاج أولاً إلى مقارنة ثلاثة عروض والموافقة عليها، أو إلى إعفاء مكتوب من المصدر الوحيد. وبين 150 و1,000 دولار القاعدة هي مقارنة عرضين، ويمرّ طلب الدفع نفسه دون أن يُسمّي مقارنة. اذهب إلى «العروض والمناقصات»، سجّل المقارنة، احصل على الموافقة، ثم ارفع طلب الدفع واختر تلك المقارنة مرجعاً له. (كان الحدّ 300 دولار حتى 12 أيلول 2026.)",
     },
   },
   {
     id: "procurement-approve", area: "Buying",
     q: { en: "What does approving a bid comparison do?", ar: "ماذا تفعل الموافقة على مقارنة العروض؟" },
     a: {
-      en: "It records which supplier was chosen and why, and unlocks payment requests above USD 300 on that project. It does not create a purchase order or pay anyone; the payment request does that.",
-      ar: "تسجّل أي مورّد اختير ولماذا، وتفتح الباب لطلبات الدفع التي تتجاوز 300 دولار على ذلك المشروع. لا تُنشئ أمر شراء ولا تدفع لأحد؛ طلب الدفع يفعل ذلك.",
+      en: "It records which supplier was chosen and why, and unlocks payment requests above USD 1,000 on that project. It does not create a purchase order or pay anyone; the payment request does that.",
+      ar: "تسجّل أي مورّد اختير ولماذا، وتفتح الباب لطلبات الدفع التي تتجاوز 1,000 دولار على ذلك المشروع. لا تُنشئ أمر شراء ولا تدفع لأحد؛ طلب الدفع يفعل ذلك.",
     },
   },
   {

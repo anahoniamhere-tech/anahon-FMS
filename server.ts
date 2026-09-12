@@ -20,6 +20,7 @@ import { NAV } from "./src/nav.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
 import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
+import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -6673,17 +6674,18 @@ app.post("/api/expense/new", async (req, res) => {
       return res.status(400).json({ error: "Policy 2.4 violation: expenses charged to a restricted grant must be mapped to an approved donor budget line — 'Unrestricted Operational Line' is not permitted for restricted projects." });
     }
 
-    // POLICY 5.3 / 7.2 — above USD 300 the voucher must name the approved procurement that
-    // authorises it: a 3-quotation comparison, or a single-source waiver with a written reason.
-    // (Previously any approved RFQ anywhere on the project let every voucher through.)
-    if (converted > 300) {
+    // POLICY 5.3 / 7.2 — above the threshold in src/procurementPolicy.ts the voucher must name
+    // the approved procurement that authorises it: a compared set of quotations, or a
+    // single-source waiver with a written reason. (Previously any approved RFQ anywhere on the
+    // project let every voucher through; and the figure itself was typed here, not read.)
+    if (needsProcurement(converted)) {
       const authority = procurementId
         ? await prisma.procurement.findUnique({ where: { id: procurementId } })
         : null;
       if (!authority || authority.status !== "Approved" || authority.projectId !== projectId) {
         const available = await prisma.procurement.findMany({ where: { projectId, status: "Approved" }, select: { id: true, title: true, singleSource: true } });
         return res.status(400).json({
-          error: `Policy 7.2: this request (${converted.toFixed(2)} USD) exceeds the USD 300 threshold, so it must reference an approved procurement for this project — a 3-quotation comparison, or a single-source waiver stating why competition was not possible. ` +
+          error: `Policy 7.2: this request (${converted.toFixed(2)} USD) exceeds the ${THRESHOLD_LABEL} threshold, so it must reference an approved procurement for this project — a ${quotationsRequired(converted)}-quotation comparison, or a single-source waiver stating why competition was not possible. ` +
             (available.length
               ? `Approved and available: ${available.map(a => `"${a.title}"${a.singleSource ? " (single source)" : ""}`).join(", ")}.`
               : "None approved yet — lodge one in Procurement & Bids first.")
@@ -7338,13 +7340,21 @@ app.post("/api/procurement/new", async (req, res) => {
       }
     }
 
-    // Policy 7.2 — three compared quotations, OR a single-source waiver carrying a written
-    // reason. The waiver is a documented exception, never a silent bypass: no reason, no waiver.
+    // Policy 7.2 — compared quotations, OR a single-source waiver carrying a written reason.
+    // How many depends on the money (src/procurementPolicy.ts): three above the threshold, two
+    // in the band below it. The waiver is a documented exception, never a silent bypass: no
+    // reason, no waiver.
     const quoteList = Array.isArray(quotations) ? quotations.filter((q: any) => q && q.vendorName) : [];
     const reason = String(justification || "").trim();
-    if (quoteList.length < 3) {
+    // The purchase is worth what the dearest compared offer says it is worth — the cheapest
+    // would let a big buy be lodged with one quotation by naming a small one first. Floored at
+    // two: below the band nothing obliges anybody to lodge a comparison at all, but a
+    // "comparison" of one offer is not a comparison.
+    const worth = Math.max(0, ...quoteList.map((q: any) => Number(q.amount) || 0));
+    const wanted = Math.max(2, quotationsRequired(worth));
+    if (quoteList.length < wanted) {
       if (!singleSource) {
-        return res.status(400).json({ error: `Policy 7.2 requires 3 compared quotations (${quoteList.length} provided). If competition is genuinely not possible, tick "Single source" and state why.` });
+        return res.status(400).json({ error: `Policy 7.2 requires ${wanted} compared quotations at this value (${quoteList.length} provided). If competition is genuinely not possible, tick "Single source" and state why.` });
       }
       if (quoteList.length < 1) {
         return res.status(400).json({ error: "A single-source waiver still needs the chosen supplier and price recorded as one quotation." });
@@ -9562,7 +9572,7 @@ STRICT RULES — violating any of these makes the report unusable:
 - Apply the ORGANIZATION'S OWN policy thresholds (below), not generic donor defaults. Where a donor rule is stricter, say so explicitly.
 
 ANAHON ACCOUNTING POLICY THRESHOLDS (Accounting & Business Policy Manual v020):
-- Procurement: 3 written quotations + comparison sheet required for any purchase above USD 300 (Sections 5.3/7.2).
+- Procurement: 3 written quotations + comparison sheet required for any purchase above USD ${QUOTES_REQUIRED_ABOVE.toLocaleString("en-US")}; 2 compared quotations from USD ${TWO_QUOTES_FROM} up to that figure (Sections 5.3/7.2). The threshold was USD 300 before 12 September 2026 — judge an earlier purchase by the rule in force when it was made.
 - Cash payments above USD 150 require Program Director approval + written justification; bank transfer is the preferred method (Section 4.4.2).
 - Petty cash ceiling: USD 300 total (Section 4.4.1).
 - Budget line overruns above 10% of the line require prior donor approval (Section 11).

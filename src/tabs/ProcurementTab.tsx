@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { THRESHOLD_LABEL, TWO_QUOTES_FROM } from "../procurementPolicy";
 import { Expense, Project, Quotation } from "../types";
 import { SharedProps } from "./shared";
 import Info from "../Info";
@@ -34,7 +35,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
 
   const [procConflict, setProcConflict] = useState(false);
 
-  // Waiver: fewer than 3 quotations, only with a written reason.
+  // Waiver: fewer quotations than the value asks for, only with a written reason.
   const [procSingleSource, setProcSingleSource] = useState(false);
 
   const handleProcurementSubmit = async (e: React.FormEvent) => {
@@ -84,7 +85,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
             <div className="space-y-6">
               <div>
                 <h2 className="text-xl font-bold">{t("Tripoli Sourcing & RFQ Comparative Sheets")}</h2>
-                <p className="text-xs text-slate-500">Internal policy (Section 7.2) demands at least 3 compared quotations for any procurement exceeding 300 USD. Stricter donor thresholds apply on top when required.</p>
+                <p className="text-xs text-slate-500">Internal policy (020 / Section 7.2): three compared quotations above {THRESHOLD_LABEL}, two from USD {TWO_QUOTES_FROM} up to it. Stricter donor thresholds apply on top when required.</p>
               </div>
 
               {/* Submit bid comparison */}
@@ -183,7 +184,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                     </div>
                   </div>
 
-                  {/* Sourced Option C — Policy 7.2 needs three compared bids */}
+                  {/* Sourced Option C — needed once the purchase is above the Policy 020 threshold */}
                   <div className="border border-slate-200 p-3 rounded bg-slate-50 space-y-2">
                     <span className="text-[10px] font-bold text-slate-500 block">THIRD COMPETING BID</span>
                     <input
@@ -222,7 +223,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                       Single source — competition was not possible
                     </label>
                     <p className="text-[10px] text-amber-800">
-                      Tick only when fewer than three quotations are genuinely obtainable (sole supplier, emergency response,
+                      Tick only when the quotations this purchase calls for are not genuinely obtainable (sole supplier, emergency response,
                       a cooperative that issues the coupons). A written reason of at least 30 characters is required below,
                       it is approved as a waiver, and it is recorded in the audit trail — donors accept a justified
                       exception, not a missing comparison.
