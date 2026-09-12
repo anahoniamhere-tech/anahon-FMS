@@ -133,10 +133,22 @@ const maskStrings = (line: string) =>
   line.replace(/(["'`])(?:\\.|(?!\1)[\s\S])*?\1/g, (m, q) => q + " ".repeat(m.length - 2) + q);
 
 console.log("\nmachine text that leads with a number is isolated");
-// A run only scrambles when it STARTS with a digit or sign and then mixes with a
-// Latin word: "−1,250.00 USD" renders "USD 1,250.00−" inside an Arabic paragraph,
-// and "2026-08-01 → 2026-08-31" reads backwards. dir="ltr" on the inline element
-// isolates it; putting it on a <td> instead would invert that column's alignment.
+// MEASURED, 12 Sep, Chrome at dir="rtl", token x-positions (plain text and spanned render
+// pixel-identical, so spans are transparent to the algorithm):
+//
+//   "-1,250.00 USD"            -> "USD -1,250.00"        inverts, ALONE in its own cell
+//   "1.08 MB"                  -> "MB 1.08"              inverts, alone
+//   "1 USD = 1.1 EUR"          -> "USD = 1.1 EUR 1"      inverts, alone
+//   "$5,000.00"                -> unchanged, even inside Arabic prose
+//   "7100 $5,000.00"           -> unchanged (number then number, no Latin word)
+//   "Archive Size: 1.08 MB"    -> unchanged (a Latin word comes FIRST)
+//   "100%"                     -> unchanged
+//
+// So the trigger is one thing: a NUMBER run immediately followed by a LATIN-WORD run in the
+// same text node. It does NOT need Arabic text around it — a lone figure in a cell inverts
+// just as well — and a lone figure with no following word is safe however it is surrounded.
+// dir="ltr" on the inline element isolates it; on a <td> it would invert that column's
+// alignment instead.
 const risky: string[] = [];
 for (const f of files) {
   const lines = read(f).split("\n");
@@ -160,36 +172,13 @@ ok("every amount + currency pair is isolated", risky.length === 0, risky.join(",
 // around the figure. Both verified by hand in Banking/Reports (Books room, 12 Sep).
 ok("a table cell isolates on an inner span, not the cell",
   !/<td[^>]*dir="ltr"/.test(read("src/tabs/BankingTab.tsx")));
-// formatUSD() embeds its own symbol, so the rule above cannot see it, and 85 lines call it.
-// The discriminator is not "figure in a sentence" — it is a t() call in the SAME element
-// (Books room, 12 Sep, measured in a browser at dir="rtl"). A figure beside a hardcoded
-// English literal sits in an all-LTR island and is safe; a figure beside t() becomes a
-// digit-leading island inside an Arabic run at runtime, and inverts. Wrapping it puts a
-// <span> between the two, so the rule clears itself — that is what makes it a rule and
-// not a one-off audit. 0 hits today; 4 on ReportsTab as it stood before 4b0261b, which
-// were exactly the four figures that were scrambling.
-const mixesWithT = (raw: string) => {
-  const line = maskStrings(raw);
-  for (const m of line.matchAll(/formatUSD\(/g)) {
-    const close = line.indexOf("<", m.index);
-    const run = line.slice(line.lastIndexOf(">", m.index) + 1, close === -1 ? line.length : close);
-    if (/\bt\(/.test(run)) return true;
-  }
-  return false;
-};
-const mixed: string[] = [];
-for (const f of files) {
-  read(f).split("\n").forEach((line, i) => { if (mixesWithT(line)) mixed.push(`${f}:${i + 1}`); });
-}
-ok("a formatUSD figure never shares an element with a t() call", mixed.length === 0, mixed.join(", "));
-// The element is the unit, not the line and not "any text": these four are safe and a
-// looser rule would send someone to "fix" them. Verified in a browser, not reasoned.
-ok("a t() neighbour is the case", mixesWithT('<p>{t("Of the")} {formatUSD(bs.cash)} {t("in the bank")}</p>'));
-ok("an English-only neighbour is not", !mixesWithT('<span>ledger 1120 book: {formatUSD(x)}</span>'));
-ok("a lone figure in a cell is not", !mixesWithT("<td>{formatUSD(x)}</td>"));
-ok("and wrapping clears it — the span comes between", !mixesWithT('<span dir="ltr">{formatUSD(x)}</span>'));
-ok("a figure inside a message string is not a case",
-  !mixesWithT('const msg = `owed ${formatUSD(x)} to ${t("them")}`;'));
+// formatUSD() embeds its own symbol and is followed by no Latin word, so by the measurement
+// above it is SAFE — including inside Arabic prose, which is where it was said to break.
+// The real ReportsTab sentence, with the real Arabic from i18n and the figures unwrapped,
+// renders correctly: "من أصل $22,000.00 الموجودة في المصرف،" keeps its figure intact, as does
+// "مدين 7100 $5,000.00 دائن". A t()-neighbour rule over the 85 call sites was added here on
+// 12 Sep and REMOVED the same day when the browser disagreed with it: it would have made
+// authors wrap figures that never move. Re-add it only against a row that actually inverts.
 
 console.log("\nand a heading that opens with a number keeps it");
 // The third family, and the one no anchor can find: a text run that simply STARTS with a
@@ -215,6 +204,11 @@ ok("a size is too", leads('<span className="text-xl">1.08 MB</span>'));
 ok("but 4b. binds as one token and is correct", !leads("<h3>4b. Internal Movements — excluded</h3>"));
 ok("a number not at the start is fine", !leads("<span>Asset (1000s)</span>"));
 ok("and a bare figure with no Latin word is fine", !leads("<td>1,250.00</td>"));
+// Both measured unchanged in the browser, and both would be flagged by a looser reading of
+// "starts with a number" — the first because the number is followed by another number, the
+// second because a Latin word comes first and the whole run is one LTR island.
+ok("a number followed by another number is fine", !leads("<span>7100 $5,000.00</span>"));
+ok("a Latin word before the number is fine", !leads("<span>Archive Size: 1.08 MB</span>"));
 ok("the date range on the payroll sheet is isolated",
   /<span dir="ltr">\{eng\[pid\]\.first\} → \{eng\[pid\]\.last\}<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
 ok("so is the LOE percentage", /<span dir="ltr">\{eng\[pid\]\.pct\}% \(payroll\)<\/span>/.test(read("src/tabs/PayrollTab.tsx")));
