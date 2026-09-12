@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  Activity, Archive, BookOpen, Briefcase, Building, Coins, FileText, FolderGit2, HardDrive,
+  Activity, Archive, BookOpen, Briefcase, Building, Building2, Coins, FileText, FolderGit2, HardDrive,
   Layers, LayoutGrid, Newspaper, PencilLine, RefreshCw, Share2,
   ShieldAlert, Sliders, User, UserCheck, Users,
 } from "lucide-react";
@@ -48,6 +48,7 @@ export const NAV: NavSection[] = [
     items: [
       { navKey: "doors", label: "Doors", icon: ic(LayoutGrid) },
       { navKey: "mydesk", label: "My Desk", icon: ic(UserCheck) },
+      { navKey: "office", label: "Virtual Office", icon: ic(Building2), roles: ["*full"] },
       { navKey: "dashboard", label: "Organisation overview", icon: ic(Activity), roles: ["*full", ...OFFICER] },
       { navKey: "help", label: "Help & Q&A", icon: glyph("?") },
       { navKey: "handbooks", label: "Policies & handbooks", icon: ic(BookOpen) },

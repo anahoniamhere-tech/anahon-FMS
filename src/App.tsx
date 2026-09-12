@@ -59,6 +59,7 @@ import PartnersTab from "./tabs/PartnersTab";
 import ComplianceTab from "./tabs/ComplianceTab";
 import MyDeskTab from "./tabs/MyDeskTab";
 import DoorsTab from "./tabs/DoorsTab";
+import OfficeTab from "./tabs/OfficeTab";
 import HelpDesk from "./HelpDesk";
 import FunnelTab from "./tabs/FunnelTab";
 import VendorsTab from "./tabs/VendorsTab";
@@ -1462,6 +1463,7 @@ export default function App() {
 
           {activeTab === "doors" && <DoorsTab {...shared} />}
           {activeTab === "mydesk" && <MyDeskTab {...shared} />}
+          {activeTab === "office" && <OfficeTab {...shared} />}
           {activeTab === "compliance" && <ComplianceTab {...shared} />}
 
         </main>
