@@ -277,7 +277,8 @@ export interface FixedAsset {
   fundingProjectId: string;
   purchaseDate: string;
   cost: number;
-  currency: "USD" | "EUR" | "LBP";
+  /** Empty only for a genuine gift — there is no sum to name a currency for. */
+  currency: "USD" | "EUR" | "LBP" | "";
   usefulLifeYears: number;
   custodian: string;
   location: string;

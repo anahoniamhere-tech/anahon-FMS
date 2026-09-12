@@ -542,6 +542,8 @@ export const AR: Record<string, string> = {
   "— choose —": "— اختر —",
   "— none —": "— لا شيء —",
   "— not bought on a payment request (a gift, or bought before the system) —": "— لم تُشترَ بطلب دفع (هدية، أو اشتُريت قبل النظام) —",
+  "Gift — no cost recorded": "هدية — لا تكلفة مسجّلة",
+  "Received as a gift — no cost to record": "استُلمت كهدية — لا تكلفة لتسجيلها",
   // Equipment phase 2: custody, repairs, stickers, the periodic check (Buying & paying)
   "A repair is an expense — the item's cost does not change.": "الإصلاح مصروف — لا تتغيّر تكلفة القطعة.",
   "All": "الكل",

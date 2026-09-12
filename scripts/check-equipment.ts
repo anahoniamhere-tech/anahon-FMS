@@ -24,6 +24,7 @@ const ok = (label: string, cond: boolean, detail = "") => {
 const read = (f: string) => readFileSync(new URL("../" + f, import.meta.url), "utf8");
 const server = read("server.ts");
 const tab = read("src/tabs/AssetsTab.tsx");
+const types = read("src/types.ts");
 const between = (from: string, to: string) => server.slice(server.indexOf(from), server.indexOf(to, server.indexOf(from)));
 const scan = between('app.post("/api/assets/scan-label"', 'app.post("/api/assets/register"');
 const reg = between('app.post("/api/assets/register"', 'app.post("/api/assets/verify"');
@@ -320,6 +321,26 @@ const kindLabelHits = ["Camera", "Lens", "Audio", "Lighting", "Computer, phone o
 ok("every kind label used on the screen has Arabic", kindLabelHits.every(k => i18n.includes(`"${k}":`)));
 // The blanket check ("every t(...) on the screen") already runs in section O, after
 // this file is read — nothing kind-specific to add beyond the labels above.
+
+console.log("\nV. a gift has no cost, and a voucher already proves it wasn't one — 12 Sep 2026");
+ok("a gift is only ever off a voucher — the two claims cannot both be true",
+  /const gift = b\.gift === true && !b\.expenseId;/.test(reg));
+ok("claiming both is refused outright, not silently resolved one way",
+  /if \(b\.gift === true && b\.expenseId\) return res\.status\(400\)/.test(reg));
+ok("a gift costs exactly 0 — never asked, never invented", /const cost = gift \? 0 : Number\(b\.cost\);/.test(reg));
+ok("a real item off a voucher still needs a real cost", /if \(!gift && !\(cost > 0\)\)/.test(reg));
+ok("a gift has no currency to choose", /currency = gift \? "" : String\(b\.currency \|\| ""\);/.test(reg));
+ok("the audit line says \"a gift\", never a false \"0.00 \" figure",
+  /\$\{gift \? "a gift" : `\$\{cost\.toFixed\(2\)\}\$\{"[^"]*"\}\$\{currency\}`\}/.test(reg.replace(/ /g, "")) || /gift \? "a gift" : `\$\{cost\.toFixed\(2\)\} \$\{currency\}`/.test(reg));
+ok("the toggle sits only where a voucher is not chosen — a voucher is proof it wasn't free",
+  /\{!voucher && \(\s*<label className="mt-1 flex min-h-\[44px\]/.test(tab));
+ok("ticking it clears cost and currency from the body, rather than sending an invented 0/blank the route then has to trust",
+  /cost: f\.gift \? "0" : f\.cost, currency: f\.gift \? "" : f\.currency/.test(tab));
+ok("the inputs are disabled while ticked, so nothing typed there can leak through",
+  /required=\{!f\.gift\} disabled=\{f\.gift\}/.test(tab) && (tab.match(/disabled=\{f\.gift\}/g) || []).length >= 2);
+ok("the card says \"Gift\" rather than three columns of \"0.00\" with no currency",
+  /a\.cost > 0 \? \(/.test(tab) && tab.includes('🎁 {t("Gift — no cost recorded")}'));
+ok("FixedAsset.currency admits the one honest case with no sum to name", /currency: "USD" \| "EUR" \| "LBP" \| "";/.test(types));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

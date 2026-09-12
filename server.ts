@@ -7768,8 +7768,13 @@ app.post("/api/assets/register", async (req, res) => {
       }
       usefulLifeYears = requested;
     }
-    const cost = Number(b.cost);
-    if (!(cost > 0)) return res.status(400).json({ error: "Give the cost of this item." });
+    // A gift has no cost, and no voucher — a voucher is proof money changed hands, so the
+    // two claims cannot both be true of the same item. Nothing is invented either way: a
+    // real purchase must give a real number, a gift is recorded as exactly what it is, 0.
+    const gift = b.gift === true && !b.expenseId;
+    if (b.gift === true && b.expenseId) return res.status(400).json({ error: "A voucher paid for this — it was not a gift." });
+    const cost = gift ? 0 : Number(b.cost);
+    if (!gift && !(cost > 0)) return res.status(400).json({ error: "Give the cost of this item." });
 
     const onFile = await prisma.fixedAsset.findMany({ select: { tag: true, serialNumber: true, cost: true, expenseId: true } });
     const twin = onFile.find(a => sameSerial(a.serialNumber, serialNumber));
@@ -7792,8 +7797,9 @@ app.post("/api/assets/register", async (req, res) => {
       fundingProjectId = exp.projectId;
       against = ` against ${exp.voucherNo}`;
     } else {
-      currency = String(b.currency || "");
-      if (!(CURRENCIES as readonly string[]).includes(currency)) return res.status(400).json({ error: "Choose the currency it was bought in." });
+      // A gift has no currency to choose — there is no sum to name it in.
+      currency = gift ? "" : String(b.currency || "");
+      if (!gift && !(CURRENCIES as readonly string[]).includes(currency)) return res.status(400).json({ error: "Choose the currency it was bought in." });
       purchaseDate = String(b.purchaseDate || "");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) return res.status(400).json({ error: "Give the date it was bought." });
       fundingProjectId = String(b.fundingProjectId || "");
@@ -7822,7 +7828,7 @@ app.post("/api/assets/register", async (req, res) => {
     }
 
     await createAuditLog(user.id, user.name, "Equipment Received",
-      `${asset.tag} "${name}" (serial ${serialNumber}), ${cost.toFixed(2)} ${currency}${against}, arrived ${b.condition}; kept at ${location}, held by ${custodian}.`);
+      `${asset.tag} "${name}" (serial ${serialNumber}), ${gift ? "a gift" : `${cost.toFixed(2)} ${currency}`}${against}, arrived ${b.condition}; kept at ${location}, held by ${custodian}.`);
     res.json({ success: true, asset });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

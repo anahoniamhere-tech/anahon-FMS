@@ -44,7 +44,7 @@ const extOf = (p: Photo) => p.filename.match(/\.\w+$/)?.[0] || "";
 const BLANK = {
   name: "", brand: "", model: "", serial: "", noSerial: false, specs: "",
   kind: "", lifeOverride: "",
-  expenseId: "", cost: "", currency: "", purchaseDate: "", projectId: "",
+  expenseId: "", cost: "", currency: "", gift: false, purchaseDate: "", projectId: "",
   custodian: "", location: "", condition: "",
 };
 
@@ -168,7 +168,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
         body: JSON.stringify({
           name: f.name, brand: f.brand, model: f.model, specs: f.specs, kind: f.kind,
           serialNumber: f.serial, noSerial: f.noSerial,
-          expenseId: f.expenseId, cost: f.cost, currency: f.currency,
+          expenseId: f.expenseId, gift: f.gift, cost: f.gift ? "0" : f.cost, currency: f.gift ? "" : f.currency,
           purchaseDate: f.purchaseDate, fundingProjectId: f.projectId,
           ...(overriding && f.lifeOverride ? { usefulLifeYears: f.lifeOverride } : {}),
           custodian: f.custodian, location: f.location, condition: f.condition,
@@ -443,17 +443,34 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
             <div>
               <label htmlFor="eq-cost" className={lbl}>{t("Cost of this item")}</label>
               <div className="flex gap-2">
-                <input id="eq-cost" type="number" step="0.01" min="0" required dir="ltr" value={f.cost} onChange={e => set("cost", e.target.value)} className={`${inp} font-mono`} />
+                <input
+                  id="eq-cost" type="number" step="0.01" min="0" required={!f.gift} disabled={f.gift}
+                  dir="ltr" value={f.gift ? "" : f.cost} onChange={e => set("cost", e.target.value)}
+                  placeholder={f.gift ? "0.00" : undefined}
+                  className={`${inp} font-mono`}
+                />
                 {voucher ? (
                   <span className="self-center font-mono text-xs font-bold">{voucher.currency}</span>
                 ) : (
-                  <select aria-label={t("Currency")} required value={f.currency} onChange={e => set("currency", e.target.value)} className="finance-input min-h-[44px] bg-white text-xs md:min-h-0">
+                  <select
+                    aria-label={t("Currency")} required={!f.gift} disabled={f.gift}
+                    value={f.currency} onChange={e => set("currency", e.target.value)}
+                    className="finance-input min-h-[44px] bg-white text-xs md:min-h-0"
+                  >
                     <option value="">—</option>
                     {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 )}
               </div>
               {voucher && <span className="text-[10px] text-slate-500">{t("One request can buy several items — book only this one's share.")}</span>}
+              {/* A voucher already proves money changed hands, so the gift tick sits only
+                  off that path — the two claims cannot both be true of the same item. */}
+              {!voucher && (
+                <label className="mt-1 flex min-h-[44px] items-center gap-2 text-[11px] text-slate-600 md:min-h-0">
+                  <input type="checkbox" checked={f.gift} onChange={e => set("gift", e.target.checked)} className="h-4 w-4" />
+                  {t("Received as a gift — no cost to record")}
+                </label>
+              )}
             </div>
             {!voucher && (<>
               <div>
@@ -595,20 +612,28 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 </p>
               )}
 
-              <div className="grid grid-cols-3 gap-2 border-t border-slate-100 pt-2 font-mono text-[11px]">
-                <div>
-                  <span className="block text-[9px] text-slate-400">{t("COST")}</span>
-                  <span dir="ltr" className="font-bold text-slate-800">{money(a.cost, a.currency)}</span>
+              {a.cost > 0 ? (
+                <div className="grid grid-cols-3 gap-2 border-t border-slate-100 pt-2 font-mono text-[11px]">
+                  <div>
+                    <span className="block text-[9px] text-slate-400">{t("COST")}</span>
+                    <span dir="ltr" className="font-bold text-slate-800">{money(a.cost, a.currency)}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[9px] text-slate-400">{t("ACCUM DEP")}</span>
+                    <span dir="ltr" className="font-bold text-slate-800">-{money(a.accumulatedDepreciation, a.currency)}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[9px] text-slate-400">{t("BOOK VALUE")}</span>
+                    <span dir="ltr" className="font-bold text-red-650">{money(a.currentBookValue, a.currency)}</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="block text-[9px] text-slate-400">{t("ACCUM DEP")}</span>
-                  <span dir="ltr" className="font-bold text-slate-800">-{money(a.accumulatedDepreciation, a.currency)}</span>
-                </div>
-                <div>
-                  <span className="block text-[9px] text-slate-400">{t("BOOK VALUE")}</span>
-                  <span dir="ltr" className="font-bold text-red-650">{money(a.currentBookValue, a.currency)}</span>
-                </div>
-              </div>
+              ) : (
+                // Zero cost never came from a purchase — it is only ever a gift, so it is
+                // said as one, not shown as three columns of "0.00" with no currency.
+                <p className="border-t border-slate-100 pt-2 text-[11px] font-semibold text-slate-500">
+                  🎁 {t("Gift — no cost recorded")}
+                </p>
+              )}
 
               {a.receivedAt && (
                 <p className="text-[11px] text-slate-600">📦 {t("Received by")} {nameOf(a.receivedBy)} · <span dir="ltr">{a.receivedAt.slice(0, 10)}</span></p>
