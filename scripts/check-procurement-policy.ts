@@ -12,7 +12,7 @@
 // are about how money leaves the building, not how a supplier was chosen.
 import { readFileSync } from "node:fs";
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "../src/procurementPolicy.js";
-import { NO_SUPPLIER_CHOICE, noSupplierChoice } from "../src/spendKind.js";
+import { NO_SUPPLIER_CHOICE, noSupplierChoice, costAccountChoices } from "../src/spendKind.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -87,12 +87,38 @@ ok("a MIXED voucher is not exempt — paying the rent and buying a lens still co
 ok("an unposted voucher, with no account behind it yet, stays on the list — silence is not an exemption",
   noSupplierChoice([]) === "");
 ok("the counter asks the books, not the wording of a voucher title",
-  /state\.journalEntries\s*\n?\s*\.filter\(j => j\.referenceNo === voucherNo\)/.test(app)
+  /state\.journalEntries\s*\n?\s*\.filter\(j => j\.referenceNo === e\.voucherNo\)/.test(app)
   && /i\.debit > 0/.test(app) && /a\.type === "Expense"/.test(app));
 ok("and only the ones with a real supplier choice are counted as a gap",
   /const noProcurement = overThreshold\.filter\(x => !x\.notASupplierChoice\)/.test(app));
 ok("the set-aside ones are shown, with their reason — excluded, never hidden",
   /notProcurable\.length > 0 && \(/.test(app) && /no supplier to choose/.test(app));
+
+console.log("\nG. the answer exists when the request is RAISED, not only after posting — 12 Sep 2026");
+ok("the voucher carries the expense account it belongs to",
+  /costAccountCode String  @default\(""\)/.test(read("prisma/schema.prisma"))
+  && /ALTER TABLE "Expense" ADD COLUMN "costAccountCode"/.test(read("prisma/migrations/20260912150000_expense_cost_account/migration.sql")));
+ok("the route reads it off the request and stores it", /costAccountCode, user \} = req\.body/.test(server) && /costAccountCode: costAccount,/.test(server));
+ok("it is checked against the chart of accounts, never taken as free text",
+  /acc\.type !== "Expense"/.test(server) && /Choose what kind of cost this is from the chart of accounts/.test(server));
+ok("required only above the threshold — the one place the answer changes what happens",
+  /\} else if \(needsProcurement\(converted\)\) \{/.test(server) && /say what kind of cost this is/.test(server));
+ok("and spend with no supplier to choose is out of the procurement rule's scope entirely",
+  /if \(needsProcurement\(converted\) && !noChoice\)/.test(server));
+ok("the form offers the books' own expense accounts, active ones only",
+  costAccountChoices([{ code: "7100", name: "Rent", type: "Expense" }, { code: "1100", name: "Bank", type: "Asset" }, { code: "6300", name: "Kit", type: "Expense", active: false }]).map(a => a.code).join() === "7100");
+ok("and asks for it on the voucher form, saying when no quotations are expected",
+  /id="exp-cost-account"/.test(expenses) && /No quotations are expected — this is \{noSupplierChoice/.test(expenses));
+ok("the procurement picker disappears for that spend rather than demanding an answer",
+  /needsProcurement\(Number\(expenseAmount\)\) && !noSupplierChoice\(\[expenseCostAccount\]\)/.test(expenses));
+ok("the counter still prefers the books, and falls back to the voucher only before they speak",
+  /if \(posted\.length\) return posted;/.test(app) && /e\.costAccountCode && expenseCodes\.has\(e\.costAccountCode\)/.test(app));
+
+console.log("\nH. the ledger stops posting every cost as video production");
+ok("posting debits the account the voucher named", /const expenseCostAccount = exp\.costAccountCode \|\| "6100"/.test(server)
+  && /const expenseCostAccount = expense\.costAccountCode \|\| "6100"/.test(server));
+ok("with the old hardcoded account as the fallback, so an older row posts exactly as before",
+  (server.match(/costAccountCode \|\| "6100"/g) || []).length === 2 && !/const expenseCostAccount = "6100"/.test(server));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

@@ -985,15 +985,22 @@ export default function App() {
     // so the item is set aside with its reason rather than demanded forever. The account the
     // entry debited is the signal; an unposted voucher has none, and stays on the list.
     const expenseCodes = new Set(state.accounts.filter(a => a.type === "Expense").map(a => a.code));
-    const debitedAccounts = (voucherNo: string): string[] => [...new Set<string>(
-      state.journalEntries
-        .filter(j => j.referenceNo === voucherNo)
-        .flatMap(j => (j.items || []).filter(i => i.debit > 0).map(i => i.accountCode))
-        .filter(c => expenseCodes.has(c))
-    )];
+    const debitedAccounts = (e: { voucherNo: string; costAccountCode?: string }): string[] => {
+      const posted = [...new Set<string>(
+        state.journalEntries
+          .filter(j => j.referenceNo === e.voucherNo)
+          .flatMap(j => (j.items || []).filter(i => i.debit > 0).map(i => i.accountCode))
+          .filter(c => expenseCodes.has(c))
+      )];
+      // The books have the last word. Before they have spoken, the voucher's own answer
+      // stands — otherwise a salary raised this morning sits on the list until somebody
+      // posts it, which is the very wait this was meant to end.
+      if (posted.length) return posted;
+      return e.costAccountCode && expenseCodes.has(e.costAccountCode) ? [e.costAccountCode] : [];
+    };
     const overThreshold = state.expenses
       .filter(e => COUNTED.includes(e.status) && needsProcurement(e.convertedAmount) && !e.procurementId)
-      .map(e => ({ e, notASupplierChoice: noSupplierChoice(debitedAccounts(e.voucherNo)) }))
+      .map(e => ({ e, notASupplierChoice: noSupplierChoice(debitedAccounts(e)) }))
       .sort((a, b) => b.e.convertedAmount - a.e.convertedAmount);
     const noProcurement = overThreshold.filter(x => !x.notASupplierChoice).map(x => x.e);
     const notProcurable = overThreshold.filter(x => x.notASupplierChoice);

@@ -151,8 +151,12 @@ model Expense {
   paidAs          String?
   postedById      String?
   postedAs        String?
-  // The approved procurement (RFQ or single-source waiver) authorising a >USD 300 purchase.
+  // The approved procurement (RFQ or single-source waiver) authorising a purchase above the
+  // Policy 020 threshold — see src/procurementPolicy.ts for the figure.
   procurementId   String  @default("")
+  /// The expense account this cost belongs to (5100 salaries, 7100 rent, 6300 equipment…),
+  /// chosen when the request is raised. Blank on rows raised before this existed.
+  costAccountCode String  @default("")
   commentsJson    String  // Serialized Comments Array [Comment]
   allocationsJson String  @default("[]") // Serialized allocations for shared cost splits
   hasAttachment   Boolean @default(false)

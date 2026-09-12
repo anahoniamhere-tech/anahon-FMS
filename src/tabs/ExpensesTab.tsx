@@ -3,6 +3,7 @@ import { selfDealingRequester } from "../selfDealing";
 import { Search } from "lucide-react";
 import { Procurement, Project, Vendor } from "../types";
 import { THRESHOLD_LABEL, needsProcurement } from "../procurementPolicy";
+import { costAccountChoices, noSupplierChoice } from "../spendKind";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import Info from "../Info";
 import { DIRECTORS, FINANCE, REQUESTERS } from "../roles";
@@ -24,6 +25,11 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
 
   // Approved procurement authorising a purchase above the Policy 020 threshold (7.2).
   const [expenseProcurement, setExpenseProcurement] = useState("");
+
+  // What kind of cost this is, in the books' own words. Asked here and not left until
+  // posting, because the procurement question below depends on the answer: nobody compares
+  // three quotations for a salary or for the rent.
+  const [expenseCostAccount, setExpenseCostAccount] = useState("");
 
   // Inline single-source waiver raised from the voucher form (null = panel closed).
   const [inlineWaiver, setInlineWaiver] = useState<{ vendorName: string; amount: string; reason: string; retrospective: boolean } | null>(null);
@@ -155,6 +161,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
           projectId: expenseProject,
           budgetLineId: expenseBudgetLine,
           procurementId: expenseProcurement,
+          costAccountCode: expenseCostAccount,
           currency: expenseCurrency,
           amount: expenseAmount,
           customRate: expenseCustomRate,
@@ -327,7 +334,27 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                         className="finance-input w-full"
                       />
                     </div>
-                    {needsProcurement(Number(expenseAmount)) && (
+                    <div className="md:col-span-2">
+                      <label htmlFor="exp-cost-account" className="block text-xs font-bold text-slate-700 mb-1">
+                        What kind of cost <span className="font-normal text-slate-500">(the ledger account it belongs to{needsProcurement(Number(expenseAmount)) ? " — required above " + THRESHOLD_LABEL : ""})</span>
+                      </label>
+                      <select
+                        id="exp-cost-account" value={expenseCostAccount}
+                        onChange={(e) => setExpenseCostAccount(e.target.value)}
+                        className="finance-input w-full"
+                      >
+                        <option value="">— Select —</option>
+                        {costAccountChoices(state.accounts).map(a => (
+                          <option key={a.code} value={a.code}>{a.code} · {a.name}</option>
+                        ))}
+                      </select>
+                      {noSupplierChoice([expenseCostAccount]) && (
+                        <p className="mt-1 text-[11px] text-emerald-800">
+                          No quotations are expected — this is {noSupplierChoice([expenseCostAccount])}.
+                        </p>
+                      )}
+                    </div>
+                    {needsProcurement(Number(expenseAmount)) && !noSupplierChoice([expenseCostAccount]) && (
                       <div className="md:col-span-2">
                         <label htmlFor="exp-procurement" className="block text-xs font-bold text-slate-700 mb-1">
                           Procurement authority <span className="font-normal text-slate-500">(required above {THRESHOLD_LABEL} — Policy 7.2)</span>

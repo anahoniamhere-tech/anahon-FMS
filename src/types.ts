@@ -166,6 +166,12 @@ export interface Expense {
   comments: Comment[];
   allocations: ProjectAllocation[];
   hasAttachment: boolean;
+  /** The approved procurement authorising a purchase above the Policy 020 threshold. */
+  procurementId?: string;
+  /** What kind of cost this is, in the books' own words (5100 salaries, 7100 rent, 6300
+   *  equipment…). Named when the request is raised: the procurement rule needs it then.
+   *  Blank on rows raised before this existed. */
+  costAccountCode?: string;
 }
 
 export interface Procurement {

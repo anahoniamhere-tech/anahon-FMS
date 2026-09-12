@@ -28,6 +28,15 @@ export const NO_SUPPLIER_CHOICE: Record<string, string> = {
 };
 
 /**
+ * The accounts a person may put on a payment request, as the ledger names them. The books'
+ * own list — 5xxx personnel, 6xxx direct project costs, 7xxx overheads — filtered to the
+ * expense side, because a voucher is never a bank account or a liability.
+ */
+export function costAccountChoices(accounts: { code: string; name: string; type: string; active?: boolean }[]) {
+  return accounts.filter(a => a.type === "Expense" && a.active !== false).sort((x, y) => x.code.localeCompare(y.code));
+}
+
+/**
  * Why this spend never involved choosing a supplier, or "" when it did — or when the books
  * have not said yet. An unposted voucher has no account behind it, so it stays on the list:
  * silence is never read as an exemption.

@@ -22,6 +22,7 @@ import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/d
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
 import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, deleteBlocker, writeOffBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
+import { noSupplierChoice } from "./src/spendKind.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -6644,7 +6645,7 @@ app.post("/api/quotations/delete", async (req, res) => {
 // Post Expense request
 app.post("/api/expense/new", async (req, res) => {
   try {
-    const { title, purpose, vendorId, projectId, budgetLineId, currency, amount, allocations, customRate, procurementId, user } = req.body;
+    const { title, purpose, vendorId, projectId, budgetLineId, currency, amount, allocations, customRate, procurementId, costAccountCode, user } = req.body;
 
     if (!projectId) {
       return res.status(400).json({ error: "Please map request to an active Project Code." });
@@ -6689,11 +6690,27 @@ app.post("/api/expense/new", async (req, res) => {
       return res.status(400).json({ error: "Policy 2.4 violation: expenses charged to a restricted grant must be mapped to an approved donor budget line — 'Unrestricted Operational Line' is not permitted for restricted projects." });
     }
 
+    // What kind of cost this is, in the books' own words. It is asked for here rather than
+    // left until posting because the procurement rule below needs the answer NOW: three
+    // quotations is a question about choosing a supplier, and a salary or the rent never had
+    // one to choose. Required only above the threshold — that is the only place the answer
+    // changes what happens — and validated against the chart of accounts, never free text.
+    const costAccount = String(costAccountCode || "").trim();
+    if (costAccount) {
+      const acc = await prisma.account.findUnique({ where: { code: costAccount } });
+      if (!acc || acc.type !== "Expense") return res.status(400).json({ error: "Choose what kind of cost this is from the chart of accounts." });
+    } else if (needsProcurement(converted)) {
+      return res.status(400).json({ error: `Above ${THRESHOLD_LABEL}, say what kind of cost this is — it decides whether quotations are expected at all.` });
+    }
+    const noChoice = costAccount ? noSupplierChoice([costAccount]) : "";
+
     // POLICY 5.3 / 7.2 — above the threshold in src/procurementPolicy.ts the voucher must name
     // the approved procurement that authorises it: a compared set of quotations, or a
     // single-source waiver with a written reason. (Previously any approved RFQ anywhere on the
     // project let every voucher through; and the figure itself was typed here, not read.)
-    if (needsProcurement(converted)) {
+    // Spend that never had a supplier to choose is out of its scope entirely — asking a salary
+    // for three quotations is asking the wrong question, not enforcing a policy.
+    if (needsProcurement(converted) && !noChoice) {
       const authority = procurementId
         ? await prisma.procurement.findUnique({ where: { id: procurementId } })
         : null;
@@ -6717,6 +6734,7 @@ app.post("/api/expense/new", async (req, res) => {
     const request = await prisma.expense.create({
       data: {
         procurementId: procurementId || "",
+        costAccountCode: costAccount,
         id: `exp-${Date.now()}`,
         voucherNo,
         title,
@@ -6826,7 +6844,10 @@ app.post("/api/expense/action", async (req, res) => {
       signed = { ...signed, approvedById: me.id, approvedAs: me.as };
 
       // Accrual basis accounting entry
-      const expenseCostAccount = "6100";
+      // The account the voucher itself named. "6100" is what this route used for every cost
+      // regardless, which is right only for video production — kept as the fallback so a row
+      // raised before the field existed posts exactly as it would have.
+      const expenseCostAccount = exp.costAccountCode || "6100";
       const apAccount = "2100";
       const allocations = JSON.parse(exp.allocationsJson || "[]");
       const journalItems = [];
@@ -7273,7 +7294,7 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
     const convertedWhtAmount = whtVal * rate;
     const convertedNetAmount = expense.convertedAmount - convertedWhtAmount;
 
-    const expenseCostAccount = "6100";
+    const expenseCostAccount = expense.costAccountCode || "6100";
     const bankAssetAccount = account.type === "Petty Cash" ? "1120" : "1100";
     // 2315 matches the rebuilt ledger convention (2310 is payroll tax).
     const taxPayableAccount = "2315";
