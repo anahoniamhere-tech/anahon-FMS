@@ -144,9 +144,27 @@ console.log("\nmachine text that leads with a number is isolated");
 //   "Archive Size: 1.08 MB"    -> unchanged (a Latin word comes FIRST)
 //   "100%"                     -> unchanged
 //
-// So the trigger is one thing: a NUMBER run immediately followed by a LATIN-WORD run in the
-// same text node. It does NOT need Arabic text around it — a lone figure in a cell inverts
-// just as well — and a lone figure with no following word is safe however it is surrounded.
+// So the trigger is a NUMBER run immediately followed by a LATIN-WORD run, and it does NOT
+// need Arabic text around it — a lone figure in a cell inverts just as well. A figure with no
+// following Latin word is safe however it is surrounded, which is why formatUSD's "$22,000.00"
+// never moves.
+//
+// What SAVES a run is a Latin word earlier in the same bidi PARAGRAPH, which anchors it. The
+// paragraph is the nearest BLOCK, not the nearest element, and that is the trap: these two
+// differ only in a class, and the first inverts (measured, 12 Sep, the real iContent markup).
+//
+//   <span class="block">Archive Size</span><span>1.08 MB</span>   -> "MB 1.08"   display:block
+//                                                                     ends the paragraph, so
+//                                                                     the figure is alone
+//   <span>Archive Size</span><span>1.08 MB</span>                  -> correct, one paragraph
+//
+// A line regex cannot see block structure, so this rule OVER-flags the anchored inline case.
+// That is deliberate: over-flagging costs one harmless dir="ltr", under-flagging ships a bug
+// that appears the day someone wraps the label in t() and the anchor becomes Arabic.
+//
+// NEVER narrow this to a "digit followed by a neutral" test. It scores 6/6 on the known
+// samples — which is how a bad proxy looks — and files "1.08 MB" as safe, because that has no
+// neutral after the number and scrambles anyway (Books room reached for it and withdrew it).
 // dir="ltr" on the inline element isolates it; on a <td> it would invert that column's
 // alignment instead.
 const risky: string[] = [];
