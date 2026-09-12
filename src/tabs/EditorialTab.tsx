@@ -9,6 +9,7 @@ import Info from "../Info";
 import { CONTENT_EDITORS, CREW, ALL_ROLES } from "../roles";
 import { withTicket } from "../docTicket";
 import EditorialMap from "./EditorialMap";
+import { openFacts, itemOpenFacts, splitFill } from "../fillMarkers";
 import ChannelPanel, { TokenHealth } from "./ChannelPanel";
 import NetworkPanel from "./NetworkPanel";
 import { SITE_EDITORS } from "../roles";
@@ -27,6 +28,28 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const EDITOR_ROLES = CONTENT_EDITORS;
+
+/**
+ * Draft text with its `[FILL: …]` markers drawn as chips rather than left as plain text
+ * (12 Sep 2026). A draft comes back from the model with no sources — by design, the draft step
+ * has no web access — and the markers are the model saying "I could not know this". Rendered as
+ * running text they disappear into the prose and the draft reads as finished, which is the whole
+ * reason an editor was surprised by a citation-less article. A chip cannot be skim-read past.
+ */
+function FillText({ text, dark = false }: { text: string; dark?: boolean }) {
+  const parts = splitFill(text);
+  return (
+    <>
+      {parts.map((p, i) => p.fill
+        ? <mark key={i} dir="auto" title={`Still to establish: ${p.text}`}
+            className={`inline not-italic rounded px-1.5 py-0.5 mx-0.5 text-[10px] font-bold align-baseline ring-1 ${
+              dark ? "bg-amber-500/20 text-amber-200 ring-amber-500/40" : "bg-amber-100 text-amber-900 ring-amber-300"}`}>
+            ⓘ {p.text}
+          </mark>
+        : <span key={i}>{p.text}</span>)}
+    </>
+  );
+}
 
 export default function EditorialTab({ state, currentUser, t, rtl, refreshState, triggerToast, phoneAccess, openDoc, lang, focusId, setFocusId }: SharedProps) {
   const [statusFilter, setStatusFilter] = useState<string>("");
@@ -287,10 +310,10 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
   const MAT_ICON: Record<string, string> = { link: "🔗", photo: "🖼", video: "🎬", doc: "📄" };
 
   // Live research on an item's open facts. Proposals only — a human logs what holds up.
-  const [research, setResearch] = useState<null | { itemId: string; busy: boolean; findings: string; sources: { title: string; url: string }[] }>(null);
+  const [research, setResearch] = useState<null | { itemId: string; mode: "sources" | "search"; busy: boolean; findings: string; sources: { title: string; url: string }[] }>(null);
 
   const runResearch = async (item: ContentItem, mode: "sources" | "search" = "sources") => {
-    setResearch({ itemId: item.id, busy: true, findings: "", sources: [] });
+    setResearch({ itemId: item.id, mode, busy: true, findings: "", sources: [] });
     try {
       const res = await fetch("/api/content/research", {
         method: "POST",
@@ -299,7 +322,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Research failed");
-      setResearch({ itemId: item.id, busy: false, findings: data.findings, sources: data.sources || [] });
+      setResearch({ itemId: item.id, mode: data.mode || mode, busy: false, findings: data.findings, sources: data.sources || [] });
     } catch (err: any) {
       triggerToast(err.message, "error");
       setResearch(null);
@@ -752,7 +775,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
           {chat.draft && (
             <div className="p-3 bg-emerald-950/60 border border-emerald-700 rounded-lg text-xs space-y-1">
               <p className="font-bold text-emerald-300">{chat.draft.title} <span className="font-normal text-emerald-400">({chat.draft.contentType} · {chat.draft.stream || "no programme"})</span></p>
-              <p className="text-slate-300 whitespace-pre-wrap">{chat.draft.brief.slice(0, 400)}{chat.draft.brief.length > 400 ? "…" : ""}</p>
+              <p className="text-slate-300 whitespace-pre-wrap" dir="auto"><FillText dark text={chat.draft.brief.slice(0, 400)} />{chat.draft.brief.length > 400 ? "…" : ""}</p>
               <p className="text-[10px] text-slate-400">
                 {chat.draft.channels.join(", ") || "no channels"} · {chat.draft.materials.length} material(s){chat.draft.legalFlag ? " · ⚖ legal review flagged" : ""}
               </p>
@@ -1122,6 +1145,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
             const isAssignee = item.rehearsal ? seat === item.assigneeAs : currentUser.id === item.assigneeUserId;
             const isChecker = item.rehearsal ? seat === item.factCheckerAs : currentUser.id === item.factCheckerUserId;
             const blockers = publishBlockers({ ...item, checksJson: JSON.stringify(item.checks || {}) });
+            const openHere = itemOpenFacts(item);
             return (
               <div key={item.id} className="py-3 text-xs">
                 <div className="flex flex-wrap items-center gap-2 cursor-pointer"
@@ -1141,6 +1165,14 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                   {item.drafts.length > 0 && (
                     <span className="text-slate-600 text-[10px] font-bold bg-slate-100 rounded-full px-2 py-0.5" title={item.drafts.map(d => d.label).join(" · ")}>
                       📝 {item.drafts.length} {t("Drafts")}
+                    </span>
+                  )}
+                  {/* Unfinished facts are visible BEFORE the drawer is opened — the point of the
+                      whole change is that a draft must not look finished from the outside either. */}
+                  {openHere.length > 0 && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-amber-300"
+                      title={openHere.join("\n")}>
+                      ⓘ <span dir="ltr">{openHere.length}</span> {t("facts still to establish")}
                     </span>
                   )}
                   {item.materials.length > 0 && (
@@ -1168,7 +1200,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       if (!working || !allowed) return;
                       Array.from(e.dataTransfer.files).forEach((f: File) => uploadItemFile(item, f));
                     }}>
-                    {item.brief && <p className="text-slate-600">{item.brief}</p>}
+                    {item.brief && <p className="text-slate-600" dir="auto"><FillText text={item.brief} /></p>}
 
                     {/* Where it stands, in one strip: the step, who owes it, and what still blocks
                         publication. The blocker list is publishBlockers() — the same sentences the
@@ -1258,8 +1290,13 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                                 <span className="font-bold">{d.label}</span>
                                 <span className="bg-slate-200 rounded-full px-2 py-0.5 text-[9px]">{d.kind}</span>
                                 <span className="text-slate-400 text-[9px]">{d.date} · {d.by}</span>
+                                {openFacts(d.text).length > 0 && (
+                                  <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-900 ring-1 ring-amber-300">
+                                    ⓘ <span dir="ltr">{openFacts(d.text).length}</span> {t("to establish")}
+                                  </span>
+                                )}
                               </summary>
-                              <p className="whitespace-pre-wrap text-slate-700 max-h-64 overflow-y-auto my-1">{d.text}</p>
+                              <p className="whitespace-pre-wrap text-slate-700 max-h-64 overflow-y-auto my-1" dir="auto"><FillText text={d.text} /></p>
                               <span className="flex gap-2">
                                 <button onClick={() => { navigator.clipboard?.writeText(d.text); triggerToast("Draft copied."); }}
                                   className="bg-slate-900 text-white rounded px-2 py-0.5 text-[10px]">{t("Copy")}</button>
@@ -1417,31 +1454,43 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                     {/* Facts still to verify — derived from the [FILL: …] markers the AI
                         leaves on unverified claims. The markers become the reporting list. */}
                     {(() => {
-                      const text = [item.brief, ...item.drafts.map(d => d.text)].join("\n");
-                      const facts = [...new Set([...text.matchAll(/\[FILL:\s*([^\]]+)\]/g)].map(m => m[1].trim()))];
+                      const facts = openHere;
                       if (!facts.length) return null;
+                      const ownLinks = item.materials.filter(m => /^https?:\/\//.test(m.url));
                       return (
-                        <div>
-                          <h5 className="font-bold text-amber-700 uppercase text-[10px] mb-1">
-                            ⓘ {t("Facts still to verify")} ({facts.length})
+                        <div className="rounded border border-amber-300 bg-amber-50 p-2">
+                          <h5 className="font-bold text-amber-800 uppercase text-[10px] mb-1">
+                            ⓘ {facts.length === 1 ? t("1 fact still to establish") : `${facts.length} ${t("facts still to establish")}`}
                           </h5>
-                          <ul className="text-[11px] text-slate-600 list-disc ms-4">
+                          <ul className="text-[11px] text-slate-700 list-disc ms-4" dir="auto">
                             {facts.map((f, i) => <li key={i}>{f}</li>)}
                           </ul>
-                          <p className="text-[9px] text-slate-400 mt-0.5">{t("Each becomes a source entry below once confirmed (Policy 005).")}</p>
+                          <p className="text-[9px] text-slate-500 mt-0.5">
+                            {t("The draft step has no web access, so the model marked these rather than inventing them. Research proposes; each becomes a source entry below only once a person confirms it (Policy 005).")}
+                          </p>
 
                           {(isAssignee || isChecker || canManage) && ["In Production", "Fact-Check"].includes(item.status) && (
-                            <span className="flex flex-wrap items-center gap-1.5 mt-1">
-                              <button onClick={() => runResearch(item, "sources")} disabled={research?.busy || item.materials.filter(m => /^https?:\/\//.test(m.url)).length === 0}
+                            <span className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                              {/* Research sits WITH the facts, not in a menu somewhere else. Nothing runs
+                                  on its own — a person presses one of these (no surprise model calls). */}
+                              <button
+                                onClick={() => ownLinks.length
+                                  ? runResearch(item, "sources")
+                                  : triggerToast(t("No source links attached to this item yet. Add them under Materials & References, or run open web search instead."), "error")}
+                                disabled={research?.busy}
                                 title={t("Reads only the links attached to this story — no open search")}
                                 className="bg-slate-900 hover:bg-slate-950 disabled:opacity-40 text-white rounded px-3 py-1.5 text-[11px]">
-                                📖 {research?.itemId === item.id && research.busy ? t("Researching…") : t("Read my sources")}
-                                <span className="opacity-60"> · {item.materials.filter(m => /^https?:\/\//.test(m.url)).length} · ~$0.10</span>
+                                📖 {research?.itemId === item.id && research.busy && research.mode === "sources"
+                                  ? t("Researching…")
+                                  : `${t("Establish")} ${facts.length === 1 ? t("this fact") : `${t("these")} ${facts.length} ${t("facts")}`} — ${t("read our sources")}`}
+                                <span className="opacity-60"> · <span dir="ltr">{ownLinks.length}</span> {t("attached")}</span>
                               </button>
-                              <button onClick={() => { if (window.confirm(t("Open web search costs roughly ten times more than reading your own sources. Continue?"))) runResearch(item, "search"); }}
+                              <button
+                                onClick={() => { if (window.confirm(t("Open web search bills the newsroom for every run — roughly ten times what reading your own attached sources costs. Run it?"))) runResearch(item, "search"); }}
                                 disabled={research?.busy}
-                                className="bg-slate-200 hover:bg-slate-300 disabled:opacity-40 text-slate-800 rounded px-3 py-1.5 text-[11px]">
-                                🌐 {t("Search the web")} <span className="opacity-60">· ~$2</span>
+                                className="bg-white border border-amber-400 hover:bg-amber-100 disabled:opacity-40 text-slate-800 rounded px-3 py-1.5 text-[11px]">
+                                🌐 {research?.itemId === item.id && research.busy && research.mode === "search" ? t("Searching…") : t("Search the web")}
+                                <span className="text-amber-800 font-bold"> · {t("costs money each run")}</span>
                               </button>
                             </span>
                           )}

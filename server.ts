@@ -11,6 +11,7 @@ import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
+import { itemOpenFacts } from "./src/fillMarkers.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
@@ -5686,11 +5687,15 @@ app.post("/api/content/research", async (req, res) => {
     if (runMode === "sources" && !ownLinks.length) {
       return res.status(400).json({ error: "No source links attached to this item yet. Add them under Materials & References, or run open web search instead." });
     }
-    const drafts = JSON.parse(item.draftsJson || "[]");
-    const facts = [...new Set(
-      [...`${item.brief}\n${drafts.map((d: any) => d.text).join("\n")}`.matchAll(/\[FILL:\s*([^\]]+)\]/g)
-    ].map(m => m[1].trim()))];
+    // The same parser the Newsroom counts with, so "3 facts still to establish" on the screen and
+    // the list researched here are one list (src/fillMarkers.ts).
+    const facts = itemOpenFacts({ brief: item.brief, drafts: JSON.parse(item.draftsJson || "[]") });
     if (!facts.length) return res.status(400).json({ error: "Nothing marked [FILL] on this item — nothing to research." });
+    // Research is the only thing here that needs the paid key. Say which key, before spending a
+    // round trip, rather than surfacing a generic 500.
+    if (!anthropicKey()) {
+      return res.status(503).json({ error: "Research needs ANTHROPIC_API_KEY on the server — it is the only step that reads the web, and Gemini's search grounding is not wired here. Admin sets it in the FMS .env." });
+    }
 
     const out = await askWithSearch([
       `You are researching open facts for an AnaHon newsroom story (Lebanon, Tripoli/North Lebanon).`,
@@ -5716,6 +5721,16 @@ app.post("/api/content/research", async (req, res) => {
       `"${item.title}": ${facts.length} open fact(s), ${runMode === "sources" ? `${ownLinks.length} supplied source(s) read` : "open web search"}, ${out.sources.length} source(s) returned.`);
     res.json({ success: true, mode: runMode, facts, findings: out.text, sources: out.sources });
   } catch (err: any) {
+    // A key that is PRESENT but rejected reads as a raw upstream 401 blob, which tells a reporter
+    // nothing and looks like the feature is broken. Name the cause in one sentence instead; the
+    // key itself is never echoed. (Measured on the NAS 12 Sep 2026: a well-formed key, revoked.)
+    const msg = String(err?.message || "");
+    if (/authentication_error|API key is invalid|\b401\b/.test(msg)) {
+      return res.status(503).json({ error: "The server's ANTHROPIC_API_KEY is set but Anthropic rejected it (401 — invalid or revoked). Research is the only step that reads the web, so it cannot run until Admin replaces the key in the FMS .env. Nothing else in the newsroom is affected." });
+    }
+    if (/rate_limit|\b429\b/.test(msg)) {
+      return res.status(503).json({ error: "Anthropic is rate-limiting the research key right now. Wait a minute and press it again — nothing was charged for this run." });
+    }
     res.status(500).json({ error: err.message });
   }
 });
