@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Camera, ClipboardList, Gift, History, LogIn, LogOut, MapPin, Package, Printer, Receipt, Ruler, ScanLine, Search, Tag, Wrench } from "lucide-react";
+import { Camera, ClipboardList, Gift, History, Lock, LogIn, LogOut, MapPin, Package, Pencil, Printer, Receipt, Ruler, ScanLine, Search, Tag, Wrench } from "lucide-react";
 import { SharedProps } from "./shared";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS } from "../roles";
 import { withTicket } from "../docTicket";
-import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, EQUIPMENT_LOCATIONS, OTHER_LOCATION, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, checkOutBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife, currentMovement } from "../equipment";
+import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, EQUIPMENT_LOCATIONS, OTHER_LOCATION, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, LOCKED_FIELDS, checkOutBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife, currentMovement } from "../equipment";
 import { addDays, localToday } from "../workflow";
 
 /** A request equipment can be booked against: the money is committed. The route asks the same. */
@@ -85,6 +85,9 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   const [panel, setPanel] = useState<{ id: string; kind: "out" | "in" | "repair" } | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [historyFor, setHistoryFor] = useState<string | null>(null);
+  // A correction in progress. Its own copy of the form, seeded from the item: nothing is
+  // written until it is submitted, and the item on the screen keeps saying what it says.
+  const [edit, setEdit] = useState<{ id: string; f: typeof BLANK } | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
   // Which items to print stickers for, and at what size.
   const [stickersOpen, setStickersOpen] = useState(false);
@@ -111,18 +114,12 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
     (state.users.find(u => u.id === id)?.name || id);
 
   // One request can buy several items, so the next may only take what is left of it.
-  const bookedOn = (expenseId: string) => assets.filter(a => a.expenseId === expenseId).reduce((s, a) => s + (a.cost || 0), 0);
-  const leftOn = (e: { id: string; amount: number }) => Math.max(0, (e.amount || 0) - bookedOn(e.id));
+  // exceptId: an item being corrected is not something already booked against its own voucher.
+  const bookedOn = (expenseId: string, exceptId = "") => assets.filter(a => a.expenseId === expenseId && a.id !== exceptId).reduce((s, a) => s + (a.cost || 0), 0);
+  const leftOn = (e: { id: string; amount: number }, exceptId = "") => Math.max(0, (e.amount || 0) - bookedOn(e.id, exceptId));
   const vouchers = (state.expenses || [])
     .filter(e => BOOKABLE.includes(e.status))
     .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
-  const voucher = vouchers.find(e => e.id === f.expenseId);
-
-  const chooseVoucher = (id: string) => {
-    const v = vouchers.find(e => e.id === id);
-    setF(prev => ({ ...prev, expenseId: id, cost: v ? String(leftOn(v)) : "" }));
-  };
-
   // Reads the label; never saves. The person holding the item checks every field.
   const handleScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -215,6 +212,46 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
     }
   };
 
+  // Correcting an item. The form opens on what the item says now, so leaving a field alone
+  // really does leave it alone — and the route refuses a submission that changed nothing.
+  const startEdit = (a: any) => setEdit(edit?.id === a.id ? null : { id: a.id, f: {
+    ...BLANK,
+    name: a.name || "", brand: a.brand || "", model: a.model || "", specs: a.specs || "",
+    kind: a.kind || "",
+    lifeOverride: a.usefulLifeYears === usefulLifeFor(a.kind) ? "" : String(a.usefulLifeYears || ""),
+    serial: a.serialNumber === NO_SERIAL ? "" : (a.serialNumber || ""), noSerial: a.serialNumber === NO_SERIAL,
+    expenseId: a.expenseId || "", cost: a.cost ? String(a.cost) : "", currency: a.currency || "",
+    gift: !a.expenseId && !a.cost,
+    purchaseDate: a.purchaseDate || "", projectId: a.fundingProjectId || "",
+    condition: a.condition || "",
+  } });
+
+  const handleEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!edit) return;
+    const g = edit.f;
+    const res = await fetch("/api/assets/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assetId: edit.id,
+        name: g.name, brand: g.brand, model: g.model, specs: g.specs, kind: g.kind,
+        serialNumber: g.serial, noSerial: g.noSerial,
+        expenseId: g.expenseId, gift: g.gift, cost: g.gift ? "0" : g.cost, currency: g.gift ? "" : g.currency,
+        purchaseDate: g.purchaseDate, fundingProjectId: g.projectId,
+        ...(overriding && g.lifeOverride ? { usefulLifeYears: g.lifeOverride } : {}),
+        condition: g.condition,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return triggerToast(data.error || "The correction was refused.", "error");
+    triggerToast(data.verificationCleared
+      ? t("Corrected — and it must be confirmed again.")
+      : t("Corrected."));
+    setEdit(null);
+    refreshState();
+  };
+
   const handleVerify = async (a: { id: string; condition: string }) => {
     const d = verifyDraft[a.id] || { condition: a.condition, months: String(DEFAULT_CHECK_MONTHS) };
     const res = await fetch("/api/assets/verify", {
@@ -247,6 +284,154 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   /** Who has it — a grouped picker over the two lists the FMS already has. `includeOrg`
    *  drops "the organisation itself" from a check-out, since that is what the item is
    *  leaving, not a destination. */
+  // The same thirteen fields describe an item whether it is arriving or being corrected,
+  // so both forms render this one function: a rule added here cannot go missing in the
+  // other. Who has it and where it is are NOT here — custody is the movement log's, and a
+  // correction never touches what happened to an item (12 Sep 2026).
+  const itemFields = (form: typeof BLANK, patch: (p: Partial<typeof BLANK>) => void, idp: string, selfId = "") => {
+    const set = (k: keyof typeof BLANK, val: string | boolean) => patch({ [k]: val } as Partial<typeof BLANK>);
+    const setKind = (kind: string) => patch({ kind, lifeOverride: "" });
+    const life = usefulLifeFor(form.kind);
+    const v = vouchers.find(e => e.id === form.expenseId);
+    const pick = (id: string) => {
+      const chosen = vouchers.find(e => e.id === id);
+      patch({ expenseId: id, cost: chosen ? String(leftOn(chosen, selfId)) : "" });
+    };
+    return (<>
+              <div>
+                <label htmlFor={`${idp}-name`} className={lbl}>{t("Item")}</label>
+                <input id={`${idp}-name`} required value={form.name} onChange={e => set("name", e.target.value)} placeholder={t("e.g. Sony FX6 cinema camera")} className={inp} />
+              </div>
+              <div>
+                <label htmlFor={`${idp}-brand`} className={lbl}>{t("Brand")}</label>
+                <input id={`${idp}-brand`} value={form.brand} onChange={e => set("brand", e.target.value)} className={inp} />
+              </div>
+              <div>
+                <label htmlFor={`${idp}-model`} className={lbl}>{t("Model")}</label>
+                <input id={`${idp}-model`} dir="ltr" value={form.model} onChange={e => set("model", e.target.value)} className={`${inp} font-mono`} />
+              </div>
+              <div>
+                <label htmlFor={`${idp}-serial`} className={lbl}>{t("Serial number")}</label>
+                <input
+                  id={`${idp}-serial`} dir="ltr" required={!form.noSerial} disabled={form.noSerial}
+                  value={form.noSerial ? "" : form.serial} onChange={e => set("serial", e.target.value)}
+                  placeholder={form.noSerial ? t(NO_SERIAL) : t("As printed on the label")}
+                  className={`${inp} font-mono`}
+                />
+                <label className="mt-1 flex min-h-[44px] items-center gap-2 text-[11px] text-slate-600 md:min-h-0">
+                  <input type="checkbox" checked={form.noSerial} onChange={e => set("noSerial", e.target.checked)} className="h-4 w-4" />
+                  {t(NO_SERIAL)}
+                </label>
+              </div>
+              <div className="md:col-span-2">
+                <label htmlFor={`${idp}-specs`} className={lbl}>{t("Specifications")}</label>
+                <textarea id={`${idp}-specs`} rows={2} value={form.specs} onChange={e => set("specs", e.target.value)} className="finance-input w-full text-xs" />
+              </div>
+  
+              <div className="md:col-span-3">
+                <label htmlFor={`${idp}-voucher`} className={lbl}>{t("Bought on payment request")}</label>
+                <select id={`${idp}-voucher`} value={form.expenseId} onChange={e => pick(e.target.value)} className={`${inp} bg-white`}>
+                  <option value="">{t("— not bought on a payment request (a gift, or bought before the system) —")}</option>
+                  {vouchers.map(e => (
+                    <option key={e.id} value={e.id} disabled={leftOn(e, selfId) <= 0}>
+                      {e.voucherNo} · {supplierOf(e.vendorId)} · {money(e.amount, e.currency)}
+                      {leftOn(e, selfId) < e.amount ? ` (${money(leftOn(e, selfId), e.currency)} ${t("left to book")})` : ""}
+                    </option>
+                  ))}
+                </select>
+                {v && (
+                  <p className="mt-1 text-[11px] text-slate-600">
+                    {t("From the request")}: {supplierOf(v.vendorId)} · <span dir="ltr">{money(v.amount, v.currency)}</span>
+                    {" · "}<span dir="ltr">{String(v.paid_at || v.approved_at || v.created_at || "").slice(0, 10)}</span>
+                    {projectOf(v.projectId) ? ` · ${projectOf(v.projectId)}` : ""}
+                  </p>
+                )}
+              </div>
+  
+              <div>
+                <label htmlFor={`${idp}-cost`} className={lbl}>{t("Cost of this item")}</label>
+                <div className="flex gap-2">
+                  <input
+                    id={`${idp}-cost`} type="number" step="0.01" min="0" required={!form.gift} disabled={form.gift}
+                    dir="ltr" value={form.gift ? "" : form.cost} onChange={e => set("cost", e.target.value)}
+                    placeholder={form.gift ? "0.00" : undefined}
+                    className={`${inp} font-mono`}
+                  />
+                  {v ? (
+                    <span className="self-center font-mono text-xs font-bold">{v.currency}</span>
+                  ) : (
+                    <select
+                      aria-label={t("Currency")} required={!form.gift} disabled={form.gift}
+                      value={form.currency} onChange={e => set("currency", e.target.value)}
+                      className="finance-input min-h-[44px] bg-white text-xs md:min-h-0"
+                    >
+                      <option value="">—</option>
+                      {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  )}
+                </div>
+                {v && <span className="text-[10px] text-slate-500">{t("One request can buy several items — book only this one's share.")}</span>}
+                {/* A voucher already proves money changed hands, so the gift tick sits only
+                    off that path — the two claims cannot both be true of the same item. */}
+                {!v && (
+                  <label className="mt-1 flex min-h-[44px] items-center gap-2 text-[11px] text-slate-600 md:min-h-0">
+                    <input type="checkbox" checked={form.gift} onChange={e => set("gift", e.target.checked)} className="h-4 w-4" />
+                    {t("Received as a gift — no cost to record")}
+                  </label>
+                )}
+              </div>
+              {!v && (<>
+                <div>
+                  <label htmlFor={`${idp}-date`} className={lbl}>{t("Bought on")}</label>
+                  <input id={`${idp}-date`} type="date" required value={form.purchaseDate} onChange={e => set("purchaseDate", e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label htmlFor={`${idp}-project`} className={lbl}>{t("Funded by project")}</label>
+                  <select id={`${idp}-project`} value={form.projectId} onChange={e => set("projectId", e.target.value)} className={`${inp} bg-white`}>
+                    <option value="">{t("— none —")}</option>
+                    {state.projects.map(p => <option key={p.id} value={p.id}>{p.code}</option>)}
+                  </select>
+                </div>
+              </>)}
+              <div>
+                <label htmlFor={`${idp}-kind`} className={lbl}>{t("What kind of equipment")}</label>
+                <select id={`${idp}-kind`} value={form.kind} onChange={e => setKind(e.target.value)} className={`${inp} bg-white`}>
+                  <option value="">{t("— choose —")}</option>
+                  {EQUIPMENT_KINDS.map(k => <option key={k} value={k}>{t(KIND_LABELS[k])}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor={`${idp}-life`} className={lbl}>{t("Useful Life (Years)")}</label>
+                {overriding ? (
+                  <select
+                    id={`${idp}-life`} value={form.lifeOverride || String(life)}
+                    onChange={e => set("lifeOverride", e.target.value === String(life) ? "" : e.target.value)}
+                    className={`${inp} bg-white`}
+                  >
+                    {[...new Set([2, 3, 4, 5, 6, 7, 10, life])].sort((a, b) => a - b).map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                ) : (
+                  <p id={`${idp}-life`} dir="ltr" className="finance-input flex w-full items-center bg-slate-50 text-xs text-slate-700">
+                    {life} {t("years")}
+                  </p>
+                )}
+                <span className="text-[10px] text-slate-500">
+                  {t("{n} years — {kind}, AnaHon policy")
+                    .replace("{n}", String(life))
+                    .replace("{kind}", t(KIND_LABELS[form.kind ? (EQUIPMENT_KINDS as readonly string[]).includes(form.kind) ? form.kind : "other" : "other"]))}
+                  {overriding && form.lifeOverride && ` — ${t("overridden")}`}
+                </span>
+              </div>
+              <div>
+                <label htmlFor={`${idp}-condition`} className={lbl}>{t("Condition on arrival")}</label>
+                <select id={`${idp}-condition`} required value={form.condition} onChange={e => set("condition", e.target.value)} className={`${inp} bg-white`}>
+                  <option value="">{t("— choose —")}</option>
+                  {CONDITIONS.map(c => <option key={c} value={c}>{t(c)}</option>)}
+                </select>
+              </div>
+      </>);
+  };
+
   const holderPicker = (id: string, kind: string, holderId: string, includeOrg: boolean, onChange: (kind: string, holderId: string) => void) => (
     <select
       id={id} required value={holderValue(kind, holderId)}
@@ -445,130 +630,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label htmlFor="eq-name" className={lbl}>{t("Item")}</label>
-              <input id="eq-name" required value={f.name} onChange={e => set("name", e.target.value)} placeholder={t("e.g. Sony FX6 cinema camera")} className={inp} />
-            </div>
-            <div>
-              <label htmlFor="eq-brand" className={lbl}>{t("Brand")}</label>
-              <input id="eq-brand" value={f.brand} onChange={e => set("brand", e.target.value)} className={inp} />
-            </div>
-            <div>
-              <label htmlFor="eq-model" className={lbl}>{t("Model")}</label>
-              <input id="eq-model" dir="ltr" value={f.model} onChange={e => set("model", e.target.value)} className={`${inp} font-mono`} />
-            </div>
-            <div>
-              <label htmlFor="eq-serial" className={lbl}>{t("Serial number")}</label>
-              <input
-                id="eq-serial" dir="ltr" required={!f.noSerial} disabled={f.noSerial}
-                value={f.noSerial ? "" : f.serial} onChange={e => set("serial", e.target.value)}
-                placeholder={f.noSerial ? t(NO_SERIAL) : t("As printed on the label")}
-                className={`${inp} font-mono`}
-              />
-              <label className="mt-1 flex min-h-[44px] items-center gap-2 text-[11px] text-slate-600 md:min-h-0">
-                <input type="checkbox" checked={f.noSerial} onChange={e => set("noSerial", e.target.checked)} className="h-4 w-4" />
-                {t(NO_SERIAL)}
-              </label>
-            </div>
-            <div className="md:col-span-2">
-              <label htmlFor="eq-specs" className={lbl}>{t("Specifications")}</label>
-              <textarea id="eq-specs" rows={2} value={f.specs} onChange={e => set("specs", e.target.value)} className="finance-input w-full text-xs" />
-            </div>
-
-            <div className="md:col-span-3">
-              <label htmlFor="eq-voucher" className={lbl}>{t("Bought on payment request")}</label>
-              <select id="eq-voucher" value={f.expenseId} onChange={e => chooseVoucher(e.target.value)} className={`${inp} bg-white`}>
-                <option value="">{t("— not bought on a payment request (a gift, or bought before the system) —")}</option>
-                {vouchers.map(e => (
-                  <option key={e.id} value={e.id} disabled={leftOn(e) <= 0}>
-                    {e.voucherNo} · {supplierOf(e.vendorId)} · {money(e.amount, e.currency)}
-                    {leftOn(e) < e.amount ? ` (${money(leftOn(e), e.currency)} ${t("left to book")})` : ""}
-                  </option>
-                ))}
-              </select>
-              {voucher && (
-                <p className="mt-1 text-[11px] text-slate-600">
-                  {t("From the request")}: {supplierOf(voucher.vendorId)} · <span dir="ltr">{money(voucher.amount, voucher.currency)}</span>
-                  {" · "}<span dir="ltr">{String(voucher.paid_at || voucher.approved_at || voucher.created_at || "").slice(0, 10)}</span>
-                  {projectOf(voucher.projectId) ? ` · ${projectOf(voucher.projectId)}` : ""}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="eq-cost" className={lbl}>{t("Cost of this item")}</label>
-              <div className="flex gap-2">
-                <input
-                  id="eq-cost" type="number" step="0.01" min="0" required={!f.gift} disabled={f.gift}
-                  dir="ltr" value={f.gift ? "" : f.cost} onChange={e => set("cost", e.target.value)}
-                  placeholder={f.gift ? "0.00" : undefined}
-                  className={`${inp} font-mono`}
-                />
-                {voucher ? (
-                  <span className="self-center font-mono text-xs font-bold">{voucher.currency}</span>
-                ) : (
-                  <select
-                    aria-label={t("Currency")} required={!f.gift} disabled={f.gift}
-                    value={f.currency} onChange={e => set("currency", e.target.value)}
-                    className="finance-input min-h-[44px] bg-white text-xs md:min-h-0"
-                  >
-                    <option value="">—</option>
-                    {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                )}
-              </div>
-              {voucher && <span className="text-[10px] text-slate-500">{t("One request can buy several items — book only this one's share.")}</span>}
-              {/* A voucher already proves money changed hands, so the gift tick sits only
-                  off that path — the two claims cannot both be true of the same item. */}
-              {!voucher && (
-                <label className="mt-1 flex min-h-[44px] items-center gap-2 text-[11px] text-slate-600 md:min-h-0">
-                  <input type="checkbox" checked={f.gift} onChange={e => set("gift", e.target.checked)} className="h-4 w-4" />
-                  {t("Received as a gift — no cost to record")}
-                </label>
-              )}
-            </div>
-            {!voucher && (<>
-              <div>
-                <label htmlFor="eq-date" className={lbl}>{t("Bought on")}</label>
-                <input id="eq-date" type="date" required value={f.purchaseDate} onChange={e => set("purchaseDate", e.target.value)} className={inp} />
-              </div>
-              <div>
-                <label htmlFor="eq-project" className={lbl}>{t("Funded by project")}</label>
-                <select id="eq-project" value={f.projectId} onChange={e => set("projectId", e.target.value)} className={`${inp} bg-white`}>
-                  <option value="">{t("— none —")}</option>
-                  {state.projects.map(p => <option key={p.id} value={p.id}>{p.code}</option>)}
-                </select>
-              </div>
-            </>)}
-            <div>
-              <label htmlFor="eq-kind" className={lbl}>{t("What kind of equipment")}</label>
-              <select id="eq-kind" value={f.kind} onChange={e => setKind(e.target.value)} className={`${inp} bg-white`}>
-                <option value="">{t("— choose —")}</option>
-                {EQUIPMENT_KINDS.map(k => <option key={k} value={k}>{t(KIND_LABELS[k])}</option>)}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="eq-life" className={lbl}>{t("Useful Life (Years)")}</label>
-              {overriding ? (
-                <select
-                  id="eq-life" value={f.lifeOverride || String(policyLife)}
-                  onChange={e => set("lifeOverride", e.target.value === String(policyLife) ? "" : e.target.value)}
-                  className={`${inp} bg-white`}
-                >
-                  {[...new Set([2, 3, 4, 5, 6, 7, 10, policyLife])].sort((a, b) => a - b).map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              ) : (
-                <p id="eq-life" dir="ltr" className="finance-input flex w-full items-center bg-slate-50 text-xs text-slate-700">
-                  {policyLife} {t("years")}
-                </p>
-              )}
-              <span className="text-[10px] text-slate-500">
-                {t("{n} years — {kind}, AnaHon policy")
-                  .replace("{n}", String(policyLife))
-                  .replace("{kind}", t(KIND_LABELS[f.kind ? (EQUIPMENT_KINDS as readonly string[]).includes(f.kind) ? f.kind : "other" : "other"]))}
-                {overriding && f.lifeOverride && ` — ${t("overridden")}`}
-              </span>
-            </div>
+            {itemFields(f, p => setF(prev => ({ ...prev, ...p })), "eq")}
             <div>
               <label htmlFor="eq-holder" className={lbl}>{t("Currently with")}</label>
               {holderPicker("eq-holder", f.holderKind, f.holderId, true, (kind, holderId) => setF(prev => ({ ...prev, holderKind: kind, holderId })))}
@@ -576,13 +638,6 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
             <div>
               <label htmlFor="eq-location" className={lbl}>{t("Currently in")}</label>
               {locationPicker("eq-location", f.location, f.locationOther, v => set("location", v), v => set("locationOther", v))}
-            </div>
-            <div>
-              <label htmlFor="eq-condition" className={lbl}>{t("Condition on arrival")}</label>
-              <select id="eq-condition" required value={f.condition} onChange={e => set("condition", e.target.value)} className={`${inp} bg-white`}>
-                <option value="">{t("— choose —")}</option>
-                {CONDITIONS.map(c => <option key={c} value={c}>{t(c)}</option>)}
-              </select>
             </div>
             <div>
               <span className={lbl}>{t("Photo of the item")}</span>
@@ -764,6 +819,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                     <button type="button" onClick={() => openPanel(a.id, "out")} className={btn}><LogOut className="h-4 w-4" /> {t("Check out")}</button>
                   )}
                   <button type="button" onClick={() => openPanel(a.id, "repair", { date: today })} className={btnGhost}><Wrench className="h-4 w-4" /> {t("Log a repair")}</button>
+                  <button type="button" aria-expanded={edit?.id === a.id} onClick={() => startEdit(a)} className={btnGhost}><Pencil className="h-4 w-4" /> {t("Correct the details")}</button>
                   {a.tag && (
                     <a href={withTicket(`/api/assets/stickers?ids=${encodeURIComponent(a.id)}`)} target="_blank" rel="noreferrer" className={btnGhost}><Printer className="h-4 w-4" /> {t("Print sticker")}</a>
                   )}
@@ -868,6 +924,42 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                     </div>
                     <p className="self-end text-[10px] text-slate-500">{t("A repair is an expense — the item's cost does not change.")}</p>
                     <button type="submit" className={`${btn} justify-center md:col-span-2`}><Wrench className="h-4 w-4" /> {t("Log the repair")}</button>
+                  </form>
+                );
+              })()}
+
+              {/* A correction describes the item. What happened to it — the sticker, the delivery,
+                  the confirmation, the log — is shown here as read-only, with the reason. */}
+              {edit?.id === a.id && (() => {
+                const locked: Record<string, string> = {
+                  "Sticker": a.tag || "—",
+                  "Received by": a.receivedAt ? `${nameOf(a.receivedBy)} · ${a.receivedAt.slice(0, 10)}` : "—",
+                  "Confirmed by": a.verifiedAt ? `${nameOf(a.verifiedBy)} · ${a.verifiedAt.slice(0, 10)}` : "—",
+                  "History": String((a.movements?.length || 0) + (a.repairs?.length || 0)),
+                };
+                return (
+                  <form onSubmit={handleEdit} className="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <h5 className="text-xs font-bold text-amber-900"><Pencil className="inline h-3.5 w-3.5" /> {t("Correct what this item is")}</h5>
+                    <div className="space-y-1 rounded border border-amber-200 bg-white p-2">
+                      {LOCKED_FIELDS.map(l => (
+                        <p key={l.label} className="text-[11px] text-slate-600">
+                          <Lock className="inline h-3 w-3 text-slate-400" /> <b>{t(l.label)}</b>:{" "}
+                          <span dir="auto">{locked[l.label]}</span> — <span className="text-slate-500">{t(l.why)}</span>
+                        </p>
+                      ))}
+                    </div>
+                    {a.verifiedAt && (
+                      <p className="rounded border border-amber-300 bg-amber-100 p-2 text-[11px] font-bold text-amber-900">
+                        ⚠ {t("Somebody confirmed this item physically. Change its name, brand, model, kind, serial number or condition and that confirmation lapses — it must be confirmed again.")}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                      {itemFields(edit.f, p => setEdit(cur => cur && { ...cur, f: { ...cur.f, ...p } }), `ed-${a.id}`, a.id)}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="submit" className={btn}><Pencil className="h-4 w-4" /> {t("Save the correction")}</button>
+                      <button type="button" onClick={() => setEdit(null)} className={btnGhost}>{t("Cancel")}</button>
+                    </div>
                   </form>
                 );
               })()}

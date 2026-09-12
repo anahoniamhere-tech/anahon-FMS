@@ -552,6 +552,17 @@ export const AR: Record<string, string> = {
   "— none —": "— لا شيء —",
   "— not bought on a payment request (a gift, or bought before the system) —": "— لم تُشترَ بطلب دفع (هدية، أو اشتُريت قبل النظام) —",
   "Gift — no cost recorded": "هدية — لا تكلفة مسجّلة",
+  // Correcting a registered item — 12 Sep 2026.
+  "Correct the details": "تصحيح البيانات",
+  "Correct what this item is": "تصحيح ما هو هذا الصنف",
+  "Save the correction": "حفظ التصحيح",
+  "Corrected.": "تم التصحيح.",
+  "Corrected — and it must be confirmed again.": "تم التصحيح — ويجب تأكيد الصنف من جديد.",
+  "Somebody confirmed this item physically. Change its name, brand, model, kind, serial number or condition and that confirmation lapses — it must be confirmed again.": "أكّد أحدهم وجود هذا الصنف فعلياً. تغيير اسمه أو علامته أو طرازه أو نوعه أو رقمه التسلسلي أو حالته يُسقط ذلك التأكيد — ويجب تأكيده من جديد.",
+  "it is printed and stuck on the item": "مطبوع وملصق على الصنف نفسه",
+  "who took delivery, and when, is the record": "من استلمه ومتى — هذا هو السجل",
+  "somebody's word that they saw it": "شهادة شخص بأنه رآه",
+  "every check-out and return, as it happened": "كل إخراج وإعادة، كما حدث",
   "Received as a gift — no cost to record": "استُلمت كهدية — لا تكلفة لتسجيلها",
   // Equipment phase 2: custody, repairs, stickers, the periodic check (Buying & paying)
   "A repair is an expense — the item's cost does not change.": "الإصلاح مصروف — لا تتغيّر تكلفة القطعة.",

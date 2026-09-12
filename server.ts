@@ -19,7 +19,7 @@ import { helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA } from "./src/
 import { NAV } from "./src/nav.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
-import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
+import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
@@ -129,7 +129,7 @@ const PLO_ALLOWED_POSTS = new Set([
   "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone",
   "/api/expense/new", "/api/expense/scan-invoice",
   "/api/document/upload", "/api/materials/link",
-  "/api/assets/register", "/api/assets/scan-label", "/api/assets/checkout", "/api/assets/checkin", "/api/assets/repair",
+  "/api/assets/register", "/api/assets/update", "/api/assets/scan-label", "/api/assets/checkout", "/api/assets/checkin", "/api/assets/repair",
   "/api/contacts/save", "/api/contacts/delete", "/api/engagements/save", "/api/engagements/delete",
   "/api/activities/save", "/api/activities/generate", "/api/activities/delete", "/api/activities/import-timetable",
   "/api/vendor/scan",
@@ -7933,19 +7933,94 @@ async function holderDisplayName(holderKind: string, holderId: string): Promise<
   return (await prisma.user.findUnique({ where: { id: holderId } }))?.name || "someone";
 }
 
+// What an item IS — its name, its serial, what it cost and what paid for it. Validated in
+// one place because a correction has to be held to exactly the same rules as the first
+// entry: the same serial twin check, the same "type it or declare there is none", the same
+// cap on what is left of the voucher. selfId leaves the item itself out of both — an item
+// is not a duplicate of itself, and its own cost is not something already booked elsewhere.
+// Flat result, never a union: this project does not run strictNullChecks, so a discriminated
+// union would not narrow and the caller would be reading fields TypeScript thinks are absent.
+async function validateEquipmentFields(b: any, user: any, selfId: string): Promise<{ error: string; status: number; v: any }> {
+  const bad = (error: string, status = 400) => ({ error, status, v: null });
+
+  const name = String(b.name || "").trim();
+  if (!name) return bad("Name the item.");
+  // Blank is not a serial, and "N/A" is blank by another name. Either it is typed as
+  // printed, or someone says there is none.
+  const serialNumber = b.noSerial === true ? NO_SERIAL : blankIfPlaceholder(b.serialNumber);
+  if (!serialNumber) return bad(`Type the serial exactly as printed, or tick "${NO_SERIAL}".`);
+  if (!(CONDITIONS as readonly string[]).includes(b.condition)) return bad("Record the condition it arrived in.");
+
+  // Useful life comes from Finance's own policy table, keyed on what the item is — never a
+  // guess made at the receiving desk, and never blocked for want of a category: an unknown
+  // or missing kind falls back to "other". Only Finance may put a different figure on the
+  // item; the field the receiving desk sees is not even editable for anyone else.
+  const kind = normalizeKind(b.kind);
+  const policyLife = usefulLifeFor(kind);
+  let usefulLifeYears = policyLife;
+  if (b.usefulLifeYears !== undefined && b.usefulLifeYears !== null && String(b.usefulLifeYears).trim() !== "") {
+    const requested = Number(b.usefulLifeYears);
+    if (!Number.isInteger(requested) || requested < 1) return bad("Useful life must be a whole number of years.");
+    if (requested !== policyLife && !mayOverrideUsefulLife(user)) {
+      return bad("Only Finance may put a different useful life than AnaHon's policy on an item.", 403);
+    }
+    usefulLifeYears = requested;
+  }
+
+  // A gift has no cost, and no voucher — a voucher is proof money changed hands, so the
+  // two claims cannot both be true of the same item. Nothing is invented either way: a
+  // real purchase must give a real number, a gift is recorded as exactly what it is, 0.
+  const gift = b.gift === true && !b.expenseId;
+  if (b.gift === true && b.expenseId) return bad("A voucher paid for this — it was not a gift.");
+  const cost = gift ? 0 : Number(b.cost);
+  if (!gift && !(cost > 0)) return bad("Give the cost of this item.");
+
+  const onFile = await prisma.fixedAsset.findMany({ select: { id: true, tag: true, serialNumber: true, cost: true, expenseId: true } });
+  const twin = onFile.find(a => a.id !== selfId && sameSerial(a.serialNumber, serialNumber));
+  if (twin) return bad(`${twin.tag || "An item on the register"} already carries serial ${serialNumber} — this is probably the same item.`, 409);
+
+  // Bought on a voucher: the currency, the date and the project are the voucher's, never
+  // retyped. The cost stays the person's — one voucher can buy several items — but it may
+  // not exceed what is left of the voucher once the items already booked on it are counted.
+  let currency: string, purchaseDate: string, fundingProjectId: string, against = "";
+  if (b.expenseId) {
+    const exp = await prisma.expense.findUnique({ where: { id: String(b.expenseId) } });
+    if (!exp) return bad("That payment request was not found.", 404);
+    if (!["Approved", "Paid", "Posted"].includes(exp.status)) {
+      return bad(`${exp.voucherNo} is ${exp.status} — equipment is booked against a request that has been approved.`);
+    }
+    const left = exp.amount - onFile.filter(a => a.expenseId === exp.id && a.id !== selfId).reduce((s, a) => s + a.cost, 0);
+    if (cost > left + 0.005) return bad(`Only ${left.toFixed(2)} ${exp.currency} of ${exp.voucherNo} is left to book as equipment.`);
+    currency = exp.currency;
+    purchaseDate = String(exp.paid_at || exp.approved_at || exp.created_at || "").slice(0, 10);
+    fundingProjectId = exp.projectId;
+    against = ` against ${exp.voucherNo}`;
+  } else {
+    // A gift has no currency to choose — there is no sum to name it in.
+    currency = gift ? "" : String(b.currency || "");
+    if (!gift && !(CURRENCIES as readonly string[]).includes(currency)) return bad("Choose the currency it was bought in.");
+    purchaseDate = String(b.purchaseDate || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) return bad("Give the date it was bought.");
+    fundingProjectId = String(b.fundingProjectId || "");
+  }
+
+  return { error: "", status: 200, v: {
+    name, serialNumber, kind, usefulLifeYears, gift, cost, currency, purchaseDate, fundingProjectId, against,
+    condition: String(b.condition), expenseId: String(b.expenseId || ""),
+    brand: String(b.brand || "").trim(), model: String(b.model || "").trim(), specs: String(b.specs || "").trim()
+  } };
+}
+
 app.post("/api/assets/register", async (req, res) => {
   try {
     const user = req.body.user;
     if (!user?.id) return res.status(401).json({ error: "Sign in to receive equipment." });
     const b = req.body;
 
-    const name = String(b.name || "").trim();
-    if (!name) return res.status(400).json({ error: "Name the item." });
-    // Blank is not a serial, and "N/A" is blank by another name. Either it is typed as
-    // printed, or someone says there is none.
-    const serialNumber = b.noSerial === true ? NO_SERIAL : blankIfPlaceholder(b.serialNumber);
-    if (!serialNumber) return res.status(400).json({ error: `Type the serial exactly as printed, or tick "${NO_SERIAL}".` });
-    if (!(CONDITIONS as readonly string[]).includes(b.condition)) return res.status(400).json({ error: "Record the condition it arrived in." });
+    const chk = await validateEquipmentFields(b, user, "");
+    if (chk.error) return res.status(chk.status).json({ error: chk.error });
+    const { name, serialNumber, kind, usefulLifeYears, gift, cost, currency, purchaseDate, fundingProjectId, against } = chk.v;
+
     // Who has it and where — the organisation itself, an employee or a supplier, and a
     // place from the fixed list or typed. This is the item's FIRST custody entry; every
     // later change happens through check-out and check-in, never by editing this record.
@@ -7958,57 +8033,6 @@ app.post("/api/assets/register", async (req, res) => {
     const loc = resolveLocation(b.location, b.locationOther);
     if (!loc.ok) return res.status(400).json({ error: loc.error });
     const location = loc.location, custodian = holder.name;
-    // Useful life comes from Finance's own policy table, keyed on what the item is — never a
-    // guess made at the receiving desk, and never blocked for want of a category: an unknown
-    // or missing kind falls back to "other". Only Finance may put a different figure on the
-    // item; the field the receiving desk sees is not even editable for anyone else.
-    const kind = normalizeKind(b.kind);
-    const policyLife = usefulLifeFor(kind);
-    let usefulLifeYears = policyLife;
-    if (b.usefulLifeYears !== undefined && b.usefulLifeYears !== null && String(b.usefulLifeYears).trim() !== "") {
-      const requested = Number(b.usefulLifeYears);
-      if (!Number.isInteger(requested) || requested < 1) return res.status(400).json({ error: "Useful life must be a whole number of years." });
-      if (requested !== policyLife && !mayOverrideUsefulLife(user)) {
-        return res.status(403).json({ error: "Only Finance may put a different useful life than AnaHon's policy on an item." });
-      }
-      usefulLifeYears = requested;
-    }
-    // A gift has no cost, and no voucher — a voucher is proof money changed hands, so the
-    // two claims cannot both be true of the same item. Nothing is invented either way: a
-    // real purchase must give a real number, a gift is recorded as exactly what it is, 0.
-    const gift = b.gift === true && !b.expenseId;
-    if (b.gift === true && b.expenseId) return res.status(400).json({ error: "A voucher paid for this — it was not a gift." });
-    const cost = gift ? 0 : Number(b.cost);
-    if (!gift && !(cost > 0)) return res.status(400).json({ error: "Give the cost of this item." });
-
-    const onFile = await prisma.fixedAsset.findMany({ select: { tag: true, serialNumber: true, cost: true, expenseId: true } });
-    const twin = onFile.find(a => sameSerial(a.serialNumber, serialNumber));
-    if (twin) return res.status(409).json({ error: `${twin.tag || "An item on the register"} already carries serial ${serialNumber} — this is probably the same item.` });
-
-    // Bought on a voucher: the currency, the date and the project are the voucher's, never
-    // retyped. The cost stays the person's — one voucher can buy several items — but it may
-    // not exceed what is left of the voucher once the items already booked on it are counted.
-    let currency: string, purchaseDate: string, fundingProjectId: string, against = "";
-    if (b.expenseId) {
-      const exp = await prisma.expense.findUnique({ where: { id: String(b.expenseId) } });
-      if (!exp) return res.status(404).json({ error: "That payment request was not found." });
-      if (!["Approved", "Paid", "Posted"].includes(exp.status)) {
-        return res.status(400).json({ error: `${exp.voucherNo} is ${exp.status} — equipment is booked against a request that has been approved.` });
-      }
-      const left = exp.amount - onFile.filter(a => a.expenseId === exp.id).reduce((s, a) => s + a.cost, 0);
-      if (cost > left + 0.005) return res.status(400).json({ error: `Only ${left.toFixed(2)} ${exp.currency} of ${exp.voucherNo} is left to book as equipment.` });
-      currency = exp.currency;
-      purchaseDate = String(exp.paid_at || exp.approved_at || exp.created_at || "").slice(0, 10);
-      fundingProjectId = exp.projectId;
-      against = ` against ${exp.voucherNo}`;
-    } else {
-      // A gift has no currency to choose — there is no sum to name it in.
-      currency = gift ? "" : String(b.currency || "");
-      if (!gift && !(CURRENCIES as readonly string[]).includes(currency)) return res.status(400).json({ error: "Choose the currency it was bought in." });
-      purchaseDate = String(b.purchaseDate || "");
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) return res.status(400).json({ error: "Give the date it was bought." });
-      fundingProjectId = String(b.fundingProjectId || "");
-    }
 
     // The tag is the highest issued plus one, and the unique index is what guarantees it:
     // two people receiving in the same instant collide there, and the second takes the next.
@@ -8026,8 +8050,8 @@ app.post("/api/assets/register", async (req, res) => {
         asset = await prisma.fixedAsset.create({
           data: {
             id: `asset-${Date.now()}`, tag, name, kind,
-            brand: String(b.brand || "").trim(), model: String(b.model || "").trim(), specs: String(b.specs || "").trim(),
-            serialNumber, expenseId: String(b.expenseId || ""),
+            brand: chk.v.brand, model: chk.v.model, specs: chk.v.specs,
+            serialNumber, expenseId: chk.v.expenseId,
             fundingProjectId, purchaseDate, cost, currency, usefulLifeYears,
             custodian, location, condition: b.condition,
             currentBookValue: cost, depreciationMethod: "Straight Line", accumulatedDepreciation: 0,
@@ -8042,6 +8066,65 @@ app.post("/api/assets/register", async (req, res) => {
     await createAuditLog(user.id, user.name, "Equipment Received",
       `${asset.tag} "${name}" (serial ${serialNumber}), ${gift ? "a gift" : `${cost.toFixed(2)} ${currency}`}${against}, arrived ${b.condition}; kept at ${location}, held by ${custodian}.`);
     res.json({ success: true, asset });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Correcting an item already on the register. Until now there was none: register, confirm,
+// lend, take back, log a repair — and a serial typed wrong stayed wrong forever, or bred a
+// second row for an item that exists once.
+//
+// The line is between describing the item and rewriting what happened to it. The sticker
+// number is on the item in the world; when it arrived, who took delivery, who confirmed it
+// and the whole movement log are the evidence the register exists to hold. None of those is
+// read from the body here, so no request can touch them however it is shaped.
+//
+// A confirmed item is the case that matters. Somebody stood in front of it and said: this
+// one, in this state. Correct the serial, the name or the condition afterwards and their
+// word is about something else — so the confirmation LAPSES, in the record and on the
+// screen, and the item goes back into the queue to be confirmed again. It is never quietly
+// kept over a changed description.
+app.post("/api/assets/update", async (req, res) => {
+  try {
+    const user = req.body.user;
+    if (!user?.id) return res.status(401).json({ error: "Sign in to correct an item." });
+    const b = req.body;
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: String(b.assetId || "") } });
+    if (!asset) return res.status(404).json({ error: "That item is not on the register." });
+
+    // The same rules the first entry was held to — the serial twin check (which knows not to
+    // call this item a duplicate of itself), the no-serial rule, the voucher's remaining
+    // amount (which no longer counts this item's own cost against it), Finance's useful life.
+    const chk = await validateEquipmentFields(b, user, asset.id);
+    if (chk.error) return res.status(chk.status).json({ error: chk.error });
+    const v = chk.v;
+
+    const changes = equipmentChanges(asset, v);
+    if (!changes.length) return res.status(400).json({ error: "Nothing was changed." });
+    const lapses = !!asset.verifiedAt && verificationLapses(changes);
+
+    const updated = await prisma.fixedAsset.update({
+      where: { id: asset.id },
+      data: {
+        name: v.name, brand: v.brand, model: v.model, specs: v.specs, kind: v.kind,
+        serialNumber: v.serialNumber, condition: v.condition,
+        cost: v.cost, currency: v.currency, purchaseDate: v.purchaseDate,
+        fundingProjectId: v.fundingProjectId, expenseId: v.expenseId, usefulLifeYears: v.usefulLifeYears,
+        // A corrected cost is a corrected basis; what has already been written off stays written off.
+        currentBookValue: v.cost - asset.accumulatedDepreciation,
+        ...(lapses ? { verifiedAt: null, verifiedBy: null, nextCheckDue: null } : {})
+      }
+    });
+
+    // A correction that cannot be seen is not a correction, it is a quiet rewrite. Every
+    // field that moved is named with what it was and what it now is.
+    const said = changes.map(c => `${c.label}: ${c.from || "(blank)"} → ${c.to || "(blank)"}`).join("; ");
+    const lapsed = changes.filter(c => VERIFIED_FIELDS.includes(c.field)).map(c => c.label).join(", ");
+    await createAuditLog(user.id, user.name, "Equipment Corrected",
+      `${asset.tag || asset.name} "${asset.name}" corrected — ${said}.` +
+      (lapses ? ` ${lapsed} changed, so the physical confirmation of ${String(asset.verifiedAt).slice(0, 10)} no longer describes this item: it must be confirmed again.` : ""));
+    res.json({ success: true, asset: updated, verificationCleared: lapses });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

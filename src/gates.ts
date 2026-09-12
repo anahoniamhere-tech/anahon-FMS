@@ -77,6 +77,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/subscriptions/verify": SUPPLIER_EDITORS,
   "/api/subscriptions/roll": SUPPLIER_EDITORS,
   "/api/assets/register": SUPPLIER_EDITORS,
+  "/api/assets/update": SUPPLIER_EDITORS,              // correcting what an item is; never what happened to it
   "/api/assets/scan-label": SUPPLIER_EDITORS,        // reads a label, saves nothing
   "/api/assets/checkout": SUPPLIER_EDITORS,
   "/api/assets/checkin": SUPPLIER_EDITORS,

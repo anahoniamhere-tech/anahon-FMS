@@ -13,7 +13,8 @@ import { NO_SERIAL, nextEquipmentTag, parseTag, sameSerial, equipmentStatus, may
   checkOutBlocker, stickerLink, stickerSheetHtml, QR_ALPHANUMERIC, STICKER_SIZES, DEFAULT_STICKER_MM, STRIP_SIZES,
   CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS,
   EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, DEFAULT_KIND, normalizeKind, usefulLifeFor, mayOverrideUsefulLife,
-  HOLDER_KINDS, EQUIPMENT_LOCATIONS, OTHER_LOCATION, resolveLocation, currentMovement } from "../src/equipment.js";
+  HOLDER_KINDS, EQUIPMENT_LOCATIONS, OTHER_LOCATION, resolveLocation, currentMovement,
+  EDITABLE_FIELDS, LOCKED_FIELDS, VERIFIED_FIELDS, equipmentChanges, verificationLapses } from "../src/equipment.js";
 import { RULES, deskItems } from "../src/workflow.js";
 import { ROUTE_SEATS } from "../src/gates.js";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS, PLO, AUDITOR, FINANCE } from "../src/roles.js";
@@ -28,7 +29,11 @@ const tab = read("src/tabs/AssetsTab.tsx");
 const types = read("src/types.ts");
 const between = (from: string, to: string) => server.slice(server.indexOf(from), server.indexOf(to, server.indexOf(from)));
 const scan = between('app.post("/api/assets/scan-label"', 'app.post("/api/assets/register"');
-const reg = between('app.post("/api/assets/register"', 'app.post("/api/assets/verify"');
+// What an item IS is validated in one helper now, so a correction cannot be held to looser
+// rules than the first entry. The register's own slice is the helper plus the route.
+const fields = between("async function validateEquipmentFields", 'app.post("/api/assets/register"');
+const reg = fields + between('app.post("/api/assets/register"', 'app.post("/api/assets/update"');
+const edit = between('app.post("/api/assets/update"', 'app.post("/api/assets/verify"');
 const ver = between('app.post("/api/assets/verify"', 'app.post("/api/assets/checkout"');
 const out = between('app.post("/api/assets/checkout"', 'app.post("/api/assets/checkin"');
 const back = between('app.post("/api/assets/checkin"', 'app.post("/api/assets/repair"');
@@ -55,13 +60,13 @@ console.log("\nB. a serial is typed or declared absent — never invented");
 ok("nothing on the server invents one any more", !server.includes("SN-M-"));
 ok("nor in the browser, which used to invent it before the server could refuse", !tab.includes("SN-M-"));
 ok("blank is refused unless someone says there is none",
-  /b\.noSerial === true \? NO_SERIAL : blankIfPlaceholder\(b\.serialNumber\);/.test(reg) && /if \(!serialNumber\) return res\.status\(400\)/.test(reg));
+  /b\.noSerial === true \? NO_SERIAL : blankIfPlaceholder\(b\.serialNumber\);/.test(reg) && /if \(!serialNumber\) return bad\(/.test(reg));
 ok("the same serial typed differently is still the same item", sameSerial("AB-12 34", "ab1234"));
 ok("different serials are different items", !sameSerial("X100", "X101"));
 ok("blank never matches blank", !sameSerial("", ""));
 ok("any number of items may carry no serial", !sameSerial(NO_SERIAL, NO_SERIAL));
 ok("a second item with a serial already on file is refused, naming the first",
-  /const twin = onFile\.find\(a => sameSerial\(a\.serialNumber, serialNumber\)\)/.test(reg) && /status\(409\)/.test(reg));
+  /const twin = onFile\.find\(a => a\.id !== selfId && sameSerial\(a\.serialNumber, serialNumber\)\)/.test(reg) && /this is probably the same item\.`, 409\)/.test(reg));
 
 console.log("\nC. the rest comes from the form or the voucher, not from a default");
 ok("condition is the person's, from the four the register knows", !/condition: "Excellent"/.test(reg) && /CONDITIONS as readonly string\[\]\)\.includes\(b\.condition\)/.test(reg));
@@ -99,7 +104,7 @@ ok("a refusal is written to the audit log", /"Action Refused"/.test(ver));
 ok("the gate keeps verifying with the verifiers", ROUTE_SEATS["/api/assets/verify"] === EQUIPMENT_VERIFIERS);
 ok("receiving and scanning stay with the keepers", ROUTE_SEATS["/api/assets/register"] === SUPPLIER_EDITORS && ROUTE_SEATS["/api/assets/scan-label"] === SUPPLIER_EDITORS);
 ok("the Procurement Officer's allowlist carries the scan, or the seat would refuse what the gate allows",
-  server.includes('"/api/assets/register", "/api/assets/scan-label",'));
+  server.includes('"/api/assets/register", "/api/assets/update", "/api/assets/scan-label",'));
 
 console.log("\nF. the scan reads, it never saves");
 ok("it uses the free Gemini path, which takes the photo as inlineData", /\{ base64, mimeType \}, "low", "gemini"\)/.test(scan));
@@ -290,7 +295,7 @@ ok("no override sent → the policy figure, silently — the receiving desk is n
 ok("a non-integer or non-positive override is refused, exactly as before",
   /if \(!Number\.isInteger\(requested\) \|\| requested < 1\)/.test(reg));
 ok("a different figure than policy is refused unless the actor may override it",
-  /requested !== policyLife && !mayOverrideUsefulLife\(user\)/.test(reg) && /status\(403\)/.test(reg));
+  /requested !== policyLife && !mayOverrideUsefulLife\(user\)/.test(reg) && /on an item\.", 403\)/.test(reg));
 ok("an override equal to the policy figure is never refused — nothing to override", true); // proved by the condition above using !==
 ok("the kind is written on the record", reg.includes("id: `asset-${Date.now()}`, tag, name, kind,"));
 
@@ -328,18 +333,18 @@ console.log("\nV. a gift has no cost, and a voucher already proves it wasn't one
 ok("a gift is only ever off a voucher — the two claims cannot both be true",
   /const gift = b\.gift === true && !b\.expenseId;/.test(reg));
 ok("claiming both is refused outright, not silently resolved one way",
-  /if \(b\.gift === true && b\.expenseId\) return res\.status\(400\)/.test(reg));
+  /if \(b\.gift === true && b\.expenseId\) return bad\("A voucher paid for this/.test(reg));
 ok("a gift costs exactly 0 — never asked, never invented", /const cost = gift \? 0 : Number\(b\.cost\);/.test(reg));
 ok("a real item off a voucher still needs a real cost", /if \(!gift && !\(cost > 0\)\)/.test(reg));
 ok("a gift has no currency to choose", /currency = gift \? "" : String\(b\.currency \|\| ""\);/.test(reg));
 ok("the audit line says \"a gift\", never a false \"0.00 \" figure",
   /\$\{gift \? "a gift" : `\$\{cost\.toFixed\(2\)\}\$\{"[^"]*"\}\$\{currency\}`\}/.test(reg.replace(/ /g, "")) || /gift \? "a gift" : `\$\{cost\.toFixed\(2\)\} \$\{currency\}`/.test(reg));
 ok("the toggle sits only where a voucher is not chosen — a voucher is proof it wasn't free",
-  /\{!voucher && \(\s*<label className="mt-1 flex min-h-\[44px\]/.test(tab));
+  /\{!v && \(\s*<label className="mt-1 flex min-h-\[44px\]/.test(tab));
 ok("ticking it clears cost and currency from the body, rather than sending an invented 0/blank the route then has to trust",
   /cost: f\.gift \? "0" : f\.cost, currency: f\.gift \? "" : f\.currency/.test(tab));
 ok("the inputs are disabled while ticked, so nothing typed there can leak through",
-  /required=\{!f\.gift\} disabled=\{f\.gift\}/.test(tab) && (tab.match(/disabled=\{f\.gift\}/g) || []).length >= 2);
+  /required=\{!form\.gift\} disabled=\{form\.gift\}/.test(tab) && (tab.match(/disabled=\{form\.gift\}/g) || []).length >= 2);
 ok("the card says \"Gift\" rather than three columns of \"0.00\" with no currency",
   /a\.cost > 0 \? \(/.test(tab) && tab.includes('<Gift className="inline h-3.5 w-3.5" /> {t("Gift — no cost recorded")}'));
 ok("FixedAsset.currency admits the one honest case with no sum to name", /currency: "USD" \| "EUR" \| "LBP" \| "";/.test(types));
@@ -418,6 +423,72 @@ ok("a row with no movements at all — older than this design — shows its plai
   /a\.custodian \|\| "—"/.test(tab) && /a\.location \|\| "—"/.test(tab));
 ok("the history tells a loan and a rest apart by the same signal the route does — dueBack",
   /\{m\.dueBack \? \(/.test(tab));
+
+/* ── Correcting a registered item (12 Sep 2026) ──────────────────────────────────────────
+   Until now the register had no edit at all: a serial typed wrong stayed wrong forever, or
+   bred a second row for an item that exists once. The line an edit must not cross is
+   between describing the item and rewriting what happened to it. ─────────────────────── */
+
+console.log("\nEE. a correction describes the item — it never rewrites what happened to it");
+ok("the keepers of the register may correct, and nobody else — Super Admin is already one of them",
+  ROUTE_SEATS["/api/assets/update"] === SUPPLIER_EDITORS && SUPPLIER_EDITORS.includes("Super Admin"));
+ok("the keeper's own allowlist carries it too, or the seat would refuse what the gate allows",
+  server.includes('"/api/assets/update"'));
+ok("the sticker, the delivery, the confirmation and the log are never read from the body",
+  !/b\.tag|b\.receivedAt|b\.receivedBy|b\.verifiedAt|b\.verifiedBy|b\.movements/.test(edit));
+ok("and never written by this route",
+  !/\btag:/.test(edit) && !/receivedAt:|receivedBy:/.test(edit) && !/movementsJson|repairsJson|custodian:|location:/.test(edit));
+ok("the only place verifiedAt is written here is to CLEAR it — never to set one",
+  /verifiedAt: null, verifiedBy: null, nextCheckDue: null/.test(edit) && !/verifiedAt: now|verifiedBy: user\.id/.test(edit));
+ok("the item must exist before anything is read off the request", /if \(!asset\) return res\.status\(404\)/.test(edit));
+
+console.log("\nFF. exactly the rules the first entry was held to — one validator, not a second looser copy");
+ok("register and correction call the same function", /validateEquipmentFields\(b, user, ""\)/.test(reg) && /validateEquipmentFields\(b, user, asset\.id\)/.test(edit));
+ok("the serial twin check, the no-serial rule, the approved-voucher rule and its cap all live in it",
+  /const twin = onFile\.find/.test(fields) && /blankIfPlaceholder\(b\.serialNumber\)/.test(fields)
+  && /\["Approved", "Paid", "Posted"\]\.includes\(exp\.status\)/.test(fields) && /if \(cost > left \+ 0\.005\)/.test(fields));
+ok("an item is not a duplicate of itself, and its own cost is not already booked against its own voucher",
+  /a\.id !== selfId && sameSerial/.test(fields) && /a\.expenseId === exp\.id && a\.id !== selfId/.test(fields));
+ok("the screen leaves the item out of what is left of its voucher too, so re-picking it does not prefill a wrong figure",
+  /const bookedOn = \(expenseId: string, exceptId = ""\)/.test(tab) && /a\.expenseId === expenseId && a\.id !== exceptId/.test(tab));
+
+console.log("\nGG. a correction is visible or it is a quiet rewrite");
+ok("nothing changed is refused, not written", /if \(!changes\.length\) return res\.status\(400\)/.test(edit));
+ok("every field that moved is named with what it was and what it now is",
+  /`\$\{c\.label\}: \$\{c\.from \|\| "\(blank\)"\} → \$\{c\.to \|\| "\(blank\)"\}`/.test(edit) && /"Equipment Corrected"/.test(edit));
+const was = { name: "Cam", serialNumber: "A1", cost: 1200, kind: "camera", condition: "Good", currency: "USD" };
+ok("the diff is over the editable fields only — it cannot report a tag or a date of delivery",
+  !EDITABLE_FIELDS.some(f => ["tag", "receivedAt", "receivedBy", "verifiedAt", "verifiedBy"].includes(f.field)));
+ok("an untouched field is not a change", equipmentChanges(was, { ...was }).length === 0);
+ok("5 and \"5\" are the same number, and null is the same as blank",
+  equipmentChanges({ cost: 5, specs: null }, { cost: "5", specs: "" }).length === 0);
+ok("a corrected serial is reported with both values",
+  JSON.stringify(equipmentChanges(was, { ...was, serialNumber: "A2" })) === JSON.stringify([{ field: "serialNumber", label: "Serial number", from: "A1", to: "A2" }]));
+
+console.log("\nHH. a confirmation is about an item in a state — change either and it lapses");
+ok("the six fields somebody's word was about", VERIFIED_FIELDS.join() === "name,brand,model,kind,serialNumber,condition");
+ok("correcting the serial costs the item its confirmation", verificationLapses([{ field: "serialNumber" }]));
+ok("so does the name, the kind or the condition it was found in",
+  verificationLapses([{ field: "name" }]) && verificationLapses([{ field: "kind" }]) && verificationLapses([{ field: "condition" }]));
+ok("correcting what it cost, or which voucher paid, does not — nobody confirmed the price",
+  !verificationLapses([{ field: "cost" }, { field: "expenseId" }, { field: "purchaseDate" }, { field: "usefulLifeYears" }]));
+ok("an item nobody has confirmed has nothing to lose", /const lapses = !!asset\.verifiedAt && verificationLapses\(changes\)/.test(edit));
+ok("the lapse is written on the item AND said in the audit line, naming the fields that caused it",
+  /\.\.\.\(lapses \? \{ verifiedAt: null/.test(edit) && /it must be confirmed again\./.test(edit));
+ok("and the screen is told, so the person who corrected it learns it then, not at the next audit",
+  /verificationCleared: lapses/.test(edit) && tab.includes('t("Corrected — and it must be confirmed again.")'));
+ok("the warning is on the form before they touch anything, not only after",
+  /a\.verifiedAt && \(/.test(tab) && tab.includes("that confirmation lapses"));
+
+console.log("\nII. the correction form is the registration form — one set of fields, not two that drift");
+ok("both forms render the same function", /const itemFields = \(form: typeof BLANK/.test(tab) && (tab.match(/\{itemFields\(/g) || []).length === 2);
+ok("custody is not in it — who has an item is the movement log's, and a correction never touches that",
+  !/holderPicker|locationPicker/.test(tab.slice(tab.indexOf("const itemFields"), tab.indexOf("const holderPicker"))));
+ok("the locked fields are shown with their values and the reason they are locked",
+  LOCKED_FIELDS.length === 4 && LOCKED_FIELDS.every(l => l.why.length > 0) && /LOCKED_FIELDS\.map\(l => \(/.test(tab));
+ok("the keeper reaches it from the item itself", /onClick=\{\(\) => startEdit\(a\)\}/.test(tab) && /aria-expanded=\{edit\?\.id === a\.id\}/.test(tab));
+ok("the form opens on what the item says now, so leaving a field alone leaves it alone",
+  /serial: a\.serialNumber === NO_SERIAL \? "" : \(a\.serialNumber \|\| ""\)/.test(tab) && /gift: !a\.expenseId && !a\.cost/.test(tab));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

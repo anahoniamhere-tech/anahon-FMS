@@ -188,6 +188,70 @@ export function currentMovement(a: { movements?: Movement[] }): Movement | null 
   const list = a.movements || [];
   return list.length ? list[list.length - 1] : null;
 }
+/**
+ * Correcting a registered item (12 Sep 2026).
+ *
+ * A serial typed wrong, a name that says "camera" for a lens, a cost booked on the wrong
+ * voucher: before this there was no way to fix any of it — the register had no edit at all,
+ * and the only cure for a typo was a second row for an item that exists once.
+ *
+ * What a correction may touch is a description OF the item. What it may never touch is the
+ * record itself: the sticker number (it is on the item, in the world), when it arrived and
+ * who took delivery, who confirmed it and when, and the movement log. Those are what the
+ * register is FOR — if they can be edited afterwards, none of them is evidence of anything.
+ */
+export const EDITABLE_FIELDS: { field: string; label: string }[] = [
+  { field: "name", label: "Item" },
+  { field: "brand", label: "Brand" },
+  { field: "model", label: "Model" },
+  { field: "specs", label: "Specifications" },
+  { field: "kind", label: "What kind of equipment" },
+  { field: "serialNumber", label: "Serial number" },
+  { field: "condition", label: "Condition" },
+  { field: "cost", label: "Cost" },
+  { field: "currency", label: "Currency" },
+  { field: "purchaseDate", label: "Bought on" },
+  { field: "fundingProjectId", label: "Funded by project" },
+  { field: "expenseId", label: "Bought on payment request" },
+  { field: "usefulLifeYears", label: "Useful Life (Years)" },
+];
+
+/** Said in the interface, so the reason a field is greyed out is on the screen and not
+ *  only in a refusal nobody sees until they try. */
+export const LOCKED_FIELDS: { label: string; why: string }[] = [
+  { label: "Sticker", why: "it is printed and stuck on the item" },
+  { label: "Received by", why: "who took delivery, and when, is the record" },
+  { label: "Confirmed by", why: "somebody's word that they saw it" },
+  { label: "History", why: "every check-out and return, as it happened" },
+];
+
+/**
+ * The fields a physical confirmation was ABOUT. Somebody stood in front of an item and said
+ * this one, this state. Change the serial or the name afterwards and their word is about a
+ * different item; change the condition and it is about a different state. So the
+ * confirmation lapses and the item goes back to needing one — it is never silently kept.
+ */
+export const VERIFIED_FIELDS = ["name", "brand", "model", "kind", "serialNumber", "condition"];
+
+/** What actually changed, in the register's own order, compared as text so 5 and "5" are
+ *  the same number and a null is the same as a blank. */
+export function equipmentChanges(
+  before: Record<string, any>, after: Record<string, any>
+): { field: string; label: string; from: string; to: string }[] {
+  const out: { field: string; label: string; from: string; to: string }[] = [];
+  for (const { field, label } of EDITABLE_FIELDS) {
+    const from = String(before[field] ?? "");
+    const to = String(after[field] ?? "");
+    if (from !== to) out.push({ field, label, from, to });
+  }
+  return out;
+}
+
+/** Does this correction cost the item its confirmation? */
+export function verificationLapses(changed: { field: string }[]): boolean {
+  return changed.some(c => VERIFIED_FIELDS.includes(c.field));
+}
+
 /** One repair. It is an expense: it never changes the item's cost basis. */
 export type Repair = {
   id: string; date: string; work: string; doneBy: string;
