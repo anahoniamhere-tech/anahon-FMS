@@ -18,7 +18,7 @@ import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITOR
 import { deskItems } from "./src/workflow.js";
 import {
   helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA,
-  COMPILED_POLICY_PREFIX, POLICY_INDEX_ID, policyHeading, extractEditorsNote, assemblePolicyManual,
+  isSupersededPointer, policyHeading,
 } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
@@ -1270,29 +1270,27 @@ app.post("/api/reminders/plan", async (req, res) => {
 /**
  * The policy manual, as one block of text the help desk can read.
  *
- * The nineteen numbered policies, pasted whole — they are what governs, and the only
- * text the bot may cite as a rule. No embedding, no chunking and no "pick the relevant
- * policy first": the whole set fits in one prompt beside the 37k corpus, and a selection
- * heuristic can only be wrong in ways nobody sees — the contradiction this feature found
- * on its first question sat across two documents, and any retrieval that fetched one
- * would have hidden it.
+ * 12 Sep 2026, the second time this changed in one day. First the nineteen numbered
+ * policy files were compiled into six handbook documents that quoted the same text a
+ * second time, filed under the same category the corpus already read whole — fixed by
+ * excluding the compilations and excerpting only their editor's notes.
  *
- * On 12 Sep 2026 the same nineteen policies were also compiled into six handbook
- * documents, filed in this same category, containing the SAME text — reading both would
- * have doubled the corpus and had the bot quote a rule twice, or quote a compilation and
- * call it the source. So the compiled documents (ids under `doc-hb-compiled-`, a real
- * marker on the record, not a filename guess) are excluded from the policy text itself,
- * and used for exactly two things a numbered policy can't answer on its own:
- *   - the Policies Index, included whole, as navigation ("which handbook is 005 in?");
- *   - the "Editor's note" each other compilation opens with — a short, already-written
- *     list of where that handbook's wording conflicts with reality (a vacant approval
- *     seat, a committee that doesn't exist, a recipient still to be named). Excerpted,
- *     not the surrounding compiled policy text, which would just be the duplicate again.
+ * Then AnaHon retired the numbered files for real. They moved to
+ * `vault/GENERAL/Handbooks/Superseded/` and the compiled documents became the only
+ * governing text — so the first fix now had it backwards: it would have read the retired
+ * copies and skipped the ones actually in force. There is no more split to make. Every
+ * live document (the four handbooks, the index, the Strategy, and Policy 010 standing on
+ * its own) is ingested whole, in one loop, filtered only by whether its own pointer says
+ * it has been superseded — `isSupersededPointer`, read from the record, never guessed
+ * from a filename, so a later reorganisation stays correct as long as retired copies keep
+ * moving to a folder named that.
  *
- * Extracted once and held here. The key is every Handbook row's own content hash — the
- * numbered policies', the index's and the compilations' alike — so re-filing any of them
- * invalidates the cache and nothing else does; a container restart also clears it, so an
- * amendment is never read from a build that predates it.
+ * No embedding, no chunking, no "pick the relevant policy first": the whole live set
+ * fits in one prompt beside the 37k corpus, same as before.
+ *
+ * Extracted once and held here. The key is every Handbook row's own content hash, so
+ * re-filing or retiring any of them invalidates the cache; a container restart also
+ * clears it, so a rebuild never reads an amendment from before it existed.
  */
 let policyCache: { key: string; text: string; chars: number; docs: number } | null = null;
 
@@ -1302,46 +1300,23 @@ async function policyCorpus(): Promise<{ text: string; chars: number; docs: numb
   if (policyCache && policyCache.key === key) return policyCache;
 
   const started = Date.now();
-  const numbered = rows.filter(r => !r.id.startsWith(COMPILED_POLICY_PREFIX));
-  const compiled = rows.filter(r => r.id.startsWith(COMPILED_POLICY_PREFIX));
+  const live = rows.filter(r => !isSupersededPointer(r.base64));
 
-  // The policies themselves — the filename carries the number (…_020.docx) and the bot is
-  // asked to cite it, so the heading states both rather than making the model infer it.
-  const policyParts: string[] = [];
-  for (const r of numbered) {
+  const parts: string[] = [];
+  for (const r of live) {
     try {
       const text = (await documentText(r.id)).trim();
-      if (text) policyParts.push(`### ${policyHeading(r.filename)}\n${text}`);
+      if (text) parts.push(`### ${policyHeading(r.filename)}\n${text}`);
     } catch (err: any) {
-      // One unreadable policy must not take the whole manual down; the bot answers from
+      // One unreadable document must not take the whole manual down; the bot answers from
       // the rest and the log names what is missing.
       console.warn(`[policies] could not read ${r.filename}: ${String(err?.message).slice(0, 120)}`);
     }
   }
 
-  // The index — small (~2.7k chars), included whole, for "where do I find…" questions only.
-  const indexRow = compiled.find(r => r.id === POLICY_INDEX_ID);
-  let indexText = "";
-  if (indexRow) {
-    try { indexText = (await documentText(indexRow.id)).trim(); }
-    catch (err: any) { console.warn(`[policies] could not read the index: ${String(err?.message).slice(0, 120)}`); }
-  }
-
-  // The editor's notes from the other five compilations — excerpts only.
-  const noteParts: string[] = [];
-  for (const r of compiled) {
-    if (r.id === POLICY_INDEX_ID) continue;
-    try {
-      const note = extractEditorsNote(await documentText(r.id));
-      if (note) noteParts.push(`### ${policyHeading(r.filename)}\n${note}`);
-    } catch (err: any) {
-      console.warn(`[policies] could not read ${r.filename}: ${String(err?.message).slice(0, 120)}`);
-    }
-  }
-
-  const text = assemblePolicyManual(policyParts, indexText, noteParts);
-  policyCache = { key, text, chars: text.length, docs: policyParts.length };
-  console.log(`[policies] ${policyParts.length} numbered polic${policyParts.length === 1 ? "y" : "ies"} + index (${indexText.length} chars) + ${noteParts.length} handbook note${noteParts.length === 1 ? "" : "s"} (${noteParts.reduce((n, p) => n + p.length, 0)} chars) = ${text.length} characters total, in ${Date.now() - started} ms`);
+  const text = parts.join("\n\n");
+  policyCache = { key, text, chars: text.length, docs: parts.length };
+  console.log(`[policies] ${parts.length}/${live.length} live document${live.length === 1 ? "" : "s"} (${rows.length - live.length} superseded, excluded), ${text.length} characters, in ${Date.now() - started} ms`);
   return policyCache;
 }
 
