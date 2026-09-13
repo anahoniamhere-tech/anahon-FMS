@@ -206,17 +206,24 @@ body {
    Numbers must stay legible, so they are never squashed to fit. Without this a
    single wide table makes the whole page pan sideways, which breaks every screen
    it appears on. Tables that already ship a mobile alternative (hidden md:table)
-   are untouched — they are display:none here anyway. */
+   are MEANT to be untouched here — but Tailwind's own .hidden lives inside its
+   generated @layer, and this file is a plain, unlayered stylesheet. Per the CSS
+   Cascade Layers spec, an unlayered rule beats a layered one regardless of
+   specificity, so `main table{display:block}` was silently overriding
+   `.hidden{display:none}` on every hidden md:table split in the app — including
+   BankingTab's, and both of Vendors' — showing a broken, scrollable table
+   ALONGSIDE the intended mobile card list rather than in its place. :not(.hidden)
+   is what actually delivers the promise this comment already made. */
 @media (max-width: 767px) {
-  main table {
+  main table:not(.hidden) {
     display: block;
     width: 100%;
     max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
-  main table thead,
-  main table tbody {
+  main table:not(.hidden) thead,
+  main table:not(.hidden) tbody {
     display: table;
     width: max-content;
     min-width: 100%;
