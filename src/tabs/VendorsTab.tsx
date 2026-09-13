@@ -569,7 +569,152 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
               )}
 
               <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                <table className="w-full text-start">
+                {/* Mobile: stacked cards instead of a table clipped to two-thirds of its own
+                    content — the table below needs ~980px and had nowhere to put the rest. */}
+                <div className="md:hidden divide-y divide-slate-100">
+                  {state.vendors.map(v => (
+                    <div key={v.id} className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-slate-900">{v.name}</p>
+                          <span className="text-[11px] text-slate-500 font-mono">{v.contact}</span>
+                        </div>
+                        <span className="shrink-0 text-[10px] font-bold text-slate-500 uppercase tracking-wider">{v.category}</span>
+                      </div>
+                      {SUPPLIER_EDITORS.includes(currentUser.role) ? (
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                          <label htmlFor={`ven-phone-m-${v.id}`} className="text-[9px] font-bold uppercase text-slate-400">
+                            {t("WhatsApp")}
+                          </label>
+                          <input
+                            id={`ven-phone-m-${v.id}`}
+                            type="tel"
+                            dir="ltr"
+                            inputMode="tel"
+                            placeholder="+9613123456"
+                            value={phoneDraft[v.id] ?? v.phone ?? ""}
+                            onChange={e => setPhoneDraft({ ...phoneDraft, [v.id]: e.target.value })}
+                            className="finance-input w-40 font-mono text-[11px] py-0.5"
+                          />
+                          {(phoneDraft[v.id] ?? v.phone ?? "") !== (v.phone ?? "") && (
+                            <button
+                              type="button"
+                              onClick={() => saveVendorPhone(v.id, v.name)}
+                              className="rounded bg-slate-900 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-slate-950"
+                            >
+                              {t("Save")}
+                            </button>
+                          )}
+                        </div>
+                      ) : v.phone ? (
+                        <span dir="ltr" className="mt-1.5 block text-[11px] font-mono text-slate-500">💬 {v.phone}</span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setPartyFileFor(partyFileFor === v.id ? null : v.id)}
+                        aria-expanded={partyFileFor === v.id}
+                        className="block text-[10px] font-bold text-slate-500 hover:text-red-650 hover:underline mt-1 min-h-[24px]"
+                      >
+                        {partyFileFor === v.id ? "▾ close file" : "📂 open file (agreement + invoices)"}
+                      </button>
+                      {(() => {
+                        const canManage = MANAGERS.includes(currentUser.role);
+                        const team = isTeamMember(v);
+                        return (
+                          <div className="mt-1 space-y-0.5">
+                            {canManage ? (
+                              <select
+                                aria-label={`${t("A person or an organisation")} — ${v.name}`}
+                                value={v.partyKind || ""}
+                                onChange={e => handleSetPartyKind(v.id, v.name, e.target.value)}
+                                className={`finance-input py-0.5 text-[10px] ${v.partyKind ? "bg-white" : "bg-amber-50 text-amber-800"}`}
+                              >
+                                <option value="">{t("Not said yet")}</option>
+                                {PARTY_KINDS.map(k => <option key={k.key} value={k.key}>{t(k.label)}</option>)}
+                              </select>
+                            ) : (
+                              <span className={`text-[10px] ${v.partyKind ? "text-slate-500" : "text-amber-700"}`}>{t(partyKindLabel(v.partyKind))}</span>
+                            )}
+                            {team ? (
+                              <p className="text-[10px] text-emerald-800">
+                                {t("Team member, engaged as a service provider (annual contract)")}
+                                {" · "}<span dir="ltr" className="font-mono">{v.userEmail}</span>
+                                {canManage && (
+                                  <button type="button" onClick={() => handleLinkLogin(v.id, v.name, "")} className="ms-1 text-slate-400 hover:underline">{t("unlink")}</button>
+                                )}
+                              </p>
+                            ) : canManage && v.partyKind === "individual" && (() => {
+                              const hit = (state.users || []).find(u => u.active && u.name.trim().toLowerCase() === v.name.trim().toLowerCase());
+                              if (!hit) return null;
+                              return (
+                                <button type="button" onClick={() => handleLinkLogin(v.id, v.name, hit.email)} className="text-[10px] text-slate-500 hover:text-red-650 hover:underline">
+                                  {t("Same name as an account — is this a team member?")}
+                                </button>
+                              );
+                            })()}
+                          </div>
+                        );
+                      })()}
+                      {(() => {
+                        const gaps = missingSupplierDocs(state.documents || [], v);
+                        if (!gaps.length) return null;
+                        return (
+                          <p className="mt-1 text-[10px] text-amber-700">
+                            ⚠ {t("Not on file")}: {gaps.map(g => t(g.label)).join(" · ")}
+                          </p>
+                        );
+                      })()}
+                      <div className="mt-2 pt-2 border-t border-slate-100">
+                        {(() => {
+                          const canManage = MANAGERS.includes(currentUser.role);
+                          if (!v.engageable) {
+                            return (
+                              <div className="space-y-0.5">
+                                <span className="text-[10px] text-slate-400 italic block">Supplier — purchases only</span>
+                                {canManage && !v.blocked && v.active && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSetEngageable(v.id, v.name, true)}
+                                    className="text-[10px] text-slate-500 hover:text-red-650 hover:underline"
+                                  >
+                                    mark engageable…
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          }
+                          if (v.blocked || !v.active) return <span className="text-[10px] text-slate-400 italic">Engageable · unavailable</span>;
+                          if (!canManage) return <span className="text-[10px] text-emerald-700">Engageable</span>;
+                          return (
+                            <div className="space-y-0.5">
+                              <button
+                                type="button"
+                                onClick={() => { setContractFor(contractFor === v.id ? null : v.id); setContractParty("vendor"); }}
+                                aria-expanded={contractFor === v.id}
+                                className="text-[10px] font-bold text-red-650 hover:text-red-700 hover:underline min-h-[44px] md:min-h-0 md:py-1 block"
+                              >
+                                {contractFor === v.id ? "✕ Cancel" : "📄 Service agreement"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSetEngageable(v.id, v.name, false)}
+                                className="text-[10px] text-slate-400 hover:text-slate-700 hover:underline"
+                              >
+                                revert to supplier
+                              </button>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      {partyFileFor === v.id && (
+                        <div className="mt-2 pt-2 border-t border-slate-100">
+                          {renderPartyFile(v.id, v.name)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <table className="w-full text-start hidden md:table">
                   <thead className="bg-slate-100">
                     <tr className="border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
                       <th className="px-6 py-3">Vendor Account</th>
