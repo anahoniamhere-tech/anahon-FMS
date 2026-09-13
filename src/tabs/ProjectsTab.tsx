@@ -1962,7 +1962,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                       I. Restricted Budget vs. Actual Expenditure Burn
                                     </h4>
 
-                                    <div className="overflow-hidden border border-slate-200 rounded-lg">
+                                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
                                       <table className="w-full text-start text-xs border-collapse">
                                         <thead className="bg-slate-100">
                                           <tr className="border-b border-slate-200 font-mono text-slate-600 uppercase font-bold text-[10px]">
@@ -2018,7 +2018,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                       II. Reconciled Statement Matchings & Cash Flows
                                     </h4>
 
-                                    <div className="overflow-hidden border border-slate-200 rounded-lg">
+                                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
                                       <table className="w-full text-start text-xs border-collapse">
                                         <thead className="bg-slate-100">
                                           <tr className="border-b border-slate-200 font-mono text-slate-600 uppercase font-bold text-[10px]">

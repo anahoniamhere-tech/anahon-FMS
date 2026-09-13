@@ -143,6 +143,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                       <p className="text-[10px] text-slate-500 mb-2">
                         {t("Five lines. Each one subtracts from the one above. Taken from the posted ledger, not from voucher rollups.")}
                       </p>
+                      <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <tbody>
                           {reportData.statementLines?.map((line: any) => {
@@ -162,6 +163,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                           })}
                         </tbody>
                       </table>
+                      </div>
                       {/* Recognition policy decides whether these five lines mean anything.
                           If grant income is booked on receipt, the surplus is an artefact. */}
                       {reportData.recognition?.map((f: any) => (
@@ -183,6 +185,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                       )}
                       <details className="mt-2">
                         <summary className="text-[10px] text-slate-500 cursor-pointer">{t("Accounts behind these lines")}</summary>
+                        <div className="overflow-x-auto">
                         <table className="w-full text-[11px] mt-1">
                           <tbody>{reportData.statement.rows.map((r: any) => (
                             <tr key={r.code} className="border-t border-slate-100">
@@ -193,6 +196,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                             </tr>
                           ))}</tbody>
                         </table>
+                        </div>
                       </details>
                     </div>
                   )}
@@ -250,12 +254,14 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                     {reportData.perProject.map((p: any) => (
                       <div key={p.code} className="mb-4">
                         <p className="font-semibold text-xs bg-slate-100 px-2 py-1 rounded">{p.code} — {p.name} · {p.donor} · {p.status} · allocated {formatUSD(p.allocated)} · spent to date {formatUSD(p.toDate)} ({p.variancePct > 0 ? "+" : ""}{p.variancePct}%)</p>
+                        <div className="overflow-x-auto">
                         <table className="w-full text-xs mt-1">
                           <thead><tr className="text-[10px] text-slate-500 uppercase text-start"><th className="py-0.5">Line</th><th>Description</th><th className="text-end">Allocated</th><th className="text-end">In period</th><th className="text-end">Actual to date</th></tr></thead>
                           <tbody>{p.lines.map((l: any) => (
                             <tr key={l.code} className="border-t border-slate-100"><td className="py-0.5 pe-2 font-mono">{l.code}</td><td className="pe-2">{l.description.split(" (EUR")[0].slice(0, 48)}</td><td className="text-end font-mono">{formatUSD(l.allocated)}</td><td className="text-end font-mono">{formatUSD(l.inPeriod)}</td><td className="text-end font-mono">{formatUSD(l.actual)}</td></tr>
                           ))}</tbody>
                         </table>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -263,26 +269,32 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                   <div className="grid md:grid-cols-2 gap-6">
                     <div>
                       <h3 className="font-bold text-xs uppercase tracking-wider mb-2"><span dir="ltr">2. Expenditure by Category (period)</span></h3>
+                      <div className="overflow-x-auto">
                       <table className="w-full text-xs">{Object.entries(reportData.byCategory).map(([c, v]: any) => (
                         <tbody key={c}><tr className="border-t border-slate-100"><td className="py-1">{c}</td><td className="text-end font-mono">{formatUSD(v)}</td></tr></tbody>))}
                       </table>
+                      </div>
                     </div>
                     <div>
                       <h3 className="font-bold text-xs uppercase tracking-wider mb-2"><span dir="ltr">3. Cash & Bank Position (current)</span></h3>
+                      <div className="overflow-x-auto">
                       <table className="w-full text-xs">{reportData.bankPosition.map((b: any) => (
                         <tbody key={b.name}><tr className="border-t border-slate-100"><td className="py-1">{b.name} ({b.currency})</td><td className="text-end font-mono"><span dir="ltr">{b.balance.toLocaleString()} {b.currency}</span></td><td className="text-end font-mono">{formatUSD(b.usd)}</td></tr></tbody>))}
                       </table>
+                      </div>
                     </div>
                   </div>
 
                   <div>
                     <h3 className="font-bold text-xs uppercase tracking-wider mb-2"><span dir="ltr">4. Income Received in Period</span></h3>
+                    <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead><tr className="text-[10px] text-slate-500 uppercase text-start"><th className="py-0.5">Date</th><th>Description</th><th>Account</th><th className="text-end">Amount</th><th className="text-end">USD</th></tr></thead>
                       <tbody>{reportData.deposits.map((d: any, i: number) => (
                         <tr key={i} className="border-t border-slate-100"><td className="py-0.5 font-mono">{d.date}</td><td className="pe-2">{d.description.slice(0, 60)}</td><td>{d.account}</td><td className="text-end font-mono"><span dir="ltr">{d.amount.toLocaleString()} {d.currency}</span></td><td className="text-end font-mono">{formatUSD(d.usd)}</td></tr>
                       ))}</tbody>
                     </table>
+                    </div>
                   </div>
 
                   {reportData.internalMovements?.length > 0 && (
@@ -291,11 +303,13 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
                         4b. Internal Movements — excluded from income ({formatUSD(reportData.totals.internalMovementsInPeriod)})
                       </h3>
                       <p className="text-[10px] text-slate-500 mb-1">Currency conversions and reversals between our own balances. Listed for completeness; counting them as income would double-count money already received.</p>
+                      <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <tbody>{reportData.internalMovements.map((d: any, i: number) => (
                           <tr key={i} className="border-t border-slate-100"><td className="py-0.5 font-mono">{d.date}</td><td className="pe-2">{d.description.slice(0, 60)}</td><td className="text-end font-mono"><span dir="ltr">{d.amount.toLocaleString()} {d.currency}</span></td><td className="text-end font-mono text-slate-500">{formatUSD(d.usd)}</td></tr>
                         ))}</tbody>
                       </table>
+                      </div>
                     </div>
                   )}
 

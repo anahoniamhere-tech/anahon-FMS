@@ -688,6 +688,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                         return (
                           <div className="border-t border-slate-100 pt-3">
                             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Employment history & financial statement</p>
+                            <div className="overflow-x-auto">
                             <table className="w-full text-start text-xs border-collapse">
                               <thead>
                                 <tr className="text-[10px] text-slate-500 uppercase">
@@ -721,6 +722,7 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                                 </tr>
                               </tbody>
                             </table>
+                            </div>
                             <p className="text-[10px] text-slate-400 mt-1">Derived from approved timesheets and posted vouchers; FPU amounts are EUR paid, shown at the report rate.</p>
                           </div>
                         );

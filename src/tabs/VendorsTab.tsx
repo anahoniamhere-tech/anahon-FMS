@@ -364,7 +364,72 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                 {state.subscriptions.length === 0 ? (
                   <p className="text-xs text-slate-400 italic">Nothing tracked yet — "Find in statements" proposes the recurring charges already on your bank feed.</p>
                 ) : (
-                  <table className="w-full text-xs">
+                  <>
+                  {/* Mobile: stacked cards. Eight columns at 390px had nowhere to go — the
+                      table's own content ran to ~4000px with no scroll container of its own,
+                      so the whole page panned sideways to reach it instead of just the table. */}
+                  <div className="md:hidden divide-y divide-slate-100">
+                    {state.subscriptions.slice().sort((a, b) => (a.nextRenewal || "9999").localeCompare(b.nextRenewal || "9999")).map(sub => {
+                      const days = subDaysLeft(sub.nextRenewal);
+                      const overdue = days !== null && days < 0 && sub.status === "Active";
+                      const soon = days !== null && days >= 0 && days <= 7 && sub.status === "Active";
+                      return (
+                        <div key={sub.id} className={`p-3 ${overdue ? "bg-red-50" : soon ? "bg-amber-50" : ""}`}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-800">{sub.name}</p>
+                              {sub.notes && <p className="text-[10px] font-normal text-slate-400">{sub.notes}</p>}
+                            </div>
+                            <span className="shrink-0 font-mono font-bold text-slate-800">{sub.currency} {sub.amount.toLocaleString()}</span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+                            <span>{sub.cycle}</span>
+                            <span>·</span>
+                            <span className="font-mono">{sub.nextRenewal || "—"}</span>
+                            {sub.status === "Active" && days !== null && (
+                              <span className={`font-bold ${overdue ? "text-red-700" : soon ? "text-amber-700" : "text-slate-400"}`}>
+                                {overdue ? `${Math.abs(days)}d overdue` : days === 0 ? "renews today" : `in ${days}d`}
+                              </span>
+                            )}
+                            <span>·</span>
+                            <span>{state.bankAccounts.find(b => b.id === sub.bankAccountId)?.name || "—"}</span>
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                            <select value={sub.status} onChange={e => saveSubscription({ ...sub, status: e.target.value })}
+                              aria-label={`Status for ${sub.name}`} className="finance-input text-[10px] py-1">
+                              <option>Active</option><option>Paused</option><option>Cancelled</option>
+                            </select>
+                            {(() => {
+                              const v = (sub as any).verifiedOn;
+                              const vDays = v ? Math.floor((Date.now() - new Date(`${v}T00:00:00`).getTime()) / 86400000) : null;
+                              const stale = vDays === null || vDays > 90;
+                              return (
+                                <span className="inline-flex items-center gap-1">
+                                  <button onClick={() => verifySubscription(sub, true)} title="Confirm it is still running today"
+                                    className="text-[10px] font-bold text-emerald-700 hover:underline min-h-[24px]">✓ yes</button>
+                                  <button onClick={() => { if (window.confirm(`Mark ${sub.name} as no longer running?`)) verifySubscription(sub, false); }}
+                                    title="No longer running — mark cancelled"
+                                    className="text-[10px] font-bold text-slate-400 hover:text-red-600 hover:underline min-h-[24px]">✕ no</button>
+                                  <span className={`text-[9px] ${stale ? "text-amber-700 font-bold" : "text-slate-400"}`}>
+                                    {v ? (vDays === 0 ? "checked today" : `checked ${vDays}d ago`) : "never checked"}
+                                  </span>
+                                </span>
+                              );
+                            })()}
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-1">
+                            {sub.nextRenewal && sub.status === "Active" && (
+                              <button onClick={() => rollSubscription(sub)} title="Paid — roll to the next period" aria-label={`Roll ${sub.name} forward`}
+                                className="text-[10px] text-emerald-700 hover:underline font-bold px-1 min-h-[24px]">✓ paid</button>
+                            )}
+                            <button onClick={() => setSubForm({ ...sub, amount: String(sub.amount) })} title="Edit" aria-label={`Edit ${sub.name}`} className="text-slate-400 hover:text-slate-700 px-1 min-h-[24px] min-w-[24px]">✏️</button>
+                            <button onClick={() => deleteSubscription(sub)} title="Stop tracking" aria-label={`Stop tracking ${sub.name}`} className="text-slate-400 hover:text-red-600 px-1 min-h-[24px] min-w-[24px]"><Trash2 className="h-3.5 w-3.5 inline" /></button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <table className="w-full text-xs hidden md:table">
                     <thead>
                       <tr className="border-b border-slate-200 text-start text-[10px] uppercase text-slate-500">
                         <th scope="col" className="p-2">Subscription</th>
@@ -434,6 +499,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                       })}
                     </tbody>
                   </table>
+                  </>
                 )}
               </div>
 
