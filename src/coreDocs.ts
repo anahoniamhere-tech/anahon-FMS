@@ -142,3 +142,15 @@ export function missingCoreDocs(
     .filter(s => !pickCoreDoc(s.key, CORE_PATTERNS[s.key], mine))
     .map(({ key, label }) => ({ key, label }));
 }
+
+/**
+ * The agreement papers filed on a project, whose file is still on disk. What a project's
+ * "bank only" rule may cite (Policy 020 §4.4.4): only the donor's agreement can impose it,
+ * so only an agreement can be named as its source — the picker and the server read this one list.
+ */
+export function agreementDocs<T extends CoreDoc & { linkedRecordType?: string; linkedRecordId?: string }>(docs: T[], projectId: string): T[] {
+  const wanted = CORE_CATEGORIES.Agreement;
+  return docs.filter(d => d.linkedRecordType === "Project" && d.linkedRecordId === projectId && !d.fileMissing
+    && wanted.some(w => { const c = normCategory(d.category); return c === w || c === `${w}s`; }))
+    .sort(newestFirst);
+}

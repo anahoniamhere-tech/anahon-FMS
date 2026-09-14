@@ -8,7 +8,8 @@ import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { ACTIVITY_EDITORS, DIRECTORS, FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
-import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES, CORE_SLOTS, missingCoreDocs } from "../coreDocs";
+import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES, CORE_SLOTS, missingCoreDocs, agreementDocs } from "../coreDocs";
+import ReceiveOffbankForm from "./ReceiveOffbankForm";
 import { overdueObligations, daysLate, UNKNOWN_DUE } from "../donorDeadlines";
 
 /** The pages of a project's workspace, in the order they are shown. */
@@ -35,6 +36,9 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
    * filing the paper is what clears it.
    */
   const [focusSlot, setFocusSlot] = useState("");
+  // Recording a further tranche received outside the bank, and editing the channel rule.
+  const [trancheOpen, setTrancheOpen] = useState(false);
+  const [ruleDraft, setRuleDraft] = useState<{ rule: string; source: string } | null>(null);
   useEffect(() => {
     if (!focusId) return;
     const m = /^missing:projects:(.+):([^:]+)$/.exec(focusId);
@@ -181,6 +185,11 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                             {proj.status}
                           </span>
                         </div>
+                        {proj.channelRule === "bank" && (
+                          <p className="text-[10px] font-bold text-red-800 mb-1">
+                            {t("bank only")} · <span dir="ltr">{proj.channelRuleSource}</span>
+                          </p>
+                        )}
                         {lapsed && (
                           <p className="text-[10px] font-bold text-amber-700 mb-1">
                             ⏳ ended {proj.endDate} and still open
@@ -1657,6 +1666,83 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
                       {projectWorkspaceTab === "money" && (
                         <div className="space-y-6">
+                        {/* ── How this project's money may arrive (Policy 020 §4.4.4, Saad 14 Sep 2026) ──
+                            AnaHon receives through every channel. Only a donor's agreement makes a project
+                            "bank only", and narrowly: the donor's money arrives through the bank; cash may
+                            still be spent on it. The rule names the agreement that imposes it. */}
+                        {(() => {
+                          const proj: any = state.projects.find((p: any) => p.id === selectedProjectId);
+                          if (!proj) return null;
+                          const bankOnly = proj.channelRule === "bank";
+                          const mayEdit = MANAGERS.includes(currentUser.role);
+                          const agreements = agreementDocs(state.documents as any, proj.id);
+                          const saveRule = async () => {
+                            try {
+                              const res = await fetch("/api/projects/channel-rule", { method: "POST", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ projectId: proj.id, channelRule: ruleDraft!.rule, channelRuleSource: ruleDraft!.source, user: currentUser }) });
+                              const d = await res.json().catch(() => ({}));
+                              if (!res.ok) throw new Error(d.error || "Refused");
+                              triggerToast(`${proj.code}: ${d.channelRule === "bank" ? t("bank only") : t("any channel")}.`);
+                              setRuleDraft(null); refreshState();
+                            } catch (err: any) { triggerToast(err.message, "error"); }
+                          };
+                          const ruleLabel = !ruleDraft ? "" : ruleDraft.rule === "bank" && !ruleDraft.source
+                            ? (agreements.length ? t("Save — choose the agreement that requires it") : t("Cannot save — no agreement is filed on this project"))
+                            : t("Save the rule");
+                          return (
+                            <div className={`p-4 border rounded-lg space-y-3 ${bankOnly ? "bg-red-50/40 border-red-200" : "bg-slate-50 border-slate-200"}`}>
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs">
+                                  <strong className="uppercase font-mono text-slate-700">{t("Receiving money")}:</strong>{" "}
+                                  {bankOnly
+                                    ? <span className="font-bold text-red-800">{t("bank only — the donor's money must arrive through the bank; cash may still be spent on it")} (<span dir="ltr">{proj.channelRuleSource || "—"}</span>)</span>
+                                    : <span className="text-slate-600">{t("any channel — bank, BOB Finance, OMT, Whish, cheque or cash")}</span>}
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  {mayEdit && !ruleDraft && (
+                                    <button type="button" onClick={() => setRuleDraft({ rule: proj.channelRule || "any", source: proj.channelRuleSource || "" })}
+                                      className="text-xs rounded-lg px-3 min-h-[44px] bg-white border border-slate-200 hover:bg-slate-100">{t("Change the rule")}</button>
+                                  )}
+                                  {mayEdit && !trancheOpen && (
+                                    <button type="button" onClick={() => setTrancheOpen(true)}
+                                      className="text-xs rounded-lg px-3 min-h-[44px] bg-red-600 text-white hover:bg-red-700">
+                                      <span className="inline-flex items-center gap-1.5">{ic(Banknote)}{t("Record a further tranche")}</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                              {ruleDraft && (
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                                  <div>
+                                    <label htmlFor="cr-rule" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Rule")}</label>
+                                    <select id="cr-rule" value={ruleDraft.rule} onChange={e => setRuleDraft({ rule: e.target.value, source: e.target.value === "bank" ? ruleDraft.source : "" })} className="finance-input w-full text-xs min-h-[44px]">
+                                      <option value="any">{t("any channel")}</option>
+                                      <option value="bank">{t("bank only")}</option>
+                                    </select>
+                                  </div>
+                                  {ruleDraft.rule === "bank" && (
+                                    <div>
+                                      <label htmlFor="cr-source" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Required by")}</label>
+                                      <select id="cr-source" value={ruleDraft.source} onChange={e => setRuleDraft({ ...ruleDraft, source: e.target.value })} className="finance-input w-full text-xs min-h-[44px]">
+                                        <option value="">—</option>
+                                        {agreements.map((d: any) => <option key={d.refNo} value={d.refNo}>{d.refNo} · {d.filename}</option>)}
+                                      </select>
+                                    </div>
+                                  )}
+                                  <div className="flex gap-2">
+                                    <button type="button" onClick={saveRule} disabled={ruleDraft.rule === "bank" && !ruleDraft.source}
+                                      className="text-xs rounded-lg px-3 min-h-[44px] bg-red-600 text-white hover:bg-red-700 disabled:opacity-60">{ruleLabel}</button>
+                                    <button type="button" onClick={() => setRuleDraft(null)} className="text-xs rounded-lg px-3 min-h-[44px] bg-slate-100 hover:bg-slate-200">{t("Cancel")}</button>
+                                  </div>
+                                </div>
+                              )}
+                              {trancheOpen && (
+                                <ReceiveOffbankForm state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState}
+                                  purpose="project" project={proj} onClose={() => setTrancheOpen(false)} />
+                              )}
+                            </div>
+                          );
+                        })()}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           {/* Folder C: Expense Vouchers & Supporting Invoices */}
                           <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">

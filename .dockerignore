@@ -11,3 +11,6 @@ exports
 .antigravity
 *.log
 .DS_Store
+# macOS AppleDouble sidecars: a Finder/SMB copy to the NAS writes a ._<name>
+# beside every file. Prisma ignores them; they need not enter the image either.
+._*

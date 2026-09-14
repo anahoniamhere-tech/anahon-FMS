@@ -14,7 +14,7 @@ import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src
 import { itemOpenFacts } from "./src/fillMarkers.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
-import { DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
+import { MANAGERS as MANAGERS_SEATS, DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
 import {
   helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA,
@@ -27,14 +27,14 @@ import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, norma
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
 import { costAccountFor, reclassifyLegs, debitedExpenseAccounts, costPositions } from "./src/costAccount.js";
-import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, CASH_SINGLE_PAYMENT_USD, payoutBlocker, cashApprovalBlocker, payoutLedgerFor, type TopUpItem, CASH_CLEARING_LEDGER, TRANSIT_TYPE, isTransit, DRAW_REF, DRAW_RETURN_REF, drawBlocker, drawPosition, drawOverdue, daysBetween, leftoverBlocker, type DrawLink, isLiveChannel, channelLedgerFor, receiptBlocker, depositBlocker, matchBlocker, isStatementMatchRef, OFFBANK_REF, OFFBANK_DEPOSIT_REF, isOffbankDepositRef, offbankPurposeOf, DEPOSITS_IN_TRANSIT_LEDGER, OTHER_INCOME_LEDGER, GRANT_INCOME_LEDGER, SERVICE_INCOME_LEDGER, HISTORICAL_CLEARING_LEDGER, CHANNEL_RULES, CHANNEL_TYPE, type ReceiptPurpose } from "./src/pettyCash.js";
+import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, CASH_SINGLE_PAYMENT_USD, payoutBlocker, cashApprovalBlocker, pastCashLedgerFor, CASH_AWAITING_VOUCHERS_NAME, payoutLedgerFor, type TopUpItem, CASH_CLEARING_LEDGER, TRANSIT_TYPE, isTransit, DRAW_REF, DRAW_RETURN_REF, drawBlocker, drawPosition, drawOverdue, daysBetween, leftoverBlocker, type DrawLink, isLiveChannel, channelLedgerFor, receiptBlocker, depositBlocker, matchBlocker, isStatementMatchRef, OFFBANK_REF, OFFBANK_DEPOSIT_REF, isOffbankDepositRef, offbankPurposeOf, DEPOSITS_IN_TRANSIT_LEDGER, OTHER_INCOME_LEDGER, GRANT_INCOME_LEDGER, SERVICE_INCOME_LEDGER, HISTORICAL_CLEARING_LEDGER, CHANNEL_RULES, CHANNEL_TYPE, type ReceiptPurpose } from "./src/pettyCash.js";
 import { PARTY_KINDS, partyKindLabel } from "./src/supplierDocs.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
 import { planStallNudges, planIsQuiet, personMessage, escalationMessage, STALL_CHANNELS } from "./src/stallNudges.js";
 import { canonEmail } from "./src/email.js";
-import { pickCoreDoc, CORE_PATTERNS } from "./src/coreDocs.js";
+import { pickCoreDoc, CORE_PATTERNS, agreementDocs } from "./src/coreDocs.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
@@ -2825,6 +2825,36 @@ app.post("/api/projects/new", async (req, res) => {
     );
 
     res.json({ success: true, project });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// A project's channel rule (Policy 020 §4.4.4, Saad 14 Sep 2026). AnaHon receives money through
+// every channel; only a donor's agreement can make a project "bank only", and then narrowly — the
+// donor's money must arrive through the bank, cash may still be spent on it. So "bank" must cite an
+// agreement filed on this project whose file is on disk; "any" clears the citation.
+app.post("/api/projects/channel-rule", async (req, res) => {
+  try {
+    const { projectId, channelRule, channelRuleSource, user } = req.body;
+    if (!MANAGERS_SEATS.includes(user?.role)) {
+      return res.status(403).json({ error: "Finance or a director sets a project's channel rule." });
+    }
+    const project = await prisma.project.findUnique({ where: { id: String(projectId || "") } });
+    if (!project) return res.status(404).json({ error: "Project not found." });
+    if (!(CHANNEL_RULES as readonly string[]).includes(channelRule)) return res.status(400).json({ error: "The rule is either any channel or bank only." });
+    let source = "";
+    if (channelRule === "bank") {
+      const rows = await prisma.appDoc.findMany({ where: { linkedRecordType: "Project", linkedRecordId: project.id }, select: { refNo: true, filename: true, category: true, base64: true, created_at: true, linkedRecordType: true, linkedRecordId: true } });
+      const docs = rows.map(d => ({ ...d, fileMissing: (() => { const f = vaultPathFromPointer(d.base64 || ""); return !!f && !fs.existsSync(f); })() }));
+      const agreement = agreementDocs(docs, project.id).find(d => d.refNo === String(channelRuleSource || ""));
+      if (!agreement) return res.status(400).json({ error: "Bank only must cite the agreement that imposes it — choose one of the agreement papers filed on this project." });
+      source = agreement.refNo!;
+    }
+    await prisma.project.update({ where: { id: project.id }, data: { channelRule, channelRuleSource: source } });
+    await createAuditLog(user?.id, user?.name, "Project Channel Rule Set",
+      `${project.code}: channel rule ${project.channelRule || "any"} → ${channelRule}${source ? ` (source: agreement ${source})` : ""}${project.channelRuleSource && !source ? ` (citation ${project.channelRuleSource} cleared)` : ""}.`);
+    res.json({ success: true, channelRule, channelRuleSource: source });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

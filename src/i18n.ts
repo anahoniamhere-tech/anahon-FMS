@@ -2,6 +2,30 @@
 // Main navigation and primary actions only — data, documents and financial
 // records stay in the language they were entered in.
 export const AR: Record<string, string> = {
+  // off-bank receipts on quotations and projects
+  "Amount received": "المبلغ المستلَم",
+  "Cannot record — this project may use the bank only": "لا يمكن التسجيل — هذا المشروع عبر المصرف فقط",
+  "Cannot save — no agreement is filed on this project": "لا يمكن الحفظ — لا اتفاقية محفوظة لهذا المشروع",
+  "Change the rule": "تغيير القاعدة",
+  "Its agreement makes this project bank only: the donor's money must arrive through the bank.": "اتفاقية هذا المشروع تجعله عبر المصرف فقط: يجب أن تصل أموال المانح عبر المصرف.",
+  "No active channel in this currency": "لا توجد قناة فعّالة بهذه العملة",
+  "No receipt has been issued for this quotation yet — issue one with the receipt button, have it signed, then record the cash against its number.": "لم يصدر إيصال لهذا العرض بعد — أصدر إيصالاً بزر الإيصال، واجعله موقَّعاً، ثم سجّل النقد برقمه.",
+  "Receiving money": "استلام الأموال",
+  "Record a further tranche": "تسجيل دفعة إضافية",
+  "Record money received outside the bank": "تسجيل مبلغ مستلَم خارج المصرف",
+  "Reference or cheque number": "المرجع أو رقم الشيك",
+  "Required by": "مفروضة بموجب",
+  "Rule": "القاعدة",
+  "Save the rule": "حفظ القاعدة",
+  "Save — choose the agreement that requires it": "حفظ — اختر الاتفاقية التي تفرضها",
+  "Signed receipt №": "رقم الإيصال الموقَّع",
+  "any channel": "أي قناة",
+  "any channel — bank, BOB Finance, OMT, Whish, cheque or cash": "أي قناة — المصرف أو BOB Finance أو OMT أو Whish أو شيك أو نقداً",
+  "attach it in the receipt log": "أرفقها في سجل الإيصالات",
+  "bank only — the donor's money must arrive through the bank; cash may still be spent on it": "عبر المصرف فقط — يجب أن تصل أموال المانح عبر المصرف؛ ويجوز الصرف النقدي منها",
+  "received through": "استُلم عبر",
+  "recorded with its evidence": "سُجّل مع إثباته",
+  "unlinked — the money stays recorded as received through": "أُلغي الربط — يبقى المبلغ مسجَّلاً كمستلَم عبر",
   // donor reporting deadlines
   "donor report": "تقرير المانح",
   "days overdue": "يوماً متأخر",

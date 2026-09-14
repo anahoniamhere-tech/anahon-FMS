@@ -106,6 +106,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // ---- Projects and funding -------------------------------------------------
   "/api/projects/new": [...MANAGERS, "Project Officer"],
   "/api/projects/delete": DIRECTORS,
+  "/api/projects/channel-rule": MANAGERS,           // bank only must cite the project's agreement (Policy 020 §4.4.4)
   "/api/activities/save": ACTIVITY_EDITORS,
   "/api/activities/delete": ACTIVITY_EDITORS,          // the route checks the programme is theirs
   "/api/activities/generate": ACTIVITY_EDITORS,

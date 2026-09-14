@@ -9,6 +9,7 @@ import { FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
 import { outstandingOn, paidOn } from "../quoteTranches";
 import { RECEIPT_CATEGORY, receiptLog, receiptNoOf } from "../receipts";
+import ReceiveOffbankForm from "./ReceiveOffbankForm";
 
 export default function ProductionTab({ currentUser, formatIn, formatUSD, openDoc, refreshState, state, t, triggerToast }: SharedProps) {
   // Production stream: client / quotation being added-edited (null = form closed)
@@ -17,7 +18,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
   const [quoteForm, setQuoteForm] = useState<Partial<Quotation> | null>(null);
 
   // Off-bank settlement (OMT / BOB / Whish / cash) being recorded for a quotation
-  const [settleForm, setSettleForm] = useState<{ q: Quotation; method: string; reference: string; date: string; amount: number } | null>(null);
+  const [settleForm, setSettleForm] = useState<{ q: Quotation; amount: number } | null>(null);
   // Receipt being issued for a quotation (null = form closed). Separate from settlement:
   // the receipt is written first, then its number is what gets entered as the evidence.
   const [receiptForm, setReceiptForm] = useState<{ q: Quotation; date: string; amount: number; method: string; receivedBy: string } | null>(null);
@@ -178,32 +179,13 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
         body: JSON.stringify({ id: q.id, txId, unlink, user: currentUser })
       });
       if (!res.ok) throw new Error((await res.json()).error || "Failed to link payment");
-      triggerToast(unlink ? `${q.quoteNo}: deposit removed.` : `${q.quoteNo}: deposit recorded against the quotation.`);
-      refreshState();
-    } catch (err: any) {
-      triggerToast(err.message, "error");
-    }
-  };
-
-  const submitOffbankSettlement = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!settleForm) return;
-    try {
-      const res = await fetch("/api/quotations/settle-offbank", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: settleForm.q.id,
-          method: settleForm.method,
-          reference: settleForm.reference,
-          date: settleForm.date,
-          amount: settleForm.amount,
-          user: currentUser
-        })
-      });
-      if (!res.ok) throw new Error((await res.json()).error || "Failed to record settlement");
-      triggerToast(`${settleForm.q.quoteNo} settled via ${settleForm.method} — recorded on the off-bank evidence account.`);
-      setSettleForm(null);
+      // A channel receipt (BOB, OMT, Whish, cheque, cash) was real money: unlinking takes it off this
+      // quotation, not out of the books — say so, or it reads as if the payment was undone.
+      const tx: any = unlink ? (state.bankTransactions || []).find((b: any) => b.id === txId) : null;
+      const channel = tx && String(tx.noticeRef || "").startsWith("offbank:") ? (state.bankAccounts || []).find((a: any) => a.id === tx.bankAccountId) : null;
+      triggerToast(unlink
+        ? channel ? `${q.quoteNo}: ${t("unlinked — the money stays recorded as received through")} ${channel.name}.` : `${q.quoteNo}: deposit removed.`
+        : `${q.quoteNo}: deposit recorded against the quotation.`);
       refreshState();
     } catch (err: any) {
       triggerToast(err.message, "error");
@@ -557,36 +539,11 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                   </form>
                 )}
 
-                {/* Off-bank settlement: OMT / BOB / Whish / cash. Evidence ref mandatory. */}
+                {/* Money received outside the bank for this quotation (Policy 020 §4.4.4): the channel's own
+                    account, with its evidence — the one route every off-bank receipt takes. */}
                 {settleForm && (
-                  <form onSubmit={submitOffbankSettlement} className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
-                    <h4 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Banknote)}Record off-bank payment — {settleForm.q.quoteNo}</span></h4>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div>
-                        <label htmlFor="st-method" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Method")}</label>
-                        <select id="st-method" value={settleForm.method} onChange={e => setSettleForm({ ...settleForm, method: e.target.value })} className="finance-input w-full text-xs">
-                          {["OMT", "BOB Finance", "Whish", "Cash"].map(m => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label htmlFor="st-ref" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{settleForm.method === "Cash" ? "Signed receipt №" : "Transfer reference"}</label>
-                        <input id="st-ref" type="text" required placeholder={settleForm.method === "Cash" ? "receipt number" : "e.g. 512-045-8198"} value={settleForm.reference} onChange={e => setSettleForm({ ...settleForm, reference: e.target.value })} className="finance-input w-full font-mono text-xs" />
-                      </div>
-                      <div>
-                        <label htmlFor="st-date" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Received on")}</label>
-                        <input id="st-date" type="date" value={settleForm.date} onChange={e => setSettleForm({ ...settleForm, date: e.target.value })} className="finance-input w-full font-mono text-xs" />
-                      </div>
-                      <div>
-                        <label htmlFor="st-amount" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Amount received ({settleForm.q.currency})</label>
-                        <input id="st-amount" type="number" min="0" step="any" value={settleForm.amount} onChange={e => setSettleForm({ ...settleForm, amount: Number(e.target.value) })} className="finance-input w-full font-mono text-xs" />
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-slate-400">Recorded as a deposit on the off-bank evidence account (like the FPU BOB Finance tranches). No evidence reference, no booking.</p>
-                    <div className="flex gap-2">
-                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">💾 Record settlement</button>
-                      <button type="button" onClick={() => setSettleForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
-                    </div>
-                  </form>
+                  <ReceiveOffbankForm state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState}
+                    purpose="quotation" quotation={settleForm.q} defaultAmount={settleForm.amount} onClose={() => setSettleForm(null)} />
                 )}
 
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-x-auto">
@@ -660,7 +617,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                         </span>
                                         {canSettle && (
                                           <>
-                                          <button onClick={() => setSettleForm({ q, method: "OMT", reference: "", date: new Date().toLocaleDateString("en-CA"), amount: left })} className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100" title="Record off-bank payment (OMT / BOB / Whish / cash)" aria-label={`Record off-bank payment for ${q.quoteNo}`}>{ic(Banknote, "h-3.5 w-3.5")}</button>
+                                          <button onClick={() => setSettleForm({ q, amount: left })} className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100" title="Record off-bank payment (OMT / BOB / Whish / cash)" aria-label={`Record off-bank payment for ${q.quoteNo}`}>{ic(Banknote, "h-3.5 w-3.5")}</button>
                                           <button onClick={() => setReceiptForm({ q, date: new Date().toLocaleDateString("en-CA"), amount: left, method: "Cash", receivedBy: "" })} className="text-slate-400 hover:text-amber-700 p-1 transition-colors rounded hover:bg-slate-100" title="Issue AnaHon's receipt for this payment" aria-label={`Issue receipt for ${q.quoteNo}`}>{ic(Receipt, "h-3.5 w-3.5")}</button>
                                           </>
                                         )}
@@ -759,7 +716,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                   const rows = receiptLog((state.documents || []) as any);
                   const unsigned = rows.filter(r => !r.signed).length;
                   return (
-                    <div className="space-y-2 pt-4 border-t border-slate-200">
+                    <div id="receipt-log" className="space-y-2 pt-4 border-t border-slate-200">
                       <div className="flex items-center justify-between flex-wrap gap-2">
                         <h4 className="text-sm font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Receipt)}{t("Receipt log")}</span></h4>
                         <span className={`text-[11px] font-bold ${unsigned ? "text-amber-700" : "text-slate-400"}`}>
