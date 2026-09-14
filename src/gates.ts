@@ -182,8 +182,10 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/employees/phone": ANY,                  // the personnel file decides — the route asks maySeePersonnelFile
   "/api/employees/start-date": HR,
   "/api/employees/login": HR,                   // who may open this person's own file — a grant, not a detail
-  "/api/pool/save": PERSONNEL_FILE,             // the freelancer pool — managers read name + skills, never write
-  "/api/pool/delete": PERSONNEL_FILE,
+  // The freelancer pool, split by field. The routes narrow further — a head to their own field.
+  "/api/pool/save": ["Super Admin", "Program Director", "Chief Editor", "Production Manager"],
+  "/api/pool/assess": ["Super Admin", "Program Director", "Chief Editor", "Production Manager"],
+  "/api/pool/delete": ["Super Admin", "Program Director"],   // touches both fields — the Executive Director
   "/api/timesheets/approve": DIRECTORS,                // and never one's own — checked in the route
   "/api/payroll/payslip": PAYROLL_VIEWERS,
   "/api/contracts/generate": [...HR, ...SUPPLIER_EDITORS],

@@ -69,54 +69,138 @@ export function isPersonnelDoc(doc: { category?: string }): boolean {
 /**
  * May this viewer see personnel documents about `partyId`?
  *
- * Two ways in, and only two: you hold the personnel file for the organisation, or the
- * file is your own. `employees` is the Employee list; the match is on userEmail, the
- * same field self-service timesheets already key on (Policy 8.5).
+ * Three ways in, and only three. You hold the personnel file for the organisation; or the
+ * file is your own (`employees`, matched on userEmail, the field self-service timesheets key
+ * on — Policy 8.5); or — added 14 Sep 2026 — you head a field of the freelancer pool and the
+ * document is the CV of someone in YOUR field. That third way is narrow on purpose: CVs only,
+ * pool entries only, never an employee's file, never the other field's people. It exists
+ * because Policy 010 says access follows the work, and a field head cannot assess a freelancer
+ * without reading their CV.
+ *
+ * `poolFieldsOf` answers "which pool fields is this party in?" for the third way. Callers that
+ * do not pass it get exactly the old two-way rule, so nothing that predates the pool changes.
  */
 export function maySeePersonnelFile(
   viewer: { role?: string; email?: string } | null | undefined,
   employees: { id: string; userEmail?: string | null }[],
   partyId?: string | null,
-  category?: string | null
+  category?: string | null,
+  poolFieldsOf?: (partyId: string) => string[]
 ): boolean {
   if (!viewer) return false;
   if (PERSONNEL_ROLES.includes(String(viewer.role))) return true;
   // A payslip is a personnel paper, but the people who run payroll must be able to open
   // the one they just generated and pay from.
   if (String(category || "") === "Payslip" && PAYROLL_VIEWERS.includes(String(viewer.role))) return true;
+  if (partyId && poolFieldsOf && String(category || "") === "CV") {
+    const v = poolViewFor(viewer.role);
+    if (v?.kind === "fields" && poolFieldsOf(partyId).some(f => (v.fields as string[]).includes(f))) return true;
+  }
   if (!partyId || !viewer.email) return false;
   const email = viewer.email.trim().toLowerCase();
   return employees.some(e => e.id === partyId && (e.userEmail || "").trim().toLowerCase() === email);
 }
 
 /**
- * The freelancer pool — people AnaHon may engage but has no contract with yet.
+ * The freelancer pool — people AnaHon may engage but has no contract with yet — split by field.
  *
- * Two tiers, and the second is narrow on purpose. The personnel-file roles see everything:
- * contact, day rate, notes and the CVs. The managers see only WHO is in the pool and WHAT
- * they do — name and skills — so they can ask for someone without being handed a stranger's
- * phone number, rate and CV. Everybody else sees nothing (Policy 010).
+ * Saad, 14 Sep 2026: each field is assessed by the head whose terms of reference cover it. A
+ * person may be in both fields; status and assessment live per field.
  *
- * "full" | "summary" | null. It composes two lists that already exist, because the rule
- * really is "personnel-file roles, or managers" — no new seat is invented for it.
+ * The permission keys are the seats as roles.ts spells them: "Chief Editor" and "Production
+ * Manager". Both are vacant today — no account holds Chief Editor, and the only Production
+ * Manager accounts are the two retired interim approvers, inactive — so Saad covers them with
+ * "Act as…". That changes what he may SET, never what he is sent: /api/state always loads for
+ * the real account, so as Super Admin he still sees every field.
  */
-export type PoolView = "full" | "summary" | null;
+export const POOL_FIELDS = [
+  { key: "Editorial", head: "Chief Editor", covers: "journalists, writers, fact-checkers, translators" },
+  { key: "Production", head: "Production Manager", covers: "camera, editing, producers, sound, design" },
+] as const;
+export type PoolField = (typeof POOL_FIELDS)[number]["key"];
+export const POOL_FIELD_KEYS: PoolField[] = POOL_FIELDS.map(f => f.key);
+export const POOL_STATUSES = ["Prospect", "Worked with us", "Not a fit"] as const;
+
+/**
+ * The Executive Director, as permission keys. "Program Director" is the policies' name for the
+ * seat and must never be renamed; it is vacant, and the master account stands in for a vacant
+ * seat here exactly as it does for the countersignature.
+ */
+const EXECUTIVE = ["Program Director", "Super Admin"];
+
+/**
+ * What of the pool this viewer is sent — the ONE rule, applied in loadState and, for CVs, on the
+ * byte route and on upload through maySeePersonnelFile.
+ *   all     — the file holders (Super Admin, HR, the Executive Director): every entry and CV
+ *   fields  — a field head: whole entries and CVs for THEIR field's people, and only their
+ *             field's assessment; nothing about anyone outside it
+ *   summary — the Finance Officer: name and skills, no status, no assessment, no CV
+ *   null    — everyone else: nothing
+ */
+export type PoolView =
+  | { kind: "all" }
+  | { kind: "fields"; fields: PoolField[] }
+  | { kind: "summary" }
+  | null;
 export function poolViewFor(role?: string | null): PoolView {
   const r = String(role || "");
-  if (PERSONNEL_ROLES.includes(r)) return "full";
-  if (MANAGERS.includes(r)) return "summary";
+  if (PERSONNEL_ROLES.includes(r)) return { kind: "all" };
+  const heads = POOL_FIELDS.filter(f => f.head === r).map(f => f.key);
+  if (heads.length) return { kind: "fields", fields: heads };
+  if (MANAGERS.includes(r)) return { kind: "summary" };
   return null;
 }
-/** The fields a "summary" viewer receives — exactly name and skills, as asked; the id only
- *  so a list can key its rows. Not status, not city: nothing beyond who and what. */
+/** The fields a "summary" viewer receives — exactly name and skills; the id only so a list can
+ *  key its rows. Not status, not assessment, not city: Finance does not assess freelancers. */
 export const POOL_SUMMARY_FIELDS = ["id", "name", "skills"] as const;
+
+/**
+ * Cut the pool down to exactly what `role` may be sent. Pure, so it can be tested, and the only
+ * implementation — loadState calls it for every branch. A field head gets the people in their
+ * field, whole, carrying only their field's assessment; nobody else in the payload, and a
+ * dual-field person's other judgement is not in it. Finance gets id, name and skills.
+ */
+export function cutPoolFor<C extends { id: string }, A extends { candidateId: string; field: string }>(
+  role: string | null | undefined, rows: C[], assessments: A[]
+): any[] {
+  const view = poolViewFor(role);
+  if (!view) return [];
+  if (view.kind === "summary") return rows.map(c => Object.fromEntries(POOL_SUMMARY_FIELDS.map(k => [k, (c as any)[k]])));
+  const scoped = view.kind === "fields" ? (view.fields as string[]) : null;
+  const fieldsOf = (id: string) => assessments.filter(a => a.candidateId === id).map(a => a.field);
+  return rows
+    .filter(c => !scoped || fieldsOf(c.id).some(f => scoped.includes(f)))
+    .map(c => ({ ...c, assessments: assessments.filter(a => a.candidateId === c.id && (!scoped || scoped.includes(a.field))) }));
+}
+
+/** Add or edit entries: the Chief Editor, the Production Manager, the Executive Director. HR sees
+ *  everything and edits nothing — Saad's decision, 14 Sep 2026. */
+export function mayEditPool(role?: string | null): boolean {
+  const r = String(role || "");
+  return EXECUTIVE.includes(r) || POOL_FIELDS.some(f => f.head === r);
+}
+/** Which fields this role may place people in and assess: its own, or any for the Executive Director. */
+export function poolFieldsWritableBy(role?: string | null): PoolField[] {
+  const r = String(role || "");
+  if (EXECUTIVE.includes(r)) return [...POOL_FIELD_KEYS];
+  return POOL_FIELDS.filter(f => f.head === r).map(f => f.key);
+}
+/** Set the status and assessment for one field: that field's head, or the Executive Director. */
+export function mayAssess(role?: string | null, field?: string | null): boolean {
+  return (poolFieldsWritableBy(role) as string[]).includes(String(field || ""));
+}
+/** Remove a person from the pool entirely — it touches both fields, so the Executive Director only. */
+export function mayRemoveFromPool(role?: string | null): boolean {
+  return EXECUTIVE.includes(String(role || ""));
+}
 
 /** Drop every personnel document this viewer is not entitled to. */
 export function filterPersonnelDocs<T extends { category?: string; partyId?: string | null }>(
   docs: T[],
   viewer: { role?: string; email?: string } | null | undefined,
-  employees: { id: string; userEmail?: string | null }[]
+  employees: { id: string; userEmail?: string | null }[],
+  poolFieldsOf?: (partyId: string) => string[]
 ): T[] {
   if (viewer && PERSONNEL_ROLES.includes(String(viewer.role))) return docs;
-  return docs.filter(d => !isPersonnelDoc(d) || maySeePersonnelFile(viewer, employees, d.partyId, d.category));
+  return docs.filter(d => !isPersonnelDoc(d) || maySeePersonnelFile(viewer, employees, d.partyId, d.category, poolFieldsOf));
 }

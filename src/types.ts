@@ -279,7 +279,7 @@ export interface Employee {
 }
 
 /**
- * Someone AnaHon may engage but has no contract with yet. A manager receives only id, name and
+ * Someone AnaHon may engage but has no contract with yet. Finance receives only id, name and
  * skills, so every other field is optional on the client: absent means "not yours to see".
  */
 export interface PoolCandidate {
@@ -293,9 +293,25 @@ export interface PoolCandidate {
   phone?: string;
   dayRate?: number | null;
   currency?: string;
-  status?: "Prospect" | "Worked with us" | "Not a fit" | string;
   notes?: string;
   created_at?: string;
+  /** One per field the person is in. A field head receives only their own field's row, so a
+   *  dual-field person arrives without the other field's judgement. Absent for a summary viewer. */
+  assessments?: PoolAssessment[];
+}
+
+/** A pool entry's standing in one field, set by that field's head or the Executive Director. */
+export interface PoolAssessment {
+  id: string;
+  candidateId: string;
+  field: "Editorial" | "Production" | string;
+  status: "Prospect" | "Worked with us" | "Not a fit" | string;
+  /** 1–5, null until someone has worked with them. */
+  rating: number | null;
+  note: string;
+  assessedBy: string;
+  assessedAs: string;
+  assessedAt: string;
 }
 
 export interface Timesheet {

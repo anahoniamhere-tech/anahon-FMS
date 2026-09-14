@@ -910,11 +910,31 @@ model PoolCandidate {
   /// Optional. Null means no rate discussed — never 0, which would read as free.
   dayRate    Float?
   currency   String  @default("USD")
-  /// Prospect | Worked with us | Not a fit
-  status     String  @default("Prospect")
   notes      String  @default("")
   createdBy  String  @default("")
   created_at String
+}
 
-  @@index([status])
+/// One field a pool entry belongs to, and that field's own judgement of them (Saad, 14 Sep 2026).
+/// Editorial is assessed by the Chief Editor, Production by the Production Manager; a person may
+/// be in both. Having a row for a field IS being in it — so a head is sent only their field's rows.
+model PoolAssessment {
+  id          String @id
+  candidateId String
+  /// Editorial | Production
+  field       String
+  /// Prospect | Worked with us | Not a fit
+  status      String @default("Prospect")
+  /// A short work rating, 1–5. Null until someone has actually worked with them.
+  rating      Int?
+  note        String @default("")
+  /// User.id of whoever assessed, and the seat they wore — a Super Admin standing in as the
+  /// Chief Editor is recorded as "Chief Editor (acting)", not as the Chief Editor.
+  assessedBy  String @default("")
+  assessedAs  String @default("")
+  assessedAt  String @default("")
+  created_at  String
+
+  @@unique([candidateId, field])
+  @@index([field])
 }

@@ -1,14 +1,17 @@
-// The freelancer pool — people AnaHon may engage but has no contract with yet.
+// The freelancer pool, split by field — who sees whose personal data and CVs.
 //
-// 14 Sep 2026 (People, on a Front desk request). What can go quietly wrong is privacy, not
-// function: a CV or a stranger's phone number and day rate reaching a seat that should only
-// know the person exists. So this pins the two tiers, that the server cuts the data rather
-// than the browser hiding it, that a CV linked to a pool entry stays with the personnel-file
-// holders on every path, and that the pool does not quietly grow Buying & paying's flow.
+// 14 Sep 2026 (People, on Saad's decisions relayed by the Front desk). Each field is assessed by
+// the head whose TOR covers it: Editorial by the Chief Editor, Production by the Production
+// Manager; a person may be in both; status and assessment live per field. What goes wrong here is
+// privacy, and it goes wrong quietly: a head receiving the other field's people or its judgement,
+// a CV reaching a seat by a path the state filter never sees, or the pool growing Buying & paying's
+// flow. The cut and the CV rule are pure functions, so most of this is behaviour, not source-grep.
 // Run: npx tsx scripts/check-freelancer-pool.ts
 import { readFileSync } from "node:fs";
-import { poolViewFor, POOL_SUMMARY_FIELDS, maySeePersonnelFile, filterPersonnelDocs } from "../src/personnelDocs.js";
-import { PERSONNEL_FILE, MANAGERS } from "../src/roles.js";
+import {
+  poolViewFor, cutPoolFor, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy,
+  maySeePersonnelFile, filterPersonnelDocs, POOL_FIELDS, POOL_SUMMARY_FIELDS,
+} from "../src/personnelDocs.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -16,91 +19,139 @@ const ok = (label: string, cond: boolean, detail = "") => {
 };
 const read = (f: string) => readFileSync(new URL(`../${f}`, import.meta.url), "utf8");
 const server = read("server.ts"), gates = read("src/gates.ts"), ui = read("src/tabs/FreelancerPool.tsx");
-const schema = read("prisma/schema.prisma");
 
-console.log("\nA. who sees what");
-ok("HR / Payroll sees whole entries", poolViewFor("HR / Payroll Officer") === "full");
-ok("the Programme Director seat sees whole entries", poolViewFor("Program Director") === "full");
-ok("the master account sees whole entries", poolViewFor("Super Admin") === "full");
-// The request: "Managers may see name and skills". Finance is a manager and not a file holder.
-ok("the Finance Officer sees name and skills only", poolViewFor("Finance Officer") === "summary");
-for (const r of ["Project Lead", "Auditor / Read-Only Reviewer", "Project Officer",
-  "Procurement and Logistics Officer", "Digital Officer", "Employee (Self-Service)", "Reporter"]) {
+// ── fixtures ────────────────────────────────────────────────────────────────────────────────
+const ROWS = [
+  { id: "pool-ed", name: "Editor Only", skills: "Fact-checker", phone: "+9613000001", dayRate: 80, notes: "n1" },
+  { id: "pool-pr", name: "Rasha Kayali", skills: "Producer, filmmaker", phone: "+971500000002", dayRate: 150, notes: "n2" },
+  { id: "pool-both", name: "Both Fields", skills: "Writer, editor", phone: "+9613000003", dayRate: 100, notes: "n3" },
+];
+const ASSESS = [
+  { candidateId: "pool-ed", field: "Editorial", status: "Worked with us", note: "sharp" },
+  { candidateId: "pool-pr", field: "Production", status: "Prospect", note: "" },
+  { candidateId: "pool-both", field: "Editorial", status: "Prospect", note: "EDITORIAL-JUDGEMENT" },
+  { candidateId: "pool-both", field: "Production", status: "Not a fit", note: "PRODUCTION-JUDGEMENT" },
+];
+const ids = (xs: any[]) => xs.map(x => x.id).sort().join(",");
+const fieldsOf = (id: string) => ASSESS.filter(a => a.candidateId === id).map(a => a.field);
+
+console.log("\nA. the role keys, and what each seat's view is");
+ok("the Editorial head is the role key \"Chief Editor\"", POOL_FIELDS.find(f => f.key === "Editorial")!.head === "Chief Editor");
+ok("the Production head is the role key \"Production Manager\"", POOL_FIELDS.find(f => f.key === "Production")!.head === "Production Manager");
+ok("the Chief Editor's view is Editorial only", JSON.stringify(poolViewFor("Chief Editor")) === JSON.stringify({ kind: "fields", fields: ["Editorial"] }));
+ok("the Production Manager's view is Production only", JSON.stringify(poolViewFor("Production Manager")) === JSON.stringify({ kind: "fields", fields: ["Production"] }));
+for (const r of ["Super Admin", "HR / Payroll Officer", "Program Director"]) ok(`${r} sees every field`, poolViewFor(r)?.kind === "all");
+ok("the Finance Officer is a summary viewer", poolViewFor("Finance Officer")?.kind === "summary");
+for (const r of ["Project Lead", "Auditor / Read-Only Reviewer", "Project Officer", "Procurement and Logistics Officer",
+  "Digital Officer", "Employee (Self-Service)", "Reporter", "Content Creator", "Graphic Designer"]) {
   ok(`${r} sees nothing`, poolViewFor(r) === null);
 }
-ok("every personnel-file role is a full viewer", PERSONNEL_FILE.every(r => poolViewFor(r) === "full"));
-ok("every manager can at least see who is in the pool", MANAGERS.every(r => poolViewFor(r) !== null));
-ok("a summary is exactly id, name and skills — nothing else leaks with it",
-  JSON.stringify([...POOL_SUMMARY_FIELDS].sort()) === JSON.stringify(["id", "name", "skills"]));
+// "Program Director" is the Executive Director's permission key and must never be renamed.
+ok("the Executive Director is still the key \"Program Director\"", read("src/roles.ts").includes('"Program Director"'));
 
-console.log("\nB. the server cuts the data; the browser does not hide it");
-ok("loadState asks the one rule", /const tier = poolViewFor\(viewer\?\.role\);/.test(server));
-ok("a summary viewer is sent only the summary fields",
-  /tier === "summary"\) return poolRows\.map\(c => Object\.fromEntries\(POOL_SUMMARY_FIELDS/.test(server));
-ok("anyone else in the full branch — a Project Lead, the auditor — is sent none", /return \[\];\s*\}\)\(\),/.test(server));
-ok("every restricted branch sends an empty pool",
-  (server.match(/poolCandidates: \[\]/g) || []).length >= 4, String((server.match(/poolCandidates: \[\]/g) || []).length));
-// The Contacts door belongs to PLO and Digital; the pool must not ride along with it.
-ok("the PLO/Digital branch, which gets contacts whole, still gets no pool",
-  /networkContacts, engagements, tools,\s*\n\s*poolCandidates: \[\]/.test(server));
-ok("poolRows leave the server in exactly one place", (server.match(/poolRows/g) || []).length === 3,
-  String((server.match(/poolRows/g) || []).length));
+console.log("\nB. the cut — what each seat is actually sent");
+const ce = cutPoolFor("Chief Editor", ROWS, ASSESS);
+const pm = cutPoolFor("Production Manager", ROWS, ASSESS);
+ok("the Chief Editor receives Editorial people only", ids(ce) === "pool-both,pool-ed", ids(ce));
+ok("the Production Manager receives Production people only", ids(pm) === "pool-both,pool-pr", ids(pm));
+ok("a Production-only person is not in the Chief Editor's payload at all", !ce.some(c => c.id === "pool-pr"));
+ok("an Editorial-only person is not in the Production Manager's payload at all", !pm.some(c => c.id === "pool-ed"));
+// The part that is easy to get wrong: a dual-field person, sent to both, must carry only one judgement.
+const ceBoth = ce.find(c => c.id === "pool-both"), pmBoth = pm.find(c => c.id === "pool-both");
+ok("a dual-field person reaches the Chief Editor with ONLY the Editorial assessment",
+  ceBoth.assessments.length === 1 && ceBoth.assessments[0].field === "Editorial");
+ok("and reaches the Production Manager with ONLY the Production assessment",
+  pmBoth.assessments.length === 1 && pmBoth.assessments[0].field === "Production");
+ok("the other field's note never appears anywhere in a head's payload",
+  !JSON.stringify(ce).includes("PRODUCTION-JUDGEMENT") && !JSON.stringify(pm).includes("EDITORIAL-JUDGEMENT"));
+ok("a head receives the whole entry of their own people — contact, rate, notes",
+  ce.find(c => c.id === "pool-ed").phone === "+9613000001" && ce.find(c => c.id === "pool-ed").dayRate === 80);
+const all = cutPoolFor("HR / Payroll Officer", ROWS, ASSESS);
+ok("HR receives everyone, with both fields' assessments", ids(all) === "pool-both,pool-ed,pool-pr"
+  && all.find(c => c.id === "pool-both").assessments.length === 2);
+const fin = cutPoolFor("Finance Officer", ROWS, ASSESS);
+ok("Finance receives everyone as id, name and skills — nothing else",
+  fin.length === 3 && fin.every(c => JSON.stringify(Object.keys(c).sort()) === JSON.stringify(["id", "name", "skills"])));
+ok("Finance receives no status and no assessment (it does not assess freelancers)",
+  !JSON.stringify(fin).match(/Prospect|Worked with us|Not a fit|assessments|JUDGEMENT/));
+ok("the summary fields are exactly id, name, skills", JSON.stringify([...POOL_SUMMARY_FIELDS].sort()) === JSON.stringify(["id", "name", "skills"]));
+ok("a reporter receives nothing", cutPoolFor("Reporter", ROWS, ASSESS).length === 0);
 
-console.log("\nC. a CV linked to a pool entry stays with the file holders — on every path");
-const EMPLOYEES = [{ id: "emp-1", userEmail: "saad@anahon.org" }, { id: "emp-2", userEmail: "anahonleb@gmail.com" }];
-const cv = { partyId: "pool-1", category: "CV" };
+console.log("\nC. a CV reaches a head only for their own field — on every path");
+const EMP = [{ id: "emp-1", userEmail: "saad@anahon.org" }];
 const who = (role: string, email = "x@anahon.org") => ({ role, email });
-ok("HR opens it", maySeePersonnelFile(who("HR / Payroll Officer"), EMPLOYEES, cv.partyId, cv.category));
-ok("the Programme Director opens it", maySeePersonnelFile(who("Program Director"), EMPLOYEES, cv.partyId, cv.category));
-ok("Finance does not — a manager sees the name, never the CV",
-  !maySeePersonnelFile(who("Finance Officer"), EMPLOYEES, cv.partyId, cv.category));
-ok("nor a Project Lead", !maySeePersonnelFile(who("Project Lead"), EMPLOYEES, cv.partyId, cv.category));
-// The linking choice rests on this: no employee can ever own a pool id, so the "your own file"
-// branch of the rule can never open a pool CV for somebody who merely shares an email.
-ok("a pool id is never mistaken for someone's own file",
-  !maySeePersonnelFile(who("Employee (Self-Service)", "saad@anahon.org"), EMPLOYEES, "pool-1", "CV"));
-ok("the state filter drops it for Finance", filterPersonnelDocs([cv as any], who("Finance Officer"), EMPLOYEES).length === 0);
-ok("and keeps it for HR", filterPersonnelDocs([cv as any], who("HR / Payroll Officer"), EMPLOYEES).length === 1);
-ok("the byte route asks the same rule, so a guessed URL fails too",
-  /async function personnelBlocked[\s\S]{0,400}maySeePersonnelFile\(viewer, employees, doc\.partyId, doc\.category\)/.test(server));
-ok("uploading into a pool entry is gated by the same rule",
-  /const personnel = isPersonnelDoc\(\{ category \}\);[\s\S]{0,300}maySeePersonnelFile\(user, employees, partyId\)/.test(server));
-ok("a pool CV is filed under PERSONNEL/Freelancer Pool/<name>, beside the first ones",
-  server.includes('path.join("PERSONNEL", "Freelancer Pool", pool.name'));
+const cvOf = (partyId: string) => [who("Chief Editor"), EMP, partyId, "CV", fieldsOf] as const;
+ok("the Chief Editor opens an Editorial person's CV", maySeePersonnelFile(...cvOf("pool-ed")));
+ok("the Chief Editor does NOT open a Production person's CV", !maySeePersonnelFile(...cvOf("pool-pr")));
+ok("the Production Manager opens Rasha's CV", maySeePersonnelFile(who("Production Manager"), EMP, "pool-pr", "CV", fieldsOf));
+ok("the Production Manager does NOT open an Editorial person's CV", !maySeePersonnelFile(who("Production Manager"), EMP, "pool-ed", "CV", fieldsOf));
+ok("both heads open a dual-field person's CV — a CV is about the person, not the field",
+  maySeePersonnelFile(who("Chief Editor"), EMP, "pool-both", "CV", fieldsOf) && maySeePersonnelFile(who("Production Manager"), EMP, "pool-both", "CV", fieldsOf));
+// The third way in must not become a back door into anyone's real personnel file.
+ok("a head cannot open an EMPLOYEE's papers through it", !maySeePersonnelFile(who("Chief Editor"), EMP, "emp-1", "Passport", fieldsOf)
+  && !maySeePersonnelFile(who("Chief Editor"), EMP, "emp-1", "CV", fieldsOf));
+ok("a head cannot open a non-CV personnel paper even for their own pool person",
+  !maySeePersonnelFile(who("Chief Editor"), EMP, "pool-ed", "Passport", fieldsOf));
+ok("without the pool answer the old two-way rule is unchanged — a head sees no CV",
+  !maySeePersonnelFile(who("Chief Editor"), EMP, "pool-ed", "CV"));
+ok("Finance never opens a pool CV", !maySeePersonnelFile(who("Finance Officer"), EMP, "pool-pr", "CV", fieldsOf));
+ok("a reporter never opens a pool CV", !maySeePersonnelFile(who("Reporter"), EMP, "pool-ed", "CV", fieldsOf));
+ok("HR still opens every pool CV", ["pool-ed", "pool-pr", "pool-both"].every(p => maySeePersonnelFile(who("HR / Payroll Officer"), EMP, p, "CV", fieldsOf)));
+const cvs = [{ partyId: "pool-ed", category: "CV" }, { partyId: "pool-pr", category: "CV" }, { partyId: "pool-both", category: "CV" }];
+ok("the state filter gives the Chief Editor exactly their field's CVs",
+  filterPersonnelDocs(cvs as any, who("Chief Editor"), EMP, fieldsOf).map(d => d.partyId).sort().join(",") === "pool-both,pool-ed");
+ok("the byte route asks the same rule with the pool answer, so a guessed URL fails too",
+  /async function personnelBlocked[\s\S]{0,700}maySeePersonnelFile\(viewer, employees, doc\.partyId, doc\.category, \(\) => fields\)/.test(server));
+ok("the upload gate asks it too, with the category", /maySeePersonnelFile\(user, employees, partyId, category, \(\) => uploadPoolFields\)/.test(server));
 
-console.log("\nD. writing the pool");
-ok("save and delete are gated to the personnel-file roles",
-  gates.includes('"/api/pool/save": PERSONNEL_FILE') && gates.includes('"/api/pool/delete": PERSONNEL_FILE'));
-ok("and the routes enforce it themselves",
-  (server.match(/if \(poolViewFor\(user\?\.role\) !== "full"\)/g) || []).length === 2);
-ok("status is one of the three the request named", server.includes('const POOL_STATUSES = ["Prospect", "Worked with us", "Not a fit"];'));
-ok("a phone must be full international form", /\/api\/pool\/save[\s\S]{0,1200}\^\\\+\[1-9\]\\d\{7,14\}\$/.test(server));
-// A blank rate stored as 0 would read as someone who works for free.
-ok("a blank day rate is stored as null, never 0", server.includes('const rate = rateRaw === "" ? null : Number(rateRaw);')
-  && /dayRate\s+Float\?/.test(schema));
-ok("the audit line carries name and status, never contact or rate",
-  /Freelancer pool: \$\{row\.name\} — \$\{row\.status\}/.test(server) && !/Freelancer pool:[^`]*\$\{row\.(phone|email|dayRate)\}/.test(server));
-ok("removal needs a reason (personal data about someone never contracted)", server.includes("Say why the entry is being removed."));
-ok("removal KEEPS the CVs — it unlinks them, it never deletes a document",
-  /appDoc\.updateMany\(\{ where: \{ partyId: id \}, data: \{ partyId: null \} \}\)/.test(server)
-  && !/\/api\/pool\/delete[\s\S]{0,1500}appDoc\.delete/.test(server));
+console.log("\nD. loadState applies the one cut in every branch that can send it");
+ok("the cut is the shared pure function", /const poolFor = \(v: any\) => cutPoolFor\(v\?\.role, poolRows, poolAssessments\);/.test(server));
+ok("the full branch uses it", /poolCandidates: poolFor\(viewer\),\s+\/\/ all for the file holders/.test(server));
+ok("the editors' branch uses it — and so field heads receive their pool", /tools: \[\], poolCandidates: poolFor\(viewer\),/.test(server));
+ok("the editors' branch sends only pool CVs the rule allows, where it used to send no documents",
+  /documents: poolCvsFor\(viewer\)/.test(server) && /documents\.filter\(d => d\.category === "CV" && d\.partyId && poolRows\.some/.test(server));
+ok("every other restricted branch still sends an empty pool", (server.match(/poolCandidates: \[\]/g) || []).length >= 3,
+  String((server.match(/poolCandidates: \[\]/g) || []).length));
 
-console.log("\nE. the pool does not grow Buying & paying's flow");
+console.log("\nE. who may write");
+for (const r of ["Chief Editor", "Production Manager", "Program Director", "Super Admin"]) ok(`${r} may add and edit entries`, mayEditPool(r));
+ok("HR may NOT edit — it sees everything and edits nothing (Saad, 14 Sep)", !mayEditPool("HR / Payroll Officer"));
+ok("Finance may not edit", !mayEditPool("Finance Officer"));
+ok("the Chief Editor assesses Editorial", mayAssess("Chief Editor", "Editorial"));
+ok("the Chief Editor may NOT assess Production", !mayAssess("Chief Editor", "Production"));
+ok("the Production Manager may NOT assess Editorial", !mayAssess("Production Manager", "Editorial"));
+ok("the Executive Director assesses both", mayAssess("Program Director", "Editorial") && mayAssess("Program Director", "Production"));
+ok("the master account, standing in for the vacant seat, assesses both", mayAssess("Super Admin", "Editorial") && mayAssess("Super Admin", "Production"));
+ok("HR assesses neither", !mayAssess("HR / Payroll Officer", "Editorial") && !mayAssess("HR / Payroll Officer", "Production"));
+ok("a head may place people only in their own field", JSON.stringify(poolFieldsWritableBy("Chief Editor")) === '["Editorial"]');
+ok("removing a person — both fields — is the Executive Director's alone",
+  mayRemoveFromPool("Program Director") && mayRemoveFromPool("Super Admin") && !mayRemoveFromPool("Chief Editor") && !mayRemoveFromPool("HR / Payroll Officer"));
+ok("gates.ts matches: save/assess to the heads and the Executive Director, delete to the Executive Director",
+  gates.includes('"/api/pool/assess": ["Super Admin", "Program Director", "Chief Editor", "Production Manager"]')
+  && gates.includes('"/api/pool/delete": ["Super Admin", "Program Director"]'));
+// Restricted seats have an allowlist too; without this a real Chief Editor could not save at all.
+ok("the editors' POST allowlist admits the pool routes", /const EDITOR_ALLOWED_POSTS = new Set\(\[\n\s*"\/api\/pool\/save", "\/api\/pool\/assess"/.test(server));
+ok("a head editing someone outside their field is refused", server.includes("That person is not in a field you head."));
+ok("a head placing someone in the other field is refused", server.includes("that field has its own head."));
+ok("the rating is a whole number 1–5 or blank", server.includes("A rating is a whole number from 1 to 5, or left blank."));
+ok("the seat worn is written on the assessment, so a stand-in is on the record as one",
+  server.includes("assessedAs: poolSeat(user)") && server.includes('user?.actingAs ? `${user.role} (acting)`'));
+ok("the audit line carries field and status, never the note or rating",
+  /Pool Assessment Set[\s\S]{0,200}in \$\{field\} — \$\{st\}/.test(server) && !/Pool Assessment Set[\s\S]{0,300}\$\{(r|trimmed|note|rating)\}/.test(server));
+
+console.log("\nF. the pool does not grow Buying & paying's flow");
 const poolRoutes = (server.match(/app\.post\("\/api\/pool\/[\s\S]*?\n\}\);/g) || []).join("\n");
 ok("no pool route creates a supplier", !/prisma\.vendor\.(create|update|upsert)/.test(poolRoutes));
-ok("no pool route drafts a contract", !/contractHtml|contracts\/generate|archive\(/.test(poolRoutes));
-ok("the screen offers no 'make supplier' or 'draw agreement' action",
-  !/vendors\/new|contracts\/generate|engageable/i.test(ui));
-ok("and it tells the reader where that happens instead", ui.includes("is done in Buying & paying, not here"));
+ok("no pool route drafts a contract", !/contractHtml|contracts\/generate/.test(poolRoutes));
+ok("the screen offers no make-supplier or draw-agreement action", !/vendors\/new|contracts\/generate|engageable/i.test(ui));
+ok("removal keeps CVs — unlinks, never deletes a document",
+  /appDoc\.updateMany\(\{ where: \{ partyId: id \}, data: \{ partyId: null \} \}\)/.test(server) && !/\/api\/pool\/delete[\s\S]{0,1500}appDoc\.delete\(/.test(server));
 
-console.log("\nF. why a table of its own");
-// Recorded so the choice is not quietly reversed: both existing records were checked first.
-ok("it is its own model, not NetworkContact or Vendor", /model PoolCandidate \{/.test(schema)
-  && !/poolCandidate|freelancer/i.test((schema.match(/model NetworkContact \{[\s\S]*?\n\}/) || [""])[0])
-  && !/poolCandidate|freelancer/i.test((schema.match(/model Vendor \{[\s\S]*?\n\}/) || [""])[0]));
-ok("the migration says why neither existing record was used",
-  read("prisma/migrations/20260914180000_freelancer_pool/migration.sql").includes("Not NetworkContact")
-  && read("prisma/migrations/20260914180000_freelancer_pool/migration.sql").includes("Not Vendor"));
+console.log("\nG. the data model");
+const mig = read("prisma/migrations/20260914200000_pool_fields/migration.sql");
+ok("status and assessment live per (person, field)", /UNIQUE INDEX "PoolAssessment_candidateId_field_key"/.test(mig));
+ok("the old single status column is dropped, index first", mig.indexOf('DROP INDEX "PoolCandidate_status_idx"') < mig.indexOf('DROP COLUMN "status"') && mig.includes('DROP COLUMN "status"'));
+ok("the screen reads nothing that is no longer there", !/c\.status\b/.test(ui));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

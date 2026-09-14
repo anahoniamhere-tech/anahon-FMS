@@ -38,7 +38,7 @@ import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
-import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, POOL_SUMMARY_FIELDS } from "./src/personnelDocs.js";
+import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, cutPoolFor, POOL_FIELD_KEYS, POOL_STATUSES, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy } from "./src/personnelDocs.js";
 import { parseIcs } from "./src/ics.js";
 
 dotenv.config();
@@ -160,6 +160,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 ]);
 // Chief Editor and Production Manager: the editorial pipeline and site work, nothing financial.
 const EDITOR_ALLOWED_POSTS = new Set([
+  "/api/pool/save", "/api/pool/assess",   // the field heads assess their own freelancers
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/preview", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
   "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete", "/api/social/image-public", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
@@ -550,6 +551,7 @@ async function loadState(viewer?: any) {
     engagements,
     tools,
     poolRows,
+    poolAssessments,
     orgSettingsRaw,
     fxRatesRaw
   ] = await Promise.all([
@@ -588,6 +590,7 @@ async function loadState(viewer?: any) {
     prisma.engagement.findMany({ orderBy: { startDate: "desc" } }),
     prisma.tool.findMany({ orderBy: { name: "asc" } }),
     prisma.poolCandidate.findMany({ orderBy: { name: "asc" } }),
+    prisma.poolAssessment.findMany(),
     prisma.orgSettings.findFirst(),
     prisma.fxRates.findFirst()
   ]);
@@ -671,6 +674,24 @@ async function loadState(viewer?: any) {
     topics: JSON.parse(m.topicsJson || "[]")
   }));
 
+  // ── The freelancer pool, cut to what this viewer may be sent ────────────────────────
+  // One rule, poolViewFor, and one place it is applied — every branch below calls poolFor.
+  // A field head gets whole entries for THEIR field's people and only their field's
+  // assessment; the other field's people are not in the payload at all, and a dual-field
+  // person arrives without the other field's judgement. Cut here, never hidden in a browser.
+  const poolFieldsOf = (partyId: string) => poolAssessments.filter(a => a.candidateId === partyId).map(a => a.field);
+  const poolFor = (v: any) => cutPoolFor(v?.role, poolRows, poolAssessments);
+  /** The CVs a field head may read: pool CVs, filtered by the same rule the byte route asks. */
+  const poolCvsFor = (v: any) => filterPersonnelDocs(
+    documents.filter(d => d.category === "CV" && d.partyId && poolRows.some(c => c.id === d.partyId)),
+    v, employees, poolFieldsOf,
+  ).map(d => ({
+    id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
+    base64: d.base64.startsWith("link://") ? d.base64 : "", category: d.category,
+    linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
+    created_at: d.created_at, contentHash: d.contentHash, note: d.note,
+  }));
+
   let visibleProjects = fundedOnly(projects, bankTransactions);
 
   // Content crew (Policy 002 production team) get the editorial register and the people
@@ -683,9 +704,11 @@ async function loadState(viewer?: any) {
       employees: employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase()),
       timesheets: formattedTimesheets.filter(t => employees.some(e => e.id === t.employeeId && e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase())),
       fixedAssets: heldByViewer,
-      partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [],
+      // The only documents this branch sends are the pool CVs a field head is entitled to —
+      // for a reporter or a designer poolCvsFor returns none, as documents always was here.
+      partnerAccounts: [], documents: poolCvsFor(viewer), auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [],
       opportunities: [], cashCounts: [], cashTopUps: [], cashDraws: [], subscriptions: [], projectActivities: [],
-      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [], poolCandidates: [],
+      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [], poolCandidates: poolFor(viewer),
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
       editorialMeetings: formattedMeetings,
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
@@ -886,12 +909,7 @@ async function loadState(viewer?: any) {
     // The freelancer pool. Personnel-file roles get the whole row; managers get name and skills
     // and nothing else; anyone else who reaches this branch (a Project Lead, the auditor) gets
     // none. Cut down here, not hidden in the browser, because the payload is what leaks.
-    poolCandidates: (() => {
-      const tier = poolViewFor(viewer?.role);
-      if (tier === "full") return poolRows;
-      if (tier === "summary") return poolRows.map(c => Object.fromEntries(POOL_SUMMARY_FIELDS.map(k => [k, (c as any)[k]])));
-      return [];
-    })(),
+    poolCandidates: poolFor(viewer),   // all for the file holders, name + skills for Finance, none otherwise
     // The events and trainings themselves — attended and delivered. Many belong to no
     // project, which is why they are their own register and not a corner of one.
     engagements,
@@ -1023,24 +1041,42 @@ async function authorisedSignatory(): Promise<{ name: string; title: string } | 
 }
 
 /* ── The freelancer pool ─────────────────────────────────────────────────────────────
- * People AnaHon may engage but has no contract with yet. Only the personnel-file roles write
- * it — a manager sees name and skills to ask for someone, and asking is not editing.
+ * People AnaHon may engage but has no contract with yet, split by field (Saad, 14 Sep 2026).
+ * Who may do what lives in personnelDocs.ts beside the view rule, so reading and writing
+ * cannot drift apart: add/edit — the Chief Editor, the Production Manager, the Executive
+ * Director; assess a field — that field's head or the Executive Director; remove a person —
+ * the Executive Director. HR sees every field and edits none.
  *
  * What this deliberately does NOT do: turn an entry into a supplier or a contract. That is
  * Buying & paying's flow — a pool entry becomes a Vendor there, and its CVs follow by partyId.
  */
-const POOL_STATUSES = ["Prospect", "Worked with us", "Not a fit"];
+const poolSeat = (user: any) => user?.actingAs ? `${user.role} (acting)` : String(user?.role || "");
 
 app.post("/api/pool/save", async (req, res) => {
   try {
-    const { id, name, skills, city, country, languages, email, phone, dayRate, currency, status, notes, user } = req.body;
-    if (poolViewFor(user?.role) !== "full") {
-      return res.status(403).json({ error: "Only HR / Payroll, the Program Director or the master account may edit the freelancer pool." });
+    const { id, name, skills, city, country, languages, email, phone, dayRate, currency, notes, fields, user } = req.body;
+    if (!mayEditPool(user?.role)) {
+      return res.status(403).json({ error: "Only the Chief Editor, the Production Manager or the Executive Director may edit the freelancer pool." });
     }
+    const writable = poolFieldsWritableBy(user?.role) as string[];
+    const existing = id ? await prisma.poolCandidate.findUnique({ where: { id } }) : null;
+    if (id && !existing) return res.status(404).json({ error: "That person is not in the pool." });
+    const current = existing ? (await prisma.poolAssessment.findMany({ where: { candidateId: id } })).map(a => a.field) : [];
+    // A field head may only touch people in their own field. A dual-field person is theirs to
+    // edit; someone only in the other field is not — and is not even in their payload.
+    if (existing && !current.some(f => writable.includes(f))) {
+      return res.status(403).json({ error: "That person is not in a field you head." });
+    }
+    // Fields to ADD this person to: only ones this seat heads. Leaving a field is not done here.
+    const wanted = (Array.isArray(fields) ? fields : []).map(String).filter(f => !current.includes(f));
+    const bad = wanted.filter(f => !(POOL_FIELD_KEYS as string[]).includes(f));
+    if (bad.length) return res.status(400).json({ error: `Unknown field: ${bad.join(", ")}. The fields are ${POOL_FIELD_KEYS.join(" and ")}.` });
+    const forbidden = wanted.filter(f => !writable.includes(f));
+    if (forbidden.length) return res.status(403).json({ error: `You cannot place people in ${forbidden.join(", ")} — that field has its own head.` });
+    if (!existing && wanted.length === 0) return res.status(400).json({ error: "Say which field this person belongs to." });
+
     const cleanName = String(name || "").trim();
     if (!cleanName) return res.status(400).json({ error: "A pool entry needs a name." });
-    const st = String(status || "Prospect");
-    if (!POOL_STATUSES.includes(st)) return res.status(400).json({ error: `Status must be one of: ${POOL_STATUSES.join(", ")}.` });
     const ph = String(phone ?? "").replace(/[\s()-]/g, "");
     if (ph && !/^\+[1-9]\d{7,14}$/.test(ph)) {
       return res.status(400).json({ error: "Write the phone in full international form, starting with + and the country code." });
@@ -1055,36 +1091,79 @@ app.post("/api/pool/save", async (req, res) => {
       name: cleanName, skills: String(skills || "").trim(), city: String(city || "").trim(),
       country: String(country || "").trim(), languages: String(languages || "").trim(),
       email: String(email || "").trim(), phone: ph, dayRate: rate,
-      currency: String(currency || "USD").trim() || "USD", status: st, notes: String(notes || "").trim(),
+      currency: String(currency || "USD").trim() || "USD", notes: String(notes || "").trim(),
     };
-    const existing = id ? await prisma.poolCandidate.findUnique({ where: { id } }) : null;
+    const now = new Date().toISOString();
     const row = existing
       ? await prisma.poolCandidate.update({ where: { id }, data })
-      : await prisma.poolCandidate.create({ data: { id: `pool-${Date.now()}`, ...data, createdBy: user?.id || "", created_at: new Date().toISOString() } });
-    // Name and status only on the audit line: the log is read by seats not entitled to the rest.
+      : await prisma.poolCandidate.create({ data: { id: `pool-${Date.now()}`, ...data, createdBy: user?.id || "", created_at: now } });
+    for (const f of wanted) {
+      await prisma.poolAssessment.create({ data: { id: `pa-${row.id}-${f}`, candidateId: row.id, field: f, status: "Prospect", created_at: now } });
+    }
+    // Name and fields only on the audit line: the log is read by seats not entitled to the rest.
     await createAuditLog(user?.id || "u-1", user?.name || "Super Admin",
       existing ? "Pool Entry Updated" : "Pool Entry Added",
-      `Freelancer pool: ${row.name} — ${row.status}${existing && existing.status !== row.status ? ` (was ${existing.status})` : ""}.`);
-    res.json({ success: true, candidate: row });
+      `Freelancer pool: ${row.name}${wanted.length ? ` — added to ${wanted.join(" and ")}` : ""}.`);
+    res.json({ success: true, candidate: row, addedTo: wanted });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-/* Removing someone from the pool. Personal data about a person we have no contract with has to
- * be removable when they ask (Policy 010). Their CVs are NOT deleted with the entry — documents
- * are never destroyed from here — but they lose their link and fall back to the rule for an
- * unlinked personnel paper, which is still personnel-file roles only. */
+/* Status and assessment for ONE field. That field's head, or the Executive Director — and the
+ * seat is written on the row, so a Super Admin standing in as Chief Editor is on the record as
+ * exactly that, not as the Chief Editor. */
+app.post("/api/pool/assess", async (req, res) => {
+  try {
+    const { candidateId, field, status, rating, note, user } = req.body;
+    if (!(POOL_FIELD_KEYS as string[]).includes(String(field))) {
+      return res.status(400).json({ error: `Unknown field. The fields are ${POOL_FIELD_KEYS.join(" and ")}.` });
+    }
+    if (!mayAssess(user?.role, field)) {
+      return res.status(403).json({ error: `Only the head of ${field}, or the Executive Director, may assess people in it.` });
+    }
+    const st = String(status || "");
+    if (!(POOL_STATUSES as readonly string[]).includes(st)) {
+      return res.status(400).json({ error: `Status must be one of: ${POOL_STATUSES.join(", ")}.` });
+    }
+    const r = rating === "" || rating == null ? null : Number(rating);
+    if (r !== null && (!Number.isInteger(r) || r < 1 || r > 5)) {
+      return res.status(400).json({ error: "A rating is a whole number from 1 to 5, or left blank." });
+    }
+    const existing = await prisma.poolAssessment.findUnique({ where: { candidateId_field: { candidateId, field } } });
+    if (!existing) return res.status(404).json({ error: `That person is not in ${field}.` });
+    const trimmed = String(note || "").trim();
+    if (trimmed.length > 500) return res.status(400).json({ error: "Keep the assessment note short — 500 characters at most." });
+    const row = await prisma.poolAssessment.update({
+      where: { id: existing.id },
+      data: { status: st, rating: r, note: trimmed, assessedBy: user?.id || "", assessedAs: poolSeat(user), assessedAt: new Date().toISOString() },
+    });
+    const who = await prisma.poolCandidate.findUnique({ where: { id: candidateId } });
+    // Status only on the audit line — the note and the rating are an assessment of a person,
+    // and the audit log is read by seats that are not entitled to it.
+    await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", "Pool Assessment Set",
+      `Freelancer pool: ${who?.name || candidateId} in ${field} — ${st}${existing.status !== st ? ` (was ${existing.status})` : ""}.`);
+    res.json({ success: true, assessment: row });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* Removing someone from the pool entirely. It touches both fields, so the Executive Director
+ * only. Personal data about a person we have no contract with has to be removable when they ask
+ * (Policy 010). Their CVs are NOT deleted — documents are never destroyed from here — they lose
+ * their link and fall back to the rule for an unlinked personnel paper: file holders only. */
 app.post("/api/pool/delete", async (req, res) => {
   try {
     const { id, reason, user } = req.body;
-    if (poolViewFor(user?.role) !== "full") {
-      return res.status(403).json({ error: "Only HR / Payroll, the Program Director or the master account may edit the freelancer pool." });
+    if (!mayRemoveFromPool(user?.role)) {
+      return res.status(403).json({ error: "Only the Executive Director may remove someone from the pool — it affects both fields." });
     }
     const row = await prisma.poolCandidate.findUnique({ where: { id } });
     if (!row) return res.status(404).json({ error: "That person is not in the pool." });
     if (!String(reason || "").trim()) return res.status(400).json({ error: "Say why the entry is being removed." });
     const unlinked = await prisma.appDoc.updateMany({ where: { partyId: id }, data: { partyId: null } });
+    await prisma.poolAssessment.deleteMany({ where: { candidateId: id } });
     await prisma.poolCandidate.delete({ where: { id } });
     await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", "Pool Entry Removed",
       `Freelancer pool: ${row.name} removed — ${String(reason).trim()}. ${unlinked.count} CV document(s) kept in the vault, unlinked.`);
@@ -9919,7 +9998,10 @@ async function personnelBlocked(doc: any, uid: string): Promise<boolean> {
   if (!isPersonnelDoc(doc)) return false;
   const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
   const employees = await prisma.employee.findMany({ select: { id: true, userEmail: true } });
-  return !maySeePersonnelFile(viewer, employees, doc.partyId, doc.category);
+  // The same third way in that loadState uses: a field head may open a pool CV in their field.
+  // Asked here too, because document URLs are guessable and filtering state is not enough.
+  const fields = doc.partyId ? (await prisma.poolAssessment.findMany({ where: { candidateId: doc.partyId } })).map(a => a.field) : [];
+  return !maySeePersonnelFile(viewer, employees, doc.partyId, doc.category, () => fields);
 }
 
 /** Locate a document on disk. Legacy inline-base64 rows are spilled to a temp file so
@@ -10048,8 +10130,9 @@ app.post("/api/document/upload", async (req, res) => {
     const personnel = isPersonnelDoc({ category });
     if (personnel) {
       const employees = await prisma.employee.findMany({ select: { id: true, userEmail: true } });
-      if (!maySeePersonnelFile(user, employees, partyId)) {
-        return res.status(403).json({ error: "Only HR / Payroll, the Program Director, or the person themselves may file personnel documents." });
+      const uploadPoolFields = partyId ? (await prisma.poolAssessment.findMany({ where: { candidateId: partyId } })).map(a => a.field) : [];
+      if (!maySeePersonnelFile(user, employees, partyId, category, () => uploadPoolFields)) {
+        return res.status(403).json({ error: "Only HR / Payroll, the Programme Director, the person themselves — or, for a freelancer's CV, the head of that person's field — may file personnel documents." });
       }
       if (!partyId) return res.status(400).json({ error: "A personnel document must name the person it is about." });
     }
