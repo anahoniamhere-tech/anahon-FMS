@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight } from "lucide-react";
 
 /**
@@ -13,14 +13,40 @@ import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight } from "lucide-rea
 type Reply = { answer: string; door: string | null; askSeat: string | null };
 type Turn = { q: string; reply?: Reply; error?: string };
 
+/** "Policy 020, Section 7.2" inside an answer, turned into a link that opens that
+ *  chapter on the Policies & Handbooks door — the citation rule in helpBot.ts made
+ *  clickable, not a second source of truth about what a policy says. */
+const POLICY_CITE = /Policy\s+(\d{3})(?:,?\s*(?:Section|§)\s*[\d.]+)?/g;
+function citeLinks(text: string, onOpenDoor: (navKey: string, focus?: string) => void) {
+  const parts: (string | ReactNode)[] = [];
+  let last = 0, key = 0, m: RegExpExecArray | null;
+  POLICY_CITE.lastIndex = 0;
+  while ((m = POLICY_CITE.exec(text))) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    parts.push(
+      <button key={key++} onClick={() => onOpenDoor("handbooks", `policy:${m![1]}`)}
+        className="font-semibold text-[#6D1A1A] underline decoration-dotted hover:text-[#4A1010]">
+        {m[0]}
+      </button>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 export default function HelpDesk({
-  t, lang, rtl, doorLabel, onOpenDoor,
+  t, lang, rtl, doorLabel, onOpenDoor, openSignal,
 }: {
   t: (s: string) => string;
   lang: string;
   rtl: boolean;
   doorLabel: (navKey: string) => string;
-  onOpenDoor: (navKey: string) => void;
+  onOpenDoor: (navKey: string, focus?: string) => void;
+  // A door screen asking to open this widget with a chapter already in the question —
+  // "Ask about this policy" (Policies & Handbooks). Bump the nonce to reopen with the
+  // same context twice; the question still goes out through the same /api/help/ask call.
+  openSignal?: { context: string; nonce: number } | null;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -31,6 +57,12 @@ export default function HelpDesk({
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (open) inputRef.current?.focus(); }, [open]);
+  useEffect(() => {
+    if (!openSignal) return;
+    setOpen(true);
+    setQ(prev => prev || `${openSignal.context} — `);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openSignal?.nonce]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [turns, busy]);
   useEffect(() => {
     if (!open) return;
@@ -116,7 +148,7 @@ export default function HelpDesk({
               <p className="w-fit max-w-[95%] rounded-2xl bg-red-50 px-3 py-1.5 text-[13px] leading-relaxed text-red-800">{turn.error}</p>
             ) : turn.reply ? (
               <div className="w-fit max-w-[95%] space-y-1.5 rounded-2xl bg-slate-100 px-3 py-2">
-                <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-800">{turn.reply.answer}</p>
+                <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-800">{citeLinks(turn.reply.answer, onOpenDoor)}</p>
                 {turn.reply.door && (
                   <button
                     onClick={() => { onOpenDoor(turn.reply!.door!); setOpen(false); }}

@@ -416,6 +416,10 @@ export default function App() {
   // Project Workspace states
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  // Tells the floating help desk to open pre-filled with a chapter's context — "Ask
+  // about this policy" (Policies & Handbooks). The nonce lets the same context reopen
+  // it twice in a row.
+  const [helpAsk, setHelpAsk] = useState<{ context: string; nonce: number } | null>(null);
   /**
    * Whether the sidebar column is open — remembered per browser, on desktop only.
    *
@@ -1186,6 +1190,7 @@ export default function App() {
     selectedProjectId, setSelectedProjectId, workspaceRef,
     focusId, setFocusId,
     openDoor: (door: string, focus?: string) => { if (focus) setFocusId(focus); setActiveTab(door); },
+    askHelp: (context: string) => setHelpAsk({ context, nonce: Date.now() }),
   };
 
   return (
@@ -1474,7 +1479,8 @@ export default function App() {
             <HelpDesk
               t={t} lang={lang} rtl={rtl}
               doorLabel={k => t(NAV.flatMap(s => s.items).find(i => i.navKey === k)?.label || k)}
-              onOpenDoor={handleNavClick}
+              onOpenDoor={(door, focus) => { handleNavClick(door); if (focus) setFocusId(focus); }}
+              openSignal={helpAsk}
             />
           )}
         </div>

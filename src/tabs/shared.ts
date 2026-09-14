@@ -71,6 +71,9 @@ export interface SharedProps {
   // effect in App.tsx still refuses a door this role cannot open.
   openDoor: (door: string, focus?: string) => void;
   workspaceRef: any;
+  // Opens the floating help desk pre-filled with a chapter's citation, so "Ask about
+  // this policy" (Policies & Handbooks) reuses the one chat widget rather than a second.
+  askHelp: (context: string) => void;
 }
 
 /* ── Telling an outsider something, over WhatsApp ─────────────────────────────

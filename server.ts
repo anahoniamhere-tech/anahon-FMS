@@ -1296,7 +1296,7 @@ let policyCache: { key: string; text: string; chars: number; docs: number } | nu
 
 async function policyCorpus(): Promise<{ text: string; chars: number; docs: number }> {
   const rows = await prisma.appDoc.findMany({ where: { category: "Handbook" }, orderBy: { filename: "asc" } });
-  const key = rows.map(r => `${r.id}:${r.contentHash}`).join("|");
+  const key = rows.map(r => `${r.id}:${r.contentHash}:${r.base64}`).join("|");
   if (policyCache && policyCache.key === key) return policyCache;
 
   const started = Date.now();
