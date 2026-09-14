@@ -50,6 +50,11 @@ ok("a receipt for a bank-only project is refused", receiptBlocker(receipt({ purp
 ok("…citing the policy and the agreement", /§4\.4\.4/.test(bankOnlyBlocker(bankOnly)) && /ANH-DOC-00412/.test(bankOnlyBlocker(bankOnly)));
 ok("a project with no restriction may use any channel", receiptBlocker(receipt({ purpose: "project", projectFound: true, project: { code: "X", channelRule: "any" } })) === "");
 ok("the receipt route passes the project to the rule", /receiptBlocker\(\{[\s\S]{0,200}project, projectFound: !!project/.test(server));
+// Saad, 14 Sep 2026 (Q3): NARROW. "Bank only" refuses receiving that project's money outside the
+// bank — nothing else. Spending for its requests in cash (1127, a channel draw, the float) stays allowed.
+const drawRoute = server.slice(server.indexOf('app.post("/api/cash/draw"'), server.indexOf('app.post("/api/cash/draw/return"'));
+ok("bank only reaches the receipt route and nowhere else — cash spending for the project stays allowed",
+  (server.match(/bankOnlyBlocker\(|receiptBlocker\(/g) || []).length === 1 && !/channelRule/.test(drawRoute) && !/channelRule/.test(server.replace(/receiptBlocker\(\{[\s\S]{0,300}\}\)/, "")));
 ok("the migration records the rule per project, defaulting to any", /"channelRule" TEXT NOT NULL DEFAULT 'any'/.test(migration) && /"channelRuleSource"/.test(migration));
 
 console.log("\n3. money from a channel is spent only through cash in transit");
