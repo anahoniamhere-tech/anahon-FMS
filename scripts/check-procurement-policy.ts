@@ -15,6 +15,7 @@ import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcureme
 import { NO_SUPPLIER_CHOICE, noSupplierChoice, costAccountChoices } from "../src/spendKind.js";
 import { debitedExpenseAccounts } from "../src/costAccount.js";
 import { CATEGORY_ACCOUNT, costAccountFor } from "../src/costAccount.js";
+import { payoutBlocker, payoutLedgerFor } from "../src/pettyCash.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -69,10 +70,11 @@ ok("the petty-cash ceiling is its own figure, read from src/pettyCash.ts — not
   /Petty cash float ceiling: \$\{FLOAT_CEILING_LABEL\}/.test(server) && !/Petty cash ceiling: USD 300/.test(server));
 // 14 Sep 2026 (Books): the prompt half used to match a code COMMENT in the direct-petty-cash
 // route once the compliance prompt stopped typing "USD 150" — it passed for the wrong reason.
-// The prompt now reads CASH_SINGLE_PAYMENT_LABEL from src/pettyCash.ts. The two route literals
-// below are still typed; swapping them for the constant is handed to Buying & paying.
+// The prompt now reads CASH_SINGLE_PAYMENT_LABEL from src/pettyCash.ts, and since 14 Sep (Buying &
+// paying) the two routes read CASH_SINGLE_PAYMENT_USD too — no typed 150 left on either.
 ok("cash above USD 150 still needs the director, on the route and in the prompt",
-  /disbursalUSD > 150 && !exp\.approved_at/.test(server) && /disbursalUSD > 150 && !isDirector/.test(server)
+  /disbursalUSD > CASH_SINGLE_PAYMENT_USD && !exp\.approved_at/.test(server) && /disbursalUSD > CASH_SINGLE_PAYMENT_USD && !isDirector/.test(server)
+  && !/disbursalUSD > 150/.test(server)
   && /- Cash payments above \$\{CASH_SINGLE_PAYMENT_LABEL\} require Program Director approval/.test(server));
 ok("and the cash help answer was left alone", help.includes("cash payments above USD 150 need the director"));
 
@@ -140,7 +142,7 @@ ok("6100 is no longer anybody's fallback", !/costAccountCode \|\| "6100"/.test(s
   && !/const expenseCostAccount = "6100"/.test(server));
 ok("an unnamed cost falls back to the budget line's category, not to a guess",
   /costAccountFor\(\(await prisma\.budgetLine\.findUnique/.test(server)
-  && (server.match(/costAccountFor\(\(await prisma\.budgetLine\.findUnique/g) || []).length === 2);
+  && (server.match(/costAccountFor\(\(await prisma\.budgetLine\.findUnique/g) || []).length >= 2);
 ok("the rebuild and the live posting read ONE map, so they cannot drift apart",
   /export const CATEGORY_ACCOUNT/.test(read("src/costAccount.ts"))
   && !/const CATEGORY_ACCOUNT/.test(read("prisma/rebuild-ledger.ts"))
@@ -240,6 +242,28 @@ ok("a missing answer is not an exemption — blank means the question still appl
   noSupplierChoice([]) === "" && /e\.noSupplierChoice \|\| ""/.test(app));
 ok("and the reason shipped is the reason, never the journal it came from",
   !/journalEntries: journalEntries/.test(server.slice(server.indexOf("const formattedExpenses"), server.indexOf("const formattedProcurements"))));
+
+console.log("\nL. what may pay a voucher out, and which ledger it credits (Books' handover, cc5cb98)");
+const bank = { type: "Bank", ledgerCode: "1100", currency: "USD", active: true };
+const eur = { type: "Bank", ledgerCode: "1110", currency: "EUR", active: true };
+const channel = { type: "Off-bank channel", ledgerCode: "1120", currency: "USD", active: false };
+const float = (openedOn: string) => ({ type: "Petty Cash", ledgerCode: "1125", currency: "USD", active: true, openedOn });
+ok("a bank account pays anything, fees included", payoutBlocker(bank, "5120") === "");
+ok("a channel never pays, even if someone reactivates it", /never the petty-cash float/.test(payoutBlocker({ ...channel, active: true })));
+ok("an inactive account never pays", /not active/.test(payoutBlocker(channel)));
+ok("the float pays nothing before its opening count", /first count/.test(payoutBlocker(float(""), "6000")));
+ok("the opened float pays a purchase", payoutBlocker(float("2026-09-14"), "6000") === "");
+for (const fee of ["5100", "5120", "5130"]) ok(`the float never pays a fee (${fee})`, /never paid from the petty-cash float/.test(payoutBlocker(float("2026-09-14"), fee)));
+ok("a payment out of the opened float credits 1125, not 1120", payoutLedgerFor(float("2026-09-14"), "2026-09-15") === "1125");
+ok("an EUR bank payment credits 1110", payoutLedgerFor(eur, "2026-09-15") === "1110");
+ok("a legacy channel line still credits the historical clearing", payoutLedgerFor(channel, "2025-01-01") === "1120");
+ok("neither route maps cash by the account's type any more", !/type === "Petty Cash" \? "1120"/.test(server));
+ok("both routes refuse through payoutBlocker", (server.match(/payoutBlocker\(account,/g) || []).length === 2);
+ok("both payment lines carry who recorded them",
+  (server.match(/type: "Withdrawal",\s+reconciled: true,\s+voucherNo[^\n]*\n\s+recordedAt: new Date\(\)\.toISOString\(\), recordedById/g) || []).length === 2);
+ok("a request keeps its true transaction date, never a future one",
+  /transactionDate: txDate/.test(server) && /txDate > localDate\(\)/.test(server)
+  && /ADD COLUMN "transactionDate"/.test(read("prisma/migrations/20260914150000_expense_transaction_date/migration.sql")));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

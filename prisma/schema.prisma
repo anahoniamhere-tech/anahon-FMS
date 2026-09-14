@@ -162,6 +162,9 @@ model Expense {
   /// The expense account this cost belongs to (5100 salaries, 7100 rent, 6300 equipment…),
   /// chosen when the request is raised. Blank on rows raised before this existed.
   costAccountCode String  @default("")
+  /// The TRUE date of the transaction (the invoice or receipt date), YYYY-MM-DD. Never the day it
+  /// was typed in — that is created_at. Blank on rows raised before 14 Sep 2026: not captured.
+  transactionDate String  @default("")
   commentsJson    String  // Serialized Comments Array [Comment]
   allocationsJson String  @default("[]") // Serialized allocations for shared cost splits
   hasAttachment   Boolean @default(false)

@@ -27,7 +27,7 @@ import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, norma
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
 import { costAccountFor, reclassifyLegs, debitedExpenseAccounts, costPositions } from "./src/costAccount.js";
-import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, type TopUpItem } from "./src/pettyCash.js";
+import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, CASH_SINGLE_PAYMENT_USD, payoutBlocker, payoutLedgerFor, type TopUpItem } from "./src/pettyCash.js";
 import { PARTY_KINDS, partyKindLabel } from "./src/supplierDocs.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
@@ -6979,7 +6979,7 @@ app.post("/api/quotations/delete", async (req, res) => {
 // Post Expense request
 app.post("/api/expense/new", async (req, res) => {
   try {
-    const { title, purpose, vendorId, projectId, budgetLineId, currency, amount, allocations, customRate, procurementId, costAccountCode, user } = req.body;
+    const { title, purpose, vendorId, projectId, budgetLineId, currency, amount, allocations, customRate, procurementId, costAccountCode, transactionDate, user } = req.body;
 
     if (!projectId) {
       return res.status(400).json({ error: "Please map request to an active Project Code." });
@@ -7038,6 +7038,13 @@ app.post("/api/expense/new", async (req, res) => {
     }
     const noChoice = costAccount ? noSupplierChoice([costAccount]) : "";
 
+    // The true date of the transaction, so a 2024 receipt typed in today is not booked in 2026
+    // (Saad's late-records rule). Today when not given; never in the future.
+    const txDate = String(transactionDate || localDate()).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(txDate) || txDate > localDate()) {
+      return res.status(400).json({ error: "The transaction date must be a real date, and not in the future." });
+    }
+
     // POLICY 5.3 / 7.2 — above the threshold in src/procurementPolicy.ts the voucher must name
     // the approved procurement that authorises it: a compared set of quotations, or a
     // single-source waiver with a written reason. (Previously any approved RFQ anywhere on the
@@ -7069,6 +7076,7 @@ app.post("/api/expense/new", async (req, res) => {
       data: {
         procurementId: procurementId || "",
         costAccountCode: costAccount,
+        transactionDate: txDate,
         id: `exp-${Date.now()}`,
         voucherNo,
         title,
@@ -7272,6 +7280,7 @@ app.post("/api/expense/action", async (req, res) => {
           description: `Accrued Expense Voucher ${exp.voucherNo}: ${exp.title}`,
           referenceNo: exp.voucherNo,
           isPosted: true,
+          recordedAt: new Date().toISOString(), recordedById: user?.id || "",
           itemsJson: JSON.stringify(journalItems)
         }
       });
@@ -7340,6 +7349,12 @@ app.post("/api/expense/action", async (req, res) => {
 
       const account = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
       if (!account) return res.status(404).json({ error: "Cash/Bank vault not configured." });
+      {
+        const cost = exp.costAccountCode
+          || costAccountFor((await prisma.budgetLine.findUnique({ where: { id: exp.budgetLineId || "" } }))?.category);
+        const refused = payoutBlocker(account, cost);
+        if (refused) return res.status(400).json({ error: refused });
+      }
 
       // Determine payout amounts: if whtAmount/netAmount is passed use them, otherwise default to no tax
       updatedWhtAmount = typeof whtAmount === "number" ? whtAmount : 0;
@@ -7355,8 +7370,8 @@ app.post("/api/expense/action", async (req, res) => {
       const disbursalInAccountCurrency = Number((disbursalUSD / accountFx).toFixed(2));
 
       // POLICY 4.4.2 — Cash payments above USD 150 require prior Program Director approval on record.
-      if (account.type === "Petty Cash" && disbursalUSD > 150 && !exp.approved_at) {
-        return res.status(400).json({ error: "Policy 4.4.2 violation: cash payments above USD 150 require Program Director approval before disbursement." });
+      if (account.type === "Petty Cash" && disbursalUSD > CASH_SINGLE_PAYMENT_USD && !exp.approved_at) {
+        return res.status(400).json({ error: `Policy 4.4.2 violation: cash payments above ${CASH_SINGLE_PAYMENT_LABEL} require Program Director approval before disbursement.` });
       }
 
       if (account.balance < disbursalInAccountCurrency) {
@@ -7387,7 +7402,8 @@ app.post("/api/expense/action", async (req, res) => {
           amount: disbursalInAccountCurrency,
           type: "Withdrawal",
           reconciled: true,
-          voucherNo: exp.voucherNo
+          voucherNo: exp.voucherNo,
+          recordedAt: new Date().toISOString(), recordedById: user?.id || ""
         }
       });
 
@@ -7444,7 +7460,7 @@ app.post("/api/expense/action", async (req, res) => {
       const payTx = await prisma.bankTransaction.findFirst({ where: { voucherNo: exp.voucherNo, type: "Withdrawal" } });
       if (payTx) {
         const payAcct = await prisma.bankAccount.findUnique({ where: { id: payTx.bankAccountId } });
-        if (payAcct) bankAssetAccount = payAcct.type === "Petty Cash" ? "1120" : payAcct.currency === "EUR" ? "1110" : "1100";
+        if (payAcct) bankAssetAccount = payoutLedgerFor(payAcct, payTx.date);
       }
       // 2315 matches the rebuilt ledger convention (2310 is the payroll-tax account;
       // the old 2310 postings needed a manual reclass — see ADJ-WHT-2315).
@@ -7469,6 +7485,7 @@ app.post("/api/expense/action", async (req, res) => {
           description: `Settled Accounts Payable for ${exp.voucherNo}: ${exp.title} (Net payout, WHT applied)`,
           referenceNo: exp.voucherNo,
           isPosted: true,
+          recordedAt: new Date().toISOString(), recordedById: user?.id || "",
           itemsJson: JSON.stringify(journalItems)
         }
       });
@@ -7550,6 +7567,10 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
 
     const account = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
     if (!account) return res.status(404).json({ error: "Cash/Bank vault not configured." });
+    {
+      const refused = payoutBlocker(account, costAccountFor((await prisma.budgetLine.findUnique({ where: { id: budgetLineId || "" } }))?.category));
+      if (refused) return res.status(400).json({ error: refused });
+    }
 
     // Determine exchange rates and conversions
     const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
@@ -7587,8 +7608,8 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
     // POLICY 4.4.2 — Cash payments above USD 150 require Program Director approval; the direct
     // cash book skips the approval workflow, so it is capped for non-Director roles.
     const disbursalUSD = disbursalAmount * rate;
-    if (disbursalUSD > 150 && !isDirector(user?.role)) {
-      return res.status(400).json({ error: "Policy 4.4.2 violation: direct cash payments above USD 150 equivalent require the Program Director. Lodge a standard disbursement voucher for approval instead." });
+    if (disbursalUSD > CASH_SINGLE_PAYMENT_USD && !isDirector(user?.role)) {
+      return res.status(400).json({ error: `Policy 4.4.2 violation: direct cash payments above ${CASH_SINGLE_PAYMENT_LABEL} equivalent require the Program Director. Lodge a standard disbursement voucher for approval instead.` });
     }
 
     // FX FIX: deduct from the cash drawer in its own currency
@@ -7624,6 +7645,7 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
         requestorId: user?.id || "u-4",
         status: "Posted",
         paymentMethod: account.type === "Petty Cash" ? "Petty Cash" : "Bank Transfer",
+        transactionDate: localDate(),
         paymentRef: paymentRef || `CSH-DRAWN-${Date.now().toString().slice(-4)}`,
         created_at: nowStr,
         approved_at: nowStr,
@@ -7653,7 +7675,8 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
         amount: disbursalInAccountCurrency,
         type: "Withdrawal",
         reconciled: true,
-        voucherNo
+        voucherNo,
+        recordedAt: new Date().toISOString(), recordedById: user?.id || ""
       }
     });
 
@@ -7676,7 +7699,7 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
 
     const expenseCostAccount = expense.costAccountCode
       || costAccountFor((await prisma.budgetLine.findUnique({ where: { id: expense.budgetLineId || "" } }))?.category);
-    const bankAssetAccount = account.type === "Petty Cash" ? "1120" : "1100";
+    const bankAssetAccount = payoutLedgerFor(account, localDate());
     // 2315 matches the rebuilt ledger convention (2310 is payroll tax).
     const taxPayableAccount = "2315";
 
@@ -7697,6 +7720,7 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
         description: `Posted ${voucherNo} to Ledger: ${title} (Daily Cash Book Sheet)`,
         referenceNo: voucherNo,
         isPosted: true,
+        recordedAt: new Date().toISOString(), recordedById: user?.id || "",
         itemsJson: JSON.stringify(journalItems)
       }
     });

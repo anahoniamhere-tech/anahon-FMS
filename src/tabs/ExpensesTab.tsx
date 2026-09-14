@@ -31,6 +31,9 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
   // posting, because the procurement question below depends on the answer: nobody compares
   // three quotations for a salary or for the rent.
   const [expenseCostAccount, setExpenseCostAccount] = useState("");
+  // The true date on the invoice or receipt — a late record keeps it; created_at says when it was typed.
+  const today = new Date().toLocaleDateString("en-CA");
+  const [expenseDate, setExpenseDate] = useState(today);
   // What an approver has confirmed the cost to be, per voucher, before they sign.
   const [confirmCostAccount, setConfirmCostAccount] = useState<Record<string, string>>({});
 
@@ -165,6 +168,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
           budgetLineId: expenseBudgetLine,
           procurementId: expenseProcurement,
           costAccountCode: expenseCostAccount,
+          transactionDate: expenseDate,
           currency: expenseCurrency,
           amount: expenseAmount,
           customRate: expenseCustomRate,
@@ -334,6 +338,15 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                         placeholder="e.g. Media panel catering"
                         value={expenseTitle}
                         onChange={(e) => setExpenseTitle(e.target.value)}
+                        className="finance-input w-full"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="exp-date" className="block text-xs font-bold text-slate-700 mb-1">{t("Date on the invoice or receipt")}</label>
+                      <input
+                        id="exp-date" type="date" max={today} required
+                        value={expenseDate}
+                        onChange={(e) => setExpenseDate(e.target.value)}
                         className="finance-input w-full"
                       />
                     </div>

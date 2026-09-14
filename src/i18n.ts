@@ -147,6 +147,7 @@ export const AR: Record<string, string> = {
   "End": "النهاية",
   "End Date": "تاريخ الانتهاء",
   "Expenditure Purpose Title": "عنوان المصروف",
+  "Date on the invoice or receipt": "تاريخ الفاتورة أو الإيصال",
   "Expense Title": "عنوان المصروف",
   "Extras (upsells)": "خدمات إضافية",
   "Fee per period (USD)": "الأتعاب لكل فترة (دولار)",

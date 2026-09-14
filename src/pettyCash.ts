@@ -149,3 +149,39 @@ export function openingBlocker(openedOn: string | null | undefined, date?: strin
   if (date && date < openedOn) return `The float opened on ${openedOn}; nothing about it can be dated before that. A payment from before then belongs to the historical clearing.`;
   return "";
 }
+
+/**
+ * Paying a voucher out — Buying & paying, 14 Sep 2026, on Books' handover of cc5cb98.
+ *
+ * Both payment routes used to pick the credit side by `type === "Petty Cash" ? "1120"`, so after
+ * the first top-up a payment out of the box would have credited the historical clearing, and
+ * direct-petty-cash accepted any account at all — a channel was stopped only by its zero balance.
+ */
+
+/** §4.4.1 — fees to service providers, freelancers or consultants never come from the float.
+ *  Everyone at AnaHon is engaged as a service provider, so 5100 is a fee too. */
+export const FEES_NEVER_FROM_FLOAT = ["5100", "5120", "5130"];
+
+export interface PayoutAccount extends AccountLike { name?: string; currency?: string; openedOn?: string | null }
+
+/** What may pay a voucher out: an active bank account, or the opened float for anything but a fee. */
+export function payoutBlocker(a: PayoutAccount | null | undefined, costAccount?: string | null): string {
+  if (!a) return "That account does not exist.";
+  if (a.active === false) return `${a.name || "That account"} is not active — money cannot leave it.`;
+  if (a.type === "Bank") return "";
+  if (isChannel(a)) return "Policy 020 §4.4.4: an off-bank channel records money received or paid through it — it is never the petty-cash float.";
+  if (!isFloat(a)) return "Policy 020 §4.4.1: cash is paid out of the petty-cash float and nowhere else.";
+  const notOpen = openingBlocker(a.openedOn);
+  if (notOpen) return notOpen;
+  if (costAccount && FEES_NEVER_FROM_FLOAT.includes(costAccount)) {
+    return "Policy 020 §4.4.1: fees to service providers, freelancers or consultants are never paid from the petty-cash float — pay them by bank transfer.";
+  }
+  return "";
+}
+
+/** The ledger account a payment out of `a` on `date` credits — the float by its true date,
+ *  everything else by the account's own ledger code. */
+export function payoutLedgerFor(a: PayoutAccount, date: string): string {
+  if (isFloat(a)) return cashLedgerFor(date, a.openedOn, true)!;
+  return a.ledgerCode || (a.currency === "EUR" ? "1110" : "1100");
+}
