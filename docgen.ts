@@ -489,7 +489,7 @@ ${o.notes ? noteBlock("NOTES", o.notes) : ""}
 <div>${esc(o.preparedBy)}<br>For ANAHON PRODUCTION — date &amp; signature</div>
 <div>${esc(o.clientName)}<br>Client — date &amp; signature</div>
 </div>
-<p class="note">If you have any questions concerning this quotation, contact: Saad Matar — Program Director · Mobile: +961 81 408 171 · info@anahon.org<br>
+<p class="note">If you have any questions concerning this quotation, contact: Saad Matar — Executive Director · Mobile: +961 81 408 171 · info@anahon.org<br>
 ANAHON production · This quotation is not an invoice; services are booked upon written acceptance.</p>`);
 }
 

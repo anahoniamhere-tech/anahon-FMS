@@ -1,6 +1,6 @@
 import { useState, FormEvent } from "react";
 import { ic } from "../nav";
-import { Trash2, Download, Banknote, Contact, Landmark, Pencil, Plus, Receipt, ScrollText } from "lucide-react";
+import { Trash2, Download, Banknote, Contact, FileText, Landmark, Paperclip, Pencil, Plus, Receipt, ScrollText } from "lucide-react";
 import { Client, Quotation, QuotationItem } from "../types";
 import { EXTRAS_DEFAULT, FINANCIAL_TERMS, PRODUCTION_NOTE, QUOTE_STATUSES, SERVICE_CATALOG, TECHNICAL_NOTE } from "../constants";
 import { tr } from "../i18n";
@@ -640,7 +640,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                       const inBank = acct?.type === "Bank";
                                       return (
                                       <div key={tx.id} className="text-[10px] font-bold text-emerald-700" title={acct?.name || ""}>
-                                        {inBank ? "🏦" : "💵"} <span dir="ltr">{tx.date} · {formatIn(tx.amount, acct?.currency || q.currency)}</span>
+                                        {ic(inBank ? Landmark : Banknote, "h-3.5 w-3.5 inline")} <span dir="ltr">{tx.date} · {formatIn(tx.amount, acct?.currency || q.currency)}</span>
                                         {FINANCE.includes(currentUser.role) && (
                                           <button onClick={() => linkQuotePayment(q, tx.id, true)} className="ms-1 text-slate-400 hover:text-red-600" title="Remove this deposit" aria-label={`Remove deposit of ${tx.date} from ${q.quoteNo}`}>✕</button>
                                         )}
@@ -654,8 +654,8 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                         </span>
                                         {canSettle && (
                                           <>
-                                          <button onClick={() => setSettleForm({ q, method: "OMT", reference: "", date: new Date().toLocaleDateString("en-CA"), amount: left })} className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100" title="Record off-bank payment (OMT / BOB / Whish / cash)" aria-label={`Record off-bank payment for ${q.quoteNo}`}>💵</button>
-                                          <button onClick={() => setReceiptForm({ q, date: new Date().toLocaleDateString("en-CA"), amount: left, method: "Cash", receivedBy: "" })} className="text-slate-400 hover:text-amber-700 p-1 transition-colors rounded hover:bg-slate-100" title="Issue AnaHon's receipt for this payment" aria-label={`Issue receipt for ${q.quoteNo}`}>🧾</button>
+                                          <button onClick={() => setSettleForm({ q, method: "OMT", reference: "", date: new Date().toLocaleDateString("en-CA"), amount: left })} className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100" title="Record off-bank payment (OMT / BOB / Whish / cash)" aria-label={`Record off-bank payment for ${q.quoteNo}`}>{ic(Banknote, "h-3.5 w-3.5")}</button>
+                                          <button onClick={() => setReceiptForm({ q, date: new Date().toLocaleDateString("en-CA"), amount: left, method: "Cash", receivedBy: "" })} className="text-slate-400 hover:text-amber-700 p-1 transition-colors rounded hover:bg-slate-100" title="Issue AnaHon's receipt for this payment" aria-label={`Issue receipt for ${q.quoteNo}`}>{ic(Receipt, "h-3.5 w-3.5")}</button>
                                           </>
                                         )}
                                       </span>
@@ -667,7 +667,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                               })()}
                             </td>
                             <td className="p-3 whitespace-nowrap">
-                              <button onClick={() => generateQuoteDoc(q)} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="View client document" aria-label={`View document for ${q.quoteNo}`}>📄</button>
+                              <button onClick={() => generateQuoteDoc(q)} className="text-slate-400 hover:text-slate-700 p-1 transition-colors rounded hover:bg-slate-100" title="View client document" aria-label={`View document for ${q.quoteNo}`}>{ic(FileText, "h-3.5 w-3.5")}</button>
                               <a href={withTicket(`/api/quotations/${q.id}/pdf`)} download
                                 className="text-slate-400 hover:text-red-700 p-1 transition-colors rounded hover:bg-slate-100 inline-block" title="Download PDF" aria-label={`Download PDF for ${q.quoteNo}`}>
                                 <Download className="h-3.5 w-3.5 inline" />
@@ -677,7 +677,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                 return (
                                   <>
                                     <label className="text-slate-400 hover:text-emerald-700 p-1 transition-colors rounded hover:bg-slate-100 cursor-pointer inline-block" title={t("Attach the signed QUOTATION returned by the client — a signed receipt goes on its own row in the receipt log below")}>
-                                      📎
+                                      {ic(Paperclip, "h-3.5 w-3.5")}
                                       <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) attachSignedCopy(q, f); e.currentTarget.value = ""; }} />
                                     </label>
                                     {signed.map((d: any) => (
@@ -794,7 +794,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                   <td className="p-3 whitespace-nowrap">
                                     <button onClick={() => openDoc({ id: r.docId, filename: r.receiptNo, mimeType: "text/html" })}
                                       className="text-slate-400 hover:text-slate-700 p-1 rounded hover:bg-slate-100" title={t("Open the receipt")}
-                                      aria-label={`Open ${r.receiptNo}`}>📄</button>
+                                      aria-label={`Open ${r.receiptNo}`}>{ic(FileText, "h-3.5 w-3.5")}</button>
                                     {r.signed ? (
                                       <button onClick={() => r.signedDocId && openDoc({ id: r.signedDocId, filename: r.receiptNo, mimeType: "application/pdf" })}
                                         className="text-emerald-700 hover:text-emerald-900 p-1 text-[10px] font-bold rounded hover:bg-emerald-50"
@@ -802,7 +802,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                     ) : q ? (
                                       <label className="text-amber-700 hover:text-amber-900 p-1 text-[10px] font-bold rounded hover:bg-amber-50 cursor-pointer inline-block min-h-[44px] leading-[2.4]"
                                         title={t("Attach the receipt signed by both sides")}>
-                                        📎 {t("attach signed")}
+                                        <span className="inline-flex items-center gap-1">{ic(Paperclip, "h-3.5 w-3.5")}{t("attach signed")}</span>
                                         <input type="file" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) attachSignedCopy(q, f, r.receiptNo); e.currentTarget.value = ""; }} />
                                       </label>
                                     ) : (
