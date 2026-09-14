@@ -370,6 +370,15 @@ export const AR: Record<string, string> = {
   "Organisation overview": "نظرة عامة على المؤسسة",
   "Help & Q&A": "المساعدة والأسئلة",
   "Policies & handbooks": "السياسات والأدلة",
+  // desk rows for the petty-cash float (Policy 020 §4.4.1)
+  "Approve or query the top-up": "وافق على تعبئة الصندوق أو استفسر عنها",
+  "Answer the query on the top-up": "أجب عن الاستفسار حول تعبئة الصندوق",
+  "Raised": "مقدَّم",
+  "Count due": "موعد الجرد",
+  "Count the petty cash": "جرد صندوق النثريات",
+  "Count the petty cash without notice": "جرد صندوق النثريات دون إشعار مسبق",
+  "Count the cash in the box with the Finance Officer present, and enter what you found.": "اجرد النقد في الصندوق بحضور المسؤول المالي، وأدخل ما وجدته.",
+
   // Policies & handbooks door — reshaped 14 Sep 2026 to read chapters from the Index
   "AnaHon's institutional policies — the five documents that carry them, and Policy 010, which stands on its own.": "سياسات أنا هون المؤسسية — الوثائق الخمس التي تحملها، والسياسة 010 القائمة بذاتها.",
   "Find a policy by number, title or word…": "ابحث عن سياسة بالرقم أو العنوان أو كلمة…",

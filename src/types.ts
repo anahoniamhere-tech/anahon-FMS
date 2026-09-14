@@ -218,6 +218,8 @@ export interface BankAccount {
   active: boolean;
   custodianUserId?: string;
   ledgerCode?: string;
+  /** The float's opening date, set by its first count — the cutover for late cash records. */
+  openedOn?: string;
 }
 
 export interface BankTransaction {

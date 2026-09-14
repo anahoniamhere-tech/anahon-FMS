@@ -24,7 +24,7 @@ const IFACE: Record<string, string> = {
   expenses: "Expense", procurements: "Procurement", timesheets: "Timesheet", contentItems: "ContentItem",
   projectActivities: "ProjectActivity", projects: "Project", opportunities: "Opportunity", quotations: "Quotation",
   complianceTasks: "ComplianceTask", subscriptions: "Subscription", tools: "Tool", networkContacts: "NetworkContact",
-  fixedAssets: "FixedAsset",
+  fixedAssets: "FixedAsset", cashTopUps: "CashTopUp",
 };
 /** Brace-balanced body of `export interface Name { … }` — some status fields sit after a nested `{…}[]`. */
 const iface = (name: string) => {
@@ -91,6 +91,7 @@ const record = (r: Rule): any => {
     requestorId: "emp-1", assigneeUserId: "", factCheckerUserId: "u-x", pmApprovedBy: "", pdApprovedBy: "",
     dueDate: today, nextRenewal: today, reviewBy: today, followUpBy: today, deadline: today, validUntil: today, decisionDate: today, notes: "",
     tag: "EQ-001", holderId: "u-x", receivedBy: "u-po", dueBack: today, nextCheckDue: today,
+    raisedById: "u-x", amountUSD: 120, raisedByName: "X",
   };
   base[STATUS_FIELD[r.kind] || "status"] = r.status;
   return base;
@@ -283,6 +284,40 @@ ok("a closed project is not chased",
 const twice = missingPaperItems(hr, st({ employees: [{ id: "emp-9", name: "Rita", active: true }], documents: [] }));
 ok("the id is derived from subject and paper, so it is stable across reads",
   twice.every(i => /^missing:(employees|vendors|projects):emp-9:[a-z]+$/.test(i.id)), twice.map(i => i.id).join(" "));
+
+console.log("\nH. petty cash: top-ups and counts due (Policy 020 §4.4.1)");
+const float = (over: any = {}) => ({ id: "ba-petty-float", name: "Petty cash float", type: "Petty Cash", ledgerCode: "1125", active: true, custodianUserId: "u-fo", openedOn: "2026-08-01", ...over });
+const users = [{ id: "u-sa", role: "Super Admin", active: true }, { id: "u-fo", role: "Finance Officer", active: true }, { id: "u-plo", role: "Procurement and Logistics Officer", active: true }];
+const saMe = { id: "u-sa", email: "sa@x", role: "Super Admin" };
+const foMe = { id: "u-fo", email: "fo@x", role: "Finance Officer" };
+const ploMe = { id: "u-plo", email: "plo@x", role: "Procurement and Logistics Officer" };
+const counts = (me: any, over: any) => deskItems(me, st({ users, ...over }), today).filter(i => i.kind === "cashCounts");
+const topUp = { id: "tu1", status: "Raised", raisedById: "u-fo", raisedByName: "Marwan", amountUSD: 240 };
+let h = deskItems(saMe, st({ users, cashTopUps: [topUp] }), today).filter(i => i.kind === "cashTopUps");
+ok("a Raised top-up is the Executive Director's to approve (covered from Super Admin while the director seat is vacant)", h.length === 1 && h[0].group === "cover" && h[0].door === "banking", JSON.stringify(h.map(i => i.group)));
+h = deskItems(saMe, st({ users, cashTopUps: [{ ...topUp, raisedById: "u-sa" }] }), today).filter(i => i.kind === "cashTopUps");
+ok("a top-up the director raised is never on their own desk", h.length === 0);
+h = deskItems(foMe, st({ users, cashTopUps: [{ ...topUp, status: "Queried" }] }), today).filter(i => i.kind === "cashTopUps");
+ok("a Queried top-up goes back to the person who raised it", h.length === 1 && h[0].group === "mine");
+ok("nothing is due before the float opens", counts(saMe, { bankAccounts: [float({ openedOn: "" })], cashCounts: [] }).length === 0);
+// today is 2026-09-04 in this script: opened 1 Aug → monthly due 1 Sep (overdue), surprise due 1 Nov (not shown yet).
+h = counts(saMe, { bankAccounts: [float()], cashCounts: [] });
+ok("opened 1 Aug with no count since → the monthly count is overdue on the director's desk",
+  h.length === 1 && h[0].when === "2026-09-01" && h[0].urgency === "overdue" && h[0].verb === "Count the petty cash", JSON.stringify(h.map(i => [i.verb, i.when])));
+h = counts(saMe, { bankAccounts: [float()], cashCounts: [{ id: "c1", bankAccountId: "ba-petty-float", date: "2026-08-20", withoutNotice: false }] });
+ok("a count on 20 Aug moves the next one to 20 Sep, out of this week's view", h.length === 0, JSON.stringify(h.map(i => [i.verb, i.when])));
+h = counts(saMe, { bankAccounts: [float({ openedOn: "2026-06-10" })], cashCounts: [{ id: "c1", bankAccountId: "ba-petty-float", date: "2026-08-30", withoutNotice: false }] });
+ok("an ordinary count does not satisfy the quarterly count without notice", h.length === 1 && h[0].verb === "Count the petty cash without notice" && h[0].when === "2026-09-10", JSON.stringify(h.map(i => [i.verb, i.when])));
+ok("the custodian never sees a count due — least of all the one without notice",
+  counts(foMe, { bankAccounts: [float({ openedOn: "2026-06-10" })], cashCounts: [] }).length === 0);
+ok("a custodian who is also a director still never sees it",
+  counts(saMe, { bankAccounts: [float({ openedOn: "2026-06-10", custodianUserId: "u-sa" })], cashCounts: [] }).length === 0);
+ok("the Procurement and Logistics Officer is owed the monthly count only, never the surprise one",
+  (() => { const x = counts(ploMe, { bankAccounts: [float({ openedOn: "2026-06-10" })], cashCounts: [] }); return x.length === 1 && x[0].verb === "Count the petty cash"; })());
+ok("an off-bank channel is never treated as the float",
+  counts(saMe, { bankAccounts: [float({ type: "Off-bank channel", ledgerCode: "" })], cashCounts: [] }).length === 0);
+ok("the Procurement and Logistics Officer can reach the count form on My Desk",
+  /currentUser\?\.role === PLO && \(/.test(desk) && /<CashCountForm /.test(desk));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

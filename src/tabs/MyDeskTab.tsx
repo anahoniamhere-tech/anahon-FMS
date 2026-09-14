@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock, Plus, Trash2, Smartphone, BellRing } from "lucide-react";
+import { CalendarDays, CheckCircle2, Lock, Upload, ChevronRight, Undo2, Inbox, Users, Clock, Plus, Trash2, Smartphone, BellRing, Wallet } from "lucide-react";
 import { SharedProps } from "./shared";
 import { PERSONNEL_CATEGORIES, isPersonnelDoc } from "../personnelDocs";
 import { deskItems, localToday, DeskItem } from "../workflow";
-import { DIRECTORS } from "../roles";
+import { DIRECTORS, PLO } from "../roles";
+import { CashCountForm } from "./PettyCashPanel";
 import { NAV, visibleNav } from "../nav";
 import Info from "../Info";
 
@@ -22,7 +23,7 @@ const NOTE_PREVIEW = 150;  // notes longer than this are worth a click
 
 export default function MyDeskTab({
   state, currentUser, t, lang, refreshState, triggerToast, handleNavClick, openDoc,
-  setDrawerExpenseId, setSelectedProjectId, setFocusId,
+  setDrawerExpenseId, setSelectedProjectId, setFocusId, formatUSD,
 }: SharedProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [upCat, setUpCat] = useState<string>("CV");
@@ -837,6 +838,20 @@ export default function MyDeskTab({
           );
         })}
       </div>
+
+      {/* Policy 020 §4.4.1: the Procurement and Logistics Officer counts the petty cash but
+          has no Bank & cash door and no bank data. The count is blind — the server supplies
+          the expected figure — so the form needs nothing loaded and lives here. Directors
+          count from Bank & cash, where the float itself is. */}
+      {currentUser?.role === PLO && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
+            <Wallet className="h-4 w-4 text-[#6D1A1A]" /> {t("Count the petty cash")}
+          </h3>
+          <p className="mt-1 mb-3 text-[11px] text-slate-500">{t("Count the cash in the box with the Finance Officer present, and enter what you found.")}</p>
+          <CashCountForm currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState} formatUSD={formatUSD} />
+        </div>
+      )}
 
       {/* "It is your turn", on the phone. The calendar carries dates; this carries the work
           that has none — a Submitted voucher waiting on you is the message that matters

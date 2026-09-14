@@ -17,6 +17,7 @@ import { EQUIPMENT_VERIFIERS,
 import { missingPersonnelDocs } from "./personnelDocs";
 import { missingSupplierDocs } from "./supplierDocs";
 import { missingCoreDocs } from "./coreDocs";
+import { isFloat, DIRECTOR_SEATS, COUNTER_SEATS } from "./pettyCash";
 
 type Kind = keyof DatabaseState;
 type State = Partial<DatabaseState>;
@@ -134,6 +135,11 @@ export const RULES: Rule[] = [
   // Policy 017: a disposal takes two signatures. The proposal sits on the OTHER seat's desk —
   // exclude keeps it off the proposer's own, which is what stops one person doing both halves.
   { kind: "fixedAssets", status: "Awaiting disposal approval", seat: MANAGERS, exclude: ["endBy"], door: "assets", verb: "Approve or refuse the disposal" },
+  // CashTopUp — Policy 020 §4.4.1. The custodian raises it against the receipts; the Executive
+  // Director approves or queries it, never their own (the route refuses it by user id too).
+  { kind: "cashTopUps", status: "Raised",   seat: DIRECTORS, exclude: ["raisedById"], door: "banking", verb: "Approve or query the top-up" },
+  { kind: "cashTopUps", status: "Queried",  seat: null, person: "raisedById",         door: "banking", verb: "Answer the query on the top-up" },
+  { kind: "cashTopUps", status: "Approved", seat: null,                               door: "banking", verb: "" },
 ];
 
 /** The status column per kind — everything is `status` except the funnel. */
@@ -153,6 +159,7 @@ export const TITLES: Partial<Record<Kind, (r: any, s: State) => string>> = {
   tools:             r => r.name,
   networkContacts:   r => r.name,
   fixedAssets:       r => `${r.tag || ""} · ${r.name}`,
+  cashTopUps:        r => `USD ${Number(r.amountUSD || 0).toLocaleString("en-US")} · ${r.raisedByName || ""}`,
 };
 
 export type Urgency = "overdue" | "week" | "waiting";
@@ -297,6 +304,51 @@ export function missingPaperItems(me: Me, s: State): DeskItem[] {
   return out;
 }
 
+/* ── Cash counts that are due ────────────────────────────────────────────────
+ * Policy 020 §4.4.1/§4.4.3: the float is counted at least monthly by someone other than its
+ * custodian, and at least once a quarter without notice by the Executive Director. No record
+ * carries a status for "a count is owed", so — like the missing papers — this is a reading of
+ * the counts that exist, dated from the last one. Nothing is due before the float opens (its
+ * first count sets `openedOn`).
+ *
+ * Never on the custodian's desk, and the surprise count never on anyone's but the Executive
+ * Director's: a count "without notice" that appeared on the custodian's calendar would be
+ * notice. The Procurement and Logistics Officer is a counter but receives no bank data, so
+ * they cannot be shown a due date — they reach the count form on My Desk instead.
+ */
+const addMonths = (ymd: string, n: number) => {
+  const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1 + n, 1));
+  const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  t.setUTCDate(Math.min(d, last));
+  return t.toISOString().slice(0, 10);
+};
+const COUNT_DUES = [
+  { key: "monthly",  months: 1, showDays: 7,  seats: COUNTER_SEATS,  surpriseOnly: false, verb: "Count the petty cash" },
+  { key: "surprise", months: 3, showDays: 30, seats: DIRECTOR_SEATS, surpriseOnly: true,  verb: "Count the petty cash without notice" },
+];
+export function cashCountItems(me: Me, s: State, today = localToday()): DeskItem[] {
+  const out: DeskItem[] = [];
+  for (const box of ((s.bankAccounts as any[]) || []).filter(a => isFloat(a) && a.active !== false && a.openedOn)) {
+    if (box.custodianUserId && box.custodianUserId === me.id) continue;
+    const counts = ((s.cashCounts as any[]) || []).filter(c => c.bankAccountId === box.id);
+    for (const due of COUNT_DUES) {
+      if (!due.seats.includes(me.role)) continue;
+      const dates = counts.filter(c => !due.surpriseOnly || c.withoutNotice).map(c => String(c.date).slice(0, 10)).sort();
+      const from = [box.openedOn, dates[dates.length - 1]].filter(Boolean).sort().pop()!;
+      const when = addMonths(from, due.months);
+      if (when > addDays(today, due.showDays)) continue;
+      out.push({
+        id: `cashCounts:due:${box.id}:${due.key}`,
+        kind: "cashCounts", recordId: box.id, door: "banking",
+        title: box.name || "1125", verb: due.verb, status: "Count due",
+        when, urgency: urgencyOf(when, today), group: "mine", seats: [], record: box,
+      });
+    }
+  }
+  return out;
+}
+
 export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
   const out: DeskItem[] = [];
   for (const rule of RULES) {
@@ -342,6 +394,7 @@ export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
   // because the table above keys on (kind, status) and a missing paper has neither — it is
   // an absence, and there is no row to match.
   kept.push(...missingPaperItems(me, s));
+  kept.push(...cashCountItems(me, s, today));
   const rank = { overdue: 0, week: 1, waiting: 2 };
   return kept.sort((a, b) => rank[a.urgency] - rank[b.urgency] || (a.when || "9999").localeCompare(b.when || "9999") || a.title.localeCompare(b.title));
 }
