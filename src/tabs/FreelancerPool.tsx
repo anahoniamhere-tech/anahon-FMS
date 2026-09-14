@@ -3,7 +3,7 @@ import { UserSearch } from "lucide-react";
 import { SharedProps } from "./shared";
 import {
   poolViewFor, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy,
-  POOL_FIELDS, POOL_STATUSES, type PoolField,
+  POOL_FIELDS, POOL_STATUSES, poolHeadSeat, type PoolField,
 } from "../personnelDocs";
 import type { PoolCandidate, PoolAssessment } from "../types";
 
@@ -297,10 +297,12 @@ export default function FreelancerPool({ currentUser, state, t, lang, triggerToa
         : fieldsShown.map(f => {
           const people = rows.filter(c => inField(c, f));
           const meta = POOL_FIELDS.find(x => x.key === f)!;
+          // Same vacancy rule the server records with; only the file holders are sent the accounts.
+          const cover = view.kind === "all" && poolHeadSeat(f, state.users || []).vacant;
           return (
             <div key={f} className="border-t border-slate-100 pt-3">
               <h4 className="text-xs font-bold uppercase tracking-wide text-slate-600">
-                {fieldLabel(f)} <span className="font-normal normal-case text-slate-400">· {t("assessed by the")} {t(meta.head)}</span>
+                {fieldLabel(f)} <span className="font-normal normal-case text-slate-400">· {t("assessed by the")} {cover ? <>{t("Executive Director")} ({t("seat vacant")}: {t(meta.head)})</> : t(meta.head)}</span>
               </h4>
               {people.length === 0
                 ? <p className="py-2 text-[11px] italic text-slate-400">{t("Nobody in this field yet.")}</p>

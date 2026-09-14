@@ -765,6 +765,8 @@ export const AR: Record<string, string> = {
   "Field": "المجال",
   "assessed by the": "يقيّمه",
   "Nobody in this field yet.": "لا أحد في هذا المجال بعد.",
+  "Executive Director": "المدير التنفيذي",
+  "seat vacant": "منصب شاغر",
   "Remove from the pool": "إزالة من المجموعة",
   "Freelancer pool": "مجموعة المستقلّين",
   "Add to the pool": "إضافة إلى المجموعة",

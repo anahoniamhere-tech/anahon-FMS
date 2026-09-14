@@ -173,6 +173,28 @@ export function cutPoolFor<C extends { id: string }, A extends { candidateId: st
     .map(c => ({ ...c, assessments: assessments.filter(a => a.candidateId === c.id && (!scoped || scoped.includes(a.field))) }));
 }
 
+/**
+ * Who assesses a field right now. Saad, 14 Sep 2026: until a Chief Editor is hired, the Executive
+ * Director covers that seat. This is the system's ONE vacancy rule — the same as /api/roles/seats
+ * and the desk's "cover": a seat is vacant when no ACTIVE account holds its role. No account id is
+ * named, so the day someone active is given the head's role the field is theirs, with no code change.
+ * The Executive Director's own right to assess (below) does not depend on this; what does is how
+ * their assessment is recorded and what the screen says the field is waiting on.
+ */
+export function poolHeadSeat(field: string, users: { role?: string; active?: boolean }[]): { head: string; vacant: boolean } {
+  const head = POOL_FIELDS.find(f => f.key === field)?.head || "";
+  return { head, vacant: !!head && !users.some(u => u.active !== false && u.role === head) };
+}
+
+/** The seat to write on an assessment: the role worn, "(acting)" for a stand-in via Act as, and
+ *  for the Executive Director in a field whose head seat is vacant, the seat they are covering. */
+export function poolAssessedAs(user: { role?: string; actingAs?: unknown } | null | undefined, field: string, users: { role?: string; active?: boolean }[]): string {
+  const role = String(user?.role || "");
+  if (user?.actingAs) return `${role} (acting)`;
+  const { head, vacant } = poolHeadSeat(field, users);
+  return EXECUTIVE.includes(role) && vacant ? `Executive Director, covering the vacant ${head} seat` : role;
+}
+
 /** Add or edit entries: the Chief Editor, the Production Manager, the Executive Director. HR sees
  *  everything and edits nothing — Saad's decision, 14 Sep 2026. */
 export function mayEditPool(role?: string | null): boolean {

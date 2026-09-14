@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import {
   poolViewFor, cutPoolFor, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy,
-  maySeePersonnelFile, filterPersonnelDocs, POOL_FIELDS, POOL_SUMMARY_FIELDS,
+  maySeePersonnelFile, filterPersonnelDocs, POOL_FIELDS, POOL_SUMMARY_FIELDS, poolHeadSeat, poolAssessedAs,
 } from "../src/personnelDocs.js";
 
 let failed = 0;
@@ -135,7 +135,7 @@ ok("a head editing someone outside their field is refused", server.includes("Tha
 ok("a head placing someone in the other field is refused", server.includes("that field has its own head."));
 ok("the rating is a whole number 1–5 or blank", server.includes("A rating is a whole number from 1 to 5, or left blank."));
 ok("the seat worn is written on the assessment, so a stand-in is on the record as one",
-  server.includes("assessedAs: poolSeat(user)") && server.includes('user?.actingAs ? `${user.role} (acting)`'));
+  server.includes("assessedAs: seat,") && poolAssessedAs({ role: "Chief Editor", actingAs: "Chief Editor" }, "Editorial", []) === "Chief Editor (acting)");
 ok("the audit line carries field and status, never the note or rating",
   /Pool Assessment Set[\s\S]{0,200}in \$\{field\} — \$\{st\}/.test(server) && !/Pool Assessment Set[\s\S]{0,300}\$\{(r|trimmed|note|rating)\}/.test(server));
 
@@ -152,6 +152,21 @@ const mig = read("prisma/migrations/20260914200000_pool_fields/migration.sql");
 ok("status and assessment live per (person, field)", /UNIQUE INDEX "PoolAssessment_candidateId_field_key"/.test(mig));
 ok("the old single status column is dropped, index first", mig.indexOf('DROP INDEX "PoolCandidate_status_idx"') < mig.indexOf('DROP COLUMN "status"') && mig.includes('DROP COLUMN "status"'));
 ok("the screen reads nothing that is no longer there", !/c\.status\b/.test(ui));
+
+console.log("\nH. a vacant head seat is covered by the Executive Director — by vacancy, never by name");
+const today = [{ id: "u-1", role: "Super Admin", active: true }, { id: "u-pm1", role: "Production Manager", active: false }];
+const hired = [...today, { id: "u-new", role: "Chief Editor", active: true }];
+ok("today the Chief Editor seat is vacant", poolHeadSeat("Editorial", today).vacant);
+ok("an INACTIVE holder does not fill a seat (same rule as /api/roles/seats)", poolHeadSeat("Production", today).vacant);
+ok("the Executive Director's Editorial assessment is recorded as covering the vacant seat",
+  poolAssessedAs({ role: "Super Admin" }, "Editorial", today) === "Executive Director, covering the vacant Chief Editor seat");
+ok("a Program Director account covers it the same way", poolAssessedAs({ role: "Program Director" }, "Editorial", today).includes("covering the vacant Chief Editor seat"));
+ok("the day a Chief Editor is hired the seat is filled — no code change", !poolHeadSeat("Editorial", hired).vacant);
+ok("and the Executive Director is then recorded as themselves, not as covering", poolAssessedAs({ role: "Super Admin" }, "Editorial", hired) === "Super Admin");
+ok("the hired Chief Editor assesses Editorial with nothing else changed", mayAssess("Chief Editor", "Editorial") && poolAssessedAs({ role: "Chief Editor" }, "Editorial", hired) === "Chief Editor");
+ok("a stand-in via Act as is still recorded as acting", poolAssessedAs({ role: "Chief Editor", actingAs: "Chief Editor" }, "Editorial", today) === "Chief Editor (acting)");
+ok("no account id decides the cover", !/u-1|Saad/.test(readFileSync(new URL("../src/personnelDocs.ts", import.meta.url), "utf8").match(/export function poolHeadSeat[\s\S]*?\n}\n[\s\S]*?export function poolAssessedAs[\s\S]*?\n}/)![0]));
+ok("the assess route reads vacancy from the live accounts", /const seat = poolAssessedAs\(user, field, await prisma\.user\.findMany/.test(server) && server.includes("assessedAs: seat,"));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

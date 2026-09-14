@@ -38,7 +38,7 @@ import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
-import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, cutPoolFor, POOL_FIELD_KEYS, POOL_STATUSES, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy } from "./src/personnelDocs.js";
+import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, cutPoolFor, POOL_FIELD_KEYS, POOL_STATUSES, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy, poolAssessedAs } from "./src/personnelDocs.js";
 import { parseIcs } from "./src/ics.js";
 
 dotenv.config();
@@ -1050,7 +1050,6 @@ async function authorisedSignatory(): Promise<{ name: string; title: string } | 
  * What this deliberately does NOT do: turn an entry into a supplier or a contract. That is
  * Buying & paying's flow — a pool entry becomes a Vendor there, and its CVs follow by partyId.
  */
-const poolSeat = (user: any) => user?.actingAs ? `${user.role} (acting)` : String(user?.role || "");
 
 app.post("/api/pool/save", async (req, res) => {
   try {
@@ -1132,17 +1131,19 @@ app.post("/api/pool/assess", async (req, res) => {
     }
     const existing = await prisma.poolAssessment.findUnique({ where: { candidateId_field: { candidateId, field } } });
     if (!existing) return res.status(404).json({ error: `That person is not in ${field}.` });
+    // Vacancy is read from the live accounts, never from a name: the seat passes the day it is filled.
+    const seat = poolAssessedAs(user, field, await prisma.user.findMany({ select: { role: true, active: true } }));
     const trimmed = String(note || "").trim();
     if (trimmed.length > 500) return res.status(400).json({ error: "Keep the assessment note short — 500 characters at most." });
     const row = await prisma.poolAssessment.update({
       where: { id: existing.id },
-      data: { status: st, rating: r, note: trimmed, assessedBy: user?.id || "", assessedAs: poolSeat(user), assessedAt: new Date().toISOString() },
+      data: { status: st, rating: r, note: trimmed, assessedBy: user?.id || "", assessedAs: seat, assessedAt: new Date().toISOString() },
     });
     const who = await prisma.poolCandidate.findUnique({ where: { id: candidateId } });
     // Status only on the audit line — the note and the rating are an assessment of a person,
     // and the audit log is read by seats that are not entitled to it.
     await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", "Pool Assessment Set",
-      `Freelancer pool: ${who?.name || candidateId} in ${field} — ${st}${existing.status !== st ? ` (was ${existing.status})` : ""}.`);
+      `Freelancer pool: ${who?.name || candidateId} in ${field} — ${st}${existing.status !== st ? ` (was ${existing.status})` : ""}${seat.includes("covering") ? `, by the ${seat}` : ""}.`);
     res.json({ success: true, assessment: row });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
