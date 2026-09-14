@@ -7654,13 +7654,6 @@ app.post("/api/expense/action", async (req, res) => {
 
       const account = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
       if (!account) return res.status(404).json({ error: "Cash/Bank vault not configured." });
-      {
-        const cost = exp.costAccountCode
-          || costAccountFor((await prisma.budgetLine.findUnique({ where: { id: exp.budgetLineId || "" } }))?.category);
-        const refused = payoutBlocker(account, cost, localDate());
-        if (refused) return res.status(400).json({ error: refused });
-      }
-
       // Determine payout amounts: if whtAmount/netAmount is passed use them, otherwise default to no tax
       updatedWhtAmount = typeof whtAmount === "number" ? whtAmount : 0;
       updatedNetAmount = typeof netAmount === "number" ? netAmount : exp.amount;
@@ -7673,6 +7666,24 @@ app.post("/api/expense/action", async (req, res) => {
       if (account.currency === "EUR") accountFx = ratesNow.EUR;
       if (account.currency === "LBP") accountFx = ratesNow.LBP;
       const disbursalInAccountCurrency = Number((disbursalUSD / accountFx).toFixed(2));
+
+      {
+        const cost = exp.costAccountCode
+          || costAccountFor((await prisma.budgetLine.findUnique({ where: { id: exp.budgetLineId || "" } }))?.category);
+        // Cash in transit (1127) pays only the request a withdrawal was drawn for, and never more
+        // than that withdrawal still holds. Each request is linked to one withdrawal only (Books).
+        let draw: { linked: boolean; remainingUSD: number; netUSD: number; drawId?: string } | null = null;
+        if (isTransit(account)) {
+          const candidates = await prisma.cashDraw.findMany({ where: { linksJson: { contains: exp.id } } });
+          const found = candidates.find(d => (JSON.parse(d.linksJson || "[]") as DrawLink[]).some(l => l.expenseId === exp.id));
+          if (found) {
+            const standing = await drawStanding(found);
+            draw = { linked: true, remainingUSD: standing.remainingUSD, netUSD: Number(disbursalUSD.toFixed(2)), drawId: found.id };
+          }
+        }
+        const refused = payoutBlocker(account, cost, localDate(), draw);
+        if (refused) return res.status(400).json({ error: refused });
+      }
 
       // POLICY 4.4.2 — Cash payments above USD 150 require prior Program Director approval on record.
       if (account.type === "Petty Cash" && disbursalUSD > CASH_SINGLE_PAYMENT_USD && !exp.approved_at) {
@@ -7694,7 +7705,8 @@ app.post("/api/expense/action", async (req, res) => {
       // Default follows the account that actually disburses, same as direct-petty-cash.
       // The old "Petty Cash Box" default made general-ledger-post credit 1120 while the
       // money left the bank — ledger/bank mismatch caught by the 30-Jul lifecycle drill.
-      updatedPaymentMethod = paymentMethod || (account.type === "Petty Cash" ? "Petty Cash" : "Bank Transfer");
+      // Cash in transit keeps "Cash": the rebuild credits 1127 for a voucher with a transit payment line.
+      updatedPaymentMethod = isTransit(account) ? "Cash" : paymentMethod || (account.type === "Petty Cash" ? "Petty Cash" : "Bank Transfer");
       updatedPaymentRef = paymentRef || `PAY-${account.accountNo || account.id}-${Date.now().toString().slice(-4)}`;
 
       // Register bank transaction activity for the actual net payout (in account currency)

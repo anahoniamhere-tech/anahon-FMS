@@ -265,5 +265,18 @@ ok("a request keeps its true transaction date, never a future one",
   /transactionDate: txDate/.test(server) && /txDate > localDate\(\)/.test(server)
   && /ADD COLUMN "transactionDate"/.test(read("prisma/migrations/20260914150000_expense_transaction_date/migration.sql")));
 
+console.log("\nM. cash in transit pays only the request it was drawn for (Books, b7b5ba2)");
+const transit = { type: "Cash in transit", ledgerCode: "1127", currency: "USD", active: true };
+ok("transit with no withdrawal behind the request is refused", /record the withdrawal against this request first/.test(payoutBlocker(transit, "5120", "2026-09-14", null)));
+ok("transit pays a linked request, fees included", payoutBlocker(transit, "5120", "2026-09-14", { linked: true, remainingUSD: 300, netUSD: 300 }) === "");
+ok("never more than the withdrawal still holds", /less than/.test(payoutBlocker(transit, "6000", "2026-09-14", { linked: true, remainingUSD: 100, netUSD: 150 })));
+ok("transit credits 1127", payoutLedgerFor(transit, "2026-09-14") === "1127");
+const pay = server.slice(server.indexOf('action === "cashbook-pay"'), server.indexOf('action === "general-ledger-post"'));
+ok("the pay branch finds the withdrawal by this request and passes it", /l\.expenseId === exp\.id/.test(pay) && /payoutBlocker\(account, cost, localDate\(\), draw\)/.test(pay));
+ok("the draw is checked against the net USD, before any balance moves",
+  pay.indexOf("payoutBlocker(account, cost") > pay.indexOf("const disbursalUSD") && pay.indexOf("payoutBlocker(account, cost") < pay.indexOf("prisma.bankAccount.update"));
+ok("a transit payment keeps paymentMethod Cash", /isTransit\(account\) \? "Cash"/.test(pay));
+ok("direct-petty-cash never passes a draw, so it keeps refusing transit", /\?\.category\), localDate\(\)\);/.test(server.slice(server.indexOf('"/api/expense/direct-petty-cash"'))));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
