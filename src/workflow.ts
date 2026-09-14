@@ -56,12 +56,20 @@ export const officersFor = (projectId: string, s: State): string[] => {
     .map(u => u.id);
 };
 const activityStandIns = (r: any, s: State) => officersFor(r.projectId, s);
+/**
+ * Who approves a payment request (Policy 020 §5.3, Saad 14 Sep 2026): the Executive Director or
+ * the Finance Officer — every active holder of a MANAGERS seat, by person. A plain `seat: MANAGERS`
+ * would not do: the Super Admin reads a seat as "cover a vacancy", so with the Finance Officer seat
+ * held Saad would lose approvals from his own desk. The requester is still excluded first (§4.3).
+ */
+const paymentApprovers = (_r: any, s: State) =>
+  (s.users || []).filter(u => u.active && MANAGERS.includes(u.role)).map(u => u.id);
 
 export const RULES: Rule[] = [
   // Expense — Submitted, Under Finance Review, Approved, Returned for Correction, Paid, Posted.
   // §4.3: the requester never approves or flags their own voucher.
-  { kind: "expenses", status: "Submitted",               seat: DIRECTORS, exclude: ["requestorId"], door: "expenses", verb: "Approve or return" },
-  { kind: "expenses", status: "Under Finance Review",    seat: DIRECTORS, exclude: ["requestorId"], door: "expenses", verb: "Approve or return" },
+  { kind: "expenses", status: "Submitted",               seat: MANAGERS, standIns: paymentApprovers, exclude: ["requestorId"], door: "expenses", verb: "Approve or return" },
+  { kind: "expenses", status: "Under Finance Review",    seat: MANAGERS, standIns: paymentApprovers, exclude: ["requestorId"], door: "expenses", verb: "Approve or return" },
   { kind: "expenses", status: "Returned for Correction", seat: null, person: "requestorId",         door: "expenses", verb: "Raise a new request" },
   { kind: "expenses", status: "Approved",                seat: FINANCE, door: "expenses", verb: "Pay" },
   { kind: "expenses", status: "Paid",                    seat: FINANCE, door: "expenses", verb: "Post to ledger" },

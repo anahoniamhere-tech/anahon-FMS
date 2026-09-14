@@ -157,10 +157,19 @@ const fin = viewer("Finance Officer");
 const dig = viewer("Digital Officer");
 const exp = (over: any = {}) => ({ id: "e1", voucherNo: "PV-1", title: "Cable", status: "Submitted", requestorId: "u-4", ...over });
 const st = (over: any) => ({ ...baseState(), ...over });
-let r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], expenses: [exp()] }), today);
-ok("Submitted voucher, director seat vacant → Super Admin covers Program Director", r1.length === 1 && r1[0].group === "cover" && same(r1[0].seats, ["Program Director"]), JSON.stringify(r1.map(i => [i.group, i.seats])));
-r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }, { id: "u-pd", role: "Program Director", active: true }], expenses: [exp()] }), today);
-ok("same voucher with a Program Director in seat → nothing for the Super Admin", r1.length === 0);
+// Policy 020 §5.3 (Saad, 14 Sep 2026): the Executive Director OR the Finance Officer approves — by
+// person, every active holder of a MANAGERS seat — never the requester (§4.3).
+const liveUsers = [{ id: "u-sa", role: "Super Admin", active: true }, { id: "u-fo", email: "fo@x", role: "Finance Officer", active: true }];
+let r1 = turns(sa, st({ users: liveUsers, expenses: [exp()] }), today);
+ok("Submitted voucher → the Executive Director's own turn, even with the Finance Officer seat held", r1.length === 1 && r1[0].group === "mine", JSON.stringify(r1.map(i => [i.group, i.seats])));
+r1 = turns({ id: "u-fo", email: "fo@x", role: "Finance Officer" }, st({ users: liveUsers, expenses: [exp()] }), today);
+ok("and the Finance Officer's too", r1.length === 1 && r1[0].group === "mine" && r1[0].verb === "Approve or return");
+r1 = turns({ id: "u-fo", email: "fo@x", role: "Finance Officer" }, st({ users: liveUsers, expenses: [exp({ requestorId: "u-fo" })] }), today);
+ok("but never a request the Finance Officer raised", !r1.some(i => i.verb === "Approve or return"));
+r1 = turns(viewer("Reporter"), st({ users: liveUsers, expenses: [exp()] }), today);
+ok("and never a seat outside the directors and Finance", !r1.some(i => i.verb === "Approve or return"));
+r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: false }, { id: "u-pd", role: "Program Director", active: true }], expenses: [exp()] }), today);
+ok("a deactivated account is never asked to approve", r1.length === 0);
 r1 = turns(sa, st({ users: [{ id: "u-sa", role: "Super Admin", active: true }], expenses: [exp({ requestorId: "u-sa" })] }), today);
 ok("a voucher I raised never asks me to approve it (§4.3)", r1.length === 0);
 r1 = turns(viewer("Reporter"), st({ expenses: [exp({ status: "Returned for Correction", requestorId: "emp-1" })] }), today);
