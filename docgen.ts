@@ -8,6 +8,7 @@
 // a single <h1>, <th scope> on every table header and a caption, so a screen reader can
 // navigate them and the print view stays correct.
 import fs from "fs";
+import { QUOTE_REVISION_CLAUSE } from "./src/constants.js";
 import path from "path";
 import os from "os";
 
@@ -491,6 +492,7 @@ ${noteBlock("EXTRAS", o.terms.extras)}
 ${o.notes ? noteBlock("NOTES", o.notes) : ""}
 <h3 style="font-size:12px;letter-spacing:1px;margin:14px 0 4px">ACCEPTANCE</h3>
 <p style="margin:0;font-size:10.5px">By signing below, the client accepts the services, quantities and prices set out above, and the notes attached to them. Production is booked once this page is signed and returned.</p>
+<p style="margin:6px 0 0;font-size:10.5px">${esc(QUOTE_REVISION_CLAUSE)}</p>
 <div class="sig">
 <div>${esc(o.preparedBy)}<br>For ANAHON PRODUCTION — date &amp; signature</div>
 <div>${esc(o.clientName)}<br>Client — date &amp; signature</div>

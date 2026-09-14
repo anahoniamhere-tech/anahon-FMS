@@ -2,7 +2,7 @@ import { useState, FormEvent } from "react";
 import { ic } from "../nav";
 import { Trash2, Download, Banknote, Contact, FileText, Landmark, Paperclip, Pencil, Plus, Receipt, ScrollText } from "lucide-react";
 import { Client, Quotation, QuotationItem } from "../types";
-import { EXTRAS_DEFAULT, FINANCIAL_TERMS, PRODUCTION_NOTE, QUOTE_STATUSES, SERVICE_CATALOG, TECHNICAL_NOTE } from "../constants";
+import { defaultValidUntil, EXTRAS_DEFAULT, FINANCIAL_TERMS, PRODUCTION_NOTE, QUOTE_STATUSES, SERVICE_CATALOG, TECHNICAL_NOTE } from "../constants";
 import { tr } from "../i18n";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import { FINANCE, MANAGERS } from "../roles";
@@ -319,6 +319,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                       status: "Draft",
                       currency: "USD",
                       date: new Date().toISOString().slice(0, 10),
+                      validUntil: defaultValidUntil(new Date().toISOString().slice(0, 10)),
                       items: [{ service: "", description: "", output: "", unitPrice: 0, qty: 1 }],
                       terms: { financial: FINANCIAL_TERMS[1], production: PRODUCTION_NOTE, technical: TECHNICAL_NOTE, extras: EXTRAS_DEFAULT }
                     })} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all" disabled={state.clients.length === 0}>
@@ -365,7 +366,12 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                       </div>
                       <div>
                         <label htmlFor="qt-date" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Quote Date")}</label>
-                        <input id="qt-date" type="date" value={quoteForm.date || ""} onChange={e => setQuoteForm({ ...quoteForm, date: e.target.value })} className="finance-input w-full font-mono text-xs" />
+                        <input id="qt-date" type="date" value={quoteForm.date || ""} onChange={e => setQuoteForm({
+                          ...quoteForm, date: e.target.value,
+                          // A new quotation's expiry follows its issue date while it is still the default;
+                          // a date someone typed, or any saved quotation's, is left alone.
+                          ...(!quoteForm.id && (quoteForm.validUntil || "") === defaultValidUntil(quoteForm.date || "") ? { validUntil: defaultValidUntil(e.target.value) } : {})
+                        })} className="finance-input w-full font-mono text-xs" />
                       </div>
                       <div>
                         <label htmlFor="qt-valid" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Valid Until")}</label>

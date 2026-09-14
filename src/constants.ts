@@ -65,3 +65,17 @@ export const FINANCIAL_TERMS = [
 export const PRODUCTION_NOTE = "1. Editing for videos includes 2 sets of modifications; each additional set costs an extra 30 USD. 2. This quotation is for 1 day of production.";
 export const TECHNICAL_NOTE = "High-quality outcome HD/4K. Equipment: Sony full-frame cameras, microphones, prime lenses, music copyrights, high-quality clear sound. All output compatible with social media.";
 export const EXTRAS_DEFAULT = "1 Photographer ($100) — 1 Videographer ($130) — Add Drone ($200)";
+
+// ── Quotation validity and revision (Saad's decision, 14 Sep 2026) ─────────────
+/** A new quotation is valid this many days from its issue date unless someone sets another date. */
+export const QUOTE_VALIDITY_DAYS = 15;
+/** Issue date + QUOTE_VALIDITY_DAYS, as YYYY-MM-DD. Used only to prefill a NEW quotation. */
+export const defaultValidUntil = (issueDate: string): string => {
+  const d = new Date(`${issueDate}T00:00:00Z`);
+  if (isNaN(d.getTime())) return "";
+  d.setUTCDate(d.getUTCDate() + QUOTE_VALIDITY_DAYS);
+  return d.toISOString().slice(0, 10);
+};
+/** Printed on every quotation PDF. The Arabic text is the same rule, for the bilingual set. */
+export const QUOTE_REVISION_CLAUSE = "AnaHon may revise the prices, scope or terms of this quotation at any time until the client accepts it in writing; after acceptance, changes require the agreement of both parties.";
+export const QUOTE_REVISION_CLAUSE_AR = "يحقّ لأنا هون تعديل الأسعار أو نطاق العمل أو شروط عرض السعر هذا في أي وقت إلى أن يقبله العميل خطّياً؛ وبعد القبول، لا يُجرى أي تعديل إلا بموافقة الطرفين.";
