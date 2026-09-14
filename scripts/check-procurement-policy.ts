@@ -15,7 +15,7 @@ import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcureme
 import { NO_SUPPLIER_CHOICE, noSupplierChoice, costAccountChoices } from "../src/spendKind.js";
 import { debitedExpenseAccounts } from "../src/costAccount.js";
 import { CATEGORY_ACCOUNT, costAccountFor } from "../src/costAccount.js";
-import { payoutBlocker, payoutLedgerFor } from "../src/pettyCash.js";
+import { payoutBlocker, payoutLedgerFor, cashApprovalBlocker } from "../src/pettyCash.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -73,7 +73,7 @@ ok("the petty-cash ceiling is its own figure, read from src/pettyCash.ts — not
 // The prompt now reads CASH_SINGLE_PAYMENT_LABEL from src/pettyCash.ts, and since 14 Sep (Buying &
 // paying) the two routes read CASH_SINGLE_PAYMENT_USD too — no typed 150 left on either.
 ok("cash above USD 150 still needs the director, on the route and in the prompt",
-  /disbursalUSD > CASH_SINGLE_PAYMENT_USD && !exp\.approved_at/.test(server) && /disbursalUSD > CASH_SINGLE_PAYMENT_USD && !isDirector/.test(server)
+  /cashApprovalBlocker\(account, disbursalUSD/.test(server) && /disbursalUSD > CASH_SINGLE_PAYMENT_USD && !isDirector/.test(server)
   && !/disbursalUSD > 150/.test(server)
   && /- Cash payments above \$\{CASH_SINGLE_PAYMENT_LABEL\} require Program Director approval/.test(server));
 ok("and the cash help answer was left alone", help.includes("cash payments above USD 150 need the director"));
@@ -277,6 +277,21 @@ ok("the draw is checked against the net USD, before any balance moves",
   pay.indexOf("payoutBlocker(account, cost") > pay.indexOf("const disbursalUSD") && pay.indexOf("payoutBlocker(account, cost") < pay.indexOf("prisma.bankAccount.update"));
 ok("a transit payment keeps paymentMethod Cash", /isTransit\(account\) \? "Cash"/.test(pay));
 ok("direct-petty-cash never passes a draw, so it keeps refusing transit", /\?\.category\), localDate\(\)\);/.test(server.slice(server.indexOf('"/api/expense/direct-petty-cash"'))));
+
+console.log("\nN. cash above USD 150 needs the Executive Director, now that Finance approves too (Saad, 14 Sep)");
+const box = { type: "Petty Cash", ledgerCode: "1125", currency: "USD", active: true };
+const transit2 = { type: "Cash in transit", ledgerCode: "1127", currency: "USD", active: true };
+ok("a Finance Officer's approval does not pay cash above 150 from the box", /§4\.4\.2/.test(cashApprovalBlocker(box, 150.01, "Finance Officer")));
+ok("nor from cash in transit", /§4\.4\.2/.test(cashApprovalBlocker(transit2, 400, "Finance Officer")));
+ok("the Executive Director's approval pays it", cashApprovalBlocker(box, 400, "Program Director") === "" && cashApprovalBlocker(transit2, 400, "Super Admin") === "");
+ok("an approval with no seat on record is refused, never assumed", /§4\.4\.2/.test(cashApprovalBlocker(box, 400, "")));
+ok("150 itself and below needs no director", cashApprovalBlocker(box, 150, "Finance Officer") === "");
+ok("a bank payment is not cash", cashApprovalBlocker(bank, 5000, "Finance Officer") === "");
+const pay2 = server.slice(server.indexOf('action === "cashbook-pay"'), server.indexOf('action === "general-ledger-post"'));
+ok("the pay step reads the approver's seat, not approved_at",
+  /cashApprovalBlocker\(account, disbursalUSD, exp\.approvedAs \|\| approver\?\.role\)/.test(pay2) && !/!exp\.approved_at/.test(pay2));
+ok("direct cash above 150 still requires a director", /disbursalUSD > CASH_SINGLE_PAYMENT_USD && !isDirector\(user\?\.role\)/.test(server));
+ok("the screen hides cash rather than offering a payment that bounces", /cashApprovalBlocker\(b, netVal/.test(read("src/tabs/ExpensesTab.tsx")));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

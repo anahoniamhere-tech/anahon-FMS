@@ -27,7 +27,7 @@ import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, norma
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
 import { costAccountFor, reclassifyLegs, debitedExpenseAccounts, costPositions } from "./src/costAccount.js";
-import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, CASH_SINGLE_PAYMENT_USD, payoutBlocker, payoutLedgerFor, type TopUpItem, CASH_CLEARING_LEDGER, TRANSIT_TYPE, isTransit, DRAW_REF, DRAW_RETURN_REF, drawBlocker, drawPosition, drawOverdue, daysBetween, leftoverBlocker, type DrawLink } from "./src/pettyCash.js";
+import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, CASH_SINGLE_PAYMENT_USD, payoutBlocker, cashApprovalBlocker, payoutLedgerFor, type TopUpItem, CASH_CLEARING_LEDGER, TRANSIT_TYPE, isTransit, DRAW_REF, DRAW_RETURN_REF, drawBlocker, drawPosition, drawOverdue, daysBetween, leftoverBlocker, type DrawLink } from "./src/pettyCash.js";
 import { PARTY_KINDS, partyKindLabel } from "./src/supplierDocs.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
@@ -7909,8 +7909,12 @@ app.post("/api/expense/action", async (req, res) => {
       }
 
       // POLICY 4.4.2 — Cash payments above USD 150 require prior Program Director approval on record.
-      if (account.type === "Petty Cash" && disbursalUSD > CASH_SINGLE_PAYMENT_USD && !exp.approved_at) {
-        return res.status(400).json({ error: `Policy 4.4.2 violation: cash payments above ${CASH_SINGLE_PAYMENT_LABEL} require Program Director approval before disbursement.` });
+      // Since 14 Sep the Finance Officer may approve too, so approved_at no longer proves the
+      // director signed: the approval's seat is read (the stand-in seat if one was worn).
+      {
+        const approver = exp.approvedById ? await prisma.user.findUnique({ where: { id: exp.approvedById } }) : null;
+        const cashRefused = cashApprovalBlocker(account, disbursalUSD, exp.approvedAs || approver?.role);
+        if (cashRefused) return res.status(400).json({ error: cashRefused });
       }
 
       if (account.balance < disbursalInAccountCurrency) {

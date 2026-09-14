@@ -148,6 +148,7 @@ export const AR: Record<string, string> = {
   "End Date": "تاريخ الانتهاء",
   "Expenditure Purpose Title": "عنوان المصروف",
   "Date on the invoice or receipt": "تاريخ الفاتورة أو الإيصال",
+  "Not in cash: above USD 150 it needs the Executive Director's approval (§4.4.2).": "ليس نقداً: فوق 150 دولاراً يلزم موافقة المدير التنفيذي (§4.4.2).",
   "Expense Title": "عنوان المصروف",
   "Extras (upsells)": "خدمات إضافية",
   "Fee per period (USD)": "الأتعاب لكل فترة (دولار)",

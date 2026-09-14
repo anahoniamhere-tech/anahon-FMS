@@ -198,6 +198,17 @@ export function payoutLedgerFor(a: PayoutAccount, date: string): string {
   return a.ledgerCode || (a.currency === "EUR" ? "1110" : "1100");
 }
 
+/** §4.4.2 — cash above CASH_SINGLE_PAYMENT_USD needs the EXECUTIVE DIRECTOR's approval, not just an
+ *  approval. Since 14 Sep 2026 the Finance Officer may approve payment requests too (Saad), so
+ *  approved_at alone no longer proves the director signed. Cash is the box or cash in transit.
+ *  `approverSeat` is the seat the approval was signed in; unknown is refused, never assumed. */
+export function cashApprovalBlocker(a: AccountLike, amountUSD: number, approverSeat?: string | null): string {
+  if (a.type !== FLOAT_TYPE && !isTransit(a)) return "";
+  if (amountUSD <= CASH_SINGLE_PAYMENT_USD + EPS) return "";
+  if (approverSeat && DIRECTOR_SEATS.includes(approverSeat)) return "";
+  return `Policy 020 §4.4.2: a cash payment above ${CASH_SINGLE_PAYMENT_LABEL} needs the Executive Director's approval first — this request was approved by ${approverSeat || "an unrecorded seat"}.`;
+}
+
 /* ---- Cash clearing: withdrawals for approved payment requests (Saad, 14 Sep 2026) ----------
  * Money drawn in cash from BLOM to pay fees or larger costs sits on 1127 until the requests it
  * was drawn for are paid out of it. One withdrawal may pay several requests; each request is paid

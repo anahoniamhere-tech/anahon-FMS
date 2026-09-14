@@ -7,7 +7,8 @@ import { costAccountChoices, noSupplierChoice } from "../spendKind";
 import { costAccountFor } from "../costAccount";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import Info from "../Info";
-import { DIRECTORS, FINANCE, REQUESTERS } from "../roles";
+import { FINANCE, MANAGERS, REQUESTERS } from "../roles";
+import { cashApprovalBlocker } from "../pettyCash";
 import { withTicket } from "../docTicket";
 
 export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUpload, openDoc, refreshState, requestableProjects, searchTerm, setDrawerExpenseId, setSearchTerm, state, t, triggerToast, lang }: SharedProps) {
@@ -891,7 +892,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             </button><Info id="expense-finance-review" lang={lang} /></>
                           )}
 
-                          {["Submitted", "Under Finance Review"].includes(exp.status) && DIRECTORS.includes(currentUser.role) && (
+                          {["Submitted", "Under Finance Review"].includes(exp.status) && MANAGERS.includes(currentUser.role) && exp.requestorId !== currentUser.id && (
                             <>
                               {/* The signature writes the journal line, so the account is confirmed
                                   here rather than taken on the requester's word — it also decides
@@ -954,6 +955,11 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             const whtRate = hasTaxId ? 0 : 0.075;
                             const whtVal = (exp.amount || 0) * whtRate;
                             const netVal = (exp.amount || 0) - whtVal;
+                            // §4.4.2: a Finance Officer's approval does not open the cash accounts above
+                            // USD 150 — hide them and say why, rather than offer a payment that bounces.
+                            const approverSeat = exp.approvedAs || (state?.users || []).find((u: any) => u.id === exp.approvedById)?.role;
+                            const payFrom = (state?.bankAccounts || []).filter(b => !cashApprovalBlocker(b, netVal * (exp.rate || 1), approverSeat));
+                            const cashHeld = payFrom.length < (state?.bankAccounts || []).length;
 
                             return (
                               <div className="flex flex-col gap-3 p-4 bg-slate-50 border border-slate-200 rounded-lg w-full">
@@ -989,10 +995,15 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                     id={`ba-sel-${exp.id}`}
                                     className="bg-white text-xs px-2 py-1 rounded border border-slate-300 outline-none"
                                   >
-                                    {(state?.bankAccounts || []).map(b => (
+                                    {payFrom.map(b => (
                                       <option key={b.id} value={b.id}>{b.name} (Bal: {(b.balance || 0).toLocaleString()})</option>
                                     ))}
                                   </select>
+                                  {cashHeld && (
+                                    <span className="text-[11px] text-amber-800">
+                                      {t("Not in cash: above USD 150 it needs the Executive Director's approval (§4.4.2).")}
+                                    </span>
+                                  )}
                                   <button
                                     onClick={() => {
                                       const sel = (document.getElementById(`ba-sel-${exp.id}`) as HTMLSelectElement).value;

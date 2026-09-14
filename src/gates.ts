@@ -214,8 +214,10 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
  */
 export const ACTION_SEATS: Record<string, Record<string, readonly string[]>> = {
   "/api/expense/action": {
-    "approve": DIRECTORS,
-    "return": DIRECTORS,
+    // Saad, 14 Sep 2026: the Finance Officer approves too. A bank payment still needs Saad's
+    // signature on the BLOM letter, and cash above USD 150 still needs the director (§4.4.2).
+    "approve": MANAGERS,
+    "return": MANAGERS,
     "finance-review": FINANCE,
     "cashbook-pay": FINANCE,
     "general-ledger-post": FINANCE,

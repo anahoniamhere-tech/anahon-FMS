@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { ROUTE_SEATS, ACTION_SEATS, mayCall, seatsFor, ANY } from "../src/gates.js";
 import { RULES } from "../src/workflow.js";
-import { ALL_ROLES, DIRECTORS, FINANCE, AUDITOR, SELF, PLO, DIGITAL, CREW, EDITORS } from "../src/roles.js";
+import { ALL_ROLES, DIRECTORS, FINANCE, MANAGERS, AUDITOR, SELF, PLO, DIGITAL, CREW, EDITORS } from "../src/roles.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -40,9 +40,12 @@ ok("the step of a voucher's life is read from the body", /req\.body\?\.action ==
 console.log("\nthe voucher's life: one step, one seat");
 const money = ACTION_SEATS["/api/expense/action"];
 ok("five steps, no more", Object.keys(money).length === 5, Object.keys(money).join(","));
-ok("the director signs and returns", money["approve"] === DIRECTORS && money["return"] === DIRECTORS);
+// Saad, 14 Sep 2026: the Finance Officer approves too — the managers' list by reference, not a copy.
+ok("the managers sign and return", money["approve"] === MANAGERS && money["return"] === MANAGERS);
 ok("finance parks, pays and posts", ["finance-review", "cashbook-pay", "general-ledger-post"].every(a => money[a] === FINANCE));
-ok("the Finance Officer cannot approve", !mayCall("/api/expense/action", "Finance Officer", "approve"));
+ok("the Finance Officer can approve and return someone else's request", mayCall("/api/expense/action", "Finance Officer", "approve") && mayCall("/api/expense/action", "Finance Officer", "return"));
+ok("but never his own: §4.3 is checked by person, before any step runs",
+  /if \(\(action === "approve" \|\| action === "finance-review"\) && exp\.requestorId && user\?\.id === exp\.requestorId\)/.test(server));
 ok("the director cannot pay", !mayCall("/api/expense/action", "Program Director", "cashbook-pay"));
 ok("a Project Lead can do neither", !mayCall("/api/expense/action", "Project Lead", "approve") && !mayCall("/api/expense/action", "Project Lead", "cashbook-pay"));
 ok("HR can do neither", !mayCall("/api/expense/action", "HR / Payroll Officer", "approve") && !mayCall("/api/expense/action", "HR / Payroll Officer", "general-ledger-post"));
