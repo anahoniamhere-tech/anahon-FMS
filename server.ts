@@ -7276,7 +7276,7 @@ app.post("/api/expense/action", async (req, res) => {
         data: {
           id: `je-${Date.now()}`,
           journal: "General",
-          date: localDate(),
+          date: exp.transactionDate || localDate(), // recognised when incurred, not when approved (Books, 14 Sep)
           description: `Accrued Expense Voucher ${exp.voucherNo}: ${exp.title}`,
           referenceNo: exp.voucherNo,
           isPosted: true,
@@ -7352,7 +7352,7 @@ app.post("/api/expense/action", async (req, res) => {
       {
         const cost = exp.costAccountCode
           || costAccountFor((await prisma.budgetLine.findUnique({ where: { id: exp.budgetLineId || "" } }))?.category);
-        const refused = payoutBlocker(account, cost);
+        const refused = payoutBlocker(account, cost, localDate());
         if (refused) return res.status(400).json({ error: refused });
       }
 
@@ -7568,7 +7568,7 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
     const account = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
     if (!account) return res.status(404).json({ error: "Cash/Bank vault not configured." });
     {
-      const refused = payoutBlocker(account, costAccountFor((await prisma.budgetLine.findUnique({ where: { id: budgetLineId || "" } }))?.category));
+      const refused = payoutBlocker(account, costAccountFor((await prisma.budgetLine.findUnique({ where: { id: budgetLineId || "" } }))?.category), localDate());
       if (refused) return res.status(400).json({ error: refused });
     }
 
