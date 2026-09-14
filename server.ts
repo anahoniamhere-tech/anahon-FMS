@@ -32,6 +32,7 @@ import { PARTY_KINDS, partyKindLabel } from "./src/supplierDocs.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
+import { planStallNudges, planIsQuiet, personMessage, escalationMessage, STALL_CHANNELS } from "./src/stallNudges.js";
 import { canonEmail } from "./src/email.js";
 import { pickCoreDoc, CORE_PATTERNS } from "./src/coreDocs.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
@@ -1831,6 +1832,148 @@ if (!process.env.VERCEL && process.env.REMINDERS_NIGHTLY !== "off") {
   setInterval(nightlyReminders, 10 * 60 * 1000).unref();
   setTimeout(nightlyReminders, 30 * 1000).unref();                    // and once shortly after boot, in case the hour already passed
 }
+
+// ---------------------------------------------------------------------------------
+// The shadow office — follow-ups when a turn stalls. OFF unless SHADOW_OFFICE=on.
+//
+// pushTurnsFor tells a person the moment work becomes their turn. This is the other half,
+// decided by Saad on 14 Sep 2026: one reminder when a task becomes overdue, a second two days
+// later, then the Executive Director is told if it is still untouched. The rhythm itself lives
+// in src/stallNudges.ts (pure, checked by scripts/check-stall-nudges.ts).
+//
+// It reminds people to act IN THE SYSTEM and nothing else: push notifications through the
+// FMS app, opening the item. It sends no mail and no WhatsApp, and it never writes to a record —
+// only its own rows in the Reminder ledger, under channels the calendar and push runs ignore.
+// ---------------------------------------------------------------------------------
+const SHADOW_OFFICE_HOUR = Number(process.env.SHADOW_OFFICE_HOUR ?? 9);   // Beirut local, working hours
+
+/** Deliver one payload to every device a person installed. Dead installs are removed. */
+// ponytail: mirrors the delivery loop inside pushTurnsFor; extract one shared helper with Home & desk, who own that function.
+async function deliverPush(userId: string, payload: string) {
+  const subs = await prisma.pushSubscription.findMany({ where: { userId } });
+  let delivered = false;
+  for (const sub of subs) {
+    try {
+      await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload);
+      delivered = true;
+    } catch (err: any) {
+      if (err?.statusCode === 404 || err?.statusCode === 410) await prisma.pushSubscription.deleteMany({ where: { endpoint: sub.endpoint } });
+      else console.warn(`[shadow] ${userId}: ${err?.statusCode || ""} ${String(err?.message).slice(0, 120)}`);
+    }
+  }
+  return { delivered, devices: subs.length };
+}
+
+/** A person's own turn list — exactly the reading pushTurnsFor makes. */
+async function turnsOf(viewer: any) {
+  const state = await loadState(viewer);
+  const canOpen = new Set(doorsFor(viewer.role).map(String));
+  return deskItems({ id: viewer.id, email: viewer.email, role: viewer.role }, state as any, localDate())
+    .filter(i => (i.group === "mine" || i.group === "cover") && canOpen.has(i.door) && !i.standing);
+}
+
+/** Plan every active person's follow-ups. Writes nothing: the preview route and the run share it. */
+async function shadowPlans() {
+  const people = await prisma.user.findMany({ where: { active: true } });
+  const today = localDate();
+  const plans = [];
+  for (const person of people) {
+    const ledger = await prisma.reminder.findMany({ where: { userId: person.id, channel: { in: [...STALL_CHANNELS] } } });
+    const plan = planStallNudges(await turnsOf(person), ledger as any, today, { canEscalate: !isDirector(person.role) });
+    const devices = await prisma.pushSubscription.count({ where: { userId: person.id } });
+    plans.push({ person, plan, devices });
+  }
+  return plans;
+}
+
+const stallRow = (userId: string, itemId: string, channel: string, title: string, whenDate: string | null, now: string) =>
+  prisma.reminder.create({ data: {
+    id: `rs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    userId, itemId, channel, googleEventId: null, title, whenDate: whenDate || "", state: "active", createdAt: now, updatedAt: now,
+  } });
+
+async function shadowOfficeRun(reason: string) {
+  const now = new Date().toISOString();
+  const escalations: { personName: string; item: any; rows: { userId: string; channels: string[] } }[] = [];
+  let reminded = 0, closed = 0;
+  for (const { person, plan, devices } of await shadowPlans()) {
+    for (const c of plan.close) {
+      await prisma.reminder.update({ where: { id: c.id }, data: { state: "cancelled", updatedAt: now } });
+      closed++;
+    }
+    if (planIsQuiet(plan)) continue;
+    // Someone with no FMS app on any device cannot be reminded at all. Rather than fail silently
+    // every day, the Executive Director is told once, and every stage is recorded as passed.
+    if (!devices && !isDirector(person.role)) {
+      for (const item of [...plan.first, ...plan.second]) escalations.push({ personName: `${person.name} (no FMS app installed)`, item, rows: { userId: person.id, channels: ["stall-1", "stall-2", "escalate"] } });
+      for (const item of plan.escalate) escalations.push({ personName: person.name, item, rows: { userId: person.id, channels: ["escalate"] } });
+      continue;
+    }
+    const message = personMessage(plan);
+    if (message) {
+      const payload = JSON.stringify({ title: message.title, body: message.body, tag: `stall-${localDate()}`, url: `/?door=${encodeURIComponent(message.lead.door)}&focus=${encodeURIComponent(message.lead.recordId)}` });
+      const { delivered } = await deliverPush(person.id, payload);
+      if (delivered) {
+        for (const item of plan.first) await stallRow(person.id, item.id, "stall-1", item.title, item.when, now);
+        for (const item of plan.second) await stallRow(person.id, item.id, "stall-2", item.title, item.when, now);
+        reminded++;
+        await createAuditLog(person.id, "Shadow office", "Shadow Reminder Sent",
+          `Reminded ${person.name} in the FMS app: ${message.title} — ${message.body}. Nothing on the record was changed.`).catch(() => {});
+      }
+    }
+    for (const item of plan.escalate) escalations.push({ personName: person.name, item, rows: { userId: person.id, channels: ["escalate"] } });
+  }
+
+  const summary = escalationMessage(escalations.map(e => ({ personName: e.personName, item: e.item })));
+  if (summary) {
+    const directors = (await prisma.user.findMany({ where: { active: true } })).filter(u => isDirector(u.role));
+    const payload = JSON.stringify({ title: summary.title, body: summary.body, tag: `stall-escalation-${localDate()}`, url: "/?door=office" });
+    let delivered = false;
+    for (const director of directors) if ((await deliverPush(director.id, payload)).delivered) delivered = true;
+    if (delivered) {
+      for (const e of escalations) for (const channel of e.rows.channels) await stallRow(e.rows.userId, e.item.id, channel, e.item.title, e.item.when, now);
+      await createAuditLog("u-1", "Shadow office", "Shadow Escalation Sent",
+        `Told the Executive Director: ${summary.title} — ${escalations.map(e => `${e.personName}: ${e.item.verb} ${e.item.title}`).join("; ")}. Nothing on any record was changed.`).catch(() => {});
+    }
+  }
+  console.log(`[shadow] ${localDate()} (${reason}): ${reminded} reminded, ${escalations.length} escalated, ${closed} closed`);
+  return { reminded, escalated: escalations.length, closed };
+}
+
+let shadowLastRun = "";
+async function shadowOfficeTick() {
+  if (process.env.SHADOW_OFFICE === "on" && PUSH_READY) {
+    const { date, hour } = beirutNow();
+    if (hour < SHADOW_OFFICE_HOUR || shadowLastRun === date) return;
+    shadowLastRun = date;                                    // claim the day first, like the reminders run
+    try { await shadowOfficeRun("daily"); }
+    catch (err: any) { await createAuditLog("u-1", "System", "Shadow Office Failed", `The daily follow-up run did not complete: ${err.message}`).catch(() => {}); }
+  }
+}
+if (!process.env.VERCEL) {
+  setInterval(shadowOfficeTick, 10 * 60 * 1000).unref();
+  setTimeout(shadowOfficeTick, 60 * 1000).unref();
+}
+
+/** Preview: who would be reminded or escalated right now. Directors only; writes nothing. */
+app.get("/api/shadow/plan", async (req, res) => {
+  try {
+    if (!isDirector((req as any).dbUser?.role)) return res.status(403).json({ error: "The shadow office preview is the director's." });
+    const plans = await shadowPlans();
+    res.json({
+      on: process.env.SHADOW_OFFICE === "on", pushReady: PUSH_READY, hour: SHADOW_OFFICE_HOUR,
+      people: plans.filter(p => !planIsQuiet(p.plan)).map(({ person, plan, devices }) => ({
+        name: person.name, devices,
+        firstReminder: plan.first.map(i => `${i.verb}: ${i.title}`),
+        secondReminder: plan.second.map(i => `${i.verb}: ${i.title}`),
+        escalate: plan.escalate.map(i => `${i.verb}: ${i.title}`),
+        closing: plan.close.length,
+      })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ---------------------------------------------------------------------------------
 // The mail watcher — READ-ONLY.
