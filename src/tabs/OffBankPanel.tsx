@@ -64,7 +64,7 @@ export default function OffBankPanel({ state, currentUser, t, triggerToast, refr
     catch (err: any) { triggerToast(err.message, "error"); }
     finally { setBusy(false); }
   };
-  const kindOf = (ref?: string) => isDrawRef(ref) ? t("Withdrawal for payment requests") : isDrawReturnRef(ref) ? t("Leftover redeposited")
+  const kindOf = (ref?: string, voucherNo?: string | null) => voucherNo && !ref ? `${t("Payment of")} ${voucherNo}` : isDrawRef(ref) ? t("Withdrawal for payment requests") : isDrawReturnRef(ref) ? t("Leftover redeposited")
     : isTopUpRef(ref) ? t("Top-up of the float") : isOffbankDepositRef(ref) ? t("Paid in from an off-bank channel") : "";
 
   const rcLabel = busy ? t("Recording…")
@@ -195,7 +195,7 @@ export default function OffBankPanel({ state, currentUser, t, triggerToast, refr
             {data.waiting.map(w => (
               <li key={w.id} className="py-3 space-y-2">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-xs">
-                  <span className="text-slate-700">{kindOf(w.noticeRef)} · <bdi>{bankName(w.bankAccountId)}</bdi></span>
+                  <span className="text-slate-700">{kindOf(w.noticeRef, (w as any).voucherNo)} · <bdi>{bankName(w.bankAccountId)}</bdi></span>
                   <span dir="ltr" className="font-mono text-slate-600 whitespace-nowrap">{w.date}</span>
                   <span dir="ltr" className="font-mono font-bold whitespace-nowrap">{w.type === "Withdrawal" ? "−" : "+"}{formatUSD(w.amount)}</span>
                 </div>

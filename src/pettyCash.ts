@@ -360,10 +360,15 @@ export function depositBlocker(account: (AccountLike & { name?: string }) | null
   return "";
 }
 
+/** A pending line waiting for its statement line: one of the markers above, or a voucher paid from
+ *  a bank account (Buying & paying writes it pending with its voucherNo and no marker). */
+export const awaitsMatch = (l?: { pending?: boolean; noticeRef?: string | null; voucherNo?: string | null } | null) =>
+  !!l && !!l.pending && (isStatementMatchRef(l.noticeRef) || !!l.voucherNo);
+
 /** Matching a pending line the system recorded to the line the bank statement shows. */
-export function matchBlocker(pending?: { bankAccountId: string; type: string; amount: number; pending?: boolean; noticeRef?: string | null } | null,
+export function matchBlocker(pending?: { bankAccountId: string; type: string; amount: number; pending?: boolean; noticeRef?: string | null; voucherNo?: string | null } | null,
   line?: { bankAccountId: string; type: string; amount: number; pending?: boolean; noticeRef?: string | null; voucherNo?: string | null; projectId?: string | null } | null): string {
-  if (!pending || !pending.pending || !isStatementMatchRef(pending.noticeRef)) return "Choose a movement the system recorded that is waiting for the statement.";
+  if (!awaitsMatch(pending)) return "Choose a movement the system recorded that is waiting for the statement.";
   if (!line || line.pending) return "Choose a line from an imported statement.";
   if (line.bankAccountId !== pending.bankAccountId || line.type !== pending.type) return "The statement line is on another account, or goes the other way.";
   if (Math.abs(line.amount - pending.amount) > EPS) return `The statement line is ${line.amount.toFixed(2)}; the recorded movement is ${pending.amount.toFixed(2)}.`;

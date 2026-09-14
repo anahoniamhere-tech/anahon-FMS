@@ -7046,7 +7046,8 @@ app.post("/api/bank/match-line", async (req, res) => {
     const journalEntryId = settlesDeposit ? `je-obm-${Date.now()}` : "";
     await prisma.$transaction(async (t) => {
       await t.bankTransaction.update({ where: { id: line!.id }, data: {
-        noticeRef: pending!.noticeRef, reconciled: true,
+        // The voucher travels with it: general-ledger-post and drawStanding find a payment by voucherNo.
+        noticeRef: pending!.noticeRef, voucherNo: pending!.voucherNo || line!.voucherNo, reconciled: true,
         description: `${line!.description} — matched to: ${pending!.description}${line!.noticeRef ? ` (bank ref ${line!.noticeRef})` : ""}`,
       } });
       await t.bankTransaction.delete({ where: { id: pending!.id } });
@@ -7067,7 +7068,7 @@ app.post("/api/bank/match-line", async (req, res) => {
       }
     });
     await createAuditLog(user?.id, user?.name, "Statement Line Matched",
-      `${user?.name} matched statement line ${line!.id} (${line!.date}, ${line!.type} ${line!.amount.toFixed(2)}) to the recorded movement ${pending!.id} [${pending!.noticeRef}] (${pending!.date}).${journalEntryId ? ` Journal ${journalEntryId}: Dr bank / Cr ${DEPOSITS_IN_TRANSIT_LEDGER}.` : ""}`);
+      `${user?.name} matched statement line ${line!.id} (${line!.date}, ${line!.type} ${line!.amount.toFixed(2)}) to the recorded movement ${pending!.id} [${pending!.noticeRef || pending!.voucherNo}] (${pending!.date}).${journalEntryId ? ` Journal ${journalEntryId}: Dr bank / Cr ${DEPOSITS_IN_TRANSIT_LEDGER}.` : ""}`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -7096,7 +7097,7 @@ app.get("/api/offbank/overview", async (req, res) => {
     const signed = new Set((await prisma.appDoc.findMany({
       where: { receiptSigned: true, receiptNo: { in: receipts.map(x => x.evidenceRef).filter(Boolean) } }, select: { receiptNo: true },
     })).map(d => d.receiptNo));
-    const markers = waiting.filter(w => isStatementMatchRef(w.noticeRef));
+    const markers = waiting.filter(w => isStatementMatchRef(w.noticeRef) || !!w.voucherNo);
     const lines = markers.length ? await prisma.bankTransaction.findMany({
       where: { pending: false, bankAccountId: { in: [...new Set(markers.map(m => m.bankAccountId))] }, voucherNo: null, projectId: null },
     }) : [];
@@ -8826,7 +8827,7 @@ app.post("/api/bank/import-notice", async (req, res) => {
     for (const p of stillPending) {
       // A movement the system recorded waits for Books to match it — clearing it here would lose
       // the marker that tells the ledger what the money was for.
-      if (isStatementMatchRef(p.noticeRef)) continue;
+      if (isStatementMatchRef(p.noticeRef) || p.voucherNo) continue;
       const confirmed = await prisma.bankTransaction.findMany({
         where: { bankAccountId: p.bankAccountId, amount: p.amount, type: p.type, pending: false }
       });

@@ -17,7 +17,7 @@
 import { PrismaClient } from "@prisma/client";
 
 import { costAccountFor } from "../src/costAccount.js";
-import { FLOAT_LEDGER, COUNT_DIFFERENCES_LEDGER, CASH_CLEARING_LEDGER, isFloat, isTransit, isTopUpRef, isDrawRef, isDrawReturnRef, countDifference, cashLedgerFor, channelLedgerFor, isLiveChannel, isStatementMatchRef, isOffbankDepositRef, offbankPurposeOf, DEPOSITS_IN_TRANSIT_LEDGER, OTHER_INCOME_LEDGER } from "../src/pettyCash.js";
+import { FLOAT_LEDGER, COUNT_DIFFERENCES_LEDGER, CASH_CLEARING_LEDGER, isFloat, isTransit, isTopUpRef, isDrawRef, isDrawReturnRef, countDifference, cashLedgerFor, channelLedgerFor, isLiveChannel, isStatementMatchRef, isOffbankDepositRef, offbankPurposeOf, DEPOSITS_IN_TRANSIT_LEDGER, OTHER_INCOME_LEDGER, CASH_AWAITING_VOUCHERS_NAME, pastCashLedgerFor } from "../src/pettyCash.js";
 
 const prisma = new PrismaClient();
 
@@ -48,7 +48,9 @@ async function main() {
   // line (a withdrawal for requests, a redeposit, a top-up). Only one of the two carries the marker
   // at a time: matching moves it to the statement line and deletes the pending one. Other pending
   // lines (eBLOM advices) are not proof of anything and stay out.
-  const bankTx = allBankTx.filter(t => !t.pending || (isStatementMatchRef(t.noticeRef) && !isOffbankDepositRef(t.noticeRef)));
+  // A voucher paid from a bank account is written the same way (pending, with its voucherNo).
+  const bankTx = allBankTx.filter(t => !t.pending || (isStatementMatchRef(t.noticeRef) && !isOffbankDepositRef(t.noticeRef))
+    || (t.type === "Withdrawal" && !!t.voucherNo));
   const acctByCode = new Map(accounts.map(a => [a.code, a]));
   const blById = new Map(budgetLines.map(b => [b.id, b]));
   const projById = new Map(projects.map(p => [p.id, p]));
@@ -149,6 +151,10 @@ async function main() {
   const paidFromFloat = new Set(bankTx.filter(t => t.type === "Withdrawal" && floatIds.has(t.bankAccountId) && t.voucherNo).map(t => t.voucherNo!));
   // ...and a voucher paid out of a withdrawal credits 1127 whatever its date says.
   const paidFromTransit = new Set(bankTx.filter(t => t.type === "Withdrawal" && transitIds.has(t.bankAccountId) && t.voucherNo).map(t => t.voucherNo!));
+  // ...and a voucher paid by transfer from a bank account accrues to AP, which its bank line settles.
+  const bankAccountIds = new Set(bankAccounts.filter(b => b.type === "Bank").map(b => b.id));
+  const paidFromBank = new Map(bankTx.filter(t => t.type === "Withdrawal" && bankAccountIds.has(t.bankAccountId) && t.voucherNo).map(t => [t.voucherNo!, t]));
+  const expenseByVoucher = new Map(expenses.map(e => [e.voucherNo, e]));
   const eurNote = (txAccountId: string) => eurAccountIds.has(txAccountId) ? ` [EUR @ ${fx}]` : "";
 
   // ---- 1. statement lines: the only source of bank movements ----
@@ -222,6 +228,11 @@ async function main() {
       post(bt.date, "Bank", `Petty cash top-up to the float: ${bt.description}${note}`, ref, [
         { accountCode: FLOAT_LEDGER, debit: amt }, { accountCode: bank, credit: amt }],
         { recordedAt: (bt as any).recordedAt, recordedById: (bt as any).recordedById });
+    } else if (bt.voucherNo && paidFromBank.get(bt.voucherNo) === bt) {
+      // A payment request paid by transfer: settles the voucher's AP (section 2 accrued it).
+      const pv = expenseByVoucher.get(bt.voucherNo);
+      post(bt.date, "Bank", `${bt.description} — pays ${bt.voucherNo}${note}`, ref, [
+        { accountCode: ACC.AP, debit: amt, projectId: pv?.projectId }, { accountCode: bank, credit: amt }], recorded);
     } else if (v) {
       // Settles the matched card voucher's AP; FX markup above the voucher net is a bank charge.
       const netUSD = r2((v.amount - v.whtAmount) * v.rate);
@@ -280,7 +291,7 @@ async function main() {
       debitLegs.push({ accountCode: expAcc, debit: gross, projectId: e.projectId, donorId });
     }
 
-    if (e.paymentMethod === "Card") {
+    if (e.paymentMethod === "Card" || paidFromBank.has(e.voucherNo)) {
       // Accrue only — the matched statement line settles AP (rule 2). Unmatched card vouchers
       // stay open on AP and are listed below for the user; the money isn't on any statement.
       post(date, "Purchases", `Accrued ${e.voucherNo}: ${e.title}`, e.voucherNo, [
@@ -292,7 +303,9 @@ async function main() {
       // Cash (and legacy unknown-method) vouchers: paid from petty cash drawn at the ATM — or,
       // since 14 Sep 2026, from the float, whose payments credit 1125 instead of the old clearing.
       // Placed by its true date against the stored opening, never by when it was typed in.
-      const cashFrom = paidFromTransit.has(e.voucherNo) ? CASH_CLEARING_LEDGER : cashCode(date, paidFromFloat.has(e.voucherNo));
+      // A backfilled cash payment nobody vouchered at the time (§6.6) credits cash awaiting vouchers.
+      const pastCash = e.paymentMethod === CASH_AWAITING_VOUCHERS_NAME ? pastCashLedgerFor(date, openedOn) : "";
+      const cashFrom = paidFromTransit.has(e.voucherNo) ? CASH_CLEARING_LEDGER : pastCash || cashCode(date, paidFromFloat.has(e.voucherNo));
       post(date, "Purchases", `${e.voucherNo}: ${e.title} (cash)`, e.voucherNo, [
         ...debitLegs,
         { accountCode: cashFrom, credit: netUSD, projectId: e.projectId },
