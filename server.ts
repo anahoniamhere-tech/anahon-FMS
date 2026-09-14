@@ -38,7 +38,7 @@ import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
-import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs } from "./src/personnelDocs.js";
+import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, POOL_SUMMARY_FIELDS } from "./src/personnelDocs.js";
 import { parseIcs } from "./src/ics.js";
 
 dotenv.config();
@@ -548,6 +548,7 @@ async function loadState(viewer?: any) {
     networkContacts,
     engagements,
     tools,
+    poolRows,
     orgSettingsRaw,
     fxRatesRaw
   ] = await Promise.all([
@@ -585,6 +586,7 @@ async function loadState(viewer?: any) {
     prisma.networkContact.findMany({ orderBy: { metOn: "desc" } }),
     prisma.engagement.findMany({ orderBy: { startDate: "desc" } }),
     prisma.tool.findMany({ orderBy: { name: "asc" } }),
+    prisma.poolCandidate.findMany({ orderBy: { name: "asc" } }),
     prisma.orgSettings.findFirst(),
     prisma.fxRates.findFirst()
   ]);
@@ -682,7 +684,7 @@ async function loadState(viewer?: any) {
       fixedAssets: heldByViewer,
       partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [],
       opportunities: [], cashCounts: [], cashTopUps: [], subscriptions: [], projectActivities: [],
-      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
+      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [], poolCandidates: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
       editorialMeetings: formattedMeetings,
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
@@ -706,7 +708,7 @@ async function loadState(viewer?: any) {
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
       auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [], cashTopUps: [], subscriptions: [], projectActivities: [],
-      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
+      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [], poolCandidates: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: [], editorialMeetings: [],
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
@@ -745,6 +747,7 @@ async function loadState(viewer?: any) {
       projectActivities: projectActivities.filter((a: any) => visibleIds.has(a.projectId)),
       clients: [], quotations: [],
       networkContacts, engagements, tools,
+      poolCandidates: [],   // the Contacts door is theirs; the freelancer pool is not
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "",
       contentItems: buys ? [] : formattedContent,
       editorialMeetings: formattedMeetings,
@@ -787,7 +790,7 @@ async function loadState(viewer?: any) {
       auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [],
       opportunities: [], cashCounts: [], cashTopUps: [], subscriptions: [],
       projectActivities: projectActivities.filter(a => myProjectIds.has(a.projectId)),
-      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
+      clients: [], quotations: [], networkContacts: [], engagements: [], tools: [], poolCandidates: [],
       // Policy 002: POs run their programme's content — plus anything they personally
       // author or fact-check in another programme.
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent.filter(c =>
@@ -878,6 +881,15 @@ async function loadState(viewer?: any) {
     })),
     // Networking register — people met at trainings and events. No financial data.
     networkContacts,
+    // The freelancer pool. Personnel-file roles get the whole row; managers get name and skills
+    // and nothing else; anyone else who reaches this branch (a Project Lead, the auditor) gets
+    // none. Cut down here, not hidden in the browser, because the payload is what leaks.
+    poolCandidates: (() => {
+      const tier = poolViewFor(viewer?.role);
+      if (tier === "full") return poolRows;
+      if (tier === "summary") return poolRows.map(c => Object.fromEntries(POOL_SUMMARY_FIELDS.map(k => [k, (c as any)[k]])));
+      return [];
+    })(),
     // The events and trainings themselves — attended and delivered. Many belong to no
     // project, which is why they are their own register and not a corner of one.
     engagements,
@@ -1007,6 +1019,78 @@ async function authorisedSignatory(): Promise<{ name: string; title: string } | 
   const finance = await prisma.user.findFirst({ where: { role: "Finance Officer", active: true } });
   return finance ? { name: finance.name, title: `${finance.role} — the Programme Director seat is vacant` } : null;
 }
+
+/* ── The freelancer pool ─────────────────────────────────────────────────────────────
+ * People AnaHon may engage but has no contract with yet. Only the personnel-file roles write
+ * it — a manager sees name and skills to ask for someone, and asking is not editing.
+ *
+ * What this deliberately does NOT do: turn an entry into a supplier or a contract. That is
+ * Buying & paying's flow — a pool entry becomes a Vendor there, and its CVs follow by partyId.
+ */
+const POOL_STATUSES = ["Prospect", "Worked with us", "Not a fit"];
+
+app.post("/api/pool/save", async (req, res) => {
+  try {
+    const { id, name, skills, city, country, languages, email, phone, dayRate, currency, status, notes, user } = req.body;
+    if (poolViewFor(user?.role) !== "full") {
+      return res.status(403).json({ error: "Only HR / Payroll, the Program Director or the master account may edit the freelancer pool." });
+    }
+    const cleanName = String(name || "").trim();
+    if (!cleanName) return res.status(400).json({ error: "A pool entry needs a name." });
+    const st = String(status || "Prospect");
+    if (!POOL_STATUSES.includes(st)) return res.status(400).json({ error: `Status must be one of: ${POOL_STATUSES.join(", ")}.` });
+    const ph = String(phone ?? "").replace(/[\s()-]/g, "");
+    if (ph && !/^\+[1-9]\d{7,14}$/.test(ph)) {
+      return res.status(400).json({ error: "Write the phone in full international form, starting with + and the country code." });
+    }
+    // Blank means no rate discussed. Never store 0 for that — it would read as working for free.
+    const rateRaw = String(dayRate ?? "").trim();
+    const rate = rateRaw === "" ? null : Number(rateRaw);
+    if (rate !== null && (!Number.isFinite(rate) || rate < 0)) {
+      return res.status(400).json({ error: "The day rate must be a positive number, or left blank." });
+    }
+    const data = {
+      name: cleanName, skills: String(skills || "").trim(), city: String(city || "").trim(),
+      country: String(country || "").trim(), languages: String(languages || "").trim(),
+      email: String(email || "").trim(), phone: ph, dayRate: rate,
+      currency: String(currency || "USD").trim() || "USD", status: st, notes: String(notes || "").trim(),
+    };
+    const existing = id ? await prisma.poolCandidate.findUnique({ where: { id } }) : null;
+    const row = existing
+      ? await prisma.poolCandidate.update({ where: { id }, data })
+      : await prisma.poolCandidate.create({ data: { id: `pool-${Date.now()}`, ...data, createdBy: user?.id || "", created_at: new Date().toISOString() } });
+    // Name and status only on the audit line: the log is read by seats not entitled to the rest.
+    await createAuditLog(user?.id || "u-1", user?.name || "Super Admin",
+      existing ? "Pool Entry Updated" : "Pool Entry Added",
+      `Freelancer pool: ${row.name} — ${row.status}${existing && existing.status !== row.status ? ` (was ${existing.status})` : ""}.`);
+    res.json({ success: true, candidate: row });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* Removing someone from the pool. Personal data about a person we have no contract with has to
+ * be removable when they ask (Policy 010). Their CVs are NOT deleted with the entry — documents
+ * are never destroyed from here — but they lose their link and fall back to the rule for an
+ * unlinked personnel paper, which is still personnel-file roles only. */
+app.post("/api/pool/delete", async (req, res) => {
+  try {
+    const { id, reason, user } = req.body;
+    if (poolViewFor(user?.role) !== "full") {
+      return res.status(403).json({ error: "Only HR / Payroll, the Program Director or the master account may edit the freelancer pool." });
+    }
+    const row = await prisma.poolCandidate.findUnique({ where: { id } });
+    if (!row) return res.status(404).json({ error: "That person is not in the pool." });
+    if (!String(reason || "").trim()) return res.status(400).json({ error: "Say why the entry is being removed." });
+    const unlinked = await prisma.appDoc.updateMany({ where: { partyId: id }, data: { partyId: null } });
+    await prisma.poolCandidate.delete({ where: { id } });
+    await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", "Pool Entry Removed",
+      `Freelancer pool: ${row.name} removed — ${String(reason).trim()}. ${unlinked.count} CV document(s) kept in the vault, unlinked.`);
+    res.json({ success: true, unlinkedDocuments: unlinked.count });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 /* The WhatsApp number on a personnel file.
  *
@@ -9757,7 +9841,12 @@ app.post("/api/document/upload", async (req, res) => {
 
     if (personnel) {
       const emp = await prisma.employee.findUnique({ where: { id: partyId } });
-      projectCode = path.join("PERSONNEL", (emp?.name || partyId).replace(/[^\w.\- ]/g, "_"));
+      // A freelancer-pool entry is not an employee: its papers go beside the pool's first CVs,
+      // under PERSONNEL/Freelancer Pool/<name>, rather than a folder named after its id.
+      const pool = emp ? null : await prisma.poolCandidate.findUnique({ where: { id: partyId } });
+      projectCode = pool
+        ? path.join("PERSONNEL", "Freelancer Pool", pool.name.replace(/[^\w.\- ]/g, "_"))
+        : path.join("PERSONNEL", (emp?.name || partyId).replace(/[^\w.\- ]/g, "_"));
     }
 
     const cat = category || "Voucher";

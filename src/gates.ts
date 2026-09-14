@@ -20,6 +20,7 @@ import {
   DIRECTORS, FINANCE, MANAGERS, HR, PAYROLL_VIEWERS, REQUESTERS, SUPPLIER_EDITORS,
   EQUIPMENT_VERIFIERS, ACTIVITY_EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS,
   CONTACT_EDITORS, TOOL_EDITORS, CREW, EDITORS, PLO, DIGITAL, SELF, AUDITOR,
+  PERSONNEL_FILE,
 } from "./roles";
 
 /** Any active account. Used where the record itself decides — own timesheet, own papers, own task. */
@@ -178,6 +179,8 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/employees/phone": ANY,                  // the personnel file decides — the route asks maySeePersonnelFile
   "/api/employees/start-date": HR,
   "/api/employees/login": HR,                   // who may open this person's own file — a grant, not a detail
+  "/api/pool/save": PERSONNEL_FILE,             // the freelancer pool — managers read name + skills, never write
+  "/api/pool/delete": PERSONNEL_FILE,
   "/api/timesheets/approve": DIRECTORS,                // and never one's own — checked in the route
   "/api/payroll/payslip": PAYROLL_VIEWERS,
   "/api/contracts/generate": [...HR, ...SUPPLIER_EDITORS],

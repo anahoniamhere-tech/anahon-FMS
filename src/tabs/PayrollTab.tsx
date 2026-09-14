@@ -4,8 +4,10 @@ import { tr } from "../i18n";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import { DIRECTORS, HR, PAYROLL_VIEWERS, TIMESHEET_FILERS, roleLabel } from "../roles";
 import { maySeePersonnelFile, missingPersonnelDocs } from "../personnelDocs";
+import FreelancerPool from "./FreelancerPool";
 
-export default function PayrollTab({ contractBusy, contractFor, contractForm, contractParty, currentUser, formatUSD, handleGenerateContract, isSelfService, openDoc, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast }: SharedProps) {
+export default function PayrollTab(props: SharedProps) {
+  const { contractBusy, contractFor, contractForm, contractParty, currentUser, formatUSD, handleGenerateContract, isSelfService, openDoc, partyFileFor, refreshState, renderPartyFile, setContractFor, setContractForm, setContractParty, setPartyFileFor, state, t, triggerToast } = props;
   // Employee registration states
   const [newEmpName, setNewEmpName] = useState("");
 
@@ -731,6 +733,11 @@ export default function PayrollTab({ contractBusy, contractFor, contractForm, co
                   );
                 })}
               </div>
+
+              {/* Beside the personnel files: people we may engage but have no contract with yet.
+                  It decides for itself whether this viewer sees whole entries, name and skills,
+                  or nothing — and the server has already cut the data to match. */}
+              <FreelancerPool {...props} />
 
             </div>
   );

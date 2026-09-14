@@ -864,3 +864,30 @@ model MailHit {
   assigneeUserId String?
   createdAt String
 }
+
+/// People AnaHon may engage but has no contract with yet — the freelancer pool.
+/// Deliberately not NetworkContact (shared with PLO and Digital, rows travel whole) and not
+/// Vendor (a party we pay; turning a pool entry INTO one is Buying & paying's flow). CVs are
+/// AppDoc rows with partyId = this id, so the personnel-file rule governs them unchanged.
+model PoolCandidate {
+  id         String  @id
+  name       String
+  /// Roles and skills, free text — "Producer, filmmaker, editor".
+  skills     String  @default("")
+  city       String  @default("")
+  country    String  @default("")
+  languages  String  @default("")
+  email      String  @default("")
+  /// Full international form, like every other phone in the schema.
+  phone      String  @default("")
+  /// Optional. Null means no rate discussed — never 0, which would read as free.
+  dayRate    Float?
+  currency   String  @default("USD")
+  /// Prospect | Worked with us | Not a fit
+  status     String  @default("Prospect")
+  notes      String  @default("")
+  createdBy  String  @default("")
+  created_at String
+
+  @@index([status])
+}

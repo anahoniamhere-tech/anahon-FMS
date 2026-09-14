@@ -1,4 +1,4 @@
-import { PERSONNEL_FILE, PAYROLL_VIEWERS } from "./roles";
+import { PERSONNEL_FILE, PAYROLL_VIEWERS, MANAGERS } from "./roles";
 /**
  * Personnel documents — the HR side of the vault.
  *
@@ -88,6 +88,28 @@ export function maySeePersonnelFile(
   const email = viewer.email.trim().toLowerCase();
   return employees.some(e => e.id === partyId && (e.userEmail || "").trim().toLowerCase() === email);
 }
+
+/**
+ * The freelancer pool — people AnaHon may engage but has no contract with yet.
+ *
+ * Two tiers, and the second is narrow on purpose. The personnel-file roles see everything:
+ * contact, day rate, notes and the CVs. The managers see only WHO is in the pool and WHAT
+ * they do — name and skills — so they can ask for someone without being handed a stranger's
+ * phone number, rate and CV. Everybody else sees nothing (Policy 010).
+ *
+ * "full" | "summary" | null. It composes two lists that already exist, because the rule
+ * really is "personnel-file roles, or managers" — no new seat is invented for it.
+ */
+export type PoolView = "full" | "summary" | null;
+export function poolViewFor(role?: string | null): PoolView {
+  const r = String(role || "");
+  if (PERSONNEL_ROLES.includes(r)) return "full";
+  if (MANAGERS.includes(r)) return "summary";
+  return null;
+}
+/** The fields a "summary" viewer receives — exactly name and skills, as asked; the id only
+ *  so a list can key its rows. Not status, not city: nothing beyond who and what. */
+export const POOL_SUMMARY_FIELDS = ["id", "name", "skills"] as const;
 
 /** Drop every personnel document this viewer is not entitled to. */
 export function filterPersonnelDocs<T extends { category?: string; partyId?: string | null }>(

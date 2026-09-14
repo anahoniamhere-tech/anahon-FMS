@@ -278,6 +278,26 @@ export interface Employee {
   startDate?: string;
 }
 
+/**
+ * Someone AnaHon may engage but has no contract with yet. A manager receives only id, name and
+ * skills, so every other field is optional on the client: absent means "not yours to see".
+ */
+export interface PoolCandidate {
+  id: string;
+  name: string;
+  skills: string;
+  city?: string;
+  country?: string;
+  languages?: string;
+  email?: string;
+  phone?: string;
+  dayRate?: number | null;
+  currency?: string;
+  status?: "Prospect" | "Worked with us" | "Not a fit" | string;
+  notes?: string;
+  created_at?: string;
+}
+
 export interface Timesheet {
   id: string;
   employeeId: string;
@@ -689,6 +709,9 @@ export interface DatabaseState {
   clients: Client[];
   quotations: Quotation[];
   networkContacts: NetworkContact[];
+  /** The freelancer pool. Sent whole to the personnel-file roles, as name + skills to managers,
+   *  and as [] to everyone else — see poolViewFor in personnelDocs.ts. */
+  poolCandidates?: PoolCandidate[];
   engagements: Engagement[];
   tools: Tool[];
   orgSettings: OrgSettings;
