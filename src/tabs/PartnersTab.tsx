@@ -8,7 +8,6 @@ import { FINANCE, MANAGERS } from "../roles";
 
 export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshState, state, t, triggerToast }: SharedProps) {
   // Physical cash count form (Banking tab).
-  const [cashCountForm, setCashCountForm] = useState({ date: new Date().toLocaleDateString("en-CA"), countedUSD: "", notes: "" });
 
   // Daily Operations states — the cash book opens on today, not a hardcoded date
   const [dailySelectedDate, setDailySelectedDate] = useState<string>(new Date().toISOString().split("T")[0]);
@@ -107,22 +106,6 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
     }
   };
 
-  const submitCashCount = async () => {
-    try {
-      const res = await fetch("/api/cash/count", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...cashCountForm, user: currentUser })
-      });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "Failed to record cash count");
-      triggerToast(`Cash count recorded: ${formatUSD(Number(cashCountForm.countedUSD))} counted · ${formatUSD(d.variance)} still undocumented.`);
-      setCashCountForm({ date: new Date().toLocaleDateString("en-CA"), countedUSD: "", notes: "" });
-      refreshState();
-    } catch (err: any) {
-      triggerToast(err.message, "error");
-    }
-  };
   return (<>
           {true && (
             <div className="space-y-6">
@@ -366,58 +349,9 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
                       )}
                     </div>
 
-                    {/* Physical cash count — turns "cash on hand" from an inferred book
-                        figure into a counted fact, and sizes the undocumented gap. */}
-                    {FINANCE.includes(currentUser.role) && (
-                      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                          <h4 className="text-xs font-bold font-mono uppercase text-slate-800"><span className="inline-flex items-center gap-1.5">{ic(Banknote)}Count the cash drawer</span></h4>
-                          <span className="text-[10px] text-slate-500 font-mono">
-                            ledger 1120 book: {formatUSD(state.accounts.find(a => a.code === "1120")?.balance || 0)}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                          <div>
-                            <label htmlFor="cc-date" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Counted on")}</label>
-                            <input id="cc-date" type="date" value={cashCountForm.date}
-                              onChange={(e) => setCashCountForm({ ...cashCountForm, date: e.target.value })}
-                              className="finance-input w-full font-mono text-xs" />
-                          </div>
-                          <div>
-                            <label htmlFor="cc-amount" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Notes in hand (USD)")}</label>
-                            <input id="cc-amount" type="number" min="0" step="any" placeholder="e.g. 420"
-                              value={cashCountForm.countedUSD}
-                              onChange={(e) => setCashCountForm({ ...cashCountForm, countedUSD: e.target.value })}
-                              className="finance-input w-full font-mono text-xs" />
-                          </div>
-                          <div>
-                            <label htmlFor="cc-notes" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Note (optional)")}</label>
-                            <input id="cc-notes" type="text" placeholder="who was present, where counted"
-                              value={cashCountForm.notes}
-                              onChange={(e) => setCashCountForm({ ...cashCountForm, notes: e.target.value })}
-                              className="finance-input w-full text-xs" />
-                          </div>
-                          <button type="button" onClick={submitCashCount}
-                            className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">
-                            💾 Record count
-                          </button>
-                        </div>
-                        <p className="text-[10px] text-slate-500">
-                          Counted notes are treated as available funds. The difference against the 1120 book balance is cash drawn
-                          without documented vouchers — it stays visible as a gap, never as available money. A count older than 45 days is excluded until recounted.
-                        </p>
-                        {state.cashCounts.length > 0 && (
-                          <div className="text-[10px] font-mono text-slate-500 space-y-0.5">
-                            {state.cashCounts.slice(0, 3).map(c => (
-                              <div key={c.id} className="flex justify-between">
-                                <span>{c.date} · counted by {c.countedBy || "—"}{c.notes ? ` · ${c.notes}` : ""}</span>
-                                <span className="font-bold text-slate-700">{formatUSD(c.countedUSD)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/* The cash count moved to Bank & cash on 14 Sep 2026: it counts the petty-cash float
+                        (ledger 1125), is made by someone other than the custodian, and no longer
+                        compares against the historical 1120 clearing (Policy 020 §4.4). */}
 
                     {/* ⚡ Daily direct expense — the one form for day-to-day spending.
                         Posts the full chain in a single submit; nothing to approve later

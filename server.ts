@@ -27,6 +27,7 @@ import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, norma
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
 import { costAccountFor, reclassifyLegs, debitedExpenseAccounts, costPositions } from "./src/costAccount.js";
+import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, type TopUpItem } from "./src/pettyCash.js";
 import { PARTY_KINDS, partyKindLabel } from "./src/supplierDocs.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
@@ -133,6 +134,7 @@ const CREW_ALLOWED_POSTS = new Set([
 // approves, never pays, never touches the books.
 const PLO_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
+  "/api/cash/count",                              // counts the petty-cash float, never its custodian (Policy 020 §4.4.1)
   "/api/procurement/new", "/api/procurement/waiver-inline",
   "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone", "/api/vendors/party-kind", "/api/vendors/link-login",
   "/api/expense/new", "/api/expense/scan-invoice",
@@ -279,6 +281,7 @@ const OPEN_GETS = new Set(["/api/desk.ics", "/api/calendar.ics", "/api/document/
 const READ_AUDIT: [RegExp, string][] = [
   [/^\/api\/quotations\/[^/]+\/pdf$/, "Quotation, as PDF"],
   [/^\/api\/reports\/(pdf|period)$/, "Financial statements"],
+  [/^\/api\/cash\/count-sheet\.pdf$/, "Petty cash count sheet"],
   [/^\/api\/document\/[^/]+\/pdf$/, "Document, rendered to PDF"],
   [/^\/api\/document\/content\/[^/]+$/, "Document"],
   [/^\/api\/document\/pages\/[^/]+$/, "Document, opened in the viewer"],
@@ -678,7 +681,7 @@ async function loadState(viewer?: any) {
       timesheets: formattedTimesheets.filter(t => employees.some(e => e.id === t.employeeId && e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase())),
       fixedAssets: heldByViewer,
       partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [],
-      opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
+      opportunities: [], cashCounts: [], cashTopUps: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
       editorialMeetings: formattedMeetings,
@@ -702,7 +705,7 @@ async function loadState(viewer?: any) {
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
-      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [], subscriptions: [], projectActivities: [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [], cashTopUps: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: [], editorialMeetings: [],
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
@@ -737,7 +740,7 @@ async function loadState(viewer?: any) {
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
-      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [], cashTopUps: [],
       subscriptions: buys ? subscriptions : [],
       projectActivities: projectActivities.filter((a: any) => visibleIds.has(a.projectId)),
       clients: [], quotations: [],
@@ -782,7 +785,7 @@ async function loadState(viewer?: any) {
           contentHash: d.contentHash, note: d.note
         })),
       auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [],
-      opportunities: [], cashCounts: [], subscriptions: [],
+      opportunities: [], cashCounts: [], cashTopUps: [], subscriptions: [],
       projectActivities: projectActivities.filter(a => myProjectIds.has(a.projectId)),
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [],
       // Policy 002: POs run their programme's content — plus anything they personally
@@ -853,9 +856,9 @@ async function loadState(viewer?: any) {
       proposal: JSON.parse(o.proposalJson || "{}"),
       samples: (() => { try { return JSON.parse(o.samplesJson || "[]"); } catch { return []; } })()
     })),
-    // Physical cash counts — the counted figure is real money; the variance against
-    // ledger 1120 is the undocumented gap.
+    // Physical counts of the petty-cash float (Policy 020 §4.4.3), and its top-ups (§4.4.1).
     cashCounts,
+    cashTopUps: await prisma.cashTopUp.findMany({ orderBy: { raisedAt: "desc" } }),
     // Recurring charges — what renews and when.
     subscriptions,
     // Project timelines: dated, assignable steps per project.
@@ -6087,38 +6090,250 @@ app.post("/api/meetings/delete", async (req, res) => {
   }
 });
 
-// Record a physical petty-cash count. Counted notes are real available money; the
-// difference against ledger 1120 is the documentation gap, stated rather than guessed.
+// ---- The petty-cash float (draft Policy 020 §4.4, Saad's decisions of 14 Sep 2026) ----------
+// One locked box on its own ledger account, 1125, held by the Finance Officer. Until now the
+// count route compared against ledger 1120 — USD 52k of historical off-bank clearing, not a
+// float — and could only be called BY the custodian, the one person policy says may not count.
+//
+// Every check below is by person, never by seat alone. A Super Admin sits in both the Finance
+// and Director seats; the user id comes from the verified token and "act as" never changes it,
+// so wearing another hat cannot count your own box or approve your own top-up.
+
+const pettyFloat = () => prisma.bankAccount.findFirst({ where: { type: FLOAT_TYPE, ledgerCode: FLOAT_LEDGER } });
+const r2m = (n: number) => Math.round(n * 100) / 100;
+
+// A physical count (§4.4.1, §4.4.3). Blind: the counter enters what is in the box and the
+// server supplies the expected figure, so nobody counts towards a number they were shown.
+// The first count is the opening float — expected 0, and whatever is found is recorded as
+// the difference, for the Executive Director to review and the consultant to match to 1120.
 app.post("/api/cash/count", async (req, res) => {
   try {
-    const { date, countedUSD, notes, user } = req.body;
-    if (!["Super Admin", "Finance Officer"].includes(user?.role)) {
-      return res.status(403).json({ error: "Only the Finance Officer or the master account can record a cash count." });
-    }
+    const { date, countedUSD, withoutNotice, custodianPresent, explanation, user } = req.body;
+    const box = await pettyFloat();
+    const notFloat = floatBlocker(box);
+    if (notFloat) return res.status(400).json({ error: notFloat });
+    const refused = countBlocker({
+      counterId: user?.id, counterRole: user?.role, custodianUserId: box!.custodianUserId,
+      withoutNotice: !!withoutNotice, custodianPresent: !!custodianPresent,
+    });
+    if (refused) return res.status(403).json({ error: refused });
+
     const amount = Number(countedUSD);
-    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "Enter the counted amount (0 or more)." });
+    if (!Number.isFinite(amount) || amount < 0) return res.status(400).json({ error: "Enter the cash counted in the box (0 or more)." });
     const day = String(date || localDate());
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "Date must be YYYY-MM-DD." });
     if (day > localDate()) return res.status(400).json({ error: "A cash count cannot be dated in the future." });
+    // The first count opens the float and fixes the cutover date for late records; nothing
+    // about the float may be dated before it.
+    const opening = !box!.openedOn;
+    if (!opening) {
+      const early = openingBlocker(box!.openedOn, day);
+      if (early) return res.status(400).json({ error: early });
+    }
 
-    const book = (await prisma.account.findUnique({ where: { code: "1120" } }))?.balance || 0;
-    const count = await prisma.cashCount.create({
-      data: {
-        id: `cc-${Date.now()}`,
-        date: day,
-        countedUSD: amount,
-        countedBy: user?.name || "",
-        notes: notes || "",
-        created_at: new Date().toISOString()
+    const expected = r2m(box!.balance);
+    const { difference, needsExplanation } = countDifference(expected, amount);
+    const why = String(explanation || "").trim();
+    if (needsExplanation && why.length < 5) {
+      return res.status(400).json({ error: `Policy 020 §4.4.3: a difference is recorded at once, with its explanation — the box is ${difference > 0 ? "over" : "short"} by USD ${Math.abs(difference).toFixed(2)}.` });
+    }
+
+    const id = `cc-${Date.now()}`;
+    const count = await prisma.$transaction(async (tx) => {
+      let journalEntryId = "";
+      if (needsExplanation) {
+        // The float moves to what is physically there; the difference waits on 2920. Both
+        // balances move by the signed difference: a debit raises the asset 1125 and a credit
+        // raises the liability 2920, so an overage lifts both and a shortage lowers both.
+        const up = difference > 0, amt = Math.abs(difference);
+        journalEntryId = `je-cc-${Date.now()}`;
+        await tx.journalEntry.create({ data: {
+          id: journalEntryId, journal: "Adjustment", date: day, referenceNo: id, isPosted: true,
+          recordedAt: new Date().toISOString(), recordedById: user?.id || "",
+          description: `Petty cash count ${day}: counted ${amount.toFixed(2)} against ${expected.toFixed(2)} expected — ${why}`,
+          itemsJson: JSON.stringify([
+            { accountCode: up ? FLOAT_LEDGER : COUNT_DIFFERENCES_LEDGER, debit: amt, credit: 0 },
+            { accountCode: up ? COUNT_DIFFERENCES_LEDGER : FLOAT_LEDGER, debit: 0, credit: amt },
+          ]),
+        } });
+        await tx.account.update({ where: { code: FLOAT_LEDGER }, data: { balance: { increment: difference } } });
+        await tx.account.update({ where: { code: COUNT_DIFFERENCES_LEDGER }, data: { balance: { increment: difference } } });
+        await tx.bankAccount.update({ where: { id: box!.id }, data: { balance: amount } });
       }
+      if (opening) await tx.bankAccount.update({ where: { id: box!.id }, data: { openedOn: day } });
+      return tx.cashCount.create({ data: {
+        id, date: day, countedUSD: amount, countedBy: user?.name || "", notes: why, created_at: new Date().toISOString(),
+        bankAccountId: box!.id, counterUserId: user?.id || "", expectedUSD: expected,
+        withoutNotice: !!withoutNotice, custodianPresent: true, explanation: why, journalEntryId,
+      } });
     });
-    await createAuditLog(
-      user?.id,
-      user?.name,
-      "Petty Cash Counted",
-      `Physical cash count ${day}: USD ${amount.toFixed(2)} counted. Ledger 1120 book balance at the time: USD ${book.toFixed(2)} — variance USD ${(book - amount).toFixed(2)} is cash drawn without documented vouchers.${notes ? ` Note: ${notes}` : ""}`
-    );
-    res.json({ success: true, count, bookAtCount: book, variance: Number((book - amount).toFixed(2)) });
+
+    await createAuditLog(user?.id, user?.name, "Petty Cash Counted",
+      `${opening ? "Opening count — the float opens on " + day + ". " : ""}${withoutNotice ? "Count without notice" : "Count"} of the petty-cash float on ${day} by ${user?.name}, custodian present: ` +
+      `USD ${amount.toFixed(2)} counted against USD ${expected.toFixed(2)} expected` +
+      (needsExplanation ? ` — ${difference > 0 ? "over" : "short"} USD ${Math.abs(difference).toFixed(2)}, posted to ${COUNT_DIFFERENCES_LEDGER} for the Executive Director's review. Explanation: ${why}` : ", no difference."));
+    res.json({ success: true, count, expectedUSD: expected, difference });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Every payment out of the box that no approved top-up has yet covered, with its receipt.
+async function unreimbursedFloatPayments(boxId: string): Promise<TopUpItem[]> {
+  const approved = await prisma.cashTopUp.findMany({ where: { bankAccountId: boxId, status: "Approved" } });
+  const covered = new Set(approved.flatMap(t => (JSON.parse(t.itemsJson || "[]") as TopUpItem[]).map(i => i.txId)));
+  const paid = (await prisma.bankTransaction.findMany({ where: { bankAccountId: boxId, type: "Withdrawal", pending: false }, orderBy: { date: "asc" } }))
+    .filter(t => !covered.has(t.id));
+  const items: TopUpItem[] = [];
+  for (const t of paid) {
+    const exp = t.voucherNo ? await prisma.expense.findUnique({ where: { voucherNo: t.voucherNo } }) : null;
+    const filed = exp ? await prisma.appDoc.count({ where: { linkedRecordType: "Expense", linkedRecordId: exp.id } }) : 0;
+    items.push({ txId: t.id, voucherNo: t.voucherNo || "", date: t.date, amountUSD: r2m(t.amount), hasReceipt: !!(exp?.hasAttachment || filed) });
+  }
+  return items;
+}
+
+// The custodian raises a top-up (§4.4.1): every payment since the last one, each with its receipt.
+// With nothing spent yet it establishes the float instead — the first top-up after an empty
+// opening count — for a stated amount and reason.
+app.post("/api/cash/topup/raise", async (req, res) => {
+  try {
+    const { sourceAccountId, amountUSD, reason, user } = req.body;
+    const box = await pettyFloat();
+    const notFloat = floatBlocker(box);
+    if (notFloat) return res.status(400).json({ error: notFloat });
+    const notCustodian = raiseBlocker(user?.id, box!.custodianUserId);
+    if (notCustodian) return res.status(403).json({ error: notCustodian });
+    const notOpen = openingBlocker(box!.openedOn);
+    if (notOpen) return res.status(400).json({ error: notOpen });
+
+    const open = await prisma.cashTopUp.findFirst({ where: { bankAccountId: box!.id, status: { in: ["Raised", "Queried"] } } });
+    if (open) return res.status(400).json({ error: `A top-up is already open (${open.status.toLowerCase()} on ${open.raisedAt.slice(0, 10)}). It has to be decided before another is raised.` });
+
+    const source = await prisma.bankAccount.findUnique({ where: { id: String(sourceAccountId || "ba-blom-usd") } });
+    if (!source || source.type !== "Bank" || !source.active) {
+      return res.status(400).json({ error: "Policy 020 §4.4.1: the float is topped up from the bank — choose an active bank account." });
+    }
+
+    const items = await unreimbursedFloatPayments(box!.id);
+    const noReceipt = itemsBlocker(items);
+    if (noReceipt) return res.status(400).json({ error: noReceipt });
+
+    const kind = items.length ? "replenish" : "establish";
+    const amount = r2m(items.length ? itemsTotal(items) : Number(amountUSD));
+    const why = String(reason || "").trim();
+    if (kind === "establish" && why.length < 10) {
+      return res.status(400).json({ error: "Nothing has been paid from the float yet, so this top-up establishes it — say why, and for how much." });
+    }
+    const overCeiling = ceilingBlocker(box!.balance, amount);
+    if (overCeiling) return res.status(400).json({ error: overCeiling });
+
+    const topUp = await prisma.cashTopUp.create({ data: {
+      id: `tu-${Date.now()}`, bankAccountId: box!.id, sourceAccountId: source.id, kind, amountUSD: amount,
+      reason: why, itemsJson: JSON.stringify(items), status: "Raised",
+      raisedById: user?.id, raisedByName: user?.name || "", raisedAt: new Date().toISOString(),
+    } });
+    await createAuditLog(user?.id, user?.name, "Petty Cash Top-up Raised",
+      `${user?.name} raised a ${kind === "replenish" ? `top-up of USD ${amount.toFixed(2)} against ${items.length} payment(s) from the float` : `top-up establishing the float at USD ${amount.toFixed(2)}: ${why}`}, from ${source.name}.`);
+    res.json({ success: true, topUp });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The Executive Director approves or queries a top-up item by item (§4.4.1), never their own.
+// Approval moves the money from the bank to the box in one transaction.
+app.post("/api/cash/topup/decide", async (req, res) => {
+  try {
+    const { topUpId, itemDecisions, decision, note, user } = req.body;
+    const t = await prisma.cashTopUp.findUnique({ where: { id: String(topUpId || "") } });
+    if (!t) return res.status(404).json({ error: "Top-up not found." });
+    if (!["Raised", "Queried"].includes(t.status)) return res.status(400).json({ error: `This top-up is already ${t.status.toLowerCase()}.` });
+    const refused = approveBlocker({ id: user?.id, role: user?.role }, t.raisedById);
+    if (refused) return res.status(403).json({ error: refused });
+
+    const items = JSON.parse(t.itemsJson || "[]") as (TopUpItem & { decision?: string; note?: string })[];
+    const picks = (itemDecisions || {}) as Record<string, { decision?: string; note?: string }>;
+    if (items.length) {
+      const undecided = items.filter(i => !["ok", "query"].includes(String(picks[i.txId]?.decision)));
+      if (undecided.length) return res.status(400).json({ error: `Decide every item — ${undecided.map(i => i.voucherNo || i.txId).join(", ")} ${undecided.length === 1 ? "has" : "have"} no decision.` });
+      for (const i of items) { i.decision = picks[i.txId].decision; i.note = String(picks[i.txId].note || "").trim(); }
+    } else if (!["ok", "query"].includes(String(decision))) {
+      return res.status(400).json({ error: "Approve or query this top-up." });
+    }
+    const queried = items.length ? items.some(i => i.decision === "query") : decision === "query";
+    const now = new Date().toISOString();
+    const why = String(note || "").trim();
+
+    if (queried) {
+      const q = items.length ? items.filter(i => i.decision === "query").map(i => `${i.voucherNo || i.txId}${i.note ? `: ${i.note}` : ""}`).join("; ") : why;
+      if (!q.trim()) return res.status(400).json({ error: "Say what is being queried." });
+      const updated = await prisma.cashTopUp.update({ where: { id: t.id }, data: {
+        status: "Queried", itemsJson: JSON.stringify(items), queryNote: q, decidedById: user?.id, decidedByName: user?.name || "", decidedAt: now,
+      } });
+      await createAuditLog(user?.id, user?.name, "Petty Cash Top-up Queried", `${user?.name} queried the top-up of USD ${t.amountUSD.toFixed(2)} raised by ${t.raisedByName}: ${q}. No money moved.`);
+      return res.json({ success: true, topUp: updated });
+    }
+
+    // Approval. Everything re-checked against the books as they are now, not as they were raised.
+    const box = await prisma.bankAccount.findUnique({ where: { id: t.bankAccountId } });
+    const notFloat = floatBlocker(box);
+    if (notFloat) return res.status(400).json({ error: notFloat });
+    const notOpen = openingBlocker(box!.openedOn, localDate());
+    if (notOpen) return res.status(400).json({ error: notOpen });
+    if (items.length) {
+      const live = await unreimbursedFloatPayments(box!.id);
+      const liveById = new Map(live.map(i => [i.txId, i]));
+      const stale = items.filter(i => !liveById.has(i.txId));
+      if (stale.length) return res.status(400).json({ error: `${stale.map(i => i.voucherNo || i.txId).join(", ")} ${stale.length === 1 ? "is" : "are"} no longer an open payment from the float.` });
+      const noReceipt = itemsBlocker(items.map(i => liveById.get(i.txId)!));
+      if (noReceipt) return res.status(400).json({ error: noReceipt });
+    }
+    const overCeiling = ceilingBlocker(box!.balance, t.amountUSD);
+    if (overCeiling) return res.status(400).json({ error: overCeiling });
+
+    const source = await prisma.bankAccount.findUnique({ where: { id: t.sourceAccountId } });
+    if (!source || source.type !== "Bank" || !source.active) return res.status(400).json({ error: "The bank account this top-up draws on is no longer active." });
+    const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
+    const isEur = source.currency === "EUR";
+    const inSource = r2m(isEur ? t.amountUSD / rates.EUR : t.amountUSD);
+    if (source.balance < inSource) {
+      return res.status(400).json({ error: `Insufficient funds in ${source.name}: the top-up needs ${inSource.toFixed(2)} ${source.currency} and the books show ${source.balance.toFixed(2)} ${source.currency}.` });
+    }
+    const bankLedger = isEur ? "1110" : "1100";
+    const ref = TOPUP_REF(t.id);
+    const journalEntryId = `je-tu-${Date.now()}`;
+
+    const recorded = { recordedAt: now, recordedById: user?.id || "" };
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.bankAccount.update({ where: { id: source.id }, data: { balance: { decrement: inSource } } });
+      await tx.bankAccount.update({ where: { id: box!.id }, data: { balance: { increment: t.amountUSD } } });
+      await tx.bankTransaction.create({ data: {
+        id: `bt-tu-out-${Date.now()}`, bankAccountId: source.id, date: localDate(), amount: inSource, type: "Withdrawal",
+        reconciled: true, noticeRef: ref, description: `Cash drawn to top up the petty-cash float (${t.id})`, ...recorded,
+      } });
+      await tx.bankTransaction.create({ data: {
+        id: `bt-tu-in-${Date.now()}`, bankAccountId: box!.id, date: localDate(), amount: t.amountUSD, type: "Deposit",
+        reconciled: true, noticeRef: ref, description: `Top-up received from ${source.name} (${t.id})`, ...recorded,
+      } });
+      await tx.journalEntry.create({ data: {
+        id: journalEntryId, journal: "Bank", date: localDate(), referenceNo: t.id, isPosted: true, ...recorded,
+        description: `Petty cash top-up ${t.id}: USD ${t.amountUSD.toFixed(2)} from ${source.name} to the float, approved by ${user?.name}`,
+        itemsJson: JSON.stringify([
+          { accountCode: FLOAT_LEDGER, debit: t.amountUSD, credit: 0 },
+          { accountCode: bankLedger, debit: 0, credit: t.amountUSD },
+        ]),
+      } });
+      await tx.account.update({ where: { code: FLOAT_LEDGER }, data: { balance: { increment: t.amountUSD } } });
+      // 1110 is stored in euros (its postings are in dollars); 1100 in dollars.
+      await tx.account.update({ where: { code: bankLedger }, data: { balance: { decrement: inSource } } });
+      return tx.cashTopUp.update({ where: { id: t.id }, data: {
+        status: "Approved", itemsJson: JSON.stringify(items), decidedById: user?.id, decidedByName: user?.name || "", decidedAt: now, journalEntryId, queryNote: "",
+      } });
+    });
+    await createAuditLog(user?.id, user?.name, "Petty Cash Top-up Approved",
+      `${user?.name} approved the top-up raised by ${t.raisedByName}${items.length ? `, ${items.length} item(s) reviewed one by one` : ""}: USD ${t.amountUSD.toFixed(2)} moved from ${source.name} (${inSource.toFixed(2)} ${source.currency}) to the petty-cash float. Journal ${journalEntryId}: Dr ${FLOAT_LEDGER} / Cr ${bankLedger}.`);
+    res.json({ success: true, topUp: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -9744,6 +9959,60 @@ app.get("/api/reports/pdf", async (req, res) => {
 });
 
 // Periodic financial report (Policy 11.2) — aggregates a 6- or 12-month window.
+// The count sheet (Policy 020 §4.4.3): every count of the float — date, counter, expected,
+// counted, difference and explanation — for the Executive Director and the consultant.
+app.get("/api/cash/count-sheet.pdf", async (req, res) => {
+  try {
+    const rid = await viewerIdFromReq(req);
+    const reader = rid ? await prisma.user.findUnique({ where: { id: rid } }) : null;
+    if (!reader || !REPORT_READERS.includes(reader.role)) return res.status(403).json({ error: "The count sheet is for finance, the director and the auditor." });
+    const box = await pettyFloat();
+    if (!box) return res.status(404).json({ error: "There is no petty-cash float." });
+    const [counts, users] = await Promise.all([
+      prisma.cashCount.findMany({ where: { bankAccountId: box.id }, orderBy: [{ date: "asc" }, { created_at: "asc" }] }),
+      prisma.user.findMany(),
+    ]);
+    const nameOf = (id: string) => users.find(u => u.id === id)?.name || "—";
+    const money = (n: number) => `${n < 0 ? "−" : ""}${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    const today = localDate();
+    const rows = counts.map(c => {
+      const diff = r2m(c.countedUSD - c.expectedUSD);
+      return `<tr><td>${esc(c.date)}</td><td>${esc(c.counterUserId ? nameOf(c.counterUserId) : c.countedBy)}</td>
+        <td class="c">${c.withoutNotice ? "Yes" : "—"}</td><td class="c">${c.custodianPresent ? "Yes" : "—"}</td>
+        <td class="n">${money(c.expectedUSD)}</td><td class="n">${money(c.countedUSD)}</td>
+        <td class="n ${Math.abs(diff) >= 0.005 ? "d" : ""}">${Math.abs(diff) >= 0.005 ? (diff > 0 ? "+" : "") + money(diff) : "0.00"}</td>
+        <td>${esc(c.explanation || "")}</td></tr>`;
+    }).join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      @page { size: A4 landscape; margin: 14mm; }
+      body { font: 10px/1.45 -apple-system, "Segoe UI", Arial, sans-serif; color: #1f2937; }
+      h1 { font-size: 16px; margin: 0; } h1 span { font-weight: 400; color: #6b7280; }
+      .meta { margin: 6px 0 12px; color: #4b5563; }
+      table { width: 100%; border-collapse: collapse; }
+      th { text-align: left; border-bottom: 1.5px solid #111827; padding: 5px 6px; font-size: 9px; text-transform: uppercase; letter-spacing: .03em; }
+      th span { display: block; text-transform: none; font-weight: 400; color: #6b7280; }
+      td { border-bottom: 1px solid #e5e7eb; padding: 5px 6px; vertical-align: top; }
+      .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; } .c { text-align: center; } .d { color: #9b1c1c; font-weight: 700; }
+      .foot { margin-top: 12px; color: #6b7280; font-size: 9px; }
+    </style></head><body>
+      <h1>Petty cash count sheet <span>· كشف جرد صندوق النثرية</span></h1>
+      <div class="meta">${esc(box.name)} · custodian ${esc(nameOf(box.custodianUserId))} · float ceiling ${FLOAT_CEILING_LABEL} (Policy 020 §4.4.1) · book balance today USD ${money(box.balance)} · printed ${today} by ${esc(reader.name)}</div>
+      <table><thead><tr>
+        <th>Date<span>التاريخ</span></th><th>Counted by<span>أجرى الجرد</span></th><th class="c">Without notice<span>دون إشعار</span></th>
+        <th class="c">Custodian present<span>بحضور الأمين</span></th><th class="n">Expected (USD)<span>المتوقَّع</span></th>
+        <th class="n">Counted (USD)<span>المعدود</span></th><th class="n">Difference (USD)<span>الفرق</span></th><th>Explanation<span>التفسير</span></th>
+      </tr></thead><tbody>${rows || `<tr><td colspan="8">No count has been recorded yet.</td></tr>`}</tbody></table>
+      <div class="foot">A count is made by someone other than the custodian, in their presence; a difference is recorded at once with its explanation and posted to ${COUNT_DIFFERENCES_LEDGER} for the Executive Director's review (Policy 020 §4.4.3). The first count is the opening float: expected 0.</div>
+    </body></html>`;
+    const pdf = await htmlToPdf(html);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${today.slice(0, 4)}_ANAHON_PETTY-CASH-COUNT-SHEET_${today}.pdf"`);
+    res.send(pdf);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/reports/period", async (req, res) => {
   try {
     const rid = await viewerIdFromReq(req);
@@ -10089,8 +10358,8 @@ STRICT RULES — violating any of these makes the report unusable:
 
 ANAHON ACCOUNTING POLICY THRESHOLDS (Accounting & Business Policy Manual v020):
 - Procurement: 3 written quotations + comparison sheet required for any purchase above USD ${QUOTES_REQUIRED_ABOVE.toLocaleString("en-US")}; 2 compared quotations from USD ${TWO_QUOTES_FROM} up to that figure (Sections 5.3/7.2). The threshold was USD 300 before 12 September 2026 — judge an earlier purchase by the rule in force when it was made.
-- Cash payments above USD 150 require Program Director approval + written justification; bank transfer is the preferred method (Section 4.4.2).
-- Petty cash ceiling: USD 300 total (Section 4.4.1).
+- Cash payments above ${CASH_SINGLE_PAYMENT_LABEL} require Program Director approval + written justification; bank transfer is the preferred method (Section 4.4.2).
+- Petty cash float ceiling: ${FLOAT_CEILING_LABEL} total (Section 4.4.1).
 - Budget line overruns above 10% of the line require prior donor approval (Section 11).
 - Every restricted-grant expense must map to exactly one approved budget line (Section 2.4).
 - All supporting documents retained 7 years (Section 13).

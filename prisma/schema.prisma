@@ -191,6 +191,16 @@ model BankAccount {
   accountNo  String
   balance    Float
   active     Boolean @default(true)
+  /// The person who holds this cash, by user id — set on the petty-cash float only
+  /// (Policy 020 §4.4.1). Counts and top-ups check against it, never against a role.
+  custodianUserId String @default("")
+  /// The ledger account this account moves: 1100/1110 the BLOM accounts, 1125 the float,
+  /// 1120 the historical off-bank channels.
+  ledgerCode String @default("")
+  /// The float's opening date — the date of its first count. The one cutover for late records
+  /// (Saad, 14 Sep 2026): cash dated before it belongs to the historical 1120 clearing, cash
+  /// dated on or after it to the float or the cash-clearing account. Stored, never inferred.
+  openedOn   String @default("")
 }
 
 model BankTransaction {
@@ -210,15 +220,23 @@ model BankTransaction {
   pending       Boolean @default(false)
   // eBLOM "Transaction Reference" from the advice, used to dedupe re-imports.
   noticeRef     String?
+  /// When and by whom this line was recorded — the date above stays the true one.
+  recordedAt   String @default("")
+  recordedById String @default("")
 }
 
 model JournalEntry {
   id          String  @id
   journal     String
+  /// The TRUE transaction date. Never overwritten with the day it was typed in.
   date        String
   description String
   referenceNo String
   isPosted    Boolean @default(false)
+  /// When and by whom it was recorded, so a late record is visible as late. Empty on entries
+  /// written before 14 Sep 2026, and on any route not yet recording it.
+  recordedAt   String @default("")
+  recordedById String @default("")
   itemsJson   String  // Serialized items: { accountCode, debit, credit, projectId?, donorId? }[]
 }
 
@@ -444,6 +462,42 @@ model CashCount {
   countedBy  String @default("")
   notes      String @default("")
   created_at String
+  /// Policy 020 §4.4.1/§4.4.3, 14 Sep 2026. Before this a count stored only the counted figure;
+  /// the expected one lived in an audit-log sentence, so no count sheet could be rebuilt.
+  bankAccountId    String  @default("")
+  counterUserId    String  @default("")
+  expectedUSD      Float   @default(0)
+  withoutNotice    Boolean @default(false)
+  custodianPresent Boolean @default(false)
+  explanation      String  @default("")
+  journalEntryId   String  @default("")
+}
+
+/// A top-up of the petty-cash float (imprest replenishment, Policy 020 §4.4.1): raised by the
+/// custodian against every cash payment since the last one, each with its receipt; approved
+/// item by item by the Executive Director, who may never approve their own. Approval moves the
+/// money from the bank to the box.
+model CashTopUp {
+  id              String @id
+  bankAccountId   String
+  sourceAccountId String
+  /// "replenish" restores what was spent, against the listed payments; "establish" funds a
+  /// float that has nothing to replenish yet (the first top-up after an empty opening count).
+  kind            String
+  amountUSD       Float
+  reason          String @default("")
+  /// [{ txId, voucherNo, date, amountUSD, hasReceipt, decision?: "ok" | "query", note? }]
+  itemsJson       String @default("[]")
+  /// "Raised" | "Queried" | "Approved"
+  status          String
+  raisedById      String
+  raisedByName    String @default("")
+  raisedAt        String
+  decidedById     String @default("")
+  decidedByName   String @default("")
+  decidedAt       String @default("")
+  queryNote       String @default("")
+  journalEntryId  String @default("")
 }
 
 // A recurring charge: what renews, when, from which account, and who pays for it.

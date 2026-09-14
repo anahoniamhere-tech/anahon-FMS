@@ -61,10 +61,19 @@ ok("and they say what the old figure was, so an older voucher still makes sense"
   /The threshold was USD 300 until 12 September 2026/.test(help) && help.includes("كان الحدّ 300 دولار حتى 12 أيلول 2026"));
 
 console.log("\nD. the figures that did NOT move");
-ok("the petty-cash ceiling is still USD 300", /Petty cash ceiling: USD 300 total/.test(server));
+// Updated 14 Sep 2026 (Books): Saad moved the petty-cash float to USD 1,000 in draft Policy 020
+// §4.4.1 — a separate decision from the procurement threshold, which is what this section guards.
+// The figure now lives in src/pettyCash.ts and the prompt reads it; it must still never be the
+// procurement number. Pinned in full by scripts/check-petty-cash.ts.
+ok("the petty-cash ceiling is its own figure, read from src/pettyCash.ts — not the procurement threshold",
+  /Petty cash float ceiling: \$\{FLOAT_CEILING_LABEL\}/.test(server) && !/Petty cash ceiling: USD 300/.test(server));
+// 14 Sep 2026 (Books): the prompt half used to match a code COMMENT in the direct-petty-cash
+// route once the compliance prompt stopped typing "USD 150" — it passed for the wrong reason.
+// The prompt now reads CASH_SINGLE_PAYMENT_LABEL from src/pettyCash.ts. The two route literals
+// below are still typed; swapping them for the constant is handed to Buying & paying.
 ok("cash above USD 150 still needs the director, on the route and in the prompt",
   /disbursalUSD > 150 && !exp\.approved_at/.test(server) && /disbursalUSD > 150 && !isDirector/.test(server)
-  && /Cash payments above USD 150 require Program Director approval/.test(server));
+  && /- Cash payments above \$\{CASH_SINGLE_PAYMENT_LABEL\} require Program Director approval/.test(server));
 ok("and the cash help answer was left alone", help.includes("cash payments above USD 150 need the director"));
 
 console.log("\nE. a comparison is compared against what the purchase is worth");

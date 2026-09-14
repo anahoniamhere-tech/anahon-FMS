@@ -52,7 +52,11 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/journal-entry/adjustment": BOOKS,
   "/api/ledger/reclassify": BOOKS,
   "/api/budgets/allocate": BOOKS,
-  "/api/cash/count": BOOKS,
+  // Policy 020 §4.4.1: counted by anyone but the custodian — the route refuses the custodian by
+  // person as well; a top-up is raised by the custodian and approved by the Executive Director.
+  "/api/cash/count": [...DIRECTORS, PLO],
+  "/api/cash/topup/raise": BOOKS,
+  "/api/cash/topup/decide": DIRECTORS,
   "/api/fxRates": BOOKS,
   "/api/fxRates/sync-inforeuro": BOOKS,
   "/api/partners/draw": DIRECTORS,

@@ -208,11 +208,15 @@ export interface Procurement {
 export interface BankAccount {
   id: string;
   name: string;
-  type: "Bank" | "Petty Cash";
+  /** "Petty Cash" is the float (the locked box) and nothing else; the BOB/OMT/Whish/cheque
+   *  channels are "Off-bank channel" (Policy 020 §4.4.4). */
+  type: "Bank" | "Petty Cash" | "Off-bank channel";
   currency: "USD" | "EUR" | "LBP";
   accountNo: string;
   balance: number;
   active: boolean;
+  custodianUserId?: string;
+  ledgerCode?: string;
 }
 
 export interface BankTransaction {
@@ -364,6 +368,33 @@ export interface CashCount {
   countedBy: string;
   notes: string;
   created_at: string;
+  bankAccountId?: string;
+  counterUserId?: string;
+  expectedUSD?: number;
+  withoutNotice?: boolean;
+  custodianPresent?: boolean;
+  explanation?: string;
+  journalEntryId?: string;
+}
+
+/** A top-up of the petty-cash float (Policy 020 §4.4.1). */
+export interface CashTopUp {
+  id: string;
+  bankAccountId: string;
+  sourceAccountId: string;
+  kind: "replenish" | "establish";
+  amountUSD: number;
+  reason: string;
+  itemsJson: string;
+  status: "Raised" | "Queried" | "Approved";
+  raisedById: string;
+  raisedByName: string;
+  raisedAt: string;
+  decidedById: string;
+  decidedByName: string;
+  decidedAt: string;
+  queryNote: string;
+  journalEntryId: string;
 }
 
 /** A recurring charge: what renews, when, and out of which account. */
@@ -647,6 +678,7 @@ export interface DatabaseState {
   mailHits: MailHit[];
   opportunities: Opportunity[];
   cashCounts: CashCount[];
+  cashTopUps: CashTopUp[];
   subscriptions: Subscription[];
   projectActivities: ProjectActivity[];
   contentItems: ContentItem[];

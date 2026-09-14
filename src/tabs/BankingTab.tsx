@@ -3,8 +3,9 @@ import { Account } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { FINANCE } from "../roles";
+import PettyCashPanel from "./PettyCashPanel";
 
-export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch, setBankSearch, currentUser, refreshState, state, t, triggerToast }: SharedProps) {
+export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch, setBankSearch, currentUser, refreshState, state, t, triggerToast, formatUSD }: SharedProps) {
   // Bank Reconciliation Trigger form
   const [recBank, setRecBank] = useState("");
 
@@ -53,6 +54,9 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                   <p className="text-xs text-slate-500">Match raw physical statements to vouchers to evaluate reconciliatory variances.</p>
                 </div>
               </div>
+
+              {/* The petty-cash float: balance against its ceiling, top-ups and counts (Policy 020 §4.4). */}
+              <PettyCashPanel state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState} formatUSD={formatUSD} />
 
               {/* Direct Reconcile form */}
               {FINANCE.includes(currentUser.role) && (

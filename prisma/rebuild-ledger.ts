@@ -17,6 +17,7 @@
 import { PrismaClient } from "@prisma/client";
 
 import { costAccountFor } from "../src/costAccount.js";
+import { FLOAT_LEDGER, COUNT_DIFFERENCES_LEDGER, isFloat, isTopUpRef, countDifference, cashLedgerFor } from "../src/pettyCash.js";
 
 const prisma = new PrismaClient();
 
@@ -34,13 +35,14 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 
 async function main() {
   const fx = (await prisma.fxRates.findFirst())?.EUR || 1.1406;
-  const [accounts, bankAccounts, bankTx, expenses, budgetLines, projects] = await Promise.all([
+  const [accounts, bankAccounts, bankTx, expenses, budgetLines, projects, cashCounts] = await Promise.all([
     prisma.account.findMany(),
     prisma.bankAccount.findMany(),
     prisma.bankTransaction.findMany({ where: { pending: false }, orderBy: { date: "asc" } }),
     prisma.expense.findMany(),
     prisma.budgetLine.findMany(),
     prisma.project.findMany(),
+    prisma.cashCount.findMany({ orderBy: { date: "asc" } }),
   ]);
   const acctByCode = new Map(accounts.map(a => [a.code, a]));
   const blById = new Map(budgetLines.map(b => [b.id, b]));
@@ -48,7 +50,15 @@ async function main() {
   const eurAccountIds = new Set(bankAccounts.filter(b => b.currency === "EUR").map(b => b.id));
   // Off-BLOM cash receipts (e.g. SKF cheques cashed at Byblos) live on Petty-Cash-type
   // accounts: their lines move 1120, never 1100/1110 — the statement-tie invariant holds.
-  const pettyAccountIds = new Set(bankAccounts.filter(b => b.type === "Petty Cash").map(b => b.id));
+  //
+  // 14 Sep 2026 (Policy 020 §4.4): the petty-cash float is its own account on ledger 1125. The
+  // four off-bank channels were retyped "Off-bank channel" and keep landing on 1120, so a
+  // re-run reproduces 1120's historical balance exactly. Deciding by type alone would have sent
+  // the channels to 1100 the moment they were retyped — and the box to 1120.
+  const floatIds = new Set(bankAccounts.filter(b => isFloat(b)).map(b => b.id));
+  const pettyAccountIds = new Set(bankAccounts
+    .filter(b => !floatIds.has(b.id) && (b.type === "Petty Cash" || b.type === "Off-bank channel"))
+    .map(b => b.id));
 
   // The two BLOM sub-accounts map to GL codes; the chart still said "Audi" — fix the names.
   await prisma.account.update({ where: { code: ACC.BANK_USD }, data: { name: "Bank - USD (BLOM Business Plus 004-02-…794-1-7)" } });
@@ -56,10 +66,15 @@ async function main() {
   for (const [code, name, type, group] of [
     [ACC.SUSPENSE, "Suspense — Unidentified Receipts", "Liability", "Suspense"],
     [ACC.FXCLEAR, "FX Conversion Clearing", "Liability", "Suspense"],
+    [COUNT_DIFFERENCES_LEDGER, "Petty Cash Count Differences — pending Executive Director review", "Liability", "Suspense"],
   ] as const) {
     if (!acctByCode.has(code)) {
       await prisma.account.create({ data: { code, name, type, currency: "USD", reportingGroup: group, balance: 0, active: true } });
     }
+  }
+
+  if (!acctByCode.has(FLOAT_LEDGER)) {
+    await prisma.account.create({ data: { code: FLOAT_LEDGER, name: "Petty Cash Float (locked box)", type: "Asset", currency: "USD", parent: "1000", reportingGroup: "Cash & Cash Equivalents", balance: 0, active: true } });
   }
 
   // ---- wipe: full regeneration is the idempotency mechanism ----
@@ -69,12 +84,12 @@ async function main() {
   let seq = 0;
   const entries: any[] = [];
   const post = (date: string, journal: string, description: string, referenceNo: string,
-    items: { accountCode: string; debit?: number; credit?: number; projectId?: string | null; donorId?: string | null }[]) => {
+    items: { accountCode: string; debit?: number; credit?: number; projectId?: string | null; donorId?: string | null }[], recorded: { recordedAt?: string; recordedById?: string } = {}) => {
     const clean = items.map(i => ({ accountCode: i.accountCode, debit: r2(i.debit || 0), credit: r2(i.credit || 0), projectId: i.projectId || undefined, donorId: i.donorId || undefined }))
       .filter(i => i.debit > 0.004 || i.credit > 0.004);
     const dr = r2(clean.reduce((s, i) => s + i.debit, 0)), cr = r2(clean.reduce((s, i) => s + i.credit, 0));
     if (Math.abs(dr - cr) > 0.011) throw new Error(`Unbalanced entry ${referenceNo}: Dr ${dr} Cr ${cr} — ${description}`);
-    entries.push({ id: `je-rb-${String(++seq).padStart(4, "0")}`, journal, date, description, referenceNo, isPosted: true, itemsJson: JSON.stringify(clean) });
+    entries.push({ id: `je-rb-${String(++seq).padStart(4, "0")}`, journal, date, description, referenceNo, isPosted: true, itemsJson: JSON.stringify(clean), recordedAt: recorded.recordedAt || "", recordedById: recorded.recordedById || "" });
   };
 
   // ---- match card statement lines to card vouchers (so the same spend posts once) ----
@@ -96,9 +111,27 @@ async function main() {
   }
   console.log(`card matching: ${matchedLines.size}/${cardVouchers.length} card vouchers matched to statement lines`);
 
-  const expenseAccountFor = (e: any) => costAccountFor(blById.get(e.budgetLineId)?.category);
+  // The voucher's own account first. Deriving from the category alone meant a re-run silently
+  // reverted every reclassification the Ledger door had posted (12 Sep 2026: five vouchers
+  // moved 6000 -> 5120 would have gone straight back).
+  const expenseAccountFor = (e: any) => e.costAccountCode || costAccountFor(blById.get(e.budgetLineId)?.category);
   const usd = (amount: number, txAccountId: string) => eurAccountIds.has(txAccountId) ? r2(amount * fx) : amount;
-  const bankCode = (txAccountId: string) => pettyAccountIds.has(txAccountId) ? ACC.PETTY : eurAccountIds.has(txAccountId) ? ACC.BANK_EUR : ACC.BANK_USD;
+  const bankCode = (txAccountId: string) => floatIds.has(txAccountId) ? FLOAT_LEDGER
+    : pettyAccountIds.has(txAccountId) ? ACC.PETTY : eurAccountIds.has(txAccountId) ? ACC.BANK_EUR : ACC.BANK_USD;
+  // The one stored cutover for late records: the float's opening date (its first count).
+  const openedOn = bankAccounts.find(b => floatIds.has(b.id))?.openedOn || "";
+  // Cash dated after the opening that is neither into nor out of the box belongs to the
+  // cash-clearing account, which is designed but not yet built. Until then it is posted to 1120
+  // AND counted here, so the gap is reported rather than silently filed.
+  let awaitingClearing = 0;
+  const cashCode = (date: string, fromFloat: boolean) => {
+    const code = cashLedgerFor(date, openedOn, fromFloat);
+    if (code) return code;
+    awaitingClearing++;
+    return ACC.PETTY;
+  };
+  // A voucher paid out of the box: its cash settlement credits the float, not the old clearing.
+  const paidFromFloat = new Set(bankTx.filter(t => t.type === "Withdrawal" && floatIds.has(t.bankAccountId) && t.voucherNo).map(t => t.voucherNo!));
   const eurNote = (txAccountId: string) => eurAccountIds.has(txAccountId) ? ` [EUR @ ${fx}]` : "";
 
   // ---- 1. statement lines: the only source of bank movements ----
@@ -107,6 +140,12 @@ async function main() {
     const bank = bankCode(bt.bankAccountId);
     const note = eurNote(bt.bankAccountId);
     const ref = `BT-${bt.id}`;
+
+    // A top-up writes two lines — out of the bank, into the box. The bank line carries the whole
+    // entry (below), so the box line posts nothing, or 1125 would be debited twice.
+    if (bt.type === "Deposit" && floatIds.has(bt.bankAccountId) && isTopUpRef(bt.noticeRef)) continue;
+    // A payment out of the box is posted by its voucher (section 2), which credits the float.
+    if (bt.type === "Withdrawal" && floatIds.has(bt.bankAccountId) && bt.voucherNo) continue;
 
     if (bt.type === "Deposit") {
       let contra: { accountCode: string; projectId?: string | null; donorId?: string | null } = { accountCode: ACC.SUSPENSE };
@@ -130,7 +169,13 @@ async function main() {
 
     // Withdrawals
     const v = matchedLines.get(bt.id);
-    if (v) {
+    if (isTopUpRef(bt.noticeRef)) {
+      // Cash drawn to top up the float (Policy 020 §4.4.1). Checked before the ATM rule, which
+      // would otherwise read it as one more "cash drawn to petty cash" and grow the 1120 clearing.
+      post(bt.date, "Bank", `Petty cash top-up to the float: ${bt.description}${note}`, ref, [
+        { accountCode: FLOAT_LEDGER, debit: amt }, { accountCode: bank, credit: amt }],
+        { recordedAt: (bt as any).recordedAt, recordedById: (bt as any).recordedById });
+    } else if (v) {
       // Settles the matched card voucher's AP; FX markup above the voucher net is a bank charge.
       const netUSD = r2((v.amount - v.whtAmount) * v.rate);
       post(bt.date, "Bank", `${bt.description} — settles ${v.voucherNo}${note}`, ref, [
@@ -146,7 +191,7 @@ async function main() {
         { accountCode: ACC.FXCLEAR, debit: amt }, { accountCode: bank, credit: amt }]);
     } else if (atmRe.test(bt.description)) {
       post(bt.date, "Bank", `Cash drawn to petty cash: ${bt.description}${note}`, ref, [
-        { accountCode: ACC.PETTY, debit: amt }, { accountCode: bank, credit: amt }]);
+        { accountCode: cashCode(bt.date, false), debit: amt }, { accountCode: bank, credit: amt }]);
     } else if (spendRe.test(bt.description)) {
       const code = /UBER/i.test(bt.description) ? ACC.TRAVEL : ACC.SOFTWARE;
       post(bt.date, "Bank", `${bt.description} (no voucher — direct card spend)${note}`, ref, [
@@ -194,13 +239,33 @@ async function main() {
         { accountCode: ACC.WHT, credit: whtUSD, projectId: e.projectId },
       ]);
     } else {
-      // Cash (and legacy unknown-method) vouchers: paid from petty cash drawn at the ATM.
+      // Cash (and legacy unknown-method) vouchers: paid from petty cash drawn at the ATM — or,
+      // since 14 Sep 2026, from the float, whose payments credit 1125 instead of the old clearing.
+      // Placed by date against the stored opening, never by when it was typed in. NOTE: a
+      // voucher's only date today is created_at, so a voucher BACKFILLED now would post on the
+      // day it was entered — Expense needs a true transaction date (handed to Buying & paying).
+      const cashFrom = cashCode(date, paidFromFloat.has(e.voucherNo));
       post(date, "Purchases", `${e.voucherNo}: ${e.title} (cash)`, e.voucherNo, [
         ...debitLegs,
-        { accountCode: ACC.PETTY, credit: netUSD, projectId: e.projectId },
+        { accountCode: cashFrom, credit: netUSD, projectId: e.projectId },
         { accountCode: ACC.WHT, credit: whtUSD, projectId: e.projectId },
       ]);
     }
+  }
+
+  // ---- 2b. petty-cash count differences (Policy 020 §4.4.3) ----
+  // A count moves the float to what was physically there; the difference waits on 2920 for the
+  // Executive Director. The opening float is the first count, expected 0. Reproduced from the
+  // counts so a re-run keeps them — the wipe above removes every entry it cannot rebuild.
+  for (const c of cashCounts) {
+    if (!floatIds.has(c.bankAccountId)) continue;
+    const { difference, needsExplanation } = countDifference(c.expectedUSD, c.countedUSD);
+    if (!needsExplanation) continue;
+    const up = difference > 0, amt = Math.abs(difference);
+    post(c.date, "Adjustment", `Petty cash count ${c.date}: counted ${c.countedUSD.toFixed(2)} against ${c.expectedUSD.toFixed(2)} expected — ${c.explanation}`, c.id, [
+      { accountCode: up ? FLOAT_LEDGER : COUNT_DIFFERENCES_LEDGER, debit: amt },
+      { accountCode: up ? COUNT_DIFFERENCES_LEDGER : FLOAT_LEDGER, credit: amt },
+    ], { recordedAt: c.created_at, recordedById: c.counterUserId });
   }
 
   // ---- 3. sweep FX clearing to gain/loss ----
@@ -246,7 +311,8 @@ async function main() {
     b.dr += it.debit || 0; b.cr += it.credit || 0;
     bal.set(it.accountCode, b);
   }
-  for (const a of accounts.concat(await prisma.account.findMany({ where: { code: { in: [ACC.SUSPENSE, ACC.FXCLEAR] } } }))) {
+  const known = new Set(accounts.map(a => a.code));
+  for (const a of accounts.concat((await prisma.account.findMany({ where: { code: { in: [ACC.SUSPENSE, ACC.FXCLEAR, FLOAT_LEDGER, COUNT_DIFFERENCES_LEDGER] } } })).filter(a => !known.has(a.code)))) {
     const b = bal.get(a.code) || { dr: 0, cr: 0 };
     const natural = ["Asset", "Expense"].includes(a.type) ? b.dr - b.cr : b.cr - b.dr;
     // 1110 is displayed in EUR — divide the USD journal figure back by the same single rate.
@@ -265,7 +331,11 @@ async function main() {
   console.log(`journal totals: Dr ${r2(dr).toLocaleString()}  Cr ${r2(cr).toLocaleString()}  balanced=${Math.abs(dr - cr) < 0.05}`);
   console.log(`1100 Bank USD:  ${b1100}  (statement closing 1402.80 → tie=${Math.abs(b1100 - 1402.80) < 0.02})`);
   console.log(`1110 Bank EUR:  ${b1110}  (statement closing 2421.58 → tie=${Math.abs(b1110 - 2421.58) < 0.02})`);
-  console.log(`1120 Petty cash on books: ${b1120.toLocaleString()}  <-- REAL GAP: cash drawn at bank minus cash vouchers documented`);
+  console.log(`1120 Cash clearing (historical): ${b1120.toLocaleString()}  <-- REAL GAP: cash drawn at bank minus cash vouchers documented; the consultant's to reconcile`);
+  const b1125 = (await prisma.account.findUnique({ where: { code: FLOAT_LEDGER } }))?.balance ?? 0;
+  const b2920 = (await prisma.account.findUnique({ where: { code: COUNT_DIFFERENCES_LEDGER } }))?.balance ?? 0;
+  console.log(`1125 Petty cash float: ${b1125.toLocaleString()}   2920 count differences pending review: ${b2920.toLocaleString()}`);
+  console.log(`float opened on: ${openedOn || "(not yet — everything is historical clearing)"}   cash after the opening awaiting the clearing account: ${awaitingClearing}${awaitingClearing ? "  <-- posted to 1120 until that account exists" : ""}`);
   console.log(`2100 AP open: ${b2100.toLocaleString()}  (incl. FHI360 pass-through + unmatched card vouchers)`);
   console.log(`2900 Suspense: ${b2900.toLocaleString()}  (unidentified: 'Trf From 068…' ${""}+ cash deposit 50 + unclassified)`);
 
