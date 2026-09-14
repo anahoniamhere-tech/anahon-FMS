@@ -14,7 +14,7 @@ import {
   FLOAT_CEILING_USD, CASH_SINGLE_PAYMENT_USD, FLOAT_CEILING_LABEL, FLOAT_LEDGER, HISTORICAL_CLEARING_LEDGER,
   COUNT_DIFFERENCES_LEDGER, FLOAT_TYPE, CHANNEL_TYPE, COUNTER_SEATS, DIRECTOR_SEATS,
   isFloat, isChannel, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker,
-  countDifference, itemsBlocker, cashLedgerFor, openingBlocker, isTopUpRef, TOPUP_REF,
+  countDifference, itemsBlocker, cashLedgerFor, openingBlocker, isTopUpRef, TOPUP_REF, payoutBlocker,
 } from "../src/pettyCash.js";
 
 let failed = 0;
@@ -115,6 +115,15 @@ ok("every entry the float writes records when and by whom, beside its true date"
 ok("the rebuild keeps that recorder when it regenerates them", /recordedAt: c\.created_at, recordedById: c\.counterUserId/.test(rebuild));
 ok("the rebuild surfaces cash awaiting the clearing account instead of filing it silently", /awaitingClearing\+\+/.test(rebuild));
 ok("no period is locked — late records must still post", !/period.?lock|closePeriod|lockDate/i.test(server));
+
+// A payment dated before the float opened cannot be taken out of the box: payoutLedgerFor would
+// credit 1120 while the route took it off the box, and the box and 1125 would disagree.
+const floatOpen = { ...box, openedOn: "2026-09-20" };
+ok("a payment from the float dated before it opened is refused", payoutBlocker(floatOpen, "6000", "2026-09-19") !== "");
+ok("…but on or after the opening it is paid", payoutBlocker(floatOpen, "6000", "2026-09-20") === "");
+ok("and a fee is never paid from the float, whatever the date", payoutBlocker(floatOpen, "5120", "2026-10-01") !== "");
+ok("the rebuild dates a voucher by its TRUE transaction date, not the day it was typed in",
+  /const date = \(e\.transactionDate \|\| e\.created_at/.test(rebuild));
 
 console.log("\n6. the rebuild no longer reverts a reclassification");
 ok("the voucher's own cost account wins over the category guess", /e\.costAccountCode \|\| costAccountFor\(/.test(rebuild));

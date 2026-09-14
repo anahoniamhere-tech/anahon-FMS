@@ -204,7 +204,10 @@ async function main() {
 
   // ---- 2. vouchers: accrual + (cash settlement | AP awaiting its statement line) ----
   for (const e of expenses) {
-    const date = (e.created_at || "").split("T")[0] || "2026-01-01";
+    // The TRUE transaction date first (Expense.transactionDate, Buying & paying 8510f09). Before it
+    // existed a voucher's only date was created_at, so a voucher backfilled today posted on the
+    // day it was typed in. Rows from before the field stay "" — not captured — and fall back.
+    const date = (e.transactionDate || e.created_at || "").split("T")[0] || "2026-01-01";
     const gross = e.convertedAmount;
     const whtUSD = r2(e.whtAmount * e.rate);
     const netUSD = r2(gross - whtUSD);
@@ -241,9 +244,7 @@ async function main() {
     } else {
       // Cash (and legacy unknown-method) vouchers: paid from petty cash drawn at the ATM — or,
       // since 14 Sep 2026, from the float, whose payments credit 1125 instead of the old clearing.
-      // Placed by date against the stored opening, never by when it was typed in. NOTE: a
-      // voucher's only date today is created_at, so a voucher BACKFILLED now would post on the
-      // day it was entered — Expense needs a true transaction date (handed to Buying & paying).
+      // Placed by its true date against the stored opening, never by when it was typed in.
       const cashFrom = cashCode(date, paidFromFloat.has(e.voucherNo));
       post(date, "Purchases", `${e.voucherNo}: ${e.title} (cash)`, e.voucherNo, [
         ...debitLegs,

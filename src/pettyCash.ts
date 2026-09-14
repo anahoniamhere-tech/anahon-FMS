@@ -165,13 +165,16 @@ export const FEES_NEVER_FROM_FLOAT = ["5100", "5120", "5130"];
 export interface PayoutAccount extends AccountLike { name?: string; currency?: string; openedOn?: string | null }
 
 /** What may pay a voucher out: an active bank account, or the opened float for anything but a fee. */
-export function payoutBlocker(a: PayoutAccount | null | undefined, costAccount?: string | null): string {
+export function payoutBlocker(a: PayoutAccount | null | undefined, costAccount?: string | null, date?: string): string {
   if (!a) return "That account does not exist.";
   if (a.active === false) return `${a.name || "That account"} is not active — money cannot leave it.`;
   if (a.type === "Bank") return "";
   if (isChannel(a)) return "Policy 020 §4.4.4: an off-bank channel records money received or paid through it — it is never the petty-cash float.";
   if (!isFloat(a)) return "Policy 020 §4.4.1: cash is paid out of the petty-cash float and nowhere else.";
-  const notOpen = openingBlocker(a.openedOn);
+  // With a date: a payment dated before the float opened never came out of the box. Allowing it
+  // would take money off the box's balance while payoutLedgerFor credits 1120 — the box and 1125
+  // would part company, and the next count would show a shortage that is not there. (Books.)
+  const notOpen = openingBlocker(a.openedOn, date);
   if (notOpen) return notOpen;
   if (costAccount && FEES_NEVER_FROM_FLOAT.includes(costAccount)) {
     return "Policy 020 §4.4.1: fees to service providers, freelancers or consultants are never paid from the petty-cash float — pay them by bank transfer.";
