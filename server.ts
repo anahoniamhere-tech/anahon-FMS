@@ -27,7 +27,7 @@ import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, norma
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
 import { costAccountFor, reclassifyLegs, debitedExpenseAccounts, costPositions } from "./src/costAccount.js";
-import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, CASH_SINGLE_PAYMENT_USD, payoutBlocker, payoutLedgerFor, type TopUpItem } from "./src/pettyCash.js";
+import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, CASH_SINGLE_PAYMENT_USD, payoutBlocker, payoutLedgerFor, type TopUpItem, CASH_CLEARING_LEDGER, TRANSIT_TYPE, isTransit, DRAW_REF, DRAW_RETURN_REF, drawBlocker, drawPosition, drawOverdue, daysBetween, leftoverBlocker, type DrawLink } from "./src/pettyCash.js";
 import { PARTY_KINDS, partyKindLabel } from "./src/supplierDocs.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
@@ -282,6 +282,7 @@ const READ_AUDIT: [RegExp, string][] = [
   [/^\/api\/quotations\/[^/]+\/pdf$/, "Quotation, as PDF"],
   [/^\/api\/reports\/(pdf|period)$/, "Financial statements"],
   [/^\/api\/cash\/count-sheet\.pdf$/, "Petty cash count sheet"],
+  [/^\/api\/cash\/clearing$/, "Cash in transit"],
   [/^\/api\/document\/[^/]+\/pdf$/, "Document, rendered to PDF"],
   [/^\/api\/document\/content\/[^/]+$/, "Document"],
   [/^\/api\/document\/pages\/[^/]+$/, "Document, opened in the viewer"],
@@ -683,7 +684,7 @@ async function loadState(viewer?: any) {
       timesheets: formattedTimesheets.filter(t => employees.some(e => e.id === t.employeeId && e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase())),
       fixedAssets: heldByViewer,
       partnerAccounts: [], documents: [], auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [],
-      opportunities: [], cashCounts: [], cashTopUps: [], subscriptions: [], projectActivities: [],
+      opportunities: [], cashCounts: [], cashTopUps: [], cashDraws: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [], poolCandidates: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
       editorialMeetings: formattedMeetings,
@@ -707,7 +708,7 @@ async function loadState(viewer?: any) {
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
-      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [], cashTopUps: [], subscriptions: [], projectActivities: [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [], cashTopUps: [], cashDraws: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [], poolCandidates: [],
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: [], editorialMeetings: [],
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
@@ -742,7 +743,7 @@ async function loadState(viewer?: any) {
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
-      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [], cashTopUps: [],
+      auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [], opportunities: [], cashCounts: [], cashTopUps: [], cashDraws: [],
       subscriptions: buys ? subscriptions : [],
       projectActivities: projectActivities.filter((a: any) => visibleIds.has(a.projectId)),
       clients: [], quotations: [],
@@ -788,7 +789,7 @@ async function loadState(viewer?: any) {
           contentHash: d.contentHash, note: d.note
         })),
       auditLogs: [], complianceTasks: viewer ? complianceTasks.filter((t: any) => t.assigneeUserId === viewer.id) : [], mailHits: [],
-      opportunities: [], cashCounts: [], cashTopUps: [], subscriptions: [],
+      opportunities: [], cashCounts: [], cashTopUps: [], cashDraws: [], subscriptions: [],
       projectActivities: projectActivities.filter(a => myProjectIds.has(a.projectId)),
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [], poolCandidates: [],
       // Policy 002: POs run their programme's content — plus anything they personally
@@ -862,6 +863,7 @@ async function loadState(viewer?: any) {
     // Physical counts of the petty-cash float (Policy 020 §4.4.3), and its top-ups (§4.4.1).
     cashCounts,
     cashTopUps: await prisma.cashTopUp.findMany({ orderBy: { raisedAt: "desc" } }),
+    cashDraws: await prisma.cashDraw.findMany({ orderBy: { date: "desc" } }),
     // Recurring charges — what renews and when.
     subscriptions,
     // Project timelines: dated, assignable steps per project.
@@ -6295,8 +6297,17 @@ app.post("/api/cash/topup/raise", async (req, res) => {
     if (open) return res.status(400).json({ error: `A top-up is already open (${open.status.toLowerCase()} on ${open.raisedAt.slice(0, 10)}). It has to be decided before another is raised.` });
 
     const source = await prisma.bankAccount.findUnique({ where: { id: String(sourceAccountId || "ba-blom-usd") } });
-    if (!source || source.type !== "Bank" || !source.active) {
-      return res.status(400).json({ error: "Policy 020 §4.4.1: the float is topped up from the bank — choose an active bank account." });
+    // From the bank, or from a withdrawal's leftover once the requests it was drawn for are paid
+    // (Saad, 14 Sep 2026) — never from a channel, never from cash in transit without its withdrawal.
+    const fromLeftover = isTransit(source);
+    if (!source || !source.active || (source.type !== "Bank" && !fromLeftover)) {
+      return res.status(400).json({ error: "Policy 020 §4.4.1: the float is topped up from the bank, or from a withdrawal's leftover — choose one." });
+    }
+    let leftover: Awaited<ReturnType<typeof drawStanding>> | null = null;
+    if (fromLeftover) {
+      const draw = await prisma.cashDraw.findUnique({ where: { id: String(req.body.sourceDrawId || "") } });
+      if (!draw) return res.status(400).json({ error: "Choose the withdrawal whose leftover tops up the float." });
+      leftover = await drawStanding(draw);
     }
 
     const items = await unreimbursedFloatPayments(box!.id);
@@ -6311,8 +6322,13 @@ app.post("/api/cash/topup/raise", async (req, res) => {
     }
     const overCeiling = ceilingBlocker(box!.balance, amount);
     if (overCeiling) return res.status(400).json({ error: overCeiling });
+    if (leftover) {
+      const tooMuch = leftoverBlocker(leftover.remainingUSD, amount, leftover.unpaidLinks);
+      if (tooMuch) return res.status(400).json({ error: tooMuch });
+    }
 
     const topUp = await prisma.cashTopUp.create({ data: {
+      sourceDrawId: leftover ? leftover.id : "",
       id: `tu-${Date.now()}`, bankAccountId: box!.id, sourceAccountId: source.id, kind, amountUSD: amount,
       reason: why, itemsJson: JSON.stringify(items), status: "Raised",
       raisedById: user?.id, raisedByName: user?.name || "", raisedAt: new Date().toISOString(),
@@ -6377,14 +6393,22 @@ app.post("/api/cash/topup/decide", async (req, res) => {
     if (overCeiling) return res.status(400).json({ error: overCeiling });
 
     const source = await prisma.bankAccount.findUnique({ where: { id: t.sourceAccountId } });
-    if (!source || source.type !== "Bank" || !source.active) return res.status(400).json({ error: "The bank account this top-up draws on is no longer active." });
+    const fromLeftover = isTransit(source) && !!t.sourceDrawId;
+    if (!source || !source.active || (source.type !== "Bank" && !fromLeftover)) return res.status(400).json({ error: "The account this top-up draws on is no longer active." });
+    if (fromLeftover) {
+      // Re-read: a leftover can have been redeposited since the top-up was raised.
+      const draw = await prisma.cashDraw.findUnique({ where: { id: t.sourceDrawId } });
+      const standing = draw ? await drawStanding(draw) : null;
+      const tooMuch = standing ? leftoverBlocker(standing.remainingUSD, t.amountUSD, standing.unpaidLinks) : "The withdrawal this top-up draws on no longer exists.";
+      if (tooMuch) return res.status(400).json({ error: tooMuch });
+    }
     const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
     const isEur = source.currency === "EUR";
     const inSource = r2m(isEur ? t.amountUSD / rates.EUR : t.amountUSD);
     if (source.balance < inSource) {
       return res.status(400).json({ error: `Insufficient funds in ${source.name}: the top-up needs ${inSource.toFixed(2)} ${source.currency} and the books show ${source.balance.toFixed(2)} ${source.currency}.` });
     }
-    const bankLedger = isEur ? "1110" : "1100";
+    const bankLedger = fromLeftover ? CASH_CLEARING_LEDGER : isEur ? "1110" : "1100";
     const ref = TOPUP_REF(t.id);
     const journalEntryId = `je-tu-${Date.now()}`;
 
@@ -6394,7 +6418,7 @@ app.post("/api/cash/topup/decide", async (req, res) => {
       await tx.bankAccount.update({ where: { id: box!.id }, data: { balance: { increment: t.amountUSD } } });
       await tx.bankTransaction.create({ data: {
         id: `bt-tu-out-${Date.now()}`, bankAccountId: source.id, date: localDate(), amount: inSource, type: "Withdrawal",
-        reconciled: true, noticeRef: ref, description: `Cash drawn to top up the petty-cash float (${t.id})`, ...recorded,
+        reconciled: true, noticeRef: ref, description: fromLeftover ? `Leftover of withdrawal ${t.sourceDrawId} moved to the petty-cash float (${t.id})` : `Cash drawn to top up the petty-cash float (${t.id})`, ...recorded,
       } });
       await tx.bankTransaction.create({ data: {
         id: `bt-tu-in-${Date.now()}`, bankAccountId: box!.id, date: localDate(), amount: t.amountUSD, type: "Deposit",
@@ -6418,6 +6442,203 @@ app.post("/api/cash/topup/decide", async (req, res) => {
     await createAuditLog(user?.id, user?.name, "Petty Cash Top-up Approved",
       `${user?.name} approved the top-up raised by ${t.raisedByName}${items.length ? `, ${items.length} item(s) reviewed one by one` : ""}: USD ${t.amountUSD.toFixed(2)} moved from ${source.name} (${inSource.toFixed(2)} ${source.currency}) to the petty-cash float. Journal ${journalEntryId}: Dr ${FLOAT_LEDGER} / Cr ${bankLedger}.`);
     res.json({ success: true, topUp: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- Cash clearing: withdrawals for approved payment requests (Saad, 14 Sep 2026) ----------
+// Cash drawn from BLOM to pay fees or larger costs sits on 1127, the "Cash in transit" account,
+// until the requests it was drawn for are paid out of it. It never goes into the float and never
+// accumulates in 1120. A leftover is redeposited, or moved to the float through a top-up.
+
+const cashTransit = () => prisma.bankAccount.findFirst({ where: { type: TRANSIT_TYPE, ledgerCode: CASH_CLEARING_LEDGER } });
+
+// What a request pays out, in USD — the net once withholding is known, the gross before.
+const requestNetUSD = (e: { netAmount: number; amount: number; rate: number }) => r2m((e.netAmount || e.amount) * e.rate);
+
+// Where one withdrawal stands, computed from the lines that moved it — never a stored total.
+async function drawStanding(draw: any) {
+  const links = JSON.parse(draw.linksJson || "[]") as DrawLink[];
+  const returns = JSON.parse(draw.returnsJson || "[]") as { amountUSD: number }[];
+  const paidLines = await prisma.bankTransaction.findMany({
+    where: { bankAccountId: draw.transitAccountId, type: "Withdrawal", voucherNo: { in: links.map(l => l.voucherNo) } },
+  });
+  const paidVouchers = new Set(paidLines.map(l => l.voucherNo));
+  const paidUSD = r2m(paidLines.reduce((sum, l) => sum + l.amount, 0));
+  const redepositedUSD = r2m(returns.reduce((sum, x) => sum + Number(x.amountUSD || 0), 0));
+  const toFloat = await prisma.cashTopUp.findMany({ where: { sourceDrawId: draw.id, status: "Approved" } });
+  const toFloatUSD = r2m(toFloat.reduce((sum, x) => sum + x.amountUSD, 0));
+  const { remainingUSD, cleared } = drawPosition(draw.amountUSD, paidUSD, redepositedUSD, toFloatUSD);
+  return {
+    id: draw.id as string, remainingUSD, cleared, paidUSD, redepositedUSD, toFloatUSD,
+    links: links.map(l => ({ ...l, paid: paidVouchers.has(l.voucherNo) })),
+    unpaidLinks: links.filter(l => !paidVouchers.has(l.voucherNo)).length,
+  };
+}
+
+// What the Bank & cash screen shows: every withdrawal and where it stands, and the approved
+// requests that could still be drawn for. Computed here so the seven-day flag has one source.
+app.get("/api/cash/clearing", async (req, res) => {
+  try {
+    const rid = await viewerIdFromReq(req);
+    const reader = rid ? await prisma.user.findUnique({ where: { id: rid } }) : null;
+    if (!reader || !REPORT_READERS.includes(reader.role)) return res.status(403).json({ error: "Cash in transit is for finance, the director and the auditor." });
+    const [transit, box, draws, approved] = await Promise.all([
+      cashTransit(), pettyFloat(),
+      prisma.cashDraw.findMany({ orderBy: { date: "desc" } }),
+      prisma.expense.findMany({ where: { status: "Approved" }, orderBy: { created_at: "asc" } }),
+    ]);
+    const today = localDate();
+    const drawnIn = new Map<string, string>();
+    const rows = [];
+    for (const d of draws) {
+      const st = await drawStanding(d);
+      for (const l of st.links) drawnIn.set(l.expenseId, d.id);
+      rows.push({ ...d, ...st, ageDays: daysBetween(d.date, today), overdue: drawOverdue(d.date, today, st.remainingUSD, box?.openedOn) });
+    }
+    res.json({
+      transit, openedOn: box?.openedOn || "", today,
+      draws: rows,
+      requests: approved.map(e => ({ expenseId: e.id, voucherNo: e.voucherNo, title: e.title, netUSD: requestNetUSD(e), alreadyDrawnIn: drawnIn.get(e.id) || "" })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Record a withdrawal against the approved requests it pays. Money leaves the bank for 1127 in
+// one transaction; the bank line carries the draw's marker so the rebuild books it to 1127 too.
+app.post("/api/cash/draw", async (req, res) => {
+  try {
+    const { sourceAccountId, date, amountUSD, expenseIds, note, user } = req.body;
+    const [transit, box] = await Promise.all([cashTransit(), pettyFloat()]);
+    if (!transit || !transit.active) return res.status(400).json({ error: "There is no cash-in-transit account." });
+    const source = await prisma.bankAccount.findUnique({ where: { id: String(sourceAccountId || "ba-blom-usd") } });
+    if (!source || source.type !== "Bank" || !source.active) return res.status(400).json({ error: "Cash is drawn from an active bank account." });
+    const day = String(date || localDate());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "Date must be YYYY-MM-DD." });
+    if (day > localDate()) return res.status(400).json({ error: "A withdrawal cannot be dated in the future." });
+
+    const ids = Array.isArray(expenseIds) ? [...new Set(expenseIds.map(String))] : [];
+    const [expenses, draws] = await Promise.all([
+      prisma.expense.findMany({ where: { id: { in: ids } } }),
+      prisma.cashDraw.findMany(),
+    ]);
+    if (expenses.length !== ids.length) return res.status(400).json({ error: "One of those payment requests does not exist." });
+    const drawnIn = new Map<string, string>();
+    for (const d of draws) for (const l of JSON.parse(d.linksJson || "[]") as DrawLink[]) drawnIn.set(l.expenseId, d.id);
+    const links = expenses.map(e => ({
+      expenseId: e.id, voucherNo: e.voucherNo, netUSD: requestNetUSD(e),
+      status: e.status, paid: !!e.paid_at, alreadyDrawnIn: drawnIn.get(e.id) || "",
+    }));
+    const amount = r2m(Number(amountUSD));
+    const refused = drawBlocker({ openedOn: box?.openedOn, date: day, amountUSD: amount, links });
+    if (refused) return res.status(400).json({ error: refused });
+
+    const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
+    const isEur = source.currency === "EUR";
+    const inSource = r2m(isEur ? amount / rates.EUR : amount);
+    if (source.balance < inSource) {
+      return res.status(400).json({ error: `Insufficient funds in ${source.name}: the withdrawal needs ${inSource.toFixed(2)} ${source.currency} and the books show ${source.balance.toFixed(2)} ${source.currency}.` });
+    }
+    const bankLedger = isEur ? "1110" : "1100";
+    const vouchers = links.map(l => l.voucherNo).join(", ");
+    const id = `cd-${Date.now()}`;
+    const now = new Date().toISOString();
+    const recorded = { recordedAt: now, recordedById: user?.id || "" };
+    const journalEntryId = `je-${id}`;
+    const draw = await prisma.$transaction(async (tx) => {
+      await tx.bankAccount.update({ where: { id: source.id }, data: { balance: { decrement: inSource } } });
+      await tx.bankAccount.update({ where: { id: transit.id }, data: { balance: { increment: amount } } });
+      await tx.bankTransaction.create({ data: {
+        id: `bt-${id}-out`, bankAccountId: source.id, date: day, amount: inSource, type: "Withdrawal",
+        reconciled: true, noticeRef: DRAW_REF(id), description: `Cash withdrawn for ${vouchers} (${id})`, ...recorded,
+      } });
+      await tx.bankTransaction.create({ data: {
+        id: `bt-${id}-in`, bankAccountId: transit.id, date: day, amount, type: "Deposit",
+        reconciled: true, noticeRef: DRAW_REF(id), description: `Cash in transit from ${source.name} for ${vouchers} (${id})`, ...recorded,
+      } });
+      await tx.journalEntry.create({ data: {
+        id: journalEntryId, journal: "Bank", date: day, referenceNo: id, isPosted: true, ...recorded,
+        description: `Cash withdrawn ${id} for ${vouchers}: USD ${amount.toFixed(2)} from ${source.name} into cash in transit`,
+        itemsJson: JSON.stringify([
+          { accountCode: CASH_CLEARING_LEDGER, debit: amount, credit: 0 },
+          { accountCode: bankLedger, debit: 0, credit: amount },
+        ]),
+      } });
+      await tx.account.update({ where: { code: CASH_CLEARING_LEDGER }, data: { balance: { increment: amount } } });
+      await tx.account.update({ where: { code: bankLedger }, data: { balance: { decrement: inSource } } });
+      return tx.cashDraw.create({ data: {
+        id, sourceAccountId: source.id, transitAccountId: transit.id, date: day, amountUSD: amount, amountSource: inSource,
+        linksJson: JSON.stringify(links.map(({ expenseId, voucherNo, netUSD }) => ({ expenseId, voucherNo, netUSD }))),
+        note: String(note || "").trim(), recordedAt: now, recordedById: user?.id || "", recordedByName: user?.name || "", journalEntryId,
+      } });
+    });
+    await createAuditLog(user?.id, user?.name, "Cash Withdrawn for Payment Requests",
+      `${user?.name} recorded USD ${amount.toFixed(2)} withdrawn from ${source.name} on ${day} (${id}) to pay ${vouchers}. Journal ${journalEntryId}: Dr ${CASH_CLEARING_LEDGER} / Cr ${bankLedger}.`);
+    res.json({ success: true, draw });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Put a withdrawal's leftover back in the bank, once every request it was drawn for is paid.
+app.post("/api/cash/draw/return", async (req, res) => {
+  try {
+    const { drawId, amountUSD, targetAccountId, date, user } = req.body;
+    const draw = await prisma.cashDraw.findUnique({ where: { id: String(drawId || "") } });
+    if (!draw) return res.status(404).json({ error: "Withdrawal not found." });
+    const [transit, target] = await Promise.all([
+      prisma.bankAccount.findUnique({ where: { id: draw.transitAccountId } }),
+      prisma.bankAccount.findUnique({ where: { id: String(targetAccountId || draw.sourceAccountId) } }),
+    ]);
+    if (!transit || !isTransit(transit)) return res.status(400).json({ error: "There is no cash-in-transit account." });
+    if (!target || target.type !== "Bank" || !target.active) return res.status(400).json({ error: "A leftover is redeposited into an active bank account." });
+    const day = String(date || localDate());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > localDate()) return res.status(400).json({ error: "Enter the date the cash went back into the bank." });
+    if (day < draw.date) return res.status(400).json({ error: `The cash was withdrawn on ${draw.date}; it cannot be redeposited before that.` });
+    const amount = r2m(Number(amountUSD));
+    const standing = await drawStanding(draw);
+    const refused = leftoverBlocker(standing.remainingUSD, amount, standing.unpaidLinks);
+    if (refused) return res.status(400).json({ error: refused });
+
+    const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
+    const isEur = target.currency === "EUR";
+    const inTarget = r2m(isEur ? amount / rates.EUR : amount);
+    const bankLedger = isEur ? "1110" : "1100";
+    const now = new Date().toISOString();
+    const recorded = { recordedAt: now, recordedById: user?.id || "" };
+    const stamp = Date.now();
+    const journalEntryId = `je-cdr-${stamp}`;
+    const returns = JSON.parse(draw.returnsJson || "[]");
+    returns.push({ date: day, amountUSD: amount, targetAccountId: target.id, journalEntryId, recordedAt: now, recordedById: user?.id || "", recordedByName: user?.name || "" });
+    await prisma.$transaction(async (tx) => {
+      await tx.bankAccount.update({ where: { id: transit.id }, data: { balance: { decrement: amount } } });
+      await tx.bankAccount.update({ where: { id: target.id }, data: { balance: { increment: inTarget } } });
+      await tx.bankTransaction.create({ data: {
+        id: `bt-cdr-${stamp}-out`, bankAccountId: transit.id, date: day, amount, type: "Withdrawal",
+        reconciled: true, noticeRef: DRAW_RETURN_REF(draw.id), description: `Leftover of ${draw.id} redeposited to ${target.name}`, ...recorded,
+      } });
+      await tx.bankTransaction.create({ data: {
+        id: `bt-cdr-${stamp}-in`, bankAccountId: target.id, date: day, amount: inTarget, type: "Deposit",
+        reconciled: true, noticeRef: DRAW_RETURN_REF(draw.id), description: `Leftover cash of ${draw.id} redeposited`, ...recorded,
+      } });
+      await tx.journalEntry.create({ data: {
+        id: journalEntryId, journal: "Bank", date: day, referenceNo: draw.id, isPosted: true, ...recorded,
+        description: `Leftover of withdrawal ${draw.id} redeposited: USD ${amount.toFixed(2)} to ${target.name}`,
+        itemsJson: JSON.stringify([
+          { accountCode: bankLedger, debit: amount, credit: 0 },
+          { accountCode: CASH_CLEARING_LEDGER, debit: 0, credit: amount },
+        ]),
+      } });
+      await tx.account.update({ where: { code: CASH_CLEARING_LEDGER }, data: { balance: { decrement: amount } } });
+      await tx.account.update({ where: { code: bankLedger }, data: { balance: { increment: inTarget } } });
+      await tx.cashDraw.update({ where: { id: draw.id }, data: { returnsJson: JSON.stringify(returns) } });
+    });
+    await createAuditLog(user?.id, user?.name, "Cash Leftover Redeposited",
+      `${user?.name} redeposited USD ${amount.toFixed(2)} left from withdrawal ${draw.id} into ${target.name} on ${day}. Journal ${journalEntryId}: Dr ${bankLedger} / Cr ${CASH_CLEARING_LEDGER}.`);
+    res.json({ success: true, remainingUSD: r2m(standing.remainingUSD - amount) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

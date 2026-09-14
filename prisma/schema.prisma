@@ -501,6 +501,33 @@ model CashTopUp {
   decidedAt       String @default("")
   queryNote       String @default("")
   journalEntryId  String @default("")
+  /// A top-up funded by a withdrawal's leftover rather than the bank (Saad, 14 Sep 2026). Empty
+  /// for an ordinary top-up from BLOM.
+  sourceDrawId    String @default("")
+}
+
+/// Cash withdrawn from BLOM to pay approved payment requests — fees and larger costs that must not
+/// go into the float and must not accumulate in 1120 (Saad, 14 Sep 2026). It sits on 1127 (the
+/// "Cash in transit" account) until the requests it was drawn for are paid out of it. One
+/// withdrawal may pay several requests; each request is paid from one withdrawal only.
+model CashDraw {
+  id               String @id
+  sourceAccountId  String
+  transitAccountId String
+  /// The TRUE withdrawal date. Never before the float's opening — older cash is historical 1120.
+  date             String
+  amountUSD        Float
+  /// What left the bank in the bank account's own currency (1110 is stored in euros).
+  amountSource     Float
+  /// [{ expenseId, voucherNo, netUSD }] — the approved requests this cash was drawn to pay.
+  linksJson        String @default("[]")
+  /// [{ date, amountUSD, targetAccountId, journalEntryId, recordedAt, recordedById, recordedByName }] — leftover put back in the bank.
+  returnsJson      String @default("[]")
+  note             String @default("")
+  recordedAt       String
+  recordedById     String
+  recordedByName   String @default("")
+  journalEntryId   String @default("")
 }
 
 // A recurring charge: what renews, when, from which account, and who pays for it.

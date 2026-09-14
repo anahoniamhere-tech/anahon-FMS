@@ -211,7 +211,7 @@ export interface BankAccount {
   name: string;
   /** "Petty Cash" is the float (the locked box) and nothing else; the BOB/OMT/Whish/cheque
    *  channels are "Off-bank channel" (Policy 020 §4.4.4). */
-  type: "Bank" | "Petty Cash" | "Off-bank channel";
+  type: "Bank" | "Petty Cash" | "Off-bank channel" | "Cash in transit";
   currency: "USD" | "EUR" | "LBP";
   accountNo: string;
   balance: number;
@@ -401,6 +401,23 @@ export interface CashCount {
 }
 
 /** A top-up of the petty-cash float (Policy 020 §4.4.1). */
+// Cash withdrawn from the bank for approved payment requests, held on 1127 until they are paid.
+export interface CashDraw {
+  id: string;
+  sourceAccountId: string;
+  transitAccountId: string;
+  date: string;
+  amountUSD: number;
+  amountSource: number;
+  linksJson: string;   // [{ expenseId, voucherNo, netUSD }]
+  returnsJson: string; // redeposits of the leftover
+  note: string;
+  recordedAt: string;
+  recordedById: string;
+  recordedByName: string;
+  journalEntryId: string;
+}
+
 export interface CashTopUp {
   id: string;
   bankAccountId: string;
@@ -417,6 +434,7 @@ export interface CashTopUp {
   decidedByName: string;
   decidedAt: string;
   queryNote: string;
+  sourceDrawId: string; // set when a withdrawal's leftover tops up the float
   journalEntryId: string;
 }
 
@@ -702,6 +720,7 @@ export interface DatabaseState {
   opportunities: Opportunity[];
   cashCounts: CashCount[];
   cashTopUps: CashTopUp[];
+  cashDraws: CashDraw[];
   subscriptions: Subscription[];
   projectActivities: ProjectActivity[];
   contentItems: ContentItem[];

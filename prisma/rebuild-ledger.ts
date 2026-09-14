@@ -17,7 +17,7 @@
 import { PrismaClient } from "@prisma/client";
 
 import { costAccountFor } from "../src/costAccount.js";
-import { FLOAT_LEDGER, COUNT_DIFFERENCES_LEDGER, isFloat, isTopUpRef, countDifference, cashLedgerFor } from "../src/pettyCash.js";
+import { FLOAT_LEDGER, COUNT_DIFFERENCES_LEDGER, CASH_CLEARING_LEDGER, isFloat, isTransit, isTopUpRef, isDrawRef, isDrawReturnRef, countDifference, cashLedgerFor } from "../src/pettyCash.js";
 
 const prisma = new PrismaClient();
 
@@ -116,22 +116,24 @@ async function main() {
   // moved 6000 -> 5120 would have gone straight back).
   const expenseAccountFor = (e: any) => e.costAccountCode || costAccountFor(blById.get(e.budgetLineId)?.category);
   const usd = (amount: number, txAccountId: string) => eurAccountIds.has(txAccountId) ? r2(amount * fx) : amount;
-  const bankCode = (txAccountId: string) => floatIds.has(txAccountId) ? FLOAT_LEDGER
+  const transitIds = new Set(bankAccounts.filter(b => isTransit(b as any)).map(b => b.id));
+  const bankCode = (txAccountId: string) => floatIds.has(txAccountId) ? FLOAT_LEDGER : transitIds.has(txAccountId) ? CASH_CLEARING_LEDGER
     : pettyAccountIds.has(txAccountId) ? ACC.PETTY : eurAccountIds.has(txAccountId) ? ACC.BANK_EUR : ACC.BANK_USD;
   // The one stored cutover for late records: the float's opening date (its first count).
   const openedOn = bankAccounts.find(b => floatIds.has(b.id))?.openedOn || "";
-  // Cash dated after the opening that is neither into nor out of the box belongs to the
-  // cash-clearing account, which is designed but not yet built. Until then it is posted to 1120
-  // AND counted here, so the gap is reported rather than silently filed.
-  let awaitingClearing = 0;
+  // Cash dated after the opening that is neither into nor out of the box sits on 1127, cash in
+  // transit (Saad, 14 Sep 2026). A line that lands there without a recorded withdrawal is counted,
+  // so an ATM draw nobody linked to its requests is reported rather than silently filed.
+  let unlinkedTransit = 0;
   const cashCode = (date: string, fromFloat: boolean) => {
     const code = cashLedgerFor(date, openedOn, fromFloat);
-    if (code) return code;
-    awaitingClearing++;
-    return ACC.PETTY;
+    if (code === CASH_CLEARING_LEDGER) unlinkedTransit++;
+    return code;
   };
   // A voucher paid out of the box: its cash settlement credits the float, not the old clearing.
   const paidFromFloat = new Set(bankTx.filter(t => t.type === "Withdrawal" && floatIds.has(t.bankAccountId) && t.voucherNo).map(t => t.voucherNo!));
+  // ...and a voucher paid out of a withdrawal credits 1127 whatever its date says.
+  const paidFromTransit = new Set(bankTx.filter(t => t.type === "Withdrawal" && transitIds.has(t.bankAccountId) && t.voucherNo).map(t => t.voucherNo!));
   const eurNote = (txAccountId: string) => eurAccountIds.has(txAccountId) ? ` [EUR @ ${fx}]` : "";
 
   // ---- 1. statement lines: the only source of bank movements ----
@@ -146,6 +148,16 @@ async function main() {
     if (bt.type === "Deposit" && floatIds.has(bt.bankAccountId) && isTopUpRef(bt.noticeRef)) continue;
     // A payment out of the box is posted by its voucher (section 2), which credits the float.
     if (bt.type === "Withdrawal" && floatIds.has(bt.bankAccountId) && bt.voucherNo) continue;
+    // A withdrawal for payment requests, and a redeposit of its leftover, also write two lines;
+    // the bank's line carries the entry. A payment out of cash in transit is posted by its voucher.
+    if (transitIds.has(bt.bankAccountId) && (isDrawRef(bt.noticeRef) || isDrawReturnRef(bt.noticeRef) || (bt.type === "Withdrawal" && bt.voucherNo))) continue;
+    const recorded = { recordedAt: (bt as any).recordedAt, recordedById: (bt as any).recordedById };
+
+    if (bt.type === "Deposit" && isDrawReturnRef(bt.noticeRef)) {
+      post(bt.date, "Bank", `Leftover cash redeposited: ${bt.description}${note}`, ref, [
+        { accountCode: bank, debit: amt }, { accountCode: CASH_CLEARING_LEDGER, credit: amt }], recorded);
+      continue;
+    }
 
     if (bt.type === "Deposit") {
       let contra: { accountCode: string; projectId?: string | null; donorId?: string | null } = { accountCode: ACC.SUSPENSE };
@@ -169,7 +181,12 @@ async function main() {
 
     // Withdrawals
     const v = matchedLines.get(bt.id);
-    if (isTopUpRef(bt.noticeRef)) {
+    if (isDrawRef(bt.noticeRef)) {
+      // Cash withdrawn for approved payment requests: it waits on 1127 until they are paid. Before
+      // the ATM rule, for the same reason as a top-up.
+      post(bt.date, "Bank", `Cash withdrawn for payment requests: ${bt.description}${note}`, ref, [
+        { accountCode: CASH_CLEARING_LEDGER, debit: amt }, { accountCode: bank, credit: amt }], recorded);
+    } else if (isTopUpRef(bt.noticeRef)) {
       // Cash drawn to top up the float (Policy 020 §4.4.1). Checked before the ATM rule, which
       // would otherwise read it as one more "cash drawn to petty cash" and grow the 1120 clearing.
       post(bt.date, "Bank", `Petty cash top-up to the float: ${bt.description}${note}`, ref, [
@@ -245,7 +262,7 @@ async function main() {
       // Cash (and legacy unknown-method) vouchers: paid from petty cash drawn at the ATM — or,
       // since 14 Sep 2026, from the float, whose payments credit 1125 instead of the old clearing.
       // Placed by its true date against the stored opening, never by when it was typed in.
-      const cashFrom = cashCode(date, paidFromFloat.has(e.voucherNo));
+      const cashFrom = paidFromTransit.has(e.voucherNo) ? CASH_CLEARING_LEDGER : cashCode(date, paidFromFloat.has(e.voucherNo));
       post(date, "Purchases", `${e.voucherNo}: ${e.title} (cash)`, e.voucherNo, [
         ...debitLegs,
         { accountCode: cashFrom, credit: netUSD, projectId: e.projectId },
@@ -336,7 +353,8 @@ async function main() {
   const b1125 = (await prisma.account.findUnique({ where: { code: FLOAT_LEDGER } }))?.balance ?? 0;
   const b2920 = (await prisma.account.findUnique({ where: { code: COUNT_DIFFERENCES_LEDGER } }))?.balance ?? 0;
   console.log(`1125 Petty cash float: ${b1125.toLocaleString()}   2920 count differences pending review: ${b2920.toLocaleString()}`);
-  console.log(`float opened on: ${openedOn || "(not yet — everything is historical clearing)"}   cash after the opening awaiting the clearing account: ${awaitingClearing}${awaitingClearing ? "  <-- posted to 1120 until that account exists" : ""}`);
+  const b1127 = (await prisma.account.findUnique({ where: { code: CASH_CLEARING_LEDGER } }))?.balance ?? 0;
+  console.log(`float opened on: ${openedOn || "(not yet — everything is historical clearing)"}   1127 cash in transit: ${b1127.toLocaleString()}   lines on 1127 with no recorded withdrawal: ${unlinkedTransit}${unlinkedTransit ? "  <-- link them to their requests" : ""}`);
   console.log(`2100 AP open: ${b2100.toLocaleString()}  (incl. FHI360 pass-through + unmatched card vouchers)`);
   console.log(`2900 Suspense: ${b2900.toLocaleString()}  (unidentified: 'Trf From 068…' ${""}+ cash deposit 50 + unclassified)`);
 

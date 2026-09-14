@@ -4,6 +4,7 @@ import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 import { FINANCE } from "../roles";
 import PettyCashPanel from "./PettyCashPanel";
+import CashClearingPanel from "./CashClearingPanel";
 
 export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch, setBankSearch, currentUser, refreshState, state, t, triggerToast, formatUSD }: SharedProps) {
   // Bank Reconciliation Trigger form
@@ -57,6 +58,9 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
 
               {/* The petty-cash float: balance against its ceiling, top-ups and counts (Policy 020 §4.4). */}
               <PettyCashPanel state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState} formatUSD={formatUSD} />
+
+              {/* Cash withdrawn for approved payment requests, until they are paid (1127). */}
+              <CashClearingPanel state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState} formatUSD={formatUSD} />
 
               {/* Direct Reconcile form */}
               {FINANCE.includes(currentUser.role) && (

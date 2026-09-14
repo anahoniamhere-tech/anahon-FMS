@@ -58,6 +58,9 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/cash/count": [...DIRECTORS, PLO],
   "/api/cash/topup/raise": BOOKS,
   "/api/cash/topup/decide": DIRECTORS,
+  // Cash withdrawn for approved payment requests, and its leftover — Finance's (Saad, 14 Sep 2026).
+  "/api/cash/draw": BOOKS,
+  "/api/cash/draw/return": BOOKS,
   "/api/fxRates": BOOKS,
   "/api/fxRates/sync-inforeuro": BOOKS,
   "/api/partners/draw": DIRECTORS,

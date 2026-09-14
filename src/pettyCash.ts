@@ -123,23 +123,31 @@ export function itemsBlocker(items: TopUpItem[]): string {
 }
 export const itemsTotal = (items: TopUpItem[]) => r2(items.reduce((s, i) => s + i.amountUSD, 0));
 
+/** Cash withdrawn from BLOM for approved payment requests — fees and larger costs that must
+ *  NOT go into the float and must NOT accumulate in 1120 (Saad, 14 Sep 2026). Each withdrawal is
+ *  linked to the requests it pays and cleared as they are paid. */
+export const CASH_CLEARING_LEDGER = "1127";
+export const TRANSIT_TYPE = "Cash in transit";
+export const isTransit = (a?: AccountLike | null) => !!a && a.type === TRANSIT_TYPE && a.ledgerCode === CASH_CLEARING_LEDGER;
+/** An open withdrawal still holding cash this many days after it was drawn is flagged. */
+export const CLEARING_ALERT_DAYS = 7;
+
 /**
  * The cutover for late records (Saad, 14 Sep 2026). Years of vouchers, receipts and contracts are
- * about to be backfilled, so a cash movement is placed by its TRUE date against one stored date —
- * the float's opening date, set by its first count — never by when it was typed in:
+ * being backfilled, so a cash movement is placed by its TRUE date against one stored date — the
+ * float's opening date, set by its first count — never by when it was typed in:
  *
  *   dated before the opening, or no opening yet  ->  1120, the historical clearing (it stays open)
  *   dated on or after it, out of or into the box ->  1125, the float
- *   dated on or after it, anything else in cash  ->  null: the cash-clearing account, which is
- *                                                    designed but not yet built
+ *   dated on or after it, any other cash         ->  1127, cash in transit, cleared against the
+ *                                                    payment requests it was drawn for
  *
- * null is deliberate rather than a quiet 1120. Cash after the opening must not accumulate in
- * 1120, and until the clearing account exists the honest answer is "not decided", which a caller
- * has to surface instead of hiding.
+ * Nothing after the opening lands in 1120. Cash in transit that no withdrawal record explains
+ * (an ATM line nobody linked) still goes to 1127, where it shows as uncleared from day one.
  */
-export function cashLedgerFor(date: string, openedOn: string | null | undefined, fromFloat: boolean): string | null {
+export function cashLedgerFor(date: string, openedOn: string | null | undefined, fromFloat: boolean): string {
   if (!openedOn || String(date) < openedOn) return HISTORICAL_CLEARING_LEDGER;
-  return fromFloat ? FLOAT_LEDGER : null;
+  return fromFloat ? FLOAT_LEDGER : CASH_CLEARING_LEDGER;
 }
 
 /** A float that has not had its opening count cannot be topped up, and nothing about it may be
@@ -165,10 +173,11 @@ export const FEES_NEVER_FROM_FLOAT = ["5100", "5120", "5130"];
 export interface PayoutAccount extends AccountLike { name?: string; currency?: string; openedOn?: string | null }
 
 /** What may pay a voucher out: an active bank account, or the opened float for anything but a fee. */
-export function payoutBlocker(a: PayoutAccount | null | undefined, costAccount?: string | null, date?: string): string {
+export function payoutBlocker(a: PayoutAccount | null | undefined, costAccount?: string | null, date?: string, draw?: DrawForPayout | null): string {
   if (!a) return "That account does not exist.";
   if (a.active === false) return `${a.name || "That account"} is not active — money cannot leave it.`;
   if (a.type === "Bank") return "";
+  if (isTransit(a)) return transitBlocker(draw);
   if (isChannel(a)) return "Policy 020 §4.4.4: an off-bank channel records money received or paid through it — it is never the petty-cash float.";
   if (!isFloat(a)) return "Policy 020 §4.4.1: cash is paid out of the petty-cash float and nowhere else.";
   // With a date: a payment dated before the float opened never came out of the box. Allowing it
@@ -185,6 +194,73 @@ export function payoutBlocker(a: PayoutAccount | null | undefined, costAccount?:
 /** The ledger account a payment out of `a` on `date` credits — the float by its true date,
  *  everything else by the account's own ledger code. */
 export function payoutLedgerFor(a: PayoutAccount, date: string): string {
-  if (isFloat(a)) return cashLedgerFor(date, a.openedOn, true)!;
+  if (isFloat(a)) return cashLedgerFor(date, a.openedOn, true);
   return a.ledgerCode || (a.currency === "EUR" ? "1110" : "1100");
+}
+
+/* ---- Cash clearing: withdrawals for approved payment requests (Saad, 14 Sep 2026) ----------
+ * Money drawn in cash from BLOM to pay fees or larger costs sits on 1127 until the requests it
+ * was drawn for are paid out of it. One withdrawal may pay several requests; each request is paid
+ * from one withdrawal only. A leftover is redeposited, or moved into the float through an ordinary
+ * top-up (which the Executive Director approves and the ceiling still bounds). A withdrawal still
+ * holding cash seven days after it was drawn is flagged to the Executive Director and Finance —
+ * counting only withdrawals dated on or after the float's opening.
+ */
+
+export const DRAW_REF = (id: string) => `draw:${id}`;
+export const isDrawRef = (ref?: string | null) => String(ref || "").startsWith("draw:");
+export const DRAW_RETURN_REF = (id: string) => `draw-return:${id}`;
+export const isDrawReturnRef = (ref?: string | null) => String(ref || "").startsWith("draw-return:");
+
+export interface DrawLink { expenseId: string; voucherNo: string; netUSD: number }
+
+/** Where a withdrawal stands: what it drew, what has left it, what is still in hand. */
+export function drawPosition(amountUSD: number, paidUSD: number, redepositedUSD: number, toFloatUSD: number) {
+  const remainingUSD = r2(amountUSD - paidUSD - redepositedUSD - toFloatUSD);
+  return { remainingUSD, cleared: Math.abs(remainingUSD) < EPS };
+}
+
+/** Days between two YYYY-MM-DD dates. */
+export const daysBetween = (from: string, to: string) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000);
+
+/** The seven-day flag — only for withdrawals dated on or after the float's opening. */
+export function drawOverdue(drawDate: string, today: string, remainingUSD: number, openedOn: string | null | undefined): boolean {
+  if (!openedOn || drawDate < openedOn) return false;
+  if (remainingUSD < EPS) return false;
+  return daysBetween(drawDate, today) > CLEARING_ALERT_DAYS;
+}
+
+/** Recording a withdrawal against approved requests. */
+export function drawBlocker(d: {
+  openedOn: string | null | undefined; date: string; amountUSD: number;
+  links: (DrawLink & { status: string; alreadyDrawnIn?: string | null; paid?: boolean })[];
+}): string {
+  const notOpen = openingBlocker(d.openedOn, d.date);
+  if (notOpen) return notOpen;
+  if (!Number.isFinite(d.amountUSD) || d.amountUSD <= 0) return "A withdrawal must be for more than zero.";
+  if (!d.links.length) return "A withdrawal is linked to the approved payment requests it pays — choose at least one.";
+  const bad = d.links.filter(l => l.status !== "Approved" || l.paid);
+  if (bad.length) return `Policy 020 §4.4.2: cash is drawn only for approved requests not yet paid — ${bad.map(l => l.voucherNo).join(", ")} ${bad.length === 1 ? "is" : "are"} not.`;
+  const twice = d.links.filter(l => l.alreadyDrawnIn);
+  if (twice.length) return `Each request is paid from one withdrawal only — ${twice.map(l => `${l.voucherNo} (in ${l.alreadyDrawnIn})`).join(", ")}.`;
+  const needed = r2(d.links.reduce((s, l) => s + l.netUSD, 0));
+  if (d.amountUSD + EPS < needed) return `The withdrawal of ${usdLabel(r2(d.amountUSD))} does not cover the ${usdLabel(needed)} these requests pay.`;
+  return "";
+}
+
+/** For paying a request out of cash in transit: only against the withdrawal it was drawn for. */
+export interface DrawForPayout { linked: boolean; remainingUSD: number; netUSD: number; drawId?: string }
+export function transitBlocker(draw?: DrawForPayout | null): string {
+  if (!draw || !draw.linked) return "Cash in transit pays only the request it was drawn for — record the withdrawal against this request first.";
+  if (draw.netUSD > draw.remainingUSD + EPS) return `The withdrawal holds ${usdLabel(r2(draw.remainingUSD))}, less than the ${usdLabel(r2(draw.netUSD))} this payment needs.`;
+  return "";
+}
+
+/** Moving a leftover into the float, or back to the bank: never more than is still in hand. */
+export function leftoverBlocker(remainingUSD: number, amountUSD: number, unpaidLinks: number): string {
+  if (!Number.isFinite(amountUSD) || amountUSD <= 0) return "Enter an amount of more than zero.";
+  if (unpaidLinks > 0) return "The requests this withdrawal was drawn for are not all paid yet — the cash is still spoken for.";
+  if (amountUSD > remainingUSD + EPS) return `Only ${usdLabel(r2(remainingUSD))} of this withdrawal is left.`;
+  return "";
 }
