@@ -375,6 +375,8 @@ export const AR: Record<string, string> = {
   "Answer the query on the top-up": "أجب عن الاستفسار حول تعبئة الصندوق",
   "Raised": "مقدَّم",
   "Count due": "موعد الجرد",
+  "Clear the withdrawal": "سوِّ السحب النقدي",
+  "Uncleared": "غير مُسوّى",
   "Count the petty cash": "جرد صندوق النثريات",
   "Count the petty cash without notice": "جرد صندوق النثريات دون إشعار مسبق",
   "Count the cash in the box with the Finance Officer present, and enter what you found.": "اجرد النقد في الصندوق بحضور المسؤول المالي، وأدخل ما وجدته.",

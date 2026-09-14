@@ -17,7 +17,7 @@ import { EQUIPMENT_VERIFIERS,
 import { missingPersonnelDocs } from "./personnelDocs";
 import { missingSupplierDocs } from "./supplierDocs";
 import { missingCoreDocs } from "./coreDocs";
-import { isFloat, DIRECTOR_SEATS, COUNTER_SEATS } from "./pettyCash";
+import { isFloat, DIRECTOR_SEATS, COUNTER_SEATS, drawPosition, drawOverdue, CLEARING_ALERT_DAYS } from "./pettyCash";
 
 type Kind = keyof DatabaseState;
 type State = Partial<DatabaseState>;
@@ -349,6 +349,45 @@ export function cashCountItems(me: Me, s: State, today = localToday()): DeskItem
   return out;
 }
 
+/* ── Cash drawn for payment requests and not yet cleared ─────────────────────
+ * Policy 020 §4.4.2: cash taken from the bank for approved requests sits in cash in transit
+ * (1127) until those requests are paid out of it; a withdrawal still holding cash seven days on
+ * goes to the Executive Director and Finance. A reminder, not an approval, so nobody is excluded.
+ *
+ * "Remaining" is derived exactly as drawStanding does it on the server: the amount drawn, less
+ * the transit payment lines for its linked vouchers, less its redeposits, less approved top-ups
+ * that took its leftover into the float. drawOverdue applies the seven days and the rule that
+ * only withdrawals dated on or after the float's opening count.
+ */
+const parseList = (json: string) => { try { const v = JSON.parse(json || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } };
+const DRAW_SEATS = [...DIRECTORS, ...FINANCE];
+export function cashDrawItems(me: Me, s: State, today = localToday()): DeskItem[] {
+  if (!DRAW_SEATS.includes(me.role)) return [];
+  const openedOn = ((s.bankAccounts as any[]) || []).find(a => isFloat(a))?.openedOn;
+  const out: DeskItem[] = [];
+  for (const draw of ((s as any).cashDraws as any[]) || []) {
+    const vouchers = new Set(parseList(draw.linksJson).map((l: any) => l.voucherNo));
+    const paid = ((s.bankTransactions as any[]) || [])
+      .filter(t => t.bankAccountId === draw.transitAccountId && t.type === "Withdrawal" && vouchers.has(t.voucherNo))
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    const redeposited = parseList(draw.returnsJson).reduce((sum: number, x: any) => sum + Number(x.amountUSD || 0), 0);
+    const toFloat = (((s as any).cashTopUps as any[]) || [])
+      .filter(t => t.sourceDrawId === draw.id && t.status === "Approved")
+      .reduce((sum, t) => sum + Number(t.amountUSD || 0), 0);
+    const { remainingUSD } = drawPosition(Number(draw.amountUSD || 0), paid, redeposited, toFloat);
+    if (!drawOverdue(String(draw.date).slice(0, 10), today, remainingUSD, openedOn)) continue;
+    const when = addDays(String(draw.date).slice(0, 10), CLEARING_ALERT_DAYS);
+    out.push({
+      id: `cashDraws:${draw.id}:uncleared`,
+      kind: "cashDraws" as Kind, recordId: draw.id, door: "banking",
+      title: `${String(draw.date).slice(0, 10)} · USD ${remainingUSD.toLocaleString("en-US")}`,
+      verb: "Clear the withdrawal", status: "Uncleared",
+      when, urgency: urgencyOf(when, today), group: "mine", seats: [], record: draw,
+    });
+  }
+  return out;
+}
+
 export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
   const out: DeskItem[] = [];
   for (const rule of RULES) {
@@ -395,6 +434,7 @@ export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
   // an absence, and there is no row to match.
   kept.push(...missingPaperItems(me, s));
   kept.push(...cashCountItems(me, s, today));
+  kept.push(...cashDrawItems(me, s, today));
   const rank = { overdue: 0, week: 1, waiting: 2 };
   return kept.sort((a, b) => rank[a.urgency] - rank[b.urgency] || (a.when || "9999").localeCompare(b.when || "9999") || a.title.localeCompare(b.title));
 }

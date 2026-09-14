@@ -322,6 +322,31 @@ ok("an off-bank channel is never treated as the float",
   counts(saMe, { bankAccounts: [float({ type: "Off-bank channel", ledgerCode: "" })], cashCounts: [] }).length === 0);
 ok("live limit: with the trimmed state the PLO really receives (no bank accounts), no count reminder reaches him",
   counts(ploMe, { bankAccounts: [], cashCounts: [] }).length === 0);
+// Cash in transit (1127), Policy 020 §4.4.2. today is 2026-09-04; the float opened 1 Aug.
+const draw = (over: any = {}) => ({ id: "cd1", date: "2026-08-20", amountUSD: 500, transitAccountId: "ba-transit",
+  linksJson: JSON.stringify([{ expenseId: "e1", voucherNo: "PV-1", netUSD: 300 }]), returnsJson: "[]", ...over });
+const paidLine = { id: "bt1", bankAccountId: "ba-transit", type: "Withdrawal", voucherNo: "PV-1", amount: 300, date: "2026-08-22" };
+const draws = (me: any, over: any) => deskItems(me, st({ users, bankAccounts: [float()], ...over }), today).filter(i => i.kind === ("cashDraws" as any));
+h = draws(saMe, { cashDraws: [draw()], bankTransactions: [paidLine] });
+ok("a withdrawal 15 days old still holding USD 200 is on the director's desk, overdue since day 7",
+  h.length === 1 && h[0].when === "2026-08-27" && h[0].urgency === "overdue" && h[0].title.includes("USD 200"), JSON.stringify(h.map(i => [i.title, i.when])));
+ok("and on Finance's — a reminder excludes nobody", draws(foMe, { cashDraws: [draw()], bankTransactions: [paidLine] }).length === 1);
+ok("but never on a seat outside the director and Finance", draws(ploMe, { cashDraws: [draw()], bankTransactions: [paidLine] }).length === 0);
+ok("a withdrawal whose requests are all paid out is cleared",
+  draws(saMe, { cashDraws: [draw({ amountUSD: 300 })], bankTransactions: [paidLine] }).length === 0);
+ok("a redeposited leftover clears it",
+  draws(saMe, { cashDraws: [draw({ returnsJson: JSON.stringify([{ amountUSD: 200 }]) })], bankTransactions: [paidLine] }).length === 0);
+ok("an approved top-up that took the leftover into the float clears it; a merely raised one does not",
+  draws(saMe, { cashDraws: [draw()], bankTransactions: [paidLine], cashTopUps: [{ id: "tu9", status: "Approved", sourceDrawId: "cd1", amountUSD: 200 }] }).length === 0 &&
+  draws(saMe, { cashDraws: [draw()], bankTransactions: [paidLine], cashTopUps: [{ id: "tu9", status: "Raised", sourceDrawId: "cd1", amountUSD: 200 }] }).length === 1);
+ok("a payment line for a voucher the withdrawal was not drawn for does not clear it",
+  draws(saMe, { cashDraws: [draw({ amountUSD: 300 })], bankTransactions: [{ ...paidLine, voucherNo: "PV-9" }] }).length === 1);
+ok("only 7 days on: a withdrawal 5 days old is not flagged",
+  draws(saMe, { cashDraws: [draw({ date: "2026-08-30" })], bankTransactions: [] }).length === 0);
+ok("a withdrawal dated before the float opened is historical, never flagged",
+  draws(saMe, { cashDraws: [draw({ date: "2026-07-20" })], bankTransactions: [] }).length === 0);
+ok("a malformed links field cannot crash the desk",
+  (() => { try { draws(saMe, { cashDraws: [draw({ linksJson: "not json" })] }); return true; } catch { return false; } })());
 ok("the Procurement and Logistics Officer can reach the count form on My Desk",
   /currentUser\?\.role === PLO && \(/.test(desk) && /<CashCountForm /.test(desk));
 
