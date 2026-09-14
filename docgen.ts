@@ -470,7 +470,13 @@ export function quotationHtml(o: {
 <table>
   <caption>Quotation to</caption>
   <tr><th scope="row">Client</th><td>${esc(o.clientName)}${o.clientTaxId ? ` — MOF/Tax ID: ${esc(o.clientTaxId)}` : ""}</td></tr>
-  ${o.clientContact || o.clientPhone ? `<tr><th scope="row">Contact</th><td>${esc([o.clientContact, o.clientPhone].filter(Boolean).join(" · "))}</td></tr>` : ""}
+  ${(() => {
+    // The client's name is already on the row above; repeat the contact person only when it is
+    // someone else (an organisation's named contact), so a person's quotation reads name, then number.
+    const person = o.clientContact && o.clientContact.trim().toLowerCase() !== o.clientName.trim().toLowerCase() ? o.clientContact : "";
+    const line = [person, o.clientPhone].filter(Boolean).join(" · ");
+    return line ? `<tr><th scope="row">Contact</th><td>${esc(line)}</td></tr>` : "";
+  })()}
 </table>
 <table>
   <caption>Services</caption>
