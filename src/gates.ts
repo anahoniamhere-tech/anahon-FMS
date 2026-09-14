@@ -124,7 +124,6 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/quotations/delete": MANAGERS,
   "/api/quotations/generate-doc": MANAGERS,
   "/api/quotations/issue-receipt": FINANCE,
-  "/api/quotations/settle-offbank": FINANCE,
   "/api/quotations/link-payment": FINANCE,
 
   // ---- The newsroom ---------------------------------------------------------

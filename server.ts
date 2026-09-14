@@ -2790,6 +2790,14 @@ app.post("/api/projects/new", async (req, res) => {
     if (fundingTx.projectId) {
       return res.status(400).json({ error: "That deposit is already linked to another project." });
     }
+    // A first donor tranche can arrive outside the bank, before its project exists (Policy 020 §4.4.4):
+    // recorded on a live channel as "other income", with its evidence. Anything else on a channel —
+    // a historical account, a quotation's payment, a line with no evidence — is not founding proof.
+    const fundingAccountRow = await prisma.bankAccount.findUnique({ where: { id: fundingTx.bankAccountId } });
+    const fromChannel = fundingAccountRow?.type === CHANNEL_TYPE;
+    if (fromChannel && (!isLiveChannel(fundingAccountRow) || offbankPurposeOf(fundingTx.noticeRef) !== "other" || !fundingTx.evidenceRef)) {
+      return res.status(400).json({ error: "Money received outside the bank funds a project only when it was recorded on its channel as other income, with its evidence — record the receipt first." });
+    }
 
     const existingProject = await prisma.project.findUnique({ where: { code } });
     if (existingProject) {
@@ -2814,6 +2822,35 @@ app.post("/api/projects/new", async (req, res) => {
 
     await prisma.bankTransaction.update({ where: { id: fundingTx.id }, data: { projectId: pid } });
 
+    // The receipt was booked as other income (4900) before the project existed. Move it to the
+    // project's income by a correcting entry on the receipt's true date — the original entry is never
+    // edited (Policy 020 §2.5). The rebuild keeps je-rc-* entries, so a re-run reproduces it.
+    let correction = "";
+    if (fromChannel) {
+      const originals = await prisma.journalEntry.findMany({ where: { referenceNo: { in: [fundingTx.id, `BT-${fundingTx.id}`] } } });
+      const booked = originals.flatMap(e => JSON.parse(e.itemsJson || "[]") as { accountCode: string; credit?: number }[])
+        .filter(l => l.accountCode === OTHER_INCOME_LEDGER).reduce((sum, l) => sum + (l.credit || 0), 0);
+      const usd = r2m(booked);
+      if (usd > 0) {
+        const income = channelIncomeFor("project", project);
+        const correctionId = `je-rc-${Date.now()}`;
+        await prisma.$transaction(async (t) => {
+          await t.journalEntry.create({ data: {
+            id: correctionId, journal: "Adjustment", date: fundingTx.date, referenceNo: fundingTx.id, isPosted: true,
+            recordedAt: new Date().toISOString(), recordedById: user?.id || "",
+            description: `Receipt ${fundingTx.id} (${fundingTx.evidenceRef}) founds project ${code}: moved from other income to the project's income. The original entry stands.`,
+            itemsJson: JSON.stringify([
+              { accountCode: OTHER_INCOME_LEDGER, debit: usd, credit: 0 },
+              { accountCode: income, debit: 0, credit: usd, projectId: pid, donorId },
+            ]),
+          } });
+          await t.account.update({ where: { code: OTHER_INCOME_LEDGER }, data: { balance: { decrement: usd } } });
+          await t.account.update({ where: { code: income }, data: { balance: { increment: usd } } });
+        });
+        correction = ` Correcting entry ${correctionId} on ${fundingTx.date}: Dr ${OTHER_INCOME_LEDGER} / Cr ${income} USD ${usd.toFixed(2)}; the original receipt entry is unchanged.`;
+      }
+    }
+
     const fundingAccount = await prisma.bankAccount.findUnique({ where: { id: fundingTx.bankAccountId } });
     await createAuditLog(
       user?.id || "u-1",
@@ -2821,7 +2858,7 @@ app.post("/api/projects/new", async (req, res) => {
       "Project Created",
       `Created New Restricted Grant Project: ${name} (${code}) with budget ${budgetUSD} USD. ` +
       `Funding proof: deposit ${fundingTx.date} ${fundingTx.amount} ${fundingAccount?.currency || ""} ` +
-      `("${fundingTx.description}") on ${fundingAccount?.name || fundingTx.bankAccountId} (${fundingAccount?.accountNo || ""}).`
+      `("${fundingTx.description}") on ${fundingAccount?.name || fundingTx.bankAccountId} (${fundingAccount?.accountNo || ""}).${correction}`
     );
 
     res.json({ success: true, project });
@@ -7559,11 +7596,6 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
   }
 });
 
-// Record an OFF-BANK client payment (OMT / BOB Finance / Whish / cash) settling a quotation.
-// Since 14 Sep 2026 it goes through recordOffbankReceipt onto the channel's own account (the
-// method is the channel's accountNo). Evidence reference is mandatory.
-const OFFBANK_METHODS = ["OMT", "BOB Finance", "Whish", "Cash"];
-
 // The client-facing PDF. Rendered from the same quotationHtml the vault copy uses, so the
 // paper the client signs and the paper on file can never diverge. Reuses htmlToPdf (the
 // report pipeline) rather than introducing a second PDF path.
@@ -7702,25 +7734,6 @@ async function settleQuotation(id: string, current: string, amount: number, tran
   await prisma.quotation.update({ where: { id }, data: { paymentTxIdsJson: JSON.stringify(tranches), status } });
   return { paid, status };
 }
-
-app.post("/api/quotations/settle-offbank", async (req, res) => {
-  try {
-    // Kept for the Clients & quotations form until it calls /api/offbank/receive itself. The money
-    // is recorded the one way every off-bank receipt is (Policy 020 §4.4.4): on the channel's own
-    // account for the quotation's currency — never a catch-all account the rebuild files in 1120.
-    const { id, method, reference, date, amount, user } = req.body;
-    const quote = await prisma.quotation.findUnique({ where: { id } });
-    if (!quote) return res.status(404).json({ error: "Quotation not found." });
-    if (!OFFBANK_METHODS.includes(method)) return res.status(400).json({ error: `Method must be one of: ${OFFBANK_METHODS.join(", ")}` });
-    const channel = (await prisma.bankAccount.findMany({ where: { type: CHANNEL_TYPE, accountNo: method, currency: quote.currency, active: true } })).find(a => isLiveChannel(a));
-    if (!channel) return res.status(400).json({ error: `There is no active ${method} account in ${quote.currency}.` });
-    const out = await recordOffbankReceipt({ accountId: channel.id, date, amount: Number(amount) || quote.amount, reference, purpose: "quotation", quotationId: quote.id, user });
-    if (out.error) return res.status(400).json({ error: out.error });
-    res.json({ success: true, txId: out.tx!.id });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // Add a deposit to the list that settles a quotation, or take one back off it
 // (`unlink: true`). Same evidence discipline as project funding: only a real,

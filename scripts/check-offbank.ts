@@ -40,9 +40,20 @@ ok("evidence is required", receiptBlocker(receipt({ reference: " " })) !== "" &&
 ok("a historical account cannot take a new receipt", receiptBlocker(receipt({ account: oldBob })) !== "");
 ok("the quotation and project must exist", receiptBlocker(receipt({ purpose: "quotation" })) !== "" && receiptBlocker(receipt({ purpose: "project", projectFound: false })) !== "");
 ok("no future dates", receiptBlocker(receipt({ date: "2026-10-03" })) !== "");
-ok("settle-offbank records through the same function, on the channel for the quotation's currency",
-  /app\.post\("\/api\/quotations\/settle-offbank"[\s\S]{0,900}accountNo: method, currency: quote\.currency[\s\S]{0,400}recordOffbankReceipt\(/.test(server));
+ok("the settle-offbank alias is gone — the Clients & quotations form calls /api/offbank/receive", !/settle-offbank|OFFBANK_METHODS/.test(server) && !/settle-offbank/.test(read("src/gates.ts")));
 ok("no route names a channel account by id — a currency is a data row", !/ba-ch-/.test(server) && (migration.match(/'Off-bank channel','USD'/g) || []).length === 5);
+
+console.log("\n1b. a first donor tranche received outside the bank can found its project");
+const projectsNew = server.slice(server.indexOf('app.post("/api/projects/new"'), server.indexOf("\n});\n", server.indexOf('app.post("/api/projects/new"')));
+ok("only a live channel receipt recorded as other income, with evidence, is founding proof",
+  /fromChannel && \(!isLiveChannel\(fundingAccountRow\) \|\| offbankPurposeOf\(fundingTx\.noticeRef\) !== "other" \|\| !fundingTx\.evidenceRef\)/.test(projectsNew));
+ok("a line already carrying a project is still refused", /if \(fundingTx\.projectId\)/.test(projectsNew));
+ok("adoption moves the income by a correcting entry Dr 4900 / Cr the project's income, on the receipt's true date",
+  /id: correctionId, journal: "Adjustment", date: fundingTx\.date/.test(projectsNew)
+  && /\{ accountCode: OTHER_INCOME_LEDGER, debit: usd, credit: 0 \},\s*\{ accountCode: income, debit: 0, credit: usd, projectId: pid, donorId \}/.test(projectsNew));
+ok("…sized from what the original entry booked to 4900, which is never edited",
+  /\.filter\(l => l\.accountCode === OTHER_INCOME_LEDGER\)\.reduce/.test(projectsNew) && !/journalEntry\.(update|delete)/.test(projectsNew));
+ok("…and survives a rebuild: its id is a kept je-rc-* entry", /const correctionId = `je-rc-\$\{Date\.now\(\)\}`/.test(projectsNew) && /\/\^je-rc-\/\.test\(e\.id\)/.test(rebuild));
 
 console.log("\n2. a bank-only project refuses money outside the bank (§4.4.4)");
 const bankOnly = { code: "ASFARI-2026-LER", channelRule: "bank", channelRuleSource: "ANH-DOC-00412" };
