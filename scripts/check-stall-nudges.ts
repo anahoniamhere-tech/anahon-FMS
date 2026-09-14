@@ -5,7 +5,7 @@
 // chasing work that has already been done. Pure asserts; no database, no network.
 // Run: npx tsx scripts/check-stall-nudges.ts
 import { readFileSync } from "node:fs";
-import { planStallNudges, planIsQuiet, personMessage, escalationMessage, STALL_RHYTHM, StallRow } from "../src/stallNudges.js";
+import { planStallNudges, planIsQuiet, personMessage, escalationMessage, groupEscalations, STALL_RHYTHM, StallRow } from "../src/stallNudges.js";
 import type { DeskItem } from "../src/workflow.js";
 
 let failed = 0;
@@ -64,6 +64,16 @@ ok("a quiet plan sends no message", personMessage(planStallNudges([], [], TODAY,
 const up = escalationMessage([{ personName: "Marwan El Cheikh", item: item() }])!;
 ok("the escalation names the person and the task", /Marwan El Cheikh — Approve or return: PV-2026-014/.test(up.body));
 
+const shared = item({ id: "subscriptions:s-9", title: "Follow up: Samer Abdallah" });
+const grouped = groupEscalations([
+  { personName: "Marwan El Cheikh", item: shared }, { personName: "Ahmad Ayshan", item: shared },
+  { personName: "Abdul Rahman El Ibrahim", item: shared }, { personName: "Ahmad Ayshan", item: shared },
+  { personName: "Marwan El Cheikh", item: item() },
+]);
+ok("a task stalled with several holders is escalated once, naming them all", grouped.length === 2
+  && grouped[0].personName === "Marwan El Cheikh, Ahmad Ayshan, Abdul Rahman El Ibrahim");
+ok("different tasks stay separate lines", grouped[1].item.id === "expenses:e-1");
+
 console.log("\nthe server wiring holds the boundaries");
 const server = readFileSync(new URL("../server.ts", import.meta.url), "utf8");
 // Code only: the section's comments deliberately say what it does NOT do ("no mail, no
@@ -76,6 +86,7 @@ ok("it never writes to a record — only its own ledger rows", !/prisma\.(expens
 ok("a ledger row is written only after a device received it", /if \(delivered\)/.test(block));
 ok("the Executive Director is not reminded about his own desk", /isDirector\(person\.role\)\)\s*continue/.test(block));
 ok("the preview route is for directors only", /\/api\/shadow\/plan[\s\S]{0,400}isDirector/.test(block));
+ok("the escalation is grouped by task before it is sent", /escalationMessage\(grouped\)/.test(block));
 ok("every reminder and escalation is written to the audit log", /Shadow Reminder Sent/.test(block) && /Shadow Escalation Sent/.test(block));
 
 console.log(failed ? `\n${failed} FAILED\n` : "\nall green\n");

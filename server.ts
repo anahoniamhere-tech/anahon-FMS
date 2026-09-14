@@ -32,7 +32,7 @@ import { PARTY_KINDS, partyKindLabel } from "./src/supplierDocs.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
 import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody } from "./src/reminders.js";
-import { planStallNudges, planIsQuiet, personMessage, escalationMessage, STALL_CHANNELS } from "./src/stallNudges.js";
+import { planStallNudges, planIsQuiet, personMessage, escalationMessage, groupEscalations, STALL_CHANNELS } from "./src/stallNudges.js";
 import { canonEmail } from "./src/email.js";
 import { pickCoreDoc, CORE_PATTERNS, agreementDocs } from "./src/coreDocs.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
@@ -1928,7 +1928,9 @@ async function shadowOfficeRun(reason: string) {
     for (const item of plan.escalate) escalations.push({ personName: person.name, item, rows: { userId: person.id, channels: ["escalate"] } });
   }
 
-  const summary = escalationMessage(escalations.map(e => ({ personName: e.personName, item: e.item })));
+  // Grouped by task: a task stalled with several holders is one line, naming all of them.
+  const grouped = groupEscalations(escalations.map(e => ({ personName: e.personName, item: e.item })));
+  const summary = escalationMessage(grouped);
   if (summary) {
     const directors = (await prisma.user.findMany({ where: { active: true } })).filter(u => isDirector(u.role));
     const payload = JSON.stringify({ title: summary.title, body: summary.body, tag: `stall-escalation-${localDate()}`, url: "/?door=office" });
@@ -1937,11 +1939,11 @@ async function shadowOfficeRun(reason: string) {
     if (delivered) {
       for (const e of escalations) for (const channel of e.rows.channels) await stallRow(e.rows.userId, e.item.id, channel, e.item.title, e.item.when, now);
       await createAuditLog("u-1", "Shadow office", "Shadow Escalation Sent",
-        `Told the Executive Director: ${summary.title} — ${escalations.map(e => `${e.personName}: ${e.item.verb} ${e.item.title}`).join("; ")}. Nothing on any record was changed.`).catch(() => {});
+        `Told the Executive Director: ${summary.title} — ${grouped.map(e => `${e.personName}: ${e.item.verb} ${e.item.title}`).join("; ")}. Nothing on any record was changed.`).catch(() => {});
     }
   }
-  console.log(`[shadow] ${localDate()} (${reason}): ${reminded} reminded, ${escalations.length} escalated, ${closed} closed`);
-  return { reminded, escalated: escalations.length, closed };
+  console.log(`[shadow] ${localDate()} (${reason}): ${reminded} reminded, ${grouped.length} escalated, ${closed} closed`);
+  return { reminded, escalated: grouped.length, closed };
 }
 
 let shadowLastRun = "";

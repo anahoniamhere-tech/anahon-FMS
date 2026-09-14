@@ -75,6 +75,21 @@ export function personMessage(plan: StallPlan): { title: string; body: string; l
   return { title, body: line(lead) + andMore(total - 1), lead };
 }
 
+/**
+ * One line per task. A task owned by several people — a shared seat, or a payment request that is
+ * both the Executive Director's and the Finance Officer's turn — stalls for each holder separately,
+ * but the Executive Director should read it once, with everyone it is waiting on named together.
+ */
+export function groupEscalations(entries: { personName: string; item: DeskItem }[]) {
+  const byItem = new Map<string, { personName: string; item: DeskItem }>();
+  for (const entry of entries) {
+    const found = byItem.get(entry.item.id);
+    if (!found) byItem.set(entry.item.id, { personName: entry.personName, item: entry.item });
+    else if (!found.personName.split(", ").includes(entry.personName)) found.personName += `, ${entry.personName}`;
+  }
+  return [...byItem.values()];
+}
+
 /** One notification to the Executive Director per run, naming who and what. */
 export function escalationMessage(entries: { personName: string; item: DeskItem }[]): { title: string; body: string } | null {
   if (!entries.length) return null;
