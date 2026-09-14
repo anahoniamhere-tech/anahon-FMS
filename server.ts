@@ -1879,6 +1879,9 @@ async function shadowPlans() {
   const today = localDate();
   const plans = [];
   for (const person of people) {
+    // The Executive Director is where escalations go and sees his own desk every day, so he is
+    // not reminded about it (Saad, 14 Sep 2026: "leave me out").
+    if (isDirector(person.role)) continue;
     const ledger = await prisma.reminder.findMany({ where: { userId: person.id, channel: { in: [...STALL_CHANNELS] } } });
     const plan = planStallNudges(await turnsOf(person), ledger as any, today, { canEscalate: !isDirector(person.role) });
     const devices = await prisma.pushSubscription.count({ where: { userId: person.id } });

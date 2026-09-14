@@ -74,6 +74,7 @@ ok("it is off unless SHADOW_OFFICE=on", /SHADOW_OFFICE\s*===\s*"on"/.test(block)
 ok("it only ever sends push notifications — no mail, no WhatsApp", !/sendMail|nodemailer|smtp|wa\.me|whatsapp/i.test(block) && /webpush\.sendNotification/.test(block));
 ok("it never writes to a record — only its own ledger rows", !/prisma\.(expense|procurement|timesheet|contentItem|complianceTask|projectActivity)\.(update|create|delete)/.test(block));
 ok("a ledger row is written only after a device received it", /if \(delivered\)/.test(block));
+ok("the Executive Director is not reminded about his own desk", /isDirector\(person\.role\)\)\s*continue/.test(block));
 ok("the preview route is for directors only", /\/api\/shadow\/plan[\s\S]{0,400}isDirector/.test(block));
 ok("every reminder and escalation is written to the audit log", /Shadow Reminder Sent/.test(block) && /Shadow Escalation Sent/.test(block));
 
