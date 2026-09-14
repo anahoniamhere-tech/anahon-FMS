@@ -27,7 +27,7 @@ import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, norma
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
 import { costAccountFor, reclassifyLegs, debitedExpenseAccounts, costPositions } from "./src/costAccount.js";
-import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, CASH_SINGLE_PAYMENT_USD, payoutBlocker, cashApprovalBlocker, payoutLedgerFor, type TopUpItem, CASH_CLEARING_LEDGER, TRANSIT_TYPE, isTransit, DRAW_REF, DRAW_RETURN_REF, drawBlocker, drawPosition, drawOverdue, daysBetween, leftoverBlocker, type DrawLink } from "./src/pettyCash.js";
+import { FLOAT_CEILING_LABEL, CASH_SINGLE_PAYMENT_LABEL, FLOAT_LEDGER, FLOAT_TYPE, COUNT_DIFFERENCES_LEDGER, TOPUP_REF, floatBlocker, ceilingBlocker, raiseBlocker, approveBlocker, countBlocker, countDifference, itemsBlocker, itemsTotal, openingBlocker, CASH_SINGLE_PAYMENT_USD, payoutBlocker, cashApprovalBlocker, payoutLedgerFor, type TopUpItem, CASH_CLEARING_LEDGER, TRANSIT_TYPE, isTransit, DRAW_REF, DRAW_RETURN_REF, drawBlocker, drawPosition, drawOverdue, daysBetween, leftoverBlocker, type DrawLink, isLiveChannel, channelLedgerFor, receiptBlocker, depositBlocker, matchBlocker, isStatementMatchRef, OFFBANK_REF, OFFBANK_DEPOSIT_REF, isOffbankDepositRef, offbankPurposeOf, DEPOSITS_IN_TRANSIT_LEDGER, OTHER_INCOME_LEDGER, GRANT_INCOME_LEDGER, SERVICE_INCOME_LEDGER, HISTORICAL_CLEARING_LEDGER, CHANNEL_RULES, CHANNEL_TYPE, type ReceiptPurpose } from "./src/pettyCash.js";
 import { PARTY_KINDS, partyKindLabel } from "./src/supplierDocs.js";
 import webpush from "web-push";
 import { deskIcs } from "./src/deskIcs.js";
@@ -285,6 +285,7 @@ const READ_AUDIT: [RegExp, string][] = [
   [/^\/api\/reports\/(pdf|period)$/, "Financial statements"],
   [/^\/api\/cash\/count-sheet\.pdf$/, "Petty cash count sheet"],
   [/^\/api\/cash\/clearing$/, "Cash in transit"],
+  [/^\/api\/offbank\/overview$/, "Money outside the bank"],
   [/^\/api\/document\/[^/]+\/pdf$/, "Document, rendered to PDF"],
   [/^\/api\/document\/content\/[^/]+$/, "Document"],
   [/^\/api\/document\/pages\/[^/]+$/, "Document, opened in the viewer"],
@@ -6626,22 +6627,24 @@ app.post("/api/cash/topup/decide", async (req, res) => {
       if (tooMuch) return res.status(400).json({ error: tooMuch });
     }
     const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
-    const isEur = source.currency === "EUR";
-    const inSource = r2m(isEur ? t.amountUSD / rates.EUR : t.amountUSD);
-    if (source.balance < inSource) {
-      return res.status(400).json({ error: `Insufficient funds in ${source.name}: the top-up needs ${inSource.toFixed(2)} ${source.currency} and the books show ${source.balance.toFixed(2)} ${source.currency}.` });
+    const fx = fxRateOf(rates, source.currency);
+    if (!fx) return res.status(400).json({ error: `There is no exchange rate for ${source.currency}.` });
+    const inSource = r2m(t.amountUSD / fx);
+    const held = await availableIn(source);
+    if (held < inSource) {
+      return res.status(400).json({ error: `Insufficient funds in ${source.name}: the top-up needs ${inSource.toFixed(2)} ${source.currency} and ${held.toFixed(2)} ${source.currency} is available.` });
     }
-    const bankLedger = fromLeftover ? CASH_CLEARING_LEDGER : isEur ? "1110" : "1100";
+    const bankLedger = fromLeftover ? CASH_CLEARING_LEDGER : payoutLedgerFor(source, localDate());
     const ref = TOPUP_REF(t.id);
     const journalEntryId = `je-tu-${Date.now()}`;
 
     const recorded = { recordedAt: now, recordedById: user?.id || "" };
     const updated = await prisma.$transaction(async (tx) => {
-      await tx.bankAccount.update({ where: { id: source.id }, data: { balance: { decrement: inSource } } });
+      if (!awaitsStatement(source)) await tx.bankAccount.update({ where: { id: source.id }, data: { balance: { decrement: inSource } } });
       await tx.bankAccount.update({ where: { id: box!.id }, data: { balance: { increment: t.amountUSD } } });
       await tx.bankTransaction.create({ data: {
         id: `bt-tu-out-${Date.now()}`, bankAccountId: source.id, date: localDate(), amount: inSource, type: "Withdrawal",
-        reconciled: true, noticeRef: ref, description: fromLeftover ? `Leftover of withdrawal ${t.sourceDrawId} moved to the petty-cash float (${t.id})` : `Cash drawn to top up the petty-cash float (${t.id})`, ...recorded,
+        pending: awaitsStatement(source), reconciled: !awaitsStatement(source), noticeRef: ref, description: fromLeftover ? `Leftover of withdrawal ${t.sourceDrawId} moved to the petty-cash float (${t.id})` : `Cash drawn to top up the petty-cash float (${t.id})`, ...recorded,
       } });
       await tx.bankTransaction.create({ data: {
         id: `bt-tu-in-${Date.now()}`, bankAccountId: box!.id, date: localDate(), amount: t.amountUSD, type: "Deposit",
@@ -6676,6 +6679,20 @@ app.post("/api/cash/topup/decide", async (req, res) => {
 // accumulates in 1120. A leftover is redeposited, or moved to the float through a top-up.
 
 const cashTransit = () => prisma.bankAccount.findFirst({ where: { type: TRANSIT_TYPE, ledgerCode: CASH_CLEARING_LEDGER } });
+
+// USD per unit of an account's currency, from the stored rates. 0 = no rate, so refuse.
+const fxRateOf = (rates: any, currency: string) => currency === "USD" ? 1 : Number(rates?.[currency]) || 0;
+// A BLOM account's stored balance is the statement's. A movement the system records on it before
+// the statement shows it is written as a PENDING line with its marker and leaves that balance alone;
+// the statement line takes the marker when Books matches it. Written as a confirmed line, the next
+// statement import would bring the same money in or out a second time.
+const awaitsStatement = (a: { type: string }) => a.type === "Bank";
+// What a BLOM account can still pay: the statement balance less what is already recorded as leaving.
+async function availableIn(a: { id: string; type: string; balance: number }) {
+  if (!awaitsStatement(a)) return a.balance;
+  const out = await prisma.bankTransaction.findMany({ where: { bankAccountId: a.id, pending: true, type: "Withdrawal" } });
+  return r2m(a.balance - out.reduce((sum, l) => sum + l.amount, 0));
+}
 
 // What a request pays out, in USD — the net once withholding is known, the gross before.
 const requestNetUSD = (e: { netAmount: number; amount: number; rate: number }) => r2m((e.netAmount || e.amount) * e.rate);
@@ -6738,7 +6755,8 @@ app.post("/api/cash/draw", async (req, res) => {
     const [transit, box] = await Promise.all([cashTransit(), pettyFloat()]);
     if (!transit || !transit.active) return res.status(400).json({ error: "There is no cash-in-transit account." });
     const source = await prisma.bankAccount.findUnique({ where: { id: String(sourceAccountId || "ba-blom-usd") } });
-    if (!source || source.type !== "Bank" || !source.active) return res.status(400).json({ error: "Cash is drawn from an active bank account." });
+    // From the bank, or from money received outside it (Policy 020 §4.4.4) — never paid out directly.
+    if (!source || !source.active || (source.type !== "Bank" && !isLiveChannel(source))) return res.status(400).json({ error: "Cash is drawn from an active bank account, or from an off-bank channel." });
     const day = String(date || localDate());
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "Date must be YYYY-MM-DD." });
     if (day > localDate()) return res.status(400).json({ error: "A withdrawal cannot be dated in the future." });
@@ -6760,23 +6778,25 @@ app.post("/api/cash/draw", async (req, res) => {
     if (refused) return res.status(400).json({ error: refused });
 
     const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
-    const isEur = source.currency === "EUR";
-    const inSource = r2m(isEur ? amount / rates.EUR : amount);
-    if (source.balance < inSource) {
-      return res.status(400).json({ error: `Insufficient funds in ${source.name}: the withdrawal needs ${inSource.toFixed(2)} ${source.currency} and the books show ${source.balance.toFixed(2)} ${source.currency}.` });
+    const fx = fxRateOf(rates, source.currency);
+    if (!fx) return res.status(400).json({ error: `There is no exchange rate for ${source.currency}.` });
+    const inSource = r2m(amount / fx);
+    const held = await availableIn(source);
+    if (held < inSource) {
+      return res.status(400).json({ error: `Insufficient funds in ${source.name}: the withdrawal needs ${inSource.toFixed(2)} ${source.currency} and ${held.toFixed(2)} ${source.currency} is available.` });
     }
-    const bankLedger = isEur ? "1110" : "1100";
+    const bankLedger = payoutLedgerFor(source, day);
     const vouchers = links.map(l => l.voucherNo).join(", ");
     const id = `cd-${Date.now()}`;
     const now = new Date().toISOString();
     const recorded = { recordedAt: now, recordedById: user?.id || "" };
     const journalEntryId = `je-${id}`;
     const draw = await prisma.$transaction(async (tx) => {
-      await tx.bankAccount.update({ where: { id: source.id }, data: { balance: { decrement: inSource } } });
+      if (!awaitsStatement(source)) await tx.bankAccount.update({ where: { id: source.id }, data: { balance: { decrement: inSource } } });
       await tx.bankAccount.update({ where: { id: transit.id }, data: { balance: { increment: amount } } });
       await tx.bankTransaction.create({ data: {
         id: `bt-${id}-out`, bankAccountId: source.id, date: day, amount: inSource, type: "Withdrawal",
-        reconciled: true, noticeRef: DRAW_REF(id), description: `Cash withdrawn for ${vouchers} (${id})`, ...recorded,
+        pending: awaitsStatement(source), reconciled: !awaitsStatement(source), noticeRef: DRAW_REF(id), description: `Cash withdrawn for ${vouchers} (${id})`, ...recorded,
       } });
       await tx.bankTransaction.create({ data: {
         id: `bt-${id}-in`, bankAccountId: transit.id, date: day, amount, type: "Deposit",
@@ -6827,9 +6847,10 @@ app.post("/api/cash/draw/return", async (req, res) => {
     if (refused) return res.status(400).json({ error: refused });
 
     const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
-    const isEur = target.currency === "EUR";
-    const inTarget = r2m(isEur ? amount / rates.EUR : amount);
-    const bankLedger = isEur ? "1110" : "1100";
+    const fx = fxRateOf(rates, target.currency);
+    if (!fx) return res.status(400).json({ error: `There is no exchange rate for ${target.currency}.` });
+    const inTarget = r2m(amount / fx);
+    const bankLedger = payoutLedgerFor(target, day);
     const now = new Date().toISOString();
     const recorded = { recordedAt: now, recordedById: user?.id || "" };
     const stamp = Date.now();
@@ -6838,14 +6859,14 @@ app.post("/api/cash/draw/return", async (req, res) => {
     returns.push({ date: day, amountUSD: amount, targetAccountId: target.id, journalEntryId, recordedAt: now, recordedById: user?.id || "", recordedByName: user?.name || "" });
     await prisma.$transaction(async (tx) => {
       await tx.bankAccount.update({ where: { id: transit.id }, data: { balance: { decrement: amount } } });
-      await tx.bankAccount.update({ where: { id: target.id }, data: { balance: { increment: inTarget } } });
+      // The bank's balance moves when the statement shows the deposit (awaitsStatement).
       await tx.bankTransaction.create({ data: {
         id: `bt-cdr-${stamp}-out`, bankAccountId: transit.id, date: day, amount, type: "Withdrawal",
         reconciled: true, noticeRef: DRAW_RETURN_REF(draw.id), description: `Leftover of ${draw.id} redeposited to ${target.name}`, ...recorded,
       } });
       await tx.bankTransaction.create({ data: {
         id: `bt-cdr-${stamp}-in`, bankAccountId: target.id, date: day, amount: inTarget, type: "Deposit",
-        reconciled: true, noticeRef: DRAW_RETURN_REF(draw.id), description: `Leftover cash of ${draw.id} redeposited`, ...recorded,
+        pending: true, reconciled: false, noticeRef: DRAW_RETURN_REF(draw.id), description: `Leftover cash of ${draw.id} redeposited`, ...recorded,
       } });
       await tx.journalEntry.create({ data: {
         id: journalEntryId, journal: "Bank", date: day, referenceNo: draw.id, isPosted: true, ...recorded,
@@ -6862,6 +6883,262 @@ app.post("/api/cash/draw/return", async (req, res) => {
     await createAuditLog(user?.id, user?.name, "Cash Leftover Redeposited",
       `${user?.name} redeposited USD ${amount.toFixed(2)} left from withdrawal ${draw.id} into ${target.name} on ${day}. Journal ${journalEntryId}: Dr ${bankLedger} / Cr ${CASH_CLEARING_LEDGER}.`);
     res.json({ success: true, remainingUSD: r2m(standing.remainingUSD - amount) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- Money received or paid outside the bank (Policy 020 §4.4.4, §4.4.5 — Saad, 14 Sep 2026) ----
+// Every channel is an account with its own ledger account. Money received through one is recorded
+// here with its evidence; it is then deposited at BLOM or moved to cash in transit against approved
+// requests (/api/cash/draw with the channel as source). It is never paid out directly.
+
+const channelIncomeFor = (purpose: ReceiptPurpose, project?: { fundingType?: string } | null) =>
+  purpose === "quotation" ? SERVICE_INCOME_LEDGER
+  : purpose === "project" ? (project?.fundingType === "Unrestricted Service" ? SERVICE_INCOME_LEDGER : GRANT_INCOME_LEDGER)
+  : OTHER_INCOME_LEDGER;
+
+// One way to record money received through a channel: a client paying a quotation, a donor
+// tranche for a project, or other income. Dated before the float opened, it is historical and sits
+// on 1120 (cash awaiting vouchers) — the channel's balance is today's money only.
+async function recordOffbankReceipt(r: { accountId: string; date: string; amount: number; reference: string; purpose: string; quotationId?: string; projectId?: string; note?: string; user: any }) {
+  const [account, box, quote, project] = await Promise.all([
+    prisma.bankAccount.findUnique({ where: { id: String(r.accountId || "") } }),
+    pettyFloat(),
+    r.purpose === "quotation" && r.quotationId ? prisma.quotation.findUnique({ where: { id: r.quotationId } }) : null,
+    r.purpose === "project" && r.projectId ? prisma.project.findUnique({ where: { id: r.projectId } }) : null,
+  ]);
+  const day = String(r.date || localDate());
+  const amount = r2m(Number(r.amount));
+  const reference = String(r.reference || "").trim();
+  const refused = receiptBlocker({
+    account, date: day, today: localDate(), amount, reference, purpose: r.purpose,
+    quotationFound: !!quote, project, projectFound: !!project,
+  });
+  if (refused) return { error: refused };
+  if (quote && quote.currency !== account!.currency) {
+    return { error: `Quotation ${quote.quoteNo} is priced in ${quote.currency}; ${account!.name} holds ${account!.currency}. Record it on the ${quote.currency} account of that channel.` };
+  }
+  const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
+  const fx = fxRateOf(rates, account!.currency);
+  if (!fx) return { error: `There is no exchange rate for ${account!.currency}.` };
+  const usd = r2m(amount * fx);
+  const purpose = r.purpose as ReceiptPurpose;
+  const code = channelLedgerFor(account!, day, box?.openedOn);
+  const live = code !== HISTORICAL_CLEARING_LEDGER;
+  const income = channelIncomeFor(purpose, project);
+  const client = quote ? await prisma.client.findUnique({ where: { id: quote.clientId } }) : null;
+  const what = quote ? `quotation ${quote.quoteNo} — ${client?.name || quote.clientId}` : project ? `project ${project.code}` : "other income";
+  const stamp = Date.now();
+  const now = new Date().toISOString();
+  const recorded = { recordedAt: now, recordedById: r.user?.id || "" };
+  const journalEntryId = `je-ob-${stamp}`;
+  const tx = await prisma.$transaction(async (t) => {
+    if (live) await t.bankAccount.update({ where: { id: account!.id }, data: { balance: { increment: amount } } });
+    const line = await t.bankTransaction.create({ data: {
+      id: `bt-ob-${stamp}`, bankAccountId: account!.id, date: day, amount, type: "Deposit", reconciled: true, pending: false,
+      description: `${account!.accountNo || account!.name} received — ${what} — ref ${reference}${r.note ? ` — ${String(r.note).trim()}` : ""}`,
+      noticeRef: OFFBANK_REF(purpose, quote?.id || project?.id || String(stamp)), projectId: project?.id || null, evidenceRef: reference, ...recorded,
+    } });
+    await t.journalEntry.create({ data: {
+      id: journalEntryId, journal: "Bank", date: day, referenceNo: line.id, isPosted: true, ...recorded,
+      description: `Received outside the bank through ${account!.name}: ${what}, ref ${reference}${live ? "" : " (before the float opened — cash awaiting vouchers)"}`,
+      itemsJson: JSON.stringify([
+        { accountCode: code, debit: usd, credit: 0, projectId: project?.id || undefined },
+        { accountCode: income, debit: 0, credit: usd, projectId: project?.id || undefined, donorId: project?.donorId || undefined },
+      ]),
+    } });
+    await t.account.update({ where: { code }, data: { balance: { increment: live ? amount : usd } } });
+    await t.account.update({ where: { code: income }, data: { balance: { increment: usd } } });
+    return line;
+  });
+  let settled = "";
+  if (quote) {
+    const tranches = [...(JSON.parse(quote.paymentTxIdsJson || "[]") as string[]), tx.id];
+    const { paid, status } = await settleQuotation(quote.id, quote.status, quote.amount, tranches);
+    settled = ` Tranche ${tranches.length}: ${quote.currency} ${paid} of ${quote.amount} settled, status ${status}.`;
+  }
+  await createAuditLog(r.user?.id, r.user?.name, "Money Received Off-Bank",
+    `${r.user?.name} recorded ${account!.currency} ${amount.toFixed(2)} received through ${account!.name} on ${day} for ${what}, evidence "${reference}" (${tx.id}). Journal ${journalEntryId}: Dr ${code} / Cr ${income}.${settled}`);
+  return { tx, ledger: code, live };
+}
+
+app.post("/api/offbank/receive", async (req, res) => {
+  try {
+    const { accountId, date, amount, reference, purpose, quotationId, projectId, note, user } = req.body;
+    const out = await recordOffbankReceipt({ accountId, date, amount, reference, purpose, quotationId, projectId, note, user });
+    if (out.error) return res.status(400).json({ error: out.error });
+    res.json({ success: true, ...out });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Money taken out of a channel to be paid in at BLOM: it waits on 1150 until the statement line is
+// matched. The BLOM side is a pending line, so the statement import cannot count it twice.
+app.post("/api/offbank/deposit", async (req, res) => {
+  try {
+    const { accountId, targetAccountId, date, amount, note, user } = req.body;
+    const [account, target, box] = await Promise.all([
+      prisma.bankAccount.findUnique({ where: { id: String(accountId || "") } }),
+      prisma.bankAccount.findUnique({ where: { id: String(targetAccountId || "ba-blom-usd") } }),
+      pettyFloat(),
+    ]);
+    const day = String(date || localDate());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > localDate()) return res.status(400).json({ error: "Enter the date the money was paid in — not a future date." });
+    if (!box?.openedOn || day < box.openedOn) return res.status(400).json({ error: "Money received before the float opened is cash awaiting vouchers (Policy 020 §4.4.5) — there is no channel balance to deposit from before that date." });
+    const amt = r2m(Number(amount));
+    const refused = depositBlocker(account, target, amt, account?.balance || 0);
+    if (refused) return res.status(400).json({ error: refused });
+    if (account!.currency !== target!.currency) return res.status(400).json({ error: `${account!.name} holds ${account!.currency}; ${target!.name} is ${target!.currency}. Deposit into the account of the same currency.` });
+    const rates = await prisma.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
+    const fx = fxRateOf(rates, account!.currency);
+    if (!fx) return res.status(400).json({ error: `There is no exchange rate for ${account!.currency}.` });
+    const usd = r2m(amt * fx);
+    const id = `obd-${Date.now()}`;
+    const now = new Date().toISOString();
+    const recorded = { recordedAt: now, recordedById: user?.id || "" };
+    const journalEntryId = `je-${id}`;
+    await prisma.$transaction(async (t) => {
+      await t.bankAccount.update({ where: { id: account!.id }, data: { balance: { decrement: amt } } });
+      await t.bankTransaction.create({ data: {
+        id: `bt-${id}-out`, bankAccountId: account!.id, date: day, amount: amt, type: "Withdrawal", reconciled: true, pending: false,
+        noticeRef: OFFBANK_DEPOSIT_REF(id), description: `Paid in at ${target!.name} (${id})${note ? ` — ${String(note).trim()}` : ""}`, ...recorded,
+      } });
+      await t.bankTransaction.create({ data: {
+        id: `bt-${id}-in`, bankAccountId: target!.id, date: day, amount: amt, type: "Deposit", reconciled: false, pending: true,
+        noticeRef: OFFBANK_DEPOSIT_REF(id), description: `Deposit from ${account!.name} (${id}) — waiting for the statement`, ...recorded,
+      } });
+      await t.journalEntry.create({ data: {
+        id: journalEntryId, journal: "Bank", date: day, referenceNo: id, isPosted: true, ...recorded,
+        description: `${account!.name} paid in at ${target!.name} (${id}): on its way to the bank until the statement shows it`,
+        itemsJson: JSON.stringify([
+          { accountCode: DEPOSITS_IN_TRANSIT_LEDGER, debit: usd, credit: 0 },
+          { accountCode: account!.ledgerCode, debit: 0, credit: usd },
+        ]),
+      } });
+      await t.account.update({ where: { code: DEPOSITS_IN_TRANSIT_LEDGER }, data: { balance: { increment: usd } } });
+      await t.account.update({ where: { code: account!.ledgerCode }, data: { balance: { decrement: amt } } });
+    });
+    await createAuditLog(user?.id, user?.name, "Off-Bank Money Deposited",
+      `${user?.name} recorded ${account!.currency} ${amt.toFixed(2)} taken from ${account!.name} to pay in at ${target!.name} on ${day} (${id}). Journal ${journalEntryId}: Dr ${DEPOSITS_IN_TRANSIT_LEDGER} / Cr ${account!.ledgerCode}. The bank side waits for the statement line.`);
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Books matches a movement the system recorded to the line the imported statement shows. The
+// statement line takes the marker (so the ledger rebuild knows what it was); the pending line goes.
+app.post("/api/bank/match-line", async (req, res) => {
+  try {
+    const { pendingId, lineId, user } = req.body;
+    const [pending, line] = await Promise.all([
+      prisma.bankTransaction.findUnique({ where: { id: String(pendingId || "") } }),
+      prisma.bankTransaction.findUnique({ where: { id: String(lineId || "") } }),
+    ]);
+    const refused = matchBlocker(pending, line);
+    if (refused) return res.status(400).json({ error: refused });
+    const bank = await prisma.bankAccount.findUnique({ where: { id: line!.bankAccountId } });
+    const now = new Date().toISOString();
+    const recorded = { recordedAt: now, recordedById: user?.id || "" };
+    const settlesDeposit = isOffbankDepositRef(pending!.noticeRef);
+    const journalEntryId = settlesDeposit ? `je-obm-${Date.now()}` : "";
+    await prisma.$transaction(async (t) => {
+      await t.bankTransaction.update({ where: { id: line!.id }, data: {
+        noticeRef: pending!.noticeRef, reconciled: true,
+        description: `${line!.description} — matched to: ${pending!.description}${line!.noticeRef ? ` (bank ref ${line!.noticeRef})` : ""}`,
+      } });
+      await t.bankTransaction.delete({ where: { id: pending!.id } });
+      if (settlesDeposit && bank) {
+        const rates = await t.fxRates.findFirst() || DEFAULT_DATABASE.fxRates;
+        const usd = r2m(line!.amount * (fxRateOf(rates, bank.currency) || 1));
+        const bankLedger = payoutLedgerFor(bank, line!.date);
+        await t.journalEntry.create({ data: {
+          id: journalEntryId, journal: "Bank", date: line!.date, referenceNo: line!.id, isPosted: true, ...recorded,
+          description: `Deposit ${String(pending!.noticeRef).slice("offbank-deposit:".length)} arrived at ${bank.name} on the statement of ${line!.date}`,
+          itemsJson: JSON.stringify([
+            { accountCode: bankLedger, debit: usd, credit: 0 },
+            { accountCode: DEPOSITS_IN_TRANSIT_LEDGER, debit: 0, credit: usd },
+          ]),
+        } });
+        await t.account.update({ where: { code: bankLedger }, data: { balance: { increment: line!.amount } } });
+        await t.account.update({ where: { code: DEPOSITS_IN_TRANSIT_LEDGER }, data: { balance: { decrement: usd } } });
+      }
+    });
+    await createAuditLog(user?.id, user?.name, "Statement Line Matched",
+      `${user?.name} matched statement line ${line!.id} (${line!.date}, ${line!.type} ${line!.amount.toFixed(2)}) to the recorded movement ${pending!.id} [${pending!.noticeRef}] (${pending!.date}).${journalEntryId ? ` Journal ${journalEntryId}: Dr bank / Cr ${DEPOSITS_IN_TRANSIT_LEDGER}.` : ""}`);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// What the Bank & cash screen shows for money outside the bank: the channels, what was received
+// (cash receipts whose signed scan is not filed are listed, §6.6), movements waiting for their
+// statement line with the lines that could be theirs, and cash awaiting vouchers (§4.4.5).
+app.get("/api/offbank/overview", async (req, res) => {
+  try {
+    const rid = await viewerIdFromReq(req);
+    const reader = rid ? await prisma.user.findUnique({ where: { id: rid } }) : null;
+    if (!reader || !REPORT_READERS.includes(reader.role)) return res.status(403).json({ error: "Money outside the bank is for finance, the director and the auditor." });
+    const [accounts, receipts, waiting, a1120, entries, projects, box] = await Promise.all([
+      prisma.bankAccount.findMany({ where: { type: CHANNEL_TYPE } }),
+      prisma.bankTransaction.findMany({ where: { noticeRef: { startsWith: "offbank:" } }, orderBy: { date: "desc" }, take: 60 }),
+      prisma.bankTransaction.findMany({ where: { pending: true }, orderBy: { date: "asc" } }),
+      prisma.account.findUnique({ where: { code: HISTORICAL_CLEARING_LEDGER } }),
+      prisma.journalEntry.findMany({ where: { itemsJson: { contains: `"accountCode":"${HISTORICAL_CLEARING_LEDGER}"` } } }),
+      prisma.project.findMany({ select: { id: true, code: true, name: true } }),
+      pettyFloat(),
+    ]);
+    const channels = accounts.filter(a => isLiveChannel(a));
+    const cashIds = new Set(channels.filter(a => a.accountNo === "Cash").map(a => a.id));
+    const signed = new Set((await prisma.appDoc.findMany({
+      where: { receiptSigned: true, receiptNo: { in: receipts.map(x => x.evidenceRef).filter(Boolean) } }, select: { receiptNo: true },
+    })).map(d => d.receiptNo));
+    const markers = waiting.filter(w => isStatementMatchRef(w.noticeRef));
+    const lines = markers.length ? await prisma.bankTransaction.findMany({
+      where: { pending: false, bankAccountId: { in: [...new Set(markers.map(m => m.bankAccountId))] }, voucherNo: null, projectId: null },
+    }) : [];
+    const days = (a: string, b: string) => Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 86400000;
+
+    // 1120 from its own postings: what came in (drawn from BLOM, or received outside it) and what
+    // was documented out, by project. Read-only — nothing here moves a figure.
+    let drawnUSD = 0, receivedUSD = 0;
+    const byProject = new Map<string, { receivedUSD: number; documentedUSD: number }>();
+    for (const e of entries) {
+      const items = JSON.parse(e.itemsJson || "[]") as { accountCode: string; debit?: number; credit?: number; projectId?: string }[];
+      for (const l of items.filter(i => i.accountCode === HISTORICAL_CLEARING_LEDGER)) {
+        const others = items.filter(i => i !== l);
+        const pid = l.projectId || others.find(o => o.projectId)?.projectId || "";
+        const row = byProject.get(pid) || { receivedUSD: 0, documentedUSD: 0 };
+        if (l.debit) {
+          if (others.some(o => o.accountCode === "1100" || o.accountCode === "1110")) drawnUSD += l.debit;
+          else { receivedUSD += l.debit; row.receivedUSD += l.debit; }
+        }
+        if (l.credit) row.documentedUSD += l.credit;
+        byProject.set(pid, row);
+      }
+    }
+    const projectOf = new Map(projects.map(p => [p.id, p]));
+    res.json({
+      openedOn: box?.openedOn || "",
+      channels,
+      receipts: receipts.map(x => ({ ...x, scanMissing: cashIds.has(x.bankAccountId) && !signed.has(x.evidenceRef) })),
+      waiting: markers.map(m => ({
+        ...m,
+        candidates: lines.filter(l => l.type === m.type && Math.abs(l.amount - m.amount) < 0.005 && !isStatementMatchRef(l.noticeRef) && days(l.date, m.date) <= 30),
+      })),
+      awaitingVouchers: {
+        balanceUSD: a1120?.balance || 0, name: a1120?.name || "", drawnUSD: r2m(drawnUSD), receivedUSD: r2m(receivedUSD),
+        projects: [...byProject.entries()].filter(([pid]) => pid).map(([pid, v]) => ({
+          projectId: pid, code: projectOf.get(pid)?.code || pid, name: projectOf.get(pid)?.name || "",
+          receivedUSD: r2m(v.receivedUSD), documentedUSD: r2m(v.documentedUSD),
+          // Cash received outside the bank for this project that no voucher yet accounts for.
+          undocumented: v.receivedUSD - v.documentedUSD > 0.005,
+        })).sort((a, b) => (b.receivedUSD - b.documentedUSD) - (a.receivedUSD - a.documentedUSD)),
+      },
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -7251,11 +7528,9 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
   }
 });
 
-// Record an OFF-BANK client payment (OMT / BOB Finance / Whish / cash) settling a
-// quotation. Follows the house evidence-account pattern (ba-skf-cheques, ba-fpu-bob):
-// the receipt is recorded as a deposit on ba-prod-offbank, which the ledger rebuild
-// maps to 1120 with 4200 service income as contra. Evidence reference is mandatory —
-// off-bank money without a transfer ref or signed receipt number does not get booked.
+// Record an OFF-BANK client payment (OMT / BOB Finance / Whish / cash) settling a quotation.
+// Since 14 Sep 2026 it goes through recordOffbankReceipt onto the channel's own account (the
+// method is the channel's accountNo). Evidence reference is mandatory.
 const OFFBANK_METHODS = ["OMT", "BOB Finance", "Whish", "Cash"];
 
 // The client-facing PDF. Rendered from the same quotationHtml the vault copy uses, so the
@@ -7399,36 +7674,18 @@ async function settleQuotation(id: string, current: string, amount: number, tran
 
 app.post("/api/quotations/settle-offbank", async (req, res) => {
   try {
+    // Kept for the Clients & quotations form until it calls /api/offbank/receive itself. The money
+    // is recorded the one way every off-bank receipt is (Policy 020 §4.4.4): on the channel's own
+    // account for the quotation's currency — never a catch-all account the rebuild files in 1120.
     const { id, method, reference, date, amount, user } = req.body;
     const quote = await prisma.quotation.findUnique({ where: { id } });
     if (!quote) return res.status(404).json({ error: "Quotation not found." });
     if (!OFFBANK_METHODS.includes(method)) return res.status(400).json({ error: `Method must be one of: ${OFFBANK_METHODS.join(", ")}` });
-    const ref = String(reference || "").trim();
-    if (!ref) return res.status(400).json({ error: "Evidence required: the transfer reference (OMT/BOB/Whish) or the signed receipt number for cash." });
-    const client = await prisma.client.findUnique({ where: { id: quote.clientId } });
-    const amt = Number(amount) || quote.amount;
-    if (amt <= 0) return res.status(400).json({ error: "Settlement amount must be positive." });
-
-    const tx = await prisma.bankTransaction.create({
-      data: {
-        id: `btx-prod-${Date.now()}`,
-        bankAccountId: "ba-prod-offbank",
-        date: date || localDate(),
-        description: `${method} client payment — quotation ${quote.quoteNo} — ${client?.name || quote.clientId} — ref ${ref}`,
-        amount: amt,
-        type: "Deposit",
-        reconciled: true
-      }
-    });
-    const tranches = [...(JSON.parse(quote.paymentTxIdsJson || "[]") as string[]), tx.id];
-    const { paid, status } = await settleQuotation(id, quote.status, quote.amount, tranches);
-    await createAuditLog(
-      user?.id,
-      user?.name,
-      "Quotation Settled Off-Bank",
-      `Quotation ${quote.quoteNo} (${client?.name || ""}) part-settled via ${method}, ${quote.currency} ${amt}, evidence ref "${ref}", recorded on ba-prod-offbank as ${tx.id} (${tx.date}). Tranche ${tranches.length}: ${quote.currency} ${paid} of ${quote.amount} now settled, status ${status}. Re-run rebuild-ledger.ts to post the income entry.`
-    );
-    res.json({ success: true, txId: tx.id });
+    const channel = (await prisma.bankAccount.findMany({ where: { type: CHANNEL_TYPE, accountNo: method, currency: quote.currency, active: true } })).find(a => isLiveChannel(a));
+    if (!channel) return res.status(400).json({ error: `There is no active ${method} account in ${quote.currency}.` });
+    const out = await recordOffbankReceipt({ accountId: channel.id, date, amount: Number(amount) || quote.amount, reference, purpose: "quotation", quotationId: quote.id, user });
+    if (out.error) return res.status(400).json({ error: out.error });
+    res.json({ success: true, txId: out.tx!.id });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -8567,6 +8824,9 @@ app.post("/api/bank/import-notice", async (req, res) => {
     const stillPending = await prisma.bankTransaction.findMany({ where: { pending: true } });
     let cleared = 0;
     for (const p of stillPending) {
+      // A movement the system recorded waits for Books to match it — clearing it here would lose
+      // the marker that tells the ledger what the money was for.
+      if (isStatementMatchRef(p.noticeRef)) continue;
       const confirmed = await prisma.bankTransaction.findMany({
         where: { bankAccountId: p.bankAccountId, amount: p.amount, type: p.type, pending: false }
       });

@@ -154,7 +154,7 @@ export function cashLedgerFor(date: string, openedOn: string | null | undefined,
  *  dated before it opened. */
 export function openingBlocker(openedOn: string | null | undefined, date?: string): string {
   if (!openedOn) return "Policy 020 §4.4.1: the float opens with its first count — Saad and the Finance Officer count the box together, and whatever is there is the opening balance. Record that count first.";
-  if (date && date < openedOn) return `The float opened on ${openedOn}; nothing about it can be dated before that. A payment from before then belongs to the historical clearing.`;
+  if (date && date < openedOn) return `The float opened on ${openedOn}; nothing about it can be dated before that. A payment from before then belongs to cash awaiting vouchers (1120).`;
   return "";
 }
 
@@ -273,5 +273,100 @@ export function leftoverBlocker(remainingUSD: number, amountUSD: number, unpaidL
   if (!Number.isFinite(amountUSD) || amountUSD <= 0) return "Enter an amount of more than zero.";
   if (unpaidLinks > 0) return "The requests this withdrawal was drawn for are not all paid yet — the cash is still spoken for.";
   if (amountUSD > remainingUSD + EPS) return `Only ${usdLabel(r2(remainingUSD))} of this withdrawal is left.`;
+  return "";
+}
+
+/* ---- Money received or paid outside the bank (Policy 020 §4.4.4, §4.4.5 — Saad, 14 Sep 2026) ----
+ * AnaHon receives and pays through BLOM, BOB Finance, OMT, Whish, cheques and cash. Each channel is
+ * an account of its own, with a ledger account of its own. A currency is an added account row with
+ * its own ledger code, never a code change: nothing below names a channel or a currency.
+ * Money received outside the bank is never paid out directly. It is deposited at BLOM, or moved to
+ * cash in transit against approved requests, and a leftover from that goes to the float by top-up.
+ */
+
+/** §4.4.5 — 1120's name. Cash drawn or received before the float opened with no voucher yet. */
+export const CASH_AWAITING_VOUCHERS_NAME = "Cash awaiting vouchers";
+/** Money taken out of a channel to be paid in at BLOM, until the statement line shows it arrived. */
+export const DEPOSITS_IN_TRANSIT_LEDGER = "1150";
+export const OTHER_INCOME_LEDGER = "4900";
+export const GRANT_INCOME_LEDGER = "4100";
+export const SERVICE_INCOME_LEDGER = "4200";
+
+/** A channel account that takes money today, as opposed to the four historical per-counterparty
+ *  accounts that stay on 1120 as the record of 2023–2026. */
+export const isLiveChannel = (a?: AccountLike | null) =>
+  isChannel(a) && !!a!.ledgerCode && a!.ledgerCode !== HISTORICAL_CLEARING_LEDGER;
+
+/** Where a channel's money sits on a given date: before the float opened it is historical, 1120. */
+export function channelLedgerFor(a: AccountLike, date: string, openedOn: string | null | undefined): string {
+  if (!openedOn || String(date) < openedOn) return HISTORICAL_CLEARING_LEDGER;
+  return a.ledgerCode || HISTORICAL_CLEARING_LEDGER;
+}
+
+/** For recording a payment made in the past from cash nobody vouchered (§6.6): 1120 when the
+ *  payment is dated before the float opened, and "" after — cash paid since then came out of the
+ *  float or out of cash in transit, and has to be recorded against one of them. */
+export function pastCashLedgerFor(date: string, openedOn: string | null | undefined): string {
+  return !openedOn || String(date) < openedOn ? HISTORICAL_CLEARING_LEDGER : "";
+}
+
+export const RECEIPT_PURPOSES = ["quotation", "project", "other"] as const;
+export type ReceiptPurpose = typeof RECEIPT_PURPOSES[number];
+export const OFFBANK_REF = (purpose: ReceiptPurpose, id: string) => `offbank:${purpose}:${id}`;
+export const isOffbankRef = (ref?: string | null) => String(ref || "").startsWith("offbank:");
+export const offbankPurposeOf = (ref?: string | null): ReceiptPurpose | "" =>
+  (RECEIPT_PURPOSES as readonly string[]).includes(String(ref || "").split(":")[1]) ? String(ref).split(":")[1] as ReceiptPurpose : "";
+export const OFFBANK_DEPOSIT_REF = (id: string) => `offbank-deposit:${id}`;
+export const isOffbankDepositRef = (ref?: string | null) => String(ref || "").startsWith("offbank-deposit:");
+
+/** The movements the system records on a BLOM account BEFORE the statement shows them. Each is
+ *  written as a pending line carrying its marker, and the statement line takes the marker when it
+ *  is matched. Written as a confirmed line, the next statement import would add it a second time. */
+export const isStatementMatchRef = (ref?: string | null) =>
+  isDrawRef(ref) || isDrawReturnRef(ref) || isTopUpRef(ref) || isOffbankDepositRef(ref);
+
+/** §4.4.4 — a donor's agreement may restrict a project's money to the bank. Recorded per project. */
+export const CHANNEL_RULES = ["any", "bank"] as const;
+export type ChannelRule = typeof CHANNEL_RULES[number];
+export interface ProjectChannel { code?: string; channelRule?: string | null; channelRuleSource?: string | null }
+export function bankOnlyBlocker(p?: ProjectChannel | null): string {
+  if (!p || p.channelRule !== "bank") return "";
+  return `Policy 020 §4.4.4: project ${p.code || ""} may use the bank only${p.channelRuleSource ? ` (its agreement, ${p.channelRuleSource})` : " under its agreement"} — money for it cannot be received or held outside the bank.`;
+}
+
+/** Recording money received through a channel. Evidence is the channel's reference, or for cash
+ *  the RC number of the receipt (its signed scan is then listed as missing until filed, §6.6). */
+export function receiptBlocker(r: {
+  account?: (AccountLike & { name?: string }) | null; date: string; today: string; amount: number;
+  reference: string; purpose: string; quotationFound?: boolean; project?: ProjectChannel | null; projectFound?: boolean;
+}): string {
+  if (!r.account || !isLiveChannel(r.account)) return "Policy 020 §4.4.4: money received outside the bank is recorded on its channel's account — choose BOB Finance, OMT, Whish, a cheque or cash.";
+  if (r.account.active === false) return `${r.account.name || "That channel"} is not active.`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date) || r.date > r.today) return "Enter the true date the money was received — not a future date.";
+  if (!Number.isFinite(r.amount) || r.amount <= 0) return "Enter an amount of more than zero.";
+  if (!String(r.reference || "").trim()) return "Policy 020 §4.4.4: evidence is required — the channel's reference or cheque number, or for cash the RC number of the receipt signed by both sides.";
+  if (!(RECEIPT_PURPOSES as readonly string[]).includes(r.purpose)) return "Say what the money is for: a quotation, a project, or other income.";
+  if (r.purpose === "quotation" && !r.quotationFound) return "Choose the quotation this payment settles.";
+  if (r.purpose === "project" && !r.projectFound) return "Choose the project this tranche funds.";
+  return bankOnlyBlocker(r.project);
+}
+
+/** Taking money out of a channel to pay it in at BLOM. */
+export function depositBlocker(account: (AccountLike & { name?: string }) | null | undefined, target: AccountLike | null | undefined, amountInAccount: number, heldInAccount: number): string {
+  if (!account || !isLiveChannel(account) || account.active === false) return "Choose the channel the money is taken from.";
+  if (!target || target.type !== "Bank" || target.active === false) return "Money received outside the bank is deposited into an active bank account.";
+  if (!Number.isFinite(amountInAccount) || amountInAccount <= 0) return "Enter an amount of more than zero.";
+  if (amountInAccount > heldInAccount + EPS) return `${account.name || "That channel"} holds ${r2(heldInAccount).toFixed(2)} — less than that.`;
+  return "";
+}
+
+/** Matching a pending line the system recorded to the line the bank statement shows. */
+export function matchBlocker(pending?: { bankAccountId: string; type: string; amount: number; pending?: boolean; noticeRef?: string | null } | null,
+  line?: { bankAccountId: string; type: string; amount: number; pending?: boolean; noticeRef?: string | null; voucherNo?: string | null; projectId?: string | null } | null): string {
+  if (!pending || !pending.pending || !isStatementMatchRef(pending.noticeRef)) return "Choose a movement the system recorded that is waiting for the statement.";
+  if (!line || line.pending) return "Choose a line from an imported statement.";
+  if (line.bankAccountId !== pending.bankAccountId || line.type !== pending.type) return "The statement line is on another account, or goes the other way.";
+  if (Math.abs(line.amount - pending.amount) > EPS) return `The statement line is ${line.amount.toFixed(2)}; the recorded movement is ${pending.amount.toFixed(2)}.`;
+  if (line.noticeRef && isStatementMatchRef(line.noticeRef) || line.voucherNo || line.projectId) return "That statement line already belongs to something else.";
   return "";
 }

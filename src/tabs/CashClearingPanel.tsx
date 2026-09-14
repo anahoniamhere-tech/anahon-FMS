@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { SharedProps } from "./shared";
 import { FINANCE, REPORT_READERS } from "../roles";
-import { CASH_CLEARING_LEDGER, CLEARING_ALERT_DAYS, FLOAT_TYPE } from "../pettyCash";
+import { CASH_CLEARING_LEDGER, CLEARING_ALERT_DAYS, FLOAT_TYPE, isLiveChannel } from "../pettyCash";
 
 type Props = Pick<SharedProps, "state" | "currentUser" | "t" | "triggerToast" | "refreshState" | "formatUSD">;
 
@@ -47,7 +47,8 @@ export default function CashClearingPanel({ state, currentUser, t, triggerToast,
   const isFinance = FINANCE.includes(currentUser.role);
   const box = (state.bankAccounts || []).find(a => a.type === FLOAT_TYPE);
   const isCustodian = !!box && currentUser.id === box.custodianUserId;
-  const banks = (state.bankAccounts || []).filter(a => a.type === "Bank" && a.active);
+  // Cash is drawn from the bank, or from money received outside it (Policy 020 §4.4.4).
+  const banks = (state.bankAccounts || []).filter(a => a.active && (a.type === "Bank" || isLiveChannel(a)));
   const open = data.draws.filter(d => !d.cleared);
   const done = data.draws.filter(d => d.cleared).slice(0, 5);
   const free = data.requests.filter(r => !r.alreadyDrawnIn);
@@ -165,7 +166,7 @@ export default function CashClearingPanel({ state, currentUser, t, triggerToast,
           )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label htmlFor="cc-source" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("From the bank account")}</label>
+              <label htmlFor="cc-source" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("From the bank or a channel")}</label>
               <select id="cc-source" value={source} onChange={e => setSource(e.target.value)} className="finance-input w-full text-xs min-h-[44px]">
                 {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>

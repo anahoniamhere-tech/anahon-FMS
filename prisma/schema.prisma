@@ -56,6 +56,10 @@ model Project {
   fundingType String
   status      String
   stream      String @default("")
+  /// Policy 020 §4.4.4 — "any" channel (the default) or "bank" only, as the donor's agreement says.
+  channelRule       String @default("any")
+  /// The agreement the rule comes from (an AppDoc id), so the refusal can cite it.
+  channelRuleSource String @default("")
 }
 
 // Funding funnel: money BEFORE it lands. Deliberately a separate table so nothing
@@ -226,6 +230,9 @@ model BankTransaction {
   /// When and by whom this line was recorded — the date above stays the true one.
   recordedAt   String @default("")
   recordedById String @default("")
+  /// The evidence for money received outside the bank (Policy 020 §4.4.4): the channel's reference,
+  /// the cheque number, or for cash the RC number of the receipt signed by both sides.
+  evidenceRef  String @default("")
 }
 
 model JournalEntry {

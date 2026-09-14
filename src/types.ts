@@ -35,6 +35,9 @@ export interface Project {
   status: "Active" | "Completed" | "Pending";
   /** Which of AnaHon's five programs this project belongs to ("" = unassigned). */
   stream?: string;
+  /** Policy 020 §4.4.4 — "any" channel, or "bank" only as the donor's agreement says. */
+  channelRule?: "any" | "bank";
+  channelRuleSource?: string;
 }
 
 export interface ProposalBudgetRow { line: string; description: string; amount: number }
@@ -237,6 +240,8 @@ export interface BankTransaction {
   pending?: boolean;
   /** eBLOM advice "Transaction Reference" — dedupe key for re-imports. */
   noticeRef?: string;
+  /** Evidence for money received outside the bank: channel reference, cheque no., or RC number. */
+  evidenceRef?: string;
 }
 
 export interface JournalEntry {

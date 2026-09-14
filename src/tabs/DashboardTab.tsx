@@ -90,9 +90,8 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                     source: BLOM statements as of {state.bankTransactions.filter(t => !t.pending).reduce((m, t) => t.date > m ? t.date : m, "")} · EUR at {state.fxRates?.EUR ?? "—"}
                   </p>
                   {(() => {
-                    // Counted notes are real money and DO count. The book balance of 1120 does
-                    // not: the difference between the two is cash drawn without documented
-                    // vouchers — a documentation gap, never "available funds".
+                    // Counted notes are real money and DO count. The book balance of 1120 (cash
+                    // awaiting vouchers) does not: it is a documentation gap, never "available funds".
                     const petty = state.accounts.find(a => a.code === "1120")?.balance || 0;
                     if (petty <= 0 && !latestCashCount) return null;
                     return (
@@ -106,9 +105,9 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                         )}
                         {petty > 0 && (
                           <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 leading-snug">
-                            ⚠️ <strong>{formatUSD(latestCashCount ? Math.max(0, petty - latestCashCount.countedUSD) : petty)}</strong> cash drawn but not yet documented
-                            {latestCashCount ? " (ledger 1120 less the counted notes)" : " (ledger 1120)"} — <em>not</em> available funds.
-                            {!latestCashCount && " Record a cash count to separate real notes in hand from this gap."}
+                            {/* Policy 020 §4.4.5: 1120 is cash awaiting vouchers, never cash in the box — so a
+                                box count is not subtracted from it. */}
+                            ⚠️ <strong>{formatUSD(petty)}</strong> cash awaiting vouchers (ledger 1120) — <em>not</em> available funds, and never counted as cash in the box. It falls as past vouchers are recorded.
                           </p>
                         )}
                       </div>

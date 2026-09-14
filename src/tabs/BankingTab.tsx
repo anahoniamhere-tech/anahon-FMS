@@ -5,6 +5,7 @@ import { SharedProps } from "./shared";
 import { FINANCE } from "../roles";
 import PettyCashPanel from "./PettyCashPanel";
 import CashClearingPanel from "./CashClearingPanel";
+import OffBankPanel from "./OffBankPanel";
 
 export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch, setBankSearch, currentUser, refreshState, state, t, triggerToast, formatUSD }: SharedProps) {
   // Bank Reconciliation Trigger form
@@ -61,6 +62,9 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
 
               {/* Cash withdrawn for approved payment requests, until they are paid (1127). */}
               <CashClearingPanel state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState} formatUSD={formatUSD} />
+
+              {/* Money outside the bank (§4.4.4), statement matching, and cash awaiting vouchers (§4.4.5). */}
+              <OffBankPanel state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState} formatUSD={formatUSD} />
 
               {/* Direct Reconcile form */}
               {FINANCE.includes(currentUser.role) && (

@@ -61,6 +61,10 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // Cash withdrawn for approved payment requests, and its leftover — Finance's (Saad, 14 Sep 2026).
   "/api/cash/draw": BOOKS,
   "/api/cash/draw/return": BOOKS,
+  // Money received or paid outside the bank, and matching a statement line — Finance's (Policy 020 §4.4.4).
+  "/api/offbank/receive": BOOKS,
+  "/api/offbank/deposit": BOOKS,
+  "/api/bank/match-line": BOOKS,
   "/api/fxRates": BOOKS,
   "/api/fxRates/sync-inforeuro": BOOKS,
   "/api/partners/draw": DIRECTORS,
