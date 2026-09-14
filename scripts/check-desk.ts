@@ -312,10 +312,16 @@ ok("the custodian never sees a count due — least of all the one without notice
   counts(foMe, { bankAccounts: [float({ openedOn: "2026-06-10" })], cashCounts: [] }).length === 0);
 ok("a custodian who is also a director still never sees it",
   counts(saMe, { bankAccounts: [float({ openedOn: "2026-06-10", custodianUserId: "u-sa" })], cashCounts: [] }).length === 0);
-ok("the Procurement and Logistics Officer is owed the monthly count only, never the surprise one",
+// Known limit: the live PLO state ships bankAccounts: [] (loadState's operational-seat branch),
+// so in production Ahmad gets no count reminder at all — only the Executive Director does. He
+// reaches the count form on My Desk instead. The next two assertions pin both halves: the seat
+// rule on a state that HAS the float, and what the trimmed state he really receives produces.
+ok("seat rule only: given the float, the Procurement and Logistics Officer would be owed the monthly count, never the surprise one",
   (() => { const x = counts(ploMe, { bankAccounts: [float({ openedOn: "2026-06-10" })], cashCounts: [] }); return x.length === 1 && x[0].verb === "Count the petty cash"; })());
 ok("an off-bank channel is never treated as the float",
   counts(saMe, { bankAccounts: [float({ type: "Off-bank channel", ledgerCode: "" })], cashCounts: [] }).length === 0);
+ok("live limit: with the trimmed state the PLO really receives (no bank accounts), no count reminder reaches him",
+  counts(ploMe, { bankAccounts: [], cashCounts: [] }).length === 0);
 ok("the Procurement and Logistics Officer can reach the count form on My Desk",
   /currentUser\?\.role === PLO && \(/.test(desk) && /<CashCountForm /.test(desk));
 
