@@ -70,7 +70,7 @@ export default function ReceiveOffbankForm({ state, currentUser, t, triggerToast
   return (
     <form onSubmit={submit} className="p-4 bg-white border border-slate-200 rounded-xl shadow-sm space-y-3">
       <h4 className="text-sm font-bold text-slate-800 uppercase font-mono">
-        <span className="inline-flex items-center gap-1.5">{ic(Banknote)}{purpose === "quotation" ? t("Record money received outside the bank") : t("Record a further tranche")} — <span dir="ltr">{quotation?.quoteNo || project?.code}</span></span>
+        <span className="inline-flex items-center gap-1.5">{ic(Banknote)}{purpose === "quotation" ? t("Record money received outside the bank") : t("Record a further tranche")} — <span dir="ltr" className="whitespace-nowrap">{quotation?.quoteNo || project?.code}</span></span>
       </h4>
       {bankOnly && (
         <p className="text-[11px] font-bold text-red-700">
@@ -82,7 +82,7 @@ export default function ReceiveOffbankForm({ state, currentUser, t, triggerToast
           <label htmlFor="ob-channel" className={lbl}>{t("Channel")}</label>
           <select id="ob-channel" value={f.accountId} onChange={e => setF({ ...f, accountId: e.target.value, reference: "" })} className={fld}>
             <option value="">—</option>
-            {channels.map((a: any) => <option key={a.id} value={a.id}>{a.name} · {a.currency}</option>)}
+            {channels.map((a: any) => <option key={a.id} value={a.id}>{a.name}{String(a.name).includes(a.currency) ? "" : ` · ${a.currency}`}</option>)}
           </select>
         </div>
         <div>
