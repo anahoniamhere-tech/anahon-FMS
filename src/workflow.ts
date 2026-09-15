@@ -401,6 +401,23 @@ export function cashDrawItems(me: Me, s: State, today = localToday()): DeskItem[
   return out;
 }
 
+/* ── Equipment with no value recorded ────────────────────────────────────────
+ * Policy 020 §9 / 017: every registered item carries a value with its basis (receipt, estimate,
+ * gift, or the voucher it was bought on). An item still in use with no basis is a standing gap on
+ * Finance's desk — undated and marked standing, so it never buzzes a phone or reads as late: the
+ * 13 items registered before values existed wait for the external consultant's opening values.
+ */
+export function unvaluedAssetItems(me: Me, s: State): DeskItem[] {
+  if (!FINANCE.includes(me.role)) return [];
+  return ((s.fixedAssets as any[]) || [])
+    .filter(a => !a.costBasis && !a.endKind)
+    .map(a => ({
+      id: `unvalued:fixedAssets:${a.id}`, kind: "fixedAssets" as Kind, recordId: a.id, door: "assets",
+      title: `${a.tag || ""} · ${a.name || a.id}`, verb: "Record the opening value", status: "No value yet",
+      when: null, urgency: "waiting" as Urgency, group: "mine" as const, standing: true as const, seats: [], record: a,
+    }));
+}
+
 export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
   const out: DeskItem[] = [];
   for (const rule of RULES) {
@@ -448,6 +465,7 @@ export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
   kept.push(...missingPaperItems(me, s));
   kept.push(...cashCountItems(me, s, today));
   kept.push(...cashDrawItems(me, s, today));
+  kept.push(...unvaluedAssetItems(me, s));
   const rank = { overdue: 0, week: 1, waiting: 2 };
   return kept.sort((a, b) => rank[a.urgency] - rank[b.urgency] || (a.when || "9999").localeCompare(b.when || "9999") || a.title.localeCompare(b.title));
 }

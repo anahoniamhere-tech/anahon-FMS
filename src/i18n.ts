@@ -448,6 +448,8 @@ export const AR: Record<string, string> = {
   "Answer the query on the top-up": "أجب عن الاستفسار حول تعبئة الصندوق",
   "Raised": "مقدَّم",
   "Count due": "موعد الجرد",
+  "Record the opening value": "سجّل القيمة الافتتاحية",
+  "No value yet": "لا قيمة بعد",
   "Clear the withdrawal": "سوِّ السحب النقدي",
   "Uncleared": "غير مُسوّى",
   "Count the petty cash": "جرد صندوق النثريات",

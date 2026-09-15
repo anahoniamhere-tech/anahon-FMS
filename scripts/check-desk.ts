@@ -237,6 +237,14 @@ ok("a quotation WITH an expiry is chased once, by the expiry rule, not twice", q
 qr = turns(fin, st({ quotations: [qt({ status: "Accepted", validUntil: "" })] }), today);
 ok("an accepted quotation with no expiry is not chased", !qr.some(i => i.verb.includes("no expiry")));
 
+// Equipment with no value (Policy 020 §9): a standing item on Finance's desk only.
+const eq = (over: any) => ({ id: "fa1", tag: "EQ-001", name: "Camera", status: "Verified", costBasis: "", endKind: "", ...over });
+let ev = deskItems(fin, st({ fixedAssets: [eq({})] }), today).filter(i => i.id.startsWith("unvalued:"));
+ok("an item with no value basis is on Finance's desk, standing and undated", ev.length === 1 && ev[0].standing === true && ev[0].when === null && ev[0].door === "assets");
+ok("an item valued by receipt, estimate, gift or voucher is not", ["receipt", "estimate", "gift", "voucher"].every(b => deskItems(fin, st({ fixedAssets: [eq({ costBasis: b })] }), today).every(i => !i.id.startsWith("unvalued:"))));
+ok("an item that has ended (sold, lost, given away) is not", deskItems(fin, st({ fixedAssets: [eq({ endKind: "Sold" })] }), today).every(i => !i.id.startsWith("unvalued:")));
+ok("and no seat outside Finance sees it", deskItems(viewer("Procurement and Logistics Officer"), st({ fixedAssets: [eq({})] }), today).every(i => !i.id.startsWith("unvalued:")));
+
 console.log("\nG. papers the file is missing");
 // One rule, three checklists, nothing stored. The item exists because a paper is absent,
 // so filing it removes the item for everyone with nothing to tick.
