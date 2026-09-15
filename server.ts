@@ -8402,7 +8402,7 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
       items: JSON.parse(quote.itemsJson || "[]"),
       terms: JSON.parse(quote.termsJson || "{}"),
       notes: quote.notes,
-      issuedAs: quote.issuedAs, discountAmount: quote.discountAmount, discountLabel: quote.discountLabel
+      issuedAs: quote.issuedAs, discountAmount: quote.discountAmount, discountLabel: quote.discountLabel, title: quote.title
     });
 
     const docId = `doc-qt-${quote.id}`;
@@ -8415,7 +8415,7 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
       html,
       linkedRecordType: "quotation",
       linkedRecordId: quote.id,
-      plainReference: quote.issuedAs === "icontent"
+      omitReference: quote.issuedAs === "icontent"
     });
     await createAuditLog(user?.id, user?.name, "Quotation Document Generated", `Rendered quotation ${quote.quoteNo} for ${client.name} (${quote.currency} ${quote.amount}) → vault GENERAL/Quotations/${filename}.`);
     // The viewer chooses its renderer from the filename, so hand it back rather than
@@ -8460,7 +8460,7 @@ app.get("/api/quotations/:id/pdf", async (req, res) => {
       items: JSON.parse(quote.itemsJson || "[]"),
       terms: JSON.parse(quote.termsJson || "{}"),
       notes: quote.notes,
-      issuedAs: quote.issuedAs, discountAmount: quote.discountAmount, discountLabel: quote.discountLabel
+      issuedAs: quote.issuedAs, discountAmount: quote.discountAmount, discountLabel: quote.discountLabel, title: quote.title
     });
 
     const pdf = await htmlToPdf(html);

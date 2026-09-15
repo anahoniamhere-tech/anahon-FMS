@@ -83,7 +83,7 @@ export const QUOTE_REVISION_CLAUSE = "AnaHon may revise the prices, scope or ter
  * iContent never names AnaHon; internally everything stays AnaHon. The email is blank until Saad
  * gives one — when set, it prints beside the phone.
  */
-export const ICONTENT_PHONE = "+961 81 408 171";
+export const ICONTENT_PHONE = "+961 3 677 246"; // Saad's private number (15 Sep 2026); +961 81 408 171 stays AnaHon's
 export const ICONTENT_EMAIL = "";
 /** The same rule as QUOTE_REVISION_CLAUSE, with iContent Studio as the party that may revise. */
 export const QUOTE_REVISION_CLAUSE_ICONTENT = "iContent Studio may revise the prices, scope or terms of this quotation at any time until the client accepts it in writing; after acceptance, changes require the agreement of both parties.";

@@ -472,6 +472,8 @@ export function quotationHtml(o: {
   terms: { financial?: string; production?: string; technical?: string; extras?: string };
   notes: string;
   issuedAs?: string; discountAmount?: number; discountLabel?: string;
+  /** The quotation's title — the caption of an iContent package table. */
+  title?: string;
 }) {
   const icontent = o.issuedAs === "icontent";
   // A client document issued as iContent names no AnaHon and no AnaHon title (Saad, 15 Sep 2026).
@@ -479,6 +481,14 @@ export function quotationHtml(o: {
   const icontentContact = [ICONTENT_PHONE, ICONTENT_EMAIL].filter(Boolean).join(" · ");
   const brand = icontent ? "iContent Studio" : "ANAHON PRODUCTION";
   const sums = quoteTotals(o.items, o.discountAmount || 0);
+  // An iContent quotation is a package (Saad, 15 Sep 2026): Service / What's included / You receive,
+  // no numbering and no per-line price in front of the client. Line prices stay stored and shown in
+  // the app; only the package value, the discount and the total print.
+  const packageRows = o.items.map(it => `<tr>
+    <td><strong>${esc(it.service)}</strong></td>
+    <td>${esc(it.description).replace(/\n/g, "<br>")}</td>
+    <td>${esc(it.output).replace(/\n/g, "<br>")}</td>
+  </tr>`).join("");
   const rows = o.items.map((it, i) => `<tr>
     <td>${i + 1}</td>
     <td><strong>${esc(it.service)}</strong>${it.description ? `<br><span style="color:#444">${esc(it.description).replace(/\n/g, "<br>")}</span>` : ""}</td>
@@ -503,9 +513,10 @@ export function quotationHtml(o: {
     MOF: 3893185 · Phone: +961 81 408 171 · info@anahon.org</p>
   </div>`;
   // Package value and discount print only when there is a discount; TOTAL is always the net amount.
+  const span = icontent ? 2 : 5;
   const discountRows = sums.discount > 0
-    ? `<tr><td colspan="5" class="r">Package value</td><td class="r">${money(sums.packageValue, o.currency)}</td></tr>
-  <tr><td colspan="5" class="r">${esc(o.discountLabel || DEFAULT_DISCOUNT_LABEL)}</td><td class="r"${icontent ? ` style="color:#FF4D2E"` : ""}>−${money(sums.discount, o.currency)}</td></tr>`
+    ? `<tr><td colspan="${span}" class="r">Package value</td><td class="r">${money(sums.packageValue, o.currency)}</td></tr>
+  <tr><td colspan="${span}" class="r">${esc(o.discountLabel || DEFAULT_DISCOUNT_LABEL)}</td><td class="r"${icontent ? ` style="color:#FF4D2E"` : ""}>−${money(sums.discount, o.currency)}</td></tr>`
     : "";
 
   return page(`Quotation ${o.quoteNo} — ${o.clientName}`, `
@@ -532,11 +543,15 @@ ${icontent ? `<div class="bar"></div>` : ""}
   })()}
 </table>
 <table>
-  <caption>Services</caption>
+${icontent
+  ? `<caption>${esc(o.title || "Package")}</caption>
+  <thead><tr><th style="width:24%">Service</th><th>What's included</th><th style="width:30%">You receive</th></tr></thead>
+  <tbody>${packageRows}`
+  : `<caption>Services</caption>
   <thead><tr><th>#</th><th>Service</th><th>Output</th><th class="r">Unit</th><th class="r">Qty</th><th class="r">Amount</th></tr></thead>
-  <tbody>${rows}
+  <tbody>${rows}`}
   ${discountRows}
-  <tr><td colspan="5" class="r"><strong>TOTAL</strong></td><td class="r amt">${money(o.total, o.currency)}</td></tr></tbody>
+  <tr><td colspan="${span}" class="r"><strong>TOTAL</strong></td><td class="r amt">${money(o.total, o.currency)}</td></tr></tbody>
 </table>
 ${noteBlock("FINANCIAL NOTES", o.terms.financial)}
 ${noteBlock("PRODUCTION NOTES", o.terms.production)}
@@ -850,8 +865,9 @@ export async function nextDocRef(prisma: any): Promise<string> {
 export async function archive(prisma: any, o: {
   docId: string; projectCode: string; category: string; filename: string; html: string;
   linkedRecordType: string; linkedRecordId: string; partyId?: string; receiptNo?: string; note?: string;
-  /** For a document the client sees under another name (an iContent quotation): print the reference only. */
-  plainReference?: boolean;
+  /** A document the client sees under another name (an iContent quotation) carries no reference line;
+   *  the ANH-DOC reference stays internal — vault, audit log, app (Saad, 15 Sep 2026). */
+  omitReference?: boolean;
 }) {
   // A document keeps its reference for life — regeneration reuses it, only a
   // brand-new registration draws the next number.
@@ -859,8 +875,8 @@ export async function archive(prisma: any, o: {
   const refNo = existing?.refNo || await nextDocRef(prisma);
   const html = o.html.replace(
     "</body>",
-    o.plainReference
-      ? `<p class="note">Document reference: <strong>${esc(refNo)}</strong></p></body>`
+    o.omitReference
+      ? `</body>`
       : `<p class="note">Document reference: <strong>${esc(refNo)}</strong> — issued via AnaHon FMS.</p></body>`
   );
 
