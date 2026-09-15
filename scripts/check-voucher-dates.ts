@@ -63,5 +63,14 @@ for (const f of files) {
 ok("the scan found the voucher writers it is meant to guard", writes >= 5, `${writes} found`);
 ok("the late-cost rule has a real recording time to read: the rebuild never writes an expense", !/expense\.(create|update|upsert)/.test(read("prisma/rebuild-ledger.ts")));
 
+// The party file (App.tsx) lists a payee's vouchers: ordered and dated by the true date, recording time shown only when it differs.
+const app = read("src/App.tsx");
+ok("the party file dates each voucher by transactionDate, then paid_at, then created_at",
+  /const voucherDay = \(e: any\) => String\(e\.transactionDate \|\| e\.paid_at \|\| e\.created_at/.test(app));
+ok("the party file orders its vouchers by that date, not by when they were recorded",
+  /\.sort\(\(a, b\) => voucherDay\(a\)\.localeCompare\(voucherDay\(b\)\)\)/.test(app) && !/\.sort\(\(a, b\) => \(a\.created_at/.test(app));
+ok("the party file shows the voucher's date, and 'recorded' only where the recording day differs",
+  app.includes("{voucherDay(e)} · {e.voucherNo}") && /\(e\.created_at \|\| ""\)\.slice\(0, 10\) !== voucherDay\(e\) && <em[^>]*>recorded /.test(app)
+  && !app.includes('{(e.created_at || "").slice(0, 10)} · {e.voucherNo}'));
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

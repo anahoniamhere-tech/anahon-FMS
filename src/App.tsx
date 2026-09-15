@@ -216,11 +216,13 @@ export default function App() {
       !d.partyId &&
       /contract|agreement|timesheet|addendum|receipt|ts_/i.test(`${d.category} ${d.filename}`) &&
       d.filename.toLowerCase().includes(firstName));
+    const voucherDay = (e: any) => String(e.transactionDate || e.paid_at || e.created_at || "").slice(0, 10);
     const vouchers = state.expenses
       .filter(e => e.vendorId === partyId)
-      .sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+      // By when the payment happened, not when it was typed in: a 2024 voucher backfilled today is a 2024 voucher.
+      .sort((a, b) => voucherDay(a).localeCompare(voucherDay(b)));
     const docsOf = (eid: string) => state.documents.filter(d => d.linkedRecordType === "Expense" && d.linkedRecordId === eid);
-    return { agreements, other, personal, unlinkedByName, vouchers, docsOf };
+    return { agreements, other, personal, unlinkedByName, vouchers, docsOf, voucherDay };
   };
 
   /** Every document URL carries the viewer's id: personnel documents (passports, IDs, CVs)
@@ -282,7 +284,7 @@ export default function App() {
   };
 
   const renderPartyFile = (partyId: string, partyName: string) => {
-    const { agreements, other, personal, unlinkedByName, vouchers, docsOf } = collectPartyFile(partyId, partyName);
+    const { agreements, other, personal, unlinkedByName, vouchers, docsOf, voucherDay } = collectPartyFile(partyId, partyName);
     const total = vouchers.reduce((s, e) => s + e.convertedAmount, 0);
     const docLink = (d: any) => (
       <a key={d.id} href={docUrl(`/api/document/content/${d.id}`)} target="_blank" onClick={e => { e.preventDefault(); openDoc(d); }} rel="noreferrer"
@@ -366,7 +368,7 @@ export default function App() {
                 return (
                   <div key={e.id} className="p-2 bg-white border border-slate-100 rounded text-xs">
                     <div className="flex justify-between font-mono">
-                      <span>{(e.created_at || "").slice(0, 10)} · {e.voucherNo} · {proj?.code || "—"}</span>
+                      <span>{voucherDay(e)} · {e.voucherNo} · {proj?.code || "—"}{(e.created_at || "").slice(0, 10) !== voucherDay(e) && <em className="ms-1 text-[9px] text-slate-400 font-sans">recorded {(e.created_at || "").slice(0, 10)}</em>}</span>
                       <span className="font-bold">{formatIn(e.amount, e.currency)} <em className="text-[9px] text-slate-400 font-sans">{e.status}</em></span>
                     </div>
                     <p className="text-[11px] text-slate-600">{e.title}</p>
