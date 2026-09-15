@@ -18,16 +18,15 @@ const ok = (label: string, cond: boolean, detail = "") => {
   if (!cond) { failed++; console.error(`  FAIL  ${label}${detail ? " — " + detail : ""}`); } else console.log(`  ok    ${label}`);
 };
 
-// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020, 013 into 001, 020's Annex B into 010, 004/015/016 into 006, and 009 into 012),
+// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020, 013 into 001, 020's Annex B into 010, 004/015/016 into 006, 009 into 012, and 021/022 into 002),
 // so the parser is proven against real wording, not an invented fixture.
 const REAL_INDEX = `
 AnaHon Media Platform — Policies and Handbooks
 Index · 12 September 2026, revised 15 September 2026. AnaHon's policies live in five documents, not nineteen. Each policy is a numbered chapter inside the handbook that carries it. The handbooks are the policy; the separate files that used to hold each one are kept in Superseded as history and no longer govern.
 The numbers never change. The management system enforces some policies by number — the publication gate cites Policy 002, the independent fact-check cites Policy 005 — and the help desk answers from them.
 1. Editorial Standards Handbook
-•002 Editorial Policies and Guidelines
+•002 Editorial Standards — merged with 022 (and 021) and approved 15 Sep 2026: content standards and labels, the two approvals, independence, consent and safeguarding in stories, journalist safety, corrections, AI
 •005 Fact-Checking Policy
-•022 Artificial Intelligence Policy — absorbs 021 AI Visuals Generation by its own terms
 2. Team Handbook
 •001 Code of Conduct and Integrity — merged with 013 and 020's anti-fraud annex and approved 15 Sep 2026: fraud, corruption, conflicts of interest, sanctions, safeguarding, and how concerns are raised
 •006 People — merged with 004, 015 and 016 and approved 15 Sep 2026: engaging service providers, fees and payment, rest, wellbeing, inclusion and performance
@@ -44,20 +43,21 @@ Written for the declaration of 12 September 2026: AnaHon has no employees. Every
 Standing on its own
 •010 Information, Data and Source Privacy — merged with 020's data-protection annex and approved 15 Sep 2026: where information lives, access and two-step sign-in, source protection, confidential payments to protected sources, incidents. It cuts across all four handbooks and belongs to none.
 Numbers not in use
-014 was never issued. 021 is absorbed into 022, and its file was lost in August 2026. On 15 September 2026, 003 was merged into 020, 013 into 001, 004, 015 and 016 into 006, and 009 into 012. The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
+014 was never issued. 021's file was lost in August 2026. On 15 September 2026, 003 was merged into 020, 013 into 001, 004, 015 and 016 into 006, 009 into 012, and 021 and 022 into 002. The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
 Still to settle
 •An independent whistleblowing recipient — 001 §6.3 leaves the name open. Until someone outside AnaHon is named, concerns about the Executive Director go to the donors' own channels.
 •Targets for the KPIs (008) — the measures exist, the numbers do not.
 •A start year for the Strategy (007).
+•An interim editorial approver — 002 §4.2 needs two different people to approve a piece. The Executive Director will name who holds the Production Manager approval until that seat is filled; until then no piece passes the approval step.
 •An external audit — required by 020 §12.1. A financial consultant is being engaged through the SKF project to prepare it; none has yet been completed.
-•Journalist safety and security — touched on in 002 and 001, never written as its own policy.
 `;
 
 console.log("\nA. the Index parses into the five handbooks, Policy 010, and nothing invented");
 const parsed = parseHandbooksIndex(REAL_INDEX);
 ok("five handbooks", parsed.handbooks.length === 5, String(parsed.handbooks.length));
-ok("Editorial Standards carries 002, 005, 022",
-  parsed.handbooks[0].chapters.map(c => c.no).join(",") === "002,005,022");
+ok("Editorial Standards carries 002 and 005 — 022 (with 021) is merged into 002",
+  parsed.handbooks[0].chapters.map(c => c.no).join(",") === "002,005");
+ok("002 is Editorial Standards", parsed.handbooks[0].chapters[0].title === "Editorial Standards");
 ok("Team carries 001 and 006 — 004, 015 and 016 are merged into 006",
   parsed.handbooks[1].chapters.map(c => c.no).join(",") === "001,006");
 ok("006 is the People policy", parsed.handbooks[1].chapters[1].title === "People");
@@ -70,7 +70,7 @@ ok("Programmes and Funding carries 018, 019, 011, 008 — not the unnumbered inc
 ok("Strategy carries only 007", parsed.handbooks[4].chapters.map(c => c.no).join(",") === "007");
 ok("Policy 010 stands alone, not folded into a handbook",
   parsed.standalone.length === 1 && parsed.standalone[0].no === "010");
-ok("a trailing note survives the split, cleaned of its title", parsed.handbooks[0].chapters[2].note.startsWith("absorbs 021"));
+ok("a trailing note survives the split, cleaned of its title", parsed.handbooks[0].chapters[0].note.startsWith("merged with 022"));
 ok("no fault on the real, correct Index", findIndexFaults(parsed).length === 0, findIndexFaults(parsed).join("; "));
 
 console.log("\nB. a genuine duplicate is caught, not waved through");
