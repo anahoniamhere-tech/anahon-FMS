@@ -2063,7 +2063,7 @@ app.get("/api/office/board", async (req, res) => {
         state: overdue ? "stalled" : week ? "busy" : turns.length ? "waiting" : "clear",
         cards: seesCards ? all.map(t => ({
           id: t.id, house: HOUSE_OF[t.door] || "desk", door: t.door, focus: `${t.kind}:${t.recordId}`,
-          verb: t.verb, title: t.title, when: t.when, urgency: t.urgency, stage: stageOf(person.id, t.id),
+          verb: t.verb, title: t.title, when: t.when, urgency: t.urgency, standing: !!t.standing, stage: stageOf(person.id, t.id),
         })) : null,
       });
     }
