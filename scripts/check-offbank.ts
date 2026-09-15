@@ -120,6 +120,9 @@ ok("the migration touches no existing balance", !/UPDATE[^;]*"balance"/i.test(mi
 ok("the overview only reads 1120 — nothing is reclassified", /app\.get\("\/api\/offbank\/overview"[\s\S]{0,6000}Read-only/.test(server));
 ok("the dashboard no longer subtracts a box count from 1120", !/petty - latestCashCount\.countedUSD/.test(dashboard) && /cash awaiting vouchers \(ledger 1120\)/.test(dashboard));
 ok("a rebuild keeps manual adjustments and reclassifications", /\/\^je-rc-\/\.test\(e\.id\) \|\| \/\^je-\\d\+\$\/\.test\(e\.id\)/.test(rebuild) && /id: \{ notIn: kept\.map/.test(rebuild) && /\[\.\.\.entries, \.\.\.kept\]/.test(rebuild));
+ok("the FX sweep and the EUR rounding are dated by the last BLOM statement line, never by a channel receipt",
+  /const lastStatementDate = bankTx\.filter\(t => !t\.pending && bankAccountIds\.has\(t\.bankAccountId\)\)/.test(rebuild)
+  && (rebuild.match(/post\(lastStatementDate, "Adjustment",/g) || []).length === 2 && !/bankTx\[bankTx\.length - 1\]\.date/.test(rebuild));
 ok("the receipt markers carry their purpose to the rebuild", isOffbankRef(OFFBANK_REF("quotation", "q1")) && offbankPurposeOf(OFFBANK_REF("other", "x")) === "other" && /purpose === "other"\) contra = \{ accountCode: OTHER_INCOME_LEDGER \}/.test(rebuild));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");

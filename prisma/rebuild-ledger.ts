@@ -329,6 +329,12 @@ async function main() {
     ], { recordedAt: c.created_at, recordedById: c.counterUserId });
   }
 
+  // The two period-end adjustments below are dated by the last line on a BLOM statement — the
+  // statements are what they true up to. Dating them by the last line posted at all let a cash receipt
+  // on an off-bank channel (10 Sep 2026) drag July's FX loss into September.
+  const lastStatementDate = bankTx.filter(t => !t.pending && bankAccountIds.has(t.bankAccountId))
+    .reduce((m, t) => t.date > m ? t.date : m, "");
+
   // ---- 3. sweep FX clearing to gain/loss ----
   let fxNet = 0; // credit balance = gain
   for (const en of entries) for (const it of JSON.parse(en.itemsJson)) {
@@ -336,7 +342,7 @@ async function main() {
   }
   fxNet = r2(fxNet);
   if (Math.abs(fxNet) > 0.01) {
-    post(bankTx[bankTx.length - 1].date, "Adjustment",
+    post(lastStatementDate, "Adjustment",
       `FX conversion translation difference swept to ${fxNet > 0 ? "gain" : "loss"} (today-rate convention @ ${fx})`, "ADJ-FX-SWEEP",
       fxNet > 0
         ? [{ accountCode: ACC.FXCLEAR, debit: fxNet }, { accountCode: ACC.FXGAIN, credit: fxNet }]
@@ -354,7 +360,7 @@ async function main() {
   }
   const roundDiff = r2(eurJournalUSD - r2(eurClosingNative * fx));
   if (Math.abs(roundDiff) > 0.004) {
-    post(bankTx[bankTx.length - 1].date, "Adjustment",
+    post(lastStatementDate, "Adjustment",
       `EUR per-line rounding true-up so 1110 ties to the statement closing (${eurClosingNative} EUR @ ${fx})`, "ADJ-FX-ROUNDING",
       roundDiff > 0
         ? [{ accountCode: ACC.FXLOSS, debit: roundDiff }, { accountCode: ACC.BANK_EUR, credit: roundDiff }]
