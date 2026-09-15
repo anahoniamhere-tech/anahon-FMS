@@ -18,7 +18,7 @@ const ok = (label: string, cond: boolean, detail = "") => {
   if (!cond) { failed++; console.error(`  FAIL  ${label}${detail ? " — " + detail : ""}`); } else console.log(`  ok    ${label}`);
 };
 
-// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020, 013 into 001, and 020's Annex B into 010),
+// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020, 013 into 001, 020's Annex B into 010, and 004/015/016 into 006),
 // so the parser is proven against real wording, not an invented fixture.
 const REAL_INDEX = `
 AnaHon Media Platform — Policies and Handbooks
@@ -30,8 +30,8 @@ The numbers never change. The management system enforces some policies by number
 •022 Artificial Intelligence Policy — absorbs 021 AI Visuals Generation by its own terms
 2. Team Handbook
 •001 Code of Conduct and Integrity — merged with 013 and 020's anti-fraud annex and approved 15 Sep 2026: fraud, corruption, conflicts of interest, sanctions, safeguarding, and how concerns are raised
-•004 Diversity and Inclusion · 006 HR Policy · 015 Compensation · 016 Wellbeing
-Read with the declaration of 12 September 2026: AnaHon has no employees. Everyone on the team is a service provider on an annual contract stating total salary and terms of reference, with subcontracts per project, and no payment where there is no project.
+•006 People — merged with 004, 015 and 016 and approved 15 Sep 2026: engaging service providers, fees and payment, rest, wellbeing, inclusion and performance
+Written for the declaration of 12 September 2026: AnaHon has no employees. Everyone on the team is a service provider on an annual contract stating the total fee and terms of reference, with subcontracts per project, and no payment where there is no project.
 3. Finance and Controls Handbook
 •020 Finance and Procurement Policy — merged with 003 and approved 15 Sep 2026: accounts, procurement, payments, petty cash, money received outside the bank, and financial records
 •012 Due Diligence · 009 Risk Management
@@ -44,7 +44,7 @@ Read with the declaration of 12 September 2026: AnaHon has no employees. Everyon
 Standing on its own
 •010 Information, Data and Source Privacy — merged with 020's data-protection annex and approved 15 Sep 2026: where information lives, access and two-step sign-in, source protection, confidential payments to protected sources, incidents. It cuts across all four handbooks and belongs to none.
 Numbers not in use
-014 was never issued. 021 is absorbed into 022, and its file was lost in August 2026. 003 is merged into 020 and 013 into 001 (15 September 2026). The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
+014 was never issued. 021 is absorbed into 022, and its file was lost in August 2026. On 15 September 2026, 003 was merged into 020, 013 into 001, and 004, 015 and 016 into 006. The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
 Still to settle
 •An independent whistleblowing recipient — 001 §6.3 leaves the name open. Until someone outside AnaHon is named, concerns about the Executive Director go to the donors' own channels.
 •Targets for the KPIs (008) — the measures exist, the numbers do not.
@@ -58,8 +58,9 @@ const parsed = parseHandbooksIndex(REAL_INDEX);
 ok("five handbooks", parsed.handbooks.length === 5, String(parsed.handbooks.length));
 ok("Editorial Standards carries 002, 005, 022",
   parsed.handbooks[0].chapters.map(c => c.no).join(",") === "002,005,022");
-ok("Team carries 001, 004, 006, 015, 016",
-  parsed.handbooks[1].chapters.map(c => c.no).join(",") === "001,004,006,015,016");
+ok("Team carries 001 and 006 — 004, 015 and 016 are merged into 006",
+  parsed.handbooks[1].chapters.map(c => c.no).join(",") === "001,006");
+ok("006 is the People policy", parsed.handbooks[1].chapters[1].title === "People");
 ok("Finance and Controls carries 020, 012, 009, 017 — 003 is merged into 020, 013 into 001",
   parsed.handbooks[2].chapters.map(c => c.no).join(",") === "020,012,009,017");
 ok("001 is the Code of Conduct and Integrity", parsed.handbooks[1].chapters[0].title === "Code of Conduct and Integrity");
@@ -73,7 +74,7 @@ ok("a trailing note survives the split, cleaned of its title", parsed.handbooks[
 ok("no fault on the real, correct Index", findIndexFaults(parsed).length === 0, findIndexFaults(parsed).join("; "));
 
 console.log("\nB. a genuine duplicate is caught, not waved through");
-const duped = parseHandbooksIndex(REAL_INDEX.replace("006 HR Policy", "002 HR Policy"));
+const duped = parseHandbooksIndex(REAL_INDEX.replace("•006 People", "•002 People"));
 const faults = findIndexFaults(duped);
 ok("a number reused across handbooks is reported", faults.length === 1 && /002/.test(faults[0]), faults.join("; "));
 

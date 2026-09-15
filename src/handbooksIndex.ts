@@ -128,7 +128,6 @@ export const POLICY_DOORS: Record<string, string[]> = {
   "017": ["assets"],
   "010": ["compliance"],
   "006": ["payroll"],
-  "015": ["payroll"],
 };
 
 export function checkPolicyDoors(existingNavKeys: readonly string[]): string[] {
