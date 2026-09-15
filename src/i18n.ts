@@ -3,6 +3,12 @@
 // records stay in the language they were entered in.
 export const AR: Record<string, string> = {
   // donor report submissions and late costs
+  "amount unknown": "المبلغ غير معروف",
+  "This submission did not complete the obligation — it stays open.": "هذا التقديم لم يُكمل الالتزام — ويبقى مفتوحاً.",
+  "The submitted amount is not known, so these cannot be set beside it.": "المبلغ المقدَّم غير معروف، فلا يمكن وضع هذه إلى جانبه.",
+  "Record — enter the total, or say in the note why it is unknown": "تسجيل — أدخل المجموع، أو اذكر في الملاحظة سبب عدم معرفته",
+  "required when the amount is unknown — say why": "مطلوبة عندما يكون المبلغ غير معروف — اذكر السبب",
+  "This submission completes the obligation": "هذا التقديم يُكمل الالتزام",
   "at the report's rate": "بسعر الصرف الوارد في التقرير",
   "no rate stated in the report": "لا يذكر التقرير سعر صرف",
   "vouchers are in USD; the report is in": "السندات بالدولار؛ والتقرير بعملة",

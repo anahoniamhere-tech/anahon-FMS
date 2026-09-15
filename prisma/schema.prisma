@@ -994,11 +994,13 @@ model DonorReportSubmission {
   // rate the report itself states — USD per one unit of that currency. No rate stated → null,
   // and nothing is converted: the screen shows both currencies side by side instead.
   currency          String @default("USD")
-  asSubmittedNative Float
+  asSubmittedNative Float?               // null = amount not known (the filed report is lost or held only by the donor) — never a typed 0
   usdPerUnit        Float?
   asSubmittedUSD    Float?                // native when USD, native × usdPerUnit when a rate is stated, else null
   asSubmittedJson   String @default("{}") // { byLine: {budgetLineId: usd}, voucherIds: [] } when frozen
   basis           String                // "frozen" | "entered from the filed report"
+  note            String @default("")   // why an amount is unknown, and any remark the figure needs
+  completesObligation Boolean @default(true) // false: a part was submitted but the obligation stays open (TRF: narrative in, invoice out)
   recordedAt      String
   recordedById    String @default("")
 

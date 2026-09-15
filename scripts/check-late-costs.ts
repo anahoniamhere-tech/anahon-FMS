@@ -58,6 +58,16 @@ assert.ok(tabSrc.includes("formatIn(s.asSubmittedNative, s.currency)"), "the nat
 assert.ok(tabSrc.includes("and states no rate, so they are not converted"), "with no rate, both currencies are shown and the screen says why");
 assert.ok(/"currency" TEXT NOT NULL DEFAULT 'USD'/.test(fs.readFileSync("prisma/migrations/20260915150000_report_submission_currency/migration.sql", "utf8")), "currency is stored");
 
+// C3 — an unknown amount (filed report lost, or on the donor's platform only) is null with a reason — never 0.
+assert.equal(submissionBlocker({ ...ok, asSubmittedNative: null, note: "corrected workbook lost in the August 2026 vault incident" }), "", "unknown with a reason may be recorded");
+assert.ok(submissionBlocker({ ...ok, asSubmittedNative: null, note: " " }), "unknown with no reason is refused");
+assert.ok(submissionBlocker({ ...ok, asSubmittedNative: "", note: "" }), "a blank amount with no reason is refused");
+assert.equal(usdEquivalent(null, "USD"), null, "no amount, no USD equivalent");
+const route = fs.readFileSync("server.ts", "utf8");
+assert.ok(/if \(activity && completesObligation\) await prisma\.projectActivity\.update/.test(route), "a part-submission leaves its obligation open");
+assert.ok(/const completesObligation = completesIn !== false;/.test(route), "completing is the default");
+assert.ok(/asSubmittedNative Float\?/.test(fs.readFileSync("prisma/schema.prisma", "utf8")), "the amount column may be null");
+
 // D — append-only, and the server never recomputes a submitted figure.
 const server = fs.readFileSync("server.ts", "utf8");
 assert.ok(server.includes('app.post("/api/reports/submission"'), "a submission is recorded through one route");

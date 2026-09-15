@@ -37,7 +37,8 @@ export function inReportCurrency(usd: number, s: { currency?: string; usdPerUnit
 }
 
 /** The USD equivalent of a submitted figure: itself when USD, native × stated rate, else null. */
-export function usdEquivalent(native: number, currency: string, usdPerUnit?: number | null): number | null {
+export function usdEquivalent(native: number | null, currency: string, usdPerUnit?: number | null): number | null {
+  if (native == null) return null;
   if (currency === "USD") return r2(native);
   return usdPerUnit && usdPerUnit > 0 ? r2(native * usdPerUnit) : null;
 }
@@ -105,7 +106,7 @@ export function freezeSubmission(projectId: string, periodStart: string, periodE
 }
 
 /** Why a submission cannot be recorded, or "" when it can. */
-export function submissionBlocker(r: { periodStart: string; periodEnd: string; submittedOn: string; today: string; evidence: string; basis: string; currency?: string; asSubmittedNative?: number; usdPerUnit?: number | null }): string {
+export function submissionBlocker(r: { periodStart: string; periodEnd: string; submittedOn: string; today: string; evidence: string; basis: string; currency?: string; asSubmittedNative?: number | null | string; usdPerUnit?: number | null; note?: string }): string {
   const iso = /^\d{4}-\d{2}-\d{2}$/;
   if (!iso.test(r.periodStart) || !iso.test(r.periodEnd) || r.periodStart > r.periodEnd) return "Enter the report's period: a start date on or before its end date.";
   if (!iso.test(r.submittedOn) || r.submittedOn > r.today) return "Enter the day the report went to the donor — not a future date.";
@@ -115,7 +116,11 @@ export function submissionBlocker(r: { periodStart: string; periodEnd: string; s
   const cur = r.currency || "USD";
   if (!(REPORT_CURRENCIES as readonly string[]).includes(cur)) return `Choose the currency the report was submitted in: ${REPORT_CURRENCIES.join(", ")}.`;
   if (r.usdPerUnit != null && !(Number(r.usdPerUnit) > 0)) return "A stated rate must be more than zero — or leave it blank if the report states none.";
-  if (r.basis === "entered from the filed report" && !(Number(r.asSubmittedNative) >= 0 && Number.isFinite(Number(r.asSubmittedNative)))) return `Enter the total the filed report states, in ${cur}.`;
+  // An amount may be unknown — the filed report lost, or held only on the donor's platform — but only
+  // when it is entered from the filed report AND the note says why. Never a 0 standing in for "unknown".
+  const unknown = r.asSubmittedNative == null || r.asSubmittedNative === "";
+  if (r.basis === "entered from the filed report" && unknown && !String(r.note || "").trim()) return "If the amount is not known, say why in the note — otherwise enter the total the filed report states.";
+  if (r.basis === "entered from the filed report" && !unknown && !(Number(r.asSubmittedNative) >= 0 && Number.isFinite(Number(r.asSubmittedNative)))) return `Enter the total the filed report states, in ${cur}.`;
   // Vouchers are in USD: freezing a non-USD report needs the rate the report uses.
   if (r.basis === "frozen" && cur !== "USD" && !(Number(r.usdPerUnit) > 0)) return `To freeze a ${cur} report from the vouchers, enter the rate the report states (USD per 1 ${cur}).`;
   return "";

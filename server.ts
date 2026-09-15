@@ -2942,19 +2942,21 @@ app.post("/api/projects/channel-rule", async (req, res) => {
 // afterwards are shown beside it (src/lateCosts.ts), never folded into it.
 app.post("/api/reports/submission", async (req, res) => {
   try {
-    const { projectId, activityId, periodStart, periodEnd, submittedOn, evidence, basis, currency: cur, asSubmittedNative, usdPerUnit: rateIn, user } = req.body;
+    const { projectId, activityId, periodStart, periodEnd, submittedOn, evidence, basis, currency: cur, asSubmittedNative: nativeIn, usdPerUnit: rateIn, note, completesObligation: completesIn, user } = req.body;
+    const asSubmittedNative = nativeIn === "" || nativeIn == null ? null : Number(nativeIn);
+    const completesObligation = completesIn !== false;
     const currency = String(cur || "USD");
     const usdPerUnit = rateIn === "" || rateIn == null ? null : Number(rateIn);
     if (!MANAGERS_SEATS.includes(user?.role)) return res.status(403).json({ error: "Finance or a director records a donor report's submission." });
     const project = await prisma.project.findUnique({ where: { id: String(projectId || "") } });
     if (!project) return res.status(404).json({ error: "Project not found." });
-    const refused = submissionBlocker({ periodStart, periodEnd, submittedOn, today: localDate(), evidence, basis, currency, asSubmittedNative, usdPerUnit });
+    const refused = submissionBlocker({ periodStart, periodEnd, submittedOn, today: localDate(), evidence, basis, currency, asSubmittedNative, usdPerUnit, note });
     if (refused) return res.status(400).json({ error: refused });
     const activity = activityId ? await prisma.projectActivity.findUnique({ where: { id: String(activityId) } }) : null;
     if (activityId && (!activity || activity.projectId !== project.id || activity.kind !== "Report")) return res.status(400).json({ error: "That report obligation is not this project's." });
     // The figure is kept in the currency actually reported; its USD equivalent only at the rate the
     // report states. A frozen figure comes from USD vouchers, converted back at that same rate.
-    let native = Math.round(Number(asSubmittedNative) * 100) / 100;
+    let native: number | null = asSubmittedNative == null ? null : Math.round(asSubmittedNative * 100) / 100;
     let asSubmittedJson: any = {};
     if (basis === "frozen") {
       const vouchers = await prisma.expense.findMany({ where: { OR: [{ projectId: project.id }, { allocationsJson: { contains: project.id } }] } });
@@ -2966,12 +2968,14 @@ app.post("/api/reports/submission", async (req, res) => {
     const row = await prisma.donorReportSubmission.create({ data: {
       id: `drs-${Date.now()}`, projectId: project.id, activityId: activity?.id || "", periodStart, periodEnd, submittedOn,
       evidence: String(evidence).trim(), currency, asSubmittedNative: figure.native, usdPerUnit, asSubmittedUSD: figure.usd, asSubmittedJson: JSON.stringify(asSubmittedJson),
+      note: String(note || "").trim(), completesObligation,
       basis, recordedAt: new Date().toISOString(), recordedById: user?.id || "",
     } });
     // The obligation it answers is done, on the day it was really submitted.
-    if (activity) await prisma.projectActivity.update({ where: { id: activity.id }, data: { status: "Done", completedOn: submittedOn } });
+    // Only a submission that completes the obligation closes it; a part (TRF's narrative, invoice still out) leaves it open.
+    if (activity && completesObligation) await prisma.projectActivity.update({ where: { id: activity.id }, data: { status: "Done", completedOn: submittedOn } });
     await createAuditLog(user?.id, user?.name, "Donor Report Submission Recorded",
-      `${project.code}: report for ${periodStart} → ${periodEnd} submitted on ${submittedOn}, ${currency} ${figure.native.toFixed(2)}${currency !== "USD" ? (figure.usd != null ? ` (USD ${figure.usd.toFixed(2)} at the stated ${usdPerUnit} USD/${currency})` : " (no rate stated — no USD equivalent)") : ""} (${basis}), evidence "${String(evidence).trim()}"${activity ? `, answering "${activity.title}"` : ""} (${row.id}).`);
+      `${project.code}: report for ${periodStart} → ${periodEnd} submitted on ${submittedOn}, ${figure.native == null ? `amount unknown (${String(note || "").trim()})` : `${currency} ${figure.native.toFixed(2)}`}${figure.native != null && currency !== "USD" ? (figure.usd != null ? ` (USD ${figure.usd.toFixed(2)} at the stated ${usdPerUnit} USD/${currency})` : " (no rate stated — no USD equivalent)") : ""} (${basis}), evidence "${String(evidence).trim()}"${activity ? `, answering "${activity.title}"${completesObligation ? "" : " — the obligation stays open"}` : ""}${String(note || "").trim() && figure.native != null ? `; note: ${String(note).trim()}` : ""} (${row.id}).`);
     res.json({ success: true, submission: row });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

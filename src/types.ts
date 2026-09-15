@@ -760,7 +760,7 @@ export interface DatabaseState {
   subscriptions: Subscription[];
   projectActivities: ProjectActivity[];
   /** Donor reports as submitted — append-only (src/lateCosts.ts). */
-  donorReportSubmissions?: { id: string; projectId: string; activityId: string; periodStart: string; periodEnd: string; submittedOn: string; evidence: string; currency: string; asSubmittedNative: number; usdPerUnit: number | null; asSubmittedUSD: number | null; asSubmittedJson: string; basis: string; recordedAt: string; recordedById: string }[];
+  donorReportSubmissions?: { id: string; projectId: string; activityId: string; periodStart: string; periodEnd: string; submittedOn: string; evidence: string; currency: string; asSubmittedNative: number | null; usdPerUnit: number | null; note: string; completesObligation: boolean; asSubmittedUSD: number | null; asSubmittedJson: string; basis: string; recordedAt: string; recordedById: string }[];
   contentItems: ContentItem[];
   editorialMeetings: EditorialMeeting[];
   clients: Client[];
