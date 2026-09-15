@@ -8,7 +8,8 @@ type Row = {
   id: string; name: string; currency: string; ledgerCode: string; statementClosing: number; bookClosing: number; difference: number;
   awaiting: number; unmatched: number; reconciliation: any; reviews: { id: string; filename: string }[];
 };
-type Overview = { month: string; mayMark: boolean; accounts: Row[]; packs: { id: string; month: string; producedAt: string; producedByName: string; fileName: string; sha256: string }[]; lateSinceLastPack: number; lastPackAt: string };
+type Overview = { month: string; mayMark: boolean; accounts: Row[]; packs: { id: string; month: string; producedAt: string; producedByName: string; fileName: string; sha256: string }[]; lateSinceLastPack: number; lastPackAt: string;
+  withheld: { docId: string; refNo: string; category: string; reason: string; voucherNo: string }[] };
 
 const lastMonth = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return d.toLocaleDateString("en-CA").slice(0, 7); };
 const save = (blob: Blob, name: string) => {
@@ -104,6 +105,24 @@ export default function ConsultantPackPanel({ currentUser, t, triggerToast, form
           <p className="text-[11px] text-slate-600">{t("Records added late since the last pack")}: <span dir="ltr">{data.lateSinceLastPack}</span></p>
         )}
       </div>
+
+      {/* What the pack withholds, so Finance can correct a mis-filed category. No filename: the reference is enough to
+          find it, and this list lives in the FMS — the zip itself only counts them. */}
+      {data && data.withheld.length > 0 && (
+        <div className="space-y-2 border border-amber-200 bg-amber-50/60 rounded-lg p-3">
+          <h4 className="text-sm font-bold text-slate-900">{t("Withheld from this month's pack")}</h4>
+          <p className="text-[11px] text-slate-600">{t("If a document here is ordinary evidence filed under the wrong category, correct its category and build the pack again.")}</p>
+          <ul className="divide-y divide-amber-100 text-xs">
+            {data.withheld.map(w => (
+              <li key={w.docId} className="py-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span dir="ltr" className="font-mono font-bold whitespace-nowrap">{w.refNo || w.docId}</span>
+                <span className="text-slate-700"><bdi>{w.category}</bdi> · <span dir="ltr" className="font-mono whitespace-nowrap">{w.voucherNo}</span></span>
+                <span className="text-amber-900">{w.reason === "identity or personnel paper" ? t("identity or personnel paper") : t("source or editorial material")}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {data && (
         <div className="space-y-2">

@@ -33,9 +33,22 @@ ok("the personnel half is the vault's own rule, not a second copy", /isPersonnel
 ok("the source rule lives with Editorial, shared by the newsroom and the pack", isSourceMaterial({ linkedRecordType: "Meeting" }) && /export function isSourceMaterial/.test(read("src/editorialGates.ts")));
 const pack = route('app.post("/api/consultant/pack"');
 ok("every document is screened before it is copied into the zip", /const copyDoc = \(folder: string, d: any\) => \{\s*const why = packExcludes\(d\);\s*if \(why\) \{ excluded\.set/.test(pack));
+const candidatesFn = server.slice(server.indexOf("async function packCandidates("), server.indexOf("function withheldOf("));
 ok("documents enter only by whitelist: the month's payments, their declarations, the agreements relied on",
-  (pack.match(/copyDoc\(/g) || []).length === 4 && !/docs\.forEach|for \(const d of docs\) copyDoc/.test(pack));
+  /for \(const e of b\.paid\)/.test(candidatesFn) && (candidatesFn.match(/out\.push\(/g) || []).length === 4
+  && /for \(const c of candidates\) copyDoc\(c\.folder, c\.doc\)/.test(pack) && (pack.match(/copyDoc\(/g) || []).length === 1);
 ok("a file missing from the vault is listed, never silently dropped", /"missing from vault"/.test(pack) && /Missing from the vault \(listed in the manifest, not silently dropped\)/.test(pack));
+
+{
+  // Editorial's review, 15 Sep 2026: the source rule is broad on purpose, so Finance must see WHICH document a pack
+  // held back and why — on the panel, for Finance seats, by reference and category, never by name, never in the zip.
+  const overview = route('app.get("/api/consultant/overview"');
+  ok("the panel is told what the pack withholds, from the same candidates the pack is built from",
+    /const withheld = withheldOf\(\(await packCandidates\(b\)\)\.candidates\)/.test(overview) && /const \{ candidates, declarations \} = await packCandidates\(b\)/.test(pack) && /for \(const c of candidates\) copyDoc\(c\.folder, c\.doc\)/.test(pack));
+  const withheldFn = server.slice(server.indexOf("function withheldOf("), server.indexOf("const CONSULTANT_REPORTS"));
+  ok("…by reference, category and reason — never the filename", /refNo: doc\.refNo \|\| "", category: doc\.category, reason/.test(withheldFn) && !/filename/.test(withheldFn.replace(/\/\*\*[\s\S]*?\*\//, "")));
+  ok("…and the zip still only counts them", /document\(s\) withheld: \$\{why\}/.test(pack) && !/withheldOf\(/.test(pack));
+}
 
 console.log("\n2. Finance seats only; the Finance Officer, by person, prepares a reconciliation (§4.3)");
 ok("the Finance Officer may prepare one", reconcileMarkBlocker({ role: RECONCILER_SEAT }) === "");

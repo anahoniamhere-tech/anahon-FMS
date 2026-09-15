@@ -7473,6 +7473,36 @@ function sheetsToHtml(title: string, b: ConsultantBooks, sheets: [string, Record
   <div class="meta">AnaHon Civil Company · ${esc(b.start)} to ${esc(b.end)} · produced ${esc(new Date().toISOString())} by ${esc(producedBy)} · EUR at ${b.eur} · Policy 020 §12.1, §12.4</div>${tables}</body></html>`;
 }
 
+/** The documents a month pack is built from, and the folder each goes to: the month's payments, their
+ *  declarations, the agreements they rely on. The pack screens each with packExcludes; the panel lists the ones held. */
+async function packCandidates(b: ConsultantBooks) {
+  const docs = await prisma.appDoc.findMany();
+  const declarations: any[] = (prisma as any).missingReceiptDeclaration ? await (prisma as any).missingReceiptDeclaration.findMany() : [];
+  const agreementCats = [...REQUIRED_PERSONNEL.find(r => r.key === "contract")!.accepts, "Agreement", "Grant Agreement"];
+  const out: { folder: string; doc: any; expense: any; declaration: any }[] = [];
+  for (const e of b.paid) {
+    const folder = `06-payments/${safeName(e.voucherNo)}`;
+    const decl = declarations.find(d => d.expenseId === e.id) || null;
+    for (const d of docs.filter(d => d.linkedRecordType === "Expense" && d.linkedRecordId === e.id)) out.push({ folder, doc: d, expense: e, declaration: decl });
+    if (decl?.signedDocId) { const d = docs.find(x => x.id === decl.signedDocId); if (d) out.push({ folder, doc: d, expense: e, declaration: decl }); }
+    if (e.vendorId) for (const d of docs.filter(d => d.partyId === e.vendorId && agreementCats.includes(d.category))) out.push({ folder: `07-agreements/${safeName(b.vendors.find(v => v.id === e.vendorId)?.name || e.vendorId)}`, doc: d, expense: e, declaration: decl });
+    if (e.projectId) for (const d of agreementDocs(docs as any, e.projectId)) out.push({ folder: `07-agreements/${safeName(b.projects.find(p => p.id === e.projectId)?.code || e.projectId)}`, doc: d, expense: e, declaration: decl });
+  }
+  return { candidates: out, declarations };
+}
+
+/** What a pack withholds, for Finance to see and correct a mis-filed category — reference, category and reason only.
+ *  No filename: this list is shown in the FMS, never written into the zip that goes to the consultant. */
+function withheldOf(candidates: { doc: any; expense: any }[]) {
+  const seen = new Set<string>();
+  return candidates.flatMap(({ doc, expense }) => {
+    const reason = packExcludes(doc);
+    if (!reason || seen.has(doc.id)) return [];
+    seen.add(doc.id);
+    return [{ docId: doc.id, refNo: doc.refNo || "", category: doc.category, reason, voucherNo: expense.voucherNo }];
+  });
+}
+
 const CONSULTANT_REPORTS: Record<string, string> = { gl: "General ledger detail", reconciliation: "Account reconciliations", schedules: "Standing schedules", "trial-balance": "Trial balance" };
 
 app.get("/api/consultant/overview", async (req, res) => {
@@ -7483,11 +7513,13 @@ app.get("/api/consultant/overview", async (req, res) => {
     if (!isMonth(month)) return res.status(400).json({ error: "Choose a month (YYYY-MM)." });
     const b = await consultantBooks(month);
     const reviews = await prisma.appDoc.findMany({ where: { linkedRecordType: "BankReconciliation", category: CONSULTANT_REVIEW_CATEGORY }, select: { id: true, filename: true, linkedRecordId: true } });
+    const withheld = withheldOf((await packCandidates(b)).candidates);
     res.json({
       month, mayMark: !reconcileMarkBlocker(reader),
       accounts: b.reconciliation.map(r => ({ id: r.account.id, name: r.account.name, currency: r.account.currency, ledgerCode: r.ledgerCode, statementClosing: r.statementClosing, bookClosing: r.bookClosing, difference: r.difference, awaiting: r.awaitingMatch.length, unmatched: r.unmatched.length, reconciliation: r.reconciliation, reviews: reviews.filter(d => d.linkedRecordId === r.reconciliation?.id) })),
       packs: b.packs.slice().reverse().map(p => ({ id: p.id, month: p.month, producedAt: p.producedAt, producedByName: p.producedByName, fileName: p.fileName, sha256: p.sha256 })),
       lateSinceLastPack: b.late.rows.length, lastPackAt: b.late.since,
+      withheld,
     });
   } catch (err: any) {
     res.status(err.status || 500).json({ error: err.message });
@@ -7522,8 +7554,7 @@ app.post("/api/consultant/pack", async (req, res) => {
     if (!isMonth(String(month || ""))) return res.status(400).json({ error: "Choose a month (YYYY-MM)." });
     const b = await consultantBooks(month);
     const producedAt = new Date().toISOString();
-    const docs = await prisma.appDoc.findMany();
-    const declarations: any[] = (prisma as any).missingReceiptDeclaration ? await (prisma as any).missingReceiptDeclaration.findMany() : [];
+    const { candidates, declarations } = await packCandidates(b);
     const root = `ANAHON_CONSULTANT-PACK_${month}`;
     const dir = path.join(tmp, root);
     fs.mkdirSync(dir, { recursive: true });
@@ -7556,7 +7587,6 @@ app.post("/api/consultant/pack", async (req, res) => {
     ]));
 
     // Payments paid in the month, with their documents and declarations; the agreements they rely on.
-    const agreementCats = [...REQUIRED_PERSONNEL.find(r => r.key === "contract")!.accepts, "Agreement", "Grant Agreement"];
     for (const e of b.paid) {
       const folder = `06-payments/${safeName(e.voucherNo)}`;
       const decl = declarations.find(d => d.expenseId === e.id);
@@ -7568,11 +7598,8 @@ app.post("/api/consultant/pack", async (req, res) => {
         `Payee: ${b.vendors.find(v => v.id === e.vendorId)?.name || e.vendorId || "—"}`,
         `Missing-receipt declaration: ${decl ? `prepared by ${b.nameOf(decl.preparedById)}; signed copy ${decl.signedDocId || "not filed"}; approved by ${decl.approvedById ? `${b.nameOf(decl.approvedById)} on ${String(decl.approvedAt).slice(0, 10)}` : "not yet approved"}` : "none"}`,
       ].join("\n"));
-      for (const d of docs.filter(d => d.linkedRecordType === "Expense" && d.linkedRecordId === e.id)) copyDoc(folder, d);
-      if (decl?.signedDocId) { const d = docs.find(x => x.id === decl.signedDocId); if (d) copyDoc(folder, d); }
-      if (e.vendorId) for (const d of docs.filter(d => d.partyId === e.vendorId && agreementCats.includes(d.category))) copyDoc(`07-agreements/${safeName(b.vendors.find(v => v.id === e.vendorId)?.name || e.vendorId)}`, d);
-      if (e.projectId) for (const d of agreementDocs(docs as any, e.projectId)) copyDoc(`07-agreements/${safeName(b.projects.find(p => p.id === e.projectId)?.code || e.projectId)}`, d);
     }
+    for (const c of candidates) copyDoc(c.folder, c.doc);
     const sinceLabel = b.late.since ? b.late.since.slice(0, 10) : "first-pack";
     put(`08-late-records-since-${sinceLabel}.xlsx`, sheetsToXlsx([["Recorded late", b.late.rows.map(r => ({ Kind: r.kind, Reference: r.id, "True date": r.trueDate, "Recorded at": r.recordedAt, Amount: r.amount ?? "", Description: r.label }))]]));
 
