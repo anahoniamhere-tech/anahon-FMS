@@ -486,6 +486,12 @@ model Quotation {
   itemsJson   String @default("[]") // [{service, description, output, unitPrice, qty}]
   termsJson   String @default("{}") // {financial, production, technical, extras}
   paymentTxIdsJson String @default("[]") // statement deposits that settled this quote, in linking order (bank evidence); a client may pay in tranches
+  // Who the quotation is issued as (src/quoteTotals.ts QUOTE_ISSUERS): "anahon" or "icontent". One numbering for both.
+  issuedAs         String @default("anahon")
+  // A quotation-level discount, a positive amount shown as a deduction under the package value.
+  // amount stays the net total (package value − discount), never below zero.
+  discountAmount   Float  @default(0)
+  discountLabel    String @default("")
 }
 
 model OrgSettings {

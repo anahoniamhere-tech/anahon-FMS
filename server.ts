@@ -23,6 +23,7 @@ import {
   isSupersededPointer, policyHeading,
 } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
+import { QUOTE_ISSUERS, quoteTotals, discountBlocker } from "./src/quoteTotals.js";
 import { freezeSubmission, submissionBlocker, inReportCurrency, usdEquivalent } from "./src/lateCosts.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
@@ -8297,7 +8298,7 @@ app.post("/api/contacts/delete", async (req, res) => {
 
 app.post("/api/quotations/save", async (req, res) => {
   try {
-    const { id, clientId, title, description, amount, currency, date, validUntil, status, notes, items, terms, quoteNo, user } = req.body;
+    const { id, clientId, title, description, amount, currency, date, validUntil, status, notes, items, terms, quoteNo, issuedAs, discountAmount, discountLabel, user } = req.body;
     if (!clientId || !title) return res.status(400).json({ error: "Client and title are required." });
     if (status && !QUOTE_STATUSES.includes(status)) {
       return res.status(400).json({ error: `Status must be one of: ${QUOTE_STATUSES.join(", ")}` });
@@ -8313,12 +8314,25 @@ app.post("/api/quotations/save", async (req, res) => {
         unitPrice: Number(it.unitPrice) || 0,
         qty: Number(it.qty) || 1
       }));
+    if (issuedAs !== undefined && !(QUOTE_ISSUERS as readonly string[]).includes(issuedAs)) {
+      return res.status(400).json({ error: `Issued as must be one of: ${QUOTE_ISSUERS.join(", ")}.` });
+    }
+    const prior = id ? await prisma.quotation.findUnique({ where: { id } }) : null;
+    // A field the caller did not send keeps its saved value (a status move sends the whole row anyway).
+    const discount = discountAmount === undefined ? (prior?.discountAmount || 0) : Number(discountAmount || 0);
+    const refusedDiscount = discountBlocker(lineItems, discount);
+    if (refusedDiscount) return res.status(400).json({ error: refusedDiscount });
+    const sums = quoteTotals(lineItems, discount);
     const data = {
       clientId,
       title,
       description: description || "",
       // With line items the total is arithmetic, not typed — the two must never disagree.
-      amount: lineItems.length ? lineItems.reduce((s, it) => s + it.unitPrice * it.qty, 0) : Number(amount) || 0,
+      // A discount comes off the package value; amount is the net figure tranches and matching key on.
+      amount: lineItems.length ? sums.total : Math.max(0, Number(amount) || 0),
+      issuedAs: issuedAs === undefined ? (prior?.issuedAs || "anahon") : issuedAs,
+      discountAmount: lineItems.length ? sums.discount : 0,
+      discountLabel: discountLabel === undefined ? (prior?.discountLabel || "") : String(discountLabel || "").trim(),
       currency: currency || "USD",
       date: date || new Date().toISOString().slice(0, 10),
       validUntil: validUntil || "",
@@ -8355,7 +8369,7 @@ app.post("/api/quotations/save", async (req, res) => {
       user?.id,
       user?.name,
       existing ? "Quotation Updated" : "Quotation Created",
-      `${existing ? `Updated (was ${existing.status})` : "Created"} ${quote.quoteNo} for ${client.name}: "${quote.title}" — ${quote.currency} ${quote.amount}, status ${quote.status}.`
+      `${existing ? `Updated (was ${existing.status})` : "Created"} ${quote.quoteNo} for ${client.name}: "${quote.title}" — ${quote.currency} ${quote.amount}${quote.discountAmount ? ` (package ${sums.packageValue}, ${quote.discountLabel || "discount"} −${quote.discountAmount})` : ""}, status ${quote.status}, issued as ${quote.issuedAs}.`
     );
     res.json({ success: true, quotation: quote });
   } catch (err: any) {
@@ -8387,7 +8401,8 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
       total: quote.amount,
       items: JSON.parse(quote.itemsJson || "[]"),
       terms: JSON.parse(quote.termsJson || "{}"),
-      notes: quote.notes
+      notes: quote.notes,
+      issuedAs: quote.issuedAs, discountAmount: quote.discountAmount, discountLabel: quote.discountLabel
     });
 
     const docId = `doc-qt-${quote.id}`;
@@ -8443,7 +8458,8 @@ app.get("/api/quotations/:id/pdf", async (req, res) => {
       total: quote.amount,
       items: JSON.parse(quote.itemsJson || "[]"),
       terms: JSON.parse(quote.termsJson || "{}"),
-      notes: quote.notes
+      notes: quote.notes,
+      issuedAs: quote.issuedAs, discountAmount: quote.discountAmount, discountLabel: quote.discountLabel
     });
 
     const pdf = await htmlToPdf(html);

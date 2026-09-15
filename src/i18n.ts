@@ -2,6 +2,12 @@
 // Main navigation and primary actions only — data, documents and financial
 // records stay in the language they were entered in.
 export const AR: Record<string, string> = {
+  // quotation issuer and discount
+  "Issued as": "صادر باسم",
+  "Discount label": "اسم الخصم",
+  "Discount": "الخصم",
+  "Package value": "قيمة الحزمة",
+  "Cannot save — fix the discount": "لا يمكن الحفظ — صحّح الخصم",
   // donor report submissions and late costs
   "amount unknown": "المبلغ غير معروف",
   "This submission did not complete the obligation — it stays open.": "هذا التقديم لم يُكمل الالتزام — ويبقى مفتوحاً.",

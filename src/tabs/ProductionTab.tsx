@@ -8,6 +8,7 @@ import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import { FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
 import { outstandingOn, paidOn } from "../quoteTranches";
+import { QUOTE_ISSUERS, QUOTE_ISSUER_LABELS, quoteTotals, discountBlocker, DEFAULT_DISCOUNT_LABEL } from "../quoteTotals";
 import { RECEIPT_CATEGORY, receiptLog, receiptNoOf } from "../receipts";
 import ReceiveOffbankForm from "./ReceiveOffbankForm";
 
@@ -119,7 +120,9 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
   // Line-item helpers for the quotation form. Total is always derived, never typed.
   const quoteItems = quoteForm?.items || [];
 
-  const quoteTotal = quoteItems.reduce((s, it) => s + (Number(it.unitPrice) || 0) * (Number(it.qty) || 1), 0);
+  const quoteSums = quoteTotals(quoteItems, Number(quoteForm?.discountAmount) || 0);
+  const quoteTotal = quoteSums.total;
+  const discountProblem = discountBlocker(quoteItems, quoteForm?.discountAmount || 0);
 
   const setQuoteItem = (i: number, patch: Partial<QuotationItem>) => {
     const items = quoteItems.map((it, idx) => (idx === i ? { ...it, ...patch } : it));
@@ -326,6 +329,12 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                         <input id="qt-title" type="text" placeholder="e.g. Event video production — 2-day shoot + edit" value={quoteForm.title || ""} onChange={e => setQuoteForm({ ...quoteForm, title: e.target.value })} className="finance-input w-full font-sans text-xs" />
                       </div>
                       <div>
+                        <label htmlFor="qt-issuer" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Issued as")}</label>
+                        <select id="qt-issuer" value={quoteForm.issuedAs || "anahon"} onChange={e => setQuoteForm({ ...quoteForm, issuedAs: e.target.value as Quotation["issuedAs"] })} className="finance-input w-full text-xs">
+                          {QUOTE_ISSUERS.map(k => <option key={k} value={k}>{QUOTE_ISSUER_LABELS[k]}</option>)}
+                        </select>
+                      </div>
+                      <div>
                         <label htmlFor="qt-status" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Status")}</label>
                         <select id="qt-status" value={quoteForm.status || "Draft"} onChange={e => setQuoteForm({ ...quoteForm, status: e.target.value as Quotation["status"] })} className="finance-input w-full text-xs">
                           {QUOTE_STATUSES.map(st => <option key={st} value={st}>{st}</option>)}
@@ -411,7 +420,21 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                           </div>
                         ))}
                         {quoteItems.length > 0 && (
-                          <p className="text-end text-xs font-mono font-bold text-slate-800">TOTAL: {quoteForm.currency || "USD"} {quoteTotal.toLocaleString()}</p>
+                          <div className="flex flex-wrap items-end justify-end gap-3">
+                            <div>
+                              <label htmlFor="qt-disc-label" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Discount label")}</label>
+                              <input id="qt-disc-label" type="text" placeholder={DEFAULT_DISCOUNT_LABEL} value={quoteForm.discountLabel || ""} onChange={e => setQuoteForm({ ...quoteForm, discountLabel: e.target.value })} className="finance-input text-xs" />
+                            </div>
+                            <div>
+                              <label htmlFor="qt-disc" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Discount")} (<span dir="ltr">{quoteForm.currency || "USD"}</span>)</label>
+                              <input id="qt-disc" type="number" min="0" step="any" value={quoteForm.discountAmount ?? ""} onChange={e => setQuoteForm({ ...quoteForm, discountAmount: e.target.value === "" ? 0 : Number(e.target.value) })} className="finance-input font-mono text-xs w-28" />
+                            </div>
+                            <div className="text-end text-xs font-mono text-slate-800">
+                              {quoteSums.discount > 0 && <p dir="ltr">{t("Package value")}: {quoteForm.currency || "USD"} {quoteSums.packageValue.toLocaleString()} · −{quoteSums.discount.toLocaleString()}</p>}
+                              <p className="font-bold" dir="ltr">TOTAL: {quoteForm.currency || "USD"} {quoteTotal.toLocaleString()}</p>
+                              {discountProblem && <p className="text-red-700 font-sans">{discountProblem}</p>}
+                            </div>
+                          </div>
                         )}
                       </div>
 
@@ -444,7 +467,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <button type="submit" className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-700 transition-all">💾 Save Quotation</button>
+                      <button type="submit" disabled={!!discountProblem} className="bg-red-600 text-white font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-red-700 disabled:opacity-60 transition-all">{discountProblem ? t("Cannot save — fix the discount") : "💾 Save Quotation"}</button>
                       <button type="button" onClick={() => setQuoteForm(null)} className="bg-slate-100 text-slate-600 font-medium text-xs rounded-lg px-4 py-2.5 hover:bg-slate-200 transition-all">Cancel</button>
                     </div>
                   </form>

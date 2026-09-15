@@ -9,6 +9,8 @@
 // navigate them and the print view stays correct.
 import fs from "fs";
 import { QUOTE_REVISION_CLAUSE, QUOTE_REVISION_CLAUSE_AR } from "./src/constants.js";
+import { quoteTotals, DEFAULT_DISCOUNT_LABEL } from "./src/quoteTotals.js";
+import { ICONTENT_FONT_FACES } from "./src/brandFonts.js";
 import { AR } from "./src/i18n.js";
 import { ALL_ROLES } from "./src/roles.js";
 import path from "path";
@@ -114,16 +116,33 @@ th .alt{display:block;font-weight:400;font-size:10.5px;color:#6D1A1A;direction:r
 .sig div{flex:1;border-top:1px solid #6D1A1A;padding-top:6px;font-size:12px}
 @media print{body{margin:8px}}`;
 
-function page(title: string, body: string) {
+function page(title: string, body: string, opts: { letterhead?: boolean; style?: string } = {}) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)}</title>
-<style>${STYLE}</style></head><body>
-<div class="lh"><img src="${LOGO}" alt="AnaHon" />
-<div class="org">ANAHON MEDIA PLATFORM &middot; \u0623\u0646\u0627 \u0647\u0648\u0646<span>Independent media, reporting from where it happens &middot; Tripoli, Lebanon &middot; anahon.org</span></div></div>
+<style>${STYLE}${opts.style || ""}</style></head><body>
+${opts.letterhead === false ? "" : `<div class="lh"><img src="${LOGO}" alt="AnaHon" />
+<div class="org">ANAHON MEDIA PLATFORM &middot; \u0623\u0646\u0627 \u0647\u0648\u0646<span>Independent media, reporting from where it happens &middot; Tripoli, Lebanon &middot; anahon.org</span></div></div>`}
 ${body}
 </body></html>`;
 }
+
+/**
+ * iContent Studio's quotation look (approved 15 Sep 2026, icontent-studio/previews/quote-006-icontent):
+ * a text wordmark instead of the AnaHon logo, Inter for the body and Sora for the wordmark and total,
+ * both embedded (src/brandFonts.ts). The legal line stays AnaHon's: it is a programme of the company.
+ */
+const ICONTENT_STYLE = `${ICONTENT_FONT_FACES}
+body{font-family:"Inter","Helvetica Neue",Arial,sans-serif !important;color:#111111 !important;font-size:12.5px !important}
+td,th{border:none !important;border-bottom:1px solid #D9D6D0 !important}
+th{background:#F5F3EF !important;color:#111111 !important;font-weight:600}
+caption{text-transform:uppercase;letter-spacing:1.5px;font-weight:600;color:#777 !important}
+.amt{color:#FF4D2E !important;font-family:Sora,Inter,sans-serif}
+.sig div{border-top:1.5px solid #111111 !important}
+.wm{font-family:Sora,Inter,sans-serif;font-weight:800;font-size:40px;letter-spacing:-1.5px;line-height:1;margin:0;color:#111111}
+.wm .i{color:#FF4D2E}
+.wm small{display:block;font-family:Inter,sans-serif;font-size:10.5px;font-weight:600;letter-spacing:4px;color:#777;margin-top:6px}
+.bar{height:4px;background:linear-gradient(90deg,#FF4D2E 0 64px,#111111 64px);margin:14px 0 18px}`;
 
 /** Record card for one voucher. Mirrors the format of the 129 records already in the vault. */
 export function digitizedInvoiceHtml(o: {
@@ -452,7 +471,11 @@ export function quotationHtml(o: {
   items: { service: string; description: string; output: string; unitPrice: number; qty: number }[];
   terms: { financial?: string; production?: string; technical?: string; extras?: string };
   notes: string;
+  issuedAs?: string; discountAmount?: number; discountLabel?: string;
 }) {
+  const icontent = o.issuedAs === "icontent";
+  const brand = icontent ? "iContent Studio" : "ANAHON PRODUCTION";
+  const sums = quoteTotals(o.items, o.discountAmount || 0);
   const rows = o.items.map((it, i) => `<tr>
     <td>${i + 1}</td>
     <td><strong>${esc(it.service)}</strong>${it.description ? `<br><span style="color:#444">${esc(it.description).replace(/\n/g, "<br>")}</span>` : ""}</td>
@@ -465,14 +488,27 @@ export function quotationHtml(o: {
   const noteBlock = (label: string, text?: string) =>
     text ? `<p style="margin:6px 0"><strong>${label}:</strong> ${esc(text).replace(/\n/g, "<br>")}</p>` : "";
 
-  return page(`Quotation ${o.quoteNo} — ${o.clientName}`, `
-<div style="display:flex;justify-content:space-between;align-items:flex-start">
-  <div>
+  const issuerBlock = icontent
+    ? `<div>
+    <p class="wm"><span class="i">i</span>Content<small>STUDIO · BRANDING &amp; CONTENT</small></p>
+    <p style="font-size:10.5px;color:#666;margin-top:10px">Tripoli, Lebanon · +961 81 408 171 · info@anahon.org<br>
+    A programme of AnaHon (Lebanese Civil Company 90/2023) · MOF 3893185</p>
+  </div>`
+    : `<div>
     <h1 style="border:none;margin-bottom:0">ANAHON PRODUCTION</h1>
     <h2>Tripoli, Lebanon</h2>
     <p style="font-size:11px;color:#555;margin-top:8px">Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor<br>
     MOF: 3893185 · Phone: +961 81 408 171 · info@anahon.org</p>
-  </div>
+  </div>`;
+  // Package value and discount print only when there is a discount; TOTAL is always the net amount.
+  const discountRows = sums.discount > 0
+    ? `<tr><td colspan="5" class="r">Package value</td><td class="r">${money(sums.packageValue, o.currency)}</td></tr>
+  <tr><td colspan="5" class="r">${esc(o.discountLabel || DEFAULT_DISCOUNT_LABEL)}</td><td class="r"${icontent ? ` style="color:#FF4D2E"` : ""}>−${money(sums.discount, o.currency)}</td></tr>`
+    : "";
+
+  return page(`Quotation ${o.quoteNo} — ${o.clientName}`, `
+<div style="display:flex;justify-content:space-between;align-items:${icontent ? "flex-end" : "flex-start"}">
+  ${issuerBlock}
   <div style="text-align:right">
     <p style="font-size:22px;letter-spacing:3px;margin:0"><strong>QUOTATION</strong></p>
     <p style="font-size:12px;margin:4px 0">№ <strong>${esc(o.quoteNo)}</strong><br>
@@ -481,6 +517,7 @@ export function quotationHtml(o: {
     Prepared by: ${esc(o.preparedBy)}</p>
   </div>
 </div>
+${icontent ? `<div class="bar"></div>` : ""}
 <table>
   <caption>Quotation to</caption>
   <tr><th scope="row">Client</th><td>${esc(o.clientName)}${o.clientTaxId ? ` — MOF/Tax ID: ${esc(o.clientTaxId)}` : ""}</td></tr>
@@ -496,6 +533,7 @@ export function quotationHtml(o: {
   <caption>Services</caption>
   <thead><tr><th>#</th><th>Service</th><th>Output</th><th class="r">Unit</th><th class="r">Qty</th><th class="r">Amount</th></tr></thead>
   <tbody>${rows}
+  ${discountRows}
   <tr><td colspan="5" class="r"><strong>TOTAL</strong></td><td class="r amt">${money(o.total, o.currency)}</td></tr></tbody>
 </table>
 ${noteBlock("FINANCIAL NOTES", o.terms.financial)}
@@ -508,11 +546,12 @@ ${o.notes ? noteBlock("NOTES", o.notes) : ""}
 <p style="margin:6px 0 0;font-size:10.5px">${esc(QUOTE_REVISION_CLAUSE)}</p>
 <p dir="rtl" lang="ar" style="margin:4px 0 0;font-size:11.5px;line-height:1.7;text-align:right;unicode-bidi:isolate;font-family:'Noto Naskh Arabic','Noto Sans Arabic','Tajawal',serif">${esc(QUOTE_REVISION_CLAUSE_AR)}</p>
 <div class="sig">
-<div>${esc(o.preparedBy)}<br>For ANAHON PRODUCTION — date &amp; signature</div>
+<div>${esc(o.preparedBy)}<br>For ${icontent ? "iContent Studio (AnaHon)" : "ANAHON PRODUCTION"} — date &amp; signature</div>
 <div>${esc(o.clientName)}<br>Client — date &amp; signature</div>
 </div>
 <p class="note">If you have any questions concerning this quotation, contact: Saad Matar — Executive Director · Mobile: +961 81 408 171 · info@anahon.org<br>
-ANAHON production · This quotation is not an invoice; services are booked upon written acceptance.</p>`);
+${icontent ? "iContent Studio" : "ANAHON production"} · This quotation is not an invoice; services are booked upon written acceptance.</p>`,
+    icontent ? { letterhead: false, style: ICONTENT_STYLE } : {});
 }
 
 /** Cash receipt. For a bank or OMT payment the counterparty holds a trace; for cash
