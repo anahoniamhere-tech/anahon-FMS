@@ -242,7 +242,14 @@ export function rehearsalSeatsBlockers(c: Seats): string[] {
  */
 export const EDITORIAL_RECORD_TYPES = ["Content", "Content Reference", "Meeting", "Website"] as const;
 export const SOURCE_CATEGORY_PATTERN = /reference material|meeting recording|recording|interview|footage|\bsources?\b/i;
+/** The category half on its own: raw material (a reference, a recording, an interview, footage, a source),
+ *  as opposed to a finished asset. It decides what may leave AnaHon at all — the consultant's pack, and every
+ *  route that hands a vault file to Meta or copies it onto the public site (Newsroom, 15 Sep 2026). A cover or a
+ *  "Social Image" is a finished asset and passes; "Reference Material" never does. */
+export function isRawSourceCategory(category: string | null | undefined): boolean {
+  return SOURCE_CATEGORY_PATTERN.test(String(category || ""));
+}
 export function isSourceMaterial(doc: { category?: string | null; linkedRecordType?: string | null }): boolean {
   return (EDITORIAL_RECORD_TYPES as readonly string[]).includes(String(doc?.linkedRecordType || ""))
-    || SOURCE_CATEGORY_PATTERN.test(String(doc?.category || ""));
+    || isRawSourceCategory(doc?.category);
 }

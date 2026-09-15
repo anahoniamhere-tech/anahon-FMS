@@ -234,3 +234,29 @@ assert.ok(/export function TokenHealth/.test(panel) && /<TokenHealth/.test(src("
   "the Newsroom keeps a read-only token-health line");
 
 console.log("check-social: Newsroom merge asserts passed");
+
+/* ── Policy 010: raw source material is never postable (15 Sep 2026) ───────────
+ * The media picker used to offer category "Reference Material" — 10 raw Idea Desk reference images,
+ * tied to no piece, could be posted to Facebook/Instagram or copied onto anahon.online. The raw-material
+ * rule is ONE function in editorialGates.ts, read by the consultant pack AND by every route that can
+ * send a vault file out, so the newsroom and the pack cannot disagree about what a source file is. */
+const gates010 = await import("../src/editorialGates");
+const isRaw = (gates010 as any).isRawSourceCategory as ((c: string) => boolean) | undefined;
+assert.ok(typeof isRaw === "function", "editorialGates exports isRawSourceCategory");
+for (const c of ["Reference Material", "Meeting Recordings", "Interview recording", "Raw footage"]) assert.ok(isRaw!(c), `${c} is raw source material`);
+for (const c of ["Social Image", "Social Video", "Cover"]) assert.ok(!isRaw!(c), `${c} is a publishable asset, not raw material`);
+const gatesSrc = src("../src/editorialGates.ts");
+assert.ok(/isSourceMaterial[\s\S]{0,400}?isRawSourceCategory\(/.test(gatesSrc), "isSourceMaterial reads the same category rule, not a second copy");
+const srv010 = src("../server.ts");
+const cats = (srv010.match(/const SOCIAL_MEDIA_CATEGORIES = (\[[^\]]*\])/) || [])[1];
+assert.ok(cats, "SOCIAL_MEDIA_CATEGORIES is found");
+for (const c of JSON.parse(cats!)) assert.ok(!isRaw!(c), `the picker's category "${c}" must not be raw source material`);
+// Belt and braces: every route that hands a vault file to Meta or to the public site asks the rule itself,
+// so a future edit to the list alone cannot reopen it.
+const mediaGet = srv010.slice(srv010.indexOf('app.get("/api/social/media"'), srv010.indexOf('app.get("/api/social/media"') + 1200);
+assert.ok(/isRawSourceCategory\(/.test(mediaGet), "the media library filters raw source material");
+const imgPublic = srv010.slice(srv010.indexOf('app.post("/api/social/image-public"'), srv010.indexOf('// ---- the stored series'));
+assert.ok(/isRawSourceCategory\(/.test(imgPublic), "make-public refuses raw source material");
+const postIdx = srv010.indexOf("is not one the desk may post");
+assert.ok(postIdx > 0 && /isRawSourceCategory\(/.test(srv010.slice(postIdx - 400, postIdx)), "posting refuses raw source material");
+console.log("check-social: Policy 010 raw-material asserts passed");

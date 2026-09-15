@@ -10,7 +10,7 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { evidenceOf, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATION_SIGNED } from "./src/declarations.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
-import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG } from "./src/editorialGates.js";
+import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { itemOpenFacts } from "./src/fillMarkers.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
@@ -5331,7 +5331,10 @@ app.get("/api/social/queue", async (_req, res) => {
 // Media comes from the vault. This is the one upload route that takes raw bytes instead of JSON
 // base64 (express.json is capped at 50 MB, which would cap a video near 37 MB): the file is written
 // under GENERAL/Social Video or GENERAL/Social Image and filed as an AppDoc like every other paper.
-const SOCIAL_MEDIA_CATEGORIES = ["Social Video", "Social Image", "Reference Material", "Cover"];   // what the desk may post: its own uploads and the Editorial desk's — never project evidence or deliverables
+// What the desk may post: its own uploads and covers — never project evidence or deliverables, and never raw
+// source material (Policy 010). "Reference Material" was here until 15 Sep 2026, which put raw Idea Desk
+// references in the picker; an image meant for publishing is filed as "Social Image" by the upload below.
+const SOCIAL_MEDIA_CATEGORIES = ["Social Video", "Social Image", "Cover"];
 const MEDIA_FIELDS = { id: true, refNo: true, filename: true, mimeType: true, sizeStr: true, category: true, linkedRecordId: true, created_at: true } as const;
 const ISO_BMFF_BOXES = new Set(["ftyp", "moov", "mdat", "free", "skip", "wide", "pnot"]);   // an MP4 opens with ftyp; an old .mov may open on another box
 const looksLikeMp4 = (head: Buffer) => head.length >= 8 && ISO_BMFF_BOXES.has(head.subarray(4, 8).toString("latin1"));
@@ -5390,7 +5393,7 @@ app.get("/api/social/media", async (req: any, res) => {
   // the picker means an editor chooses an image that cannot be posted, then reads a refusal that
   // blames the wrong thing. The same resolution the post route uses, so the list and the route
   // agree about what is postable.
-  const docs = rows.filter(d => { const f = vaultPathFromPointer(d.base64 || ""); return !!f && fs.existsSync(f); })
+  const docs = rows.filter(d => { const f = vaultPathFromPointer(d.base64 || ""); return !!f && fs.existsSync(f) && !isRawSourceCategory(d.category); })
     .map(({ base64, ...d }) => d);                                   // the pointer never goes to the browser
   const gone = rows.length - docs.length;
   if (gone) console.log(`[social] media library: ${gone} of ${rows.length} documents have no file in the vault and were not offered`);
@@ -5436,7 +5439,7 @@ app.post("/api/social/image-public", async (req, res) => {
     }
     const d = await prisma.appDoc.findUnique({ where: { id: String(docId || "") } });
     const file = d ? vaultPathFromPointer(d.base64 || "") : null;
-    if (!d || isPersonnelDoc(d) || !SOCIAL_MEDIA_CATEGORIES.includes(d.category) || !file) {
+    if (!d || isPersonnelDoc(d) || !SOCIAL_MEDIA_CATEGORIES.includes(d.category) || isRawSourceCategory(d.category) || !file) {
       return res.status(400).json({ error: "That image is not one the desk may post — upload it here first." });
     }
     if (!fs.existsSync(file)) return res.status(400).json({ error: "That image is in the register but its file is missing from the vault, so there is nothing to publish. Upload it again." });
@@ -5550,7 +5553,7 @@ app.post("/api/social/queue", async (req, res) => {
     const vaultMedia = async (docId: string, kind: "video" | "image") => {
       const d = await prisma.appDoc.findUnique({ where: { id: String(docId) } });
       const file = d ? vaultPathFromPointer(d.base64 || "") : null;
-      if (!d || isPersonnelDoc(d) || !SOCIAL_MEDIA_CATEGORIES.includes(d.category) || !file) throw new Error(`That ${kind} is not one the desk may post — upload it here first.`);
+      if (!d || isPersonnelDoc(d) || !SOCIAL_MEDIA_CATEGORIES.includes(d.category) || isRawSourceCategory(d.category) || !file) throw new Error(`That ${kind} is not one the desk may post — upload it here first.`);
       // Separated from the catch-all above: the record exists and is allowed, but its bytes are
       // gone from the vault. Telling someone to "upload it here first" when they just picked it
       // out of the library sends them in a circle.
