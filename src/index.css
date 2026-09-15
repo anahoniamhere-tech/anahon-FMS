@@ -58,6 +58,21 @@ body {
   box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
 }
 
+/* On iOS Safari/Chrome, 100vh is the LARGEST viewport — the height once the address
+   bar and bottom toolbar have scrolled away. An absolutely positioned child anchored
+   to the bottom of an h-screen box (the Help bubble, App.tsx) sits under that toolbar
+   whenever it is showing, and is invisible until the user scrolls it away by hand.
+   100dvh tracks the true, currently-visible viewport instead — same unit OfficeTab.tsx
+   already relies on with no fallback, so this follows that precedent rather than
+   inventing one: the build's own minifier strips a same-property vh/dvh pair down to
+   whichever it decides wins, so a hand-written "fallback" here would not have survived
+   into dist/ anyway (verified). Not a plain h-dvh Tailwind class: Tailwind's own
+   internal utility ordering put h-dvh BEFORE h-screen in the compiled CSS regardless
+   of source order, so h-screen silently won every time (verified in dist/*.css). */
+.app-shell {
+  height: 100dvh;
+}
+
 /* ==========================================
    PRO SIGNATURE-READY PRINT STYLES (Section 2.5)
    ========================================== */

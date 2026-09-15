@@ -1189,7 +1189,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50 text-slate-900 overflow-hidden font-sans">
+    <div className="flex h-screen app-shell flex-col bg-slate-50 text-slate-900 overflow-hidden font-sans">
 
       {/* Toast Alert Header Banner */}
       <AnimatePresence>
