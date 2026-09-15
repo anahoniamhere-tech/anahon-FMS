@@ -208,6 +208,11 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // There is no route here that sends, replies to, labels or deletes mail — by design.
   "/api/mail/poll": DIRECTORS,          // check the mailbox now
   "/api/mail/settle": ANY,              // the route checks the item is mine
+  // Policy 001 §7 — the integrity register. MASTER_ONLY is the Super Admin seat; the routes
+  // themselves additionally refuse a Super Admin who is standing in as another seat, and
+  // there is deliberately NO update or delete route here or anywhere (§7.1 append-only).
+  "/api/integrity/record": MASTER_ONLY,
+  "/api/integrity/line": MASTER_ONLY,
   "/api/compliance/save": DIRECTORS,
   "/api/compliance/delete": DIRECTORS,
   "/api/calendar/connect": ANY,        // everyone connects their own diary

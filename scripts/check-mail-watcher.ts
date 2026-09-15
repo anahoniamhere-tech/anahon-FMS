@@ -16,7 +16,16 @@ const consent = readFileSync(new URL("./google-consent.mjs", import.meta.url), "
 const gates = readFileSync(new URL("../src/gates.ts", import.meta.url), "utf8");
 const schema = readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8");
 // The watcher's own block, so a match elsewhere in a 9,000-line file cannot pass a check.
-const watcher = server.slice(server.indexOf("// The mail watcher — READ-ONLY."), server.indexOf('app.post("/api/calendar/feed"'));
+// Bounded by the watcher's OWN last route, not by whatever happens to follow it: ending
+// the slice at an unrelated route meant any code inserted between them was read as part of
+// the watcher (the integrity register did exactly that on 15 Sep and failed this file).
+const watcher = (() => {
+  const start = server.indexOf("// The mail watcher — READ-ONLY.");
+  const settle = server.indexOf('app.post("/api/mail/settle"', start);
+  const end = server.indexOf("\n});", settle);
+  if (start < 0 || settle < 0 || end < 0) throw new Error("cannot find the mail watcher block");
+  return server.slice(start, end + 4);
+})();
 // The same block with every comment removed. Absence checks must be made against CODE:
 // a comment that merely mentions `snippet` must not fail the "never read" check, and must
 // not be able to satisfy one either.

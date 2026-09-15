@@ -93,6 +93,10 @@ export const RESTRICTED = [...CREW, ...EDITORS, "Project Officer", PLO, DIGITAL,
  */
 export const FULL_VIEW = ALL_ROLES.filter(r => !RESTRICTED.includes(r));
 
+/** Policy 001 §7.5 — the anonymised integrity summary goes to the audit consultant and
+ *  finance. NOT the register itself, which is the ED's alone (§7.1). */
+export const INTEGRITY_SUMMARY_READERS = ["Super Admin", "Finance Officer", AUDITOR];
+
 /** May read the financial statements. */
 export const REPORT_READERS = [...MANAGERS, AUDITOR];
 

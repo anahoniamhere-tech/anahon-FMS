@@ -15,7 +15,7 @@ import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src
 import { itemOpenFacts } from "./src/fillMarkers.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
-import { MANAGERS as MANAGERS_SEATS, DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
+import { MANAGERS as MANAGERS_SEATS, DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, INTEGRITY_SUMMARY_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
 import {
   helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA,
@@ -290,6 +290,11 @@ const OPEN_GETS = new Set(["/api/desk.ics", "/api/calendar.ics", "/api/document/
  * /api/document/pages/:id fires once when the viewer opens and stands for the whole file.
  */
 const READ_AUDIT: [RegExp, string][] = [
+  // Policy 001 §7.1 — every opening of the register is logged, including the list and the
+  // anonymised summary. The label names the register, never what a concern says.
+  [/^\/api\/integrity\/list$/, "Integrity register (list)"],
+  [/^\/api\/integrity\/entry\/[^/]+$/, "Integrity register entry"],
+  [/^\/api\/integrity\/summary$/, "Integrity summary (anonymised)"],
   [/^\/api\/quotations\/[^/]+\/pdf$/, "Quotation, as PDF"],
   [/^\/api\/reports\/(pdf|period)$/, "Financial statements"],
   [/^\/api\/cash\/count-sheet\.pdf$/, "Petty cash count sheet"],
@@ -889,7 +894,11 @@ async function loadState(viewer?: any) {
     partnerAccounts,
     // Passports, IDs and CVs are stripped here, not hidden in the browser: a personnel
     // document only reaches the people who hold the personnel file, or the person it is about.
-    documents: filterPersonnelDocs(documents, viewer, employees).map(d => ({
+    // The integrity register is the ED's alone (§7.1); its evidence must not ride along
+    // in anyone else's state, not even as a filename.
+    documents: filterPersonnelDocs(documents, viewer, employees)
+      .filter(d => String(d.linkedRecordType || "") !== "Integrity" || (viewer && viewer.role === "Super Admin"))
+      .map(d => ({
       id: d.id,
       refNo: d.refNo,
       filename: d.filename,
@@ -2234,6 +2243,153 @@ app.post("/api/mail/settle", async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ---------------------------------------------------------------------------------
+// The integrity register — Policy 001 §7 (whistleblowing).
+//
+// Three properties, each enforced here rather than trusted:
+//
+//  PRIVATE (§7.1). Only the Executive Director may list or open it, and NOT while standing
+//  in as another seat: "Act as" exists to do somebody else's job, not to read what only the
+//  ED may read. The register never enters loadState — not even the ED's — so the only way to
+//  see it is through these routes, which means every opening is an audit line, as §7.1 asks.
+//
+//  APPEND-ONLY (§7.1: "cannot be edited or deleted by anyone, including the ED"). There is
+//  deliberately no update route and no delete route, and none may ever be added. The entry
+//  row is written once; every later fact is a line beneath it. Even the status is derived
+//  from the lines rather than stored, so no mutable field is left to edit.
+//
+//  ANONYMOUS BY DEFAULT (§6.5). reporterName stays blank unless the person agreed to it
+//  being written down.
+const INTEGRITY_CATEGORIES = ["fraud", "corruption", "sanctions", "conflict-of-interest", "harassment", "safeguarding", "other"];
+const INTEGRITY_KINDS = ["acknowledged", "referred-outside", "review", "investigation", "decision", "appeal", "closed", "note"];
+// §7.2 step 2: once a concern touches the ED they take no further part. The only marks they
+// may still make are referring it outside and noting a fact.
+const INTEGRITY_KINDS_WHEN_IT_TOUCHES_ED = ["referred-outside", "note"];
+
+/** The ED, as themselves. Returns the viewer, or null — never a seat they are standing in. */
+function integrityReader(req: any): any | null {
+  const me = (req as any).dbUser;
+  if (!me || !me.active || me.role !== "Super Admin") return null;
+  if (String(req.get("X-Acting-As") || "").trim()) return null;
+  return me;
+}
+const INTEGRITY_REFUSAL = "The integrity register is the Executive Director's alone, and not through a seat you are standing in.";
+
+/** Status is derived, never stored — that is what keeps the entry row immutable. */
+const integrityStatus = (lines: any[]) => (lines.some(l => l.kind === "closed") ? "Closed" : "Open");
+const integrityClosedAt = (lines: any[]) => lines.filter(l => l.kind === "closed").map(l => l.at).sort().pop() || null;
+
+async function nextIntegrityRef(year: string): Promise<string> {
+  const rows = await prisma.integrityEntry.findMany({ where: { ref: { startsWith: `IR-${year}-` } }, select: { ref: true } });
+  const highest = rows.map(r => Number(String(r.ref).split("-")[2] || 0)).reduce((a, b) => (b > a ? b : a), 0);
+  return `IR-${year}-${String(highest + 1).padStart(3, "0")}`;
+}
+
+/** The register's own list. ED only; the read-logging middleware records the opening. */
+app.get("/api/integrity/list", async (req, res) => {
+  const me = integrityReader(req);
+  if (!me) return res.status(403).json({ error: INTEGRITY_REFUSAL });
+  const entries = await prisma.integrityEntry.findMany({ orderBy: { dateReceived: "desc" } });
+  const lines = await prisma.integrityLine.findMany();
+  res.json({
+    entries: entries.map(e => {
+      const mine = lines.filter(l => l.entryId === e.id);
+      return { ...e, status: integrityStatus(mine), closedAt: integrityClosedAt(mine), lineCount: mine.length };
+    }),
+  });
+});
+
+/** One entry, its lines and its evidence. ED only; logged. */
+app.get("/api/integrity/entry/:id", async (req, res) => {
+  const me = integrityReader(req);
+  if (!me) return res.status(403).json({ error: INTEGRITY_REFUSAL });
+  const entry = await prisma.integrityEntry.findUnique({ where: { id: String(req.params.id) } });
+  if (!entry) return res.status(404).json({ error: "No such entry." });
+  const lines = await prisma.integrityLine.findMany({ where: { entryId: entry.id }, orderBy: { at: "asc" } });
+  const evidence = await prisma.appDoc.findMany({ where: { linkedRecordType: "Integrity", linkedRecordId: entry.id },
+    select: { id: true, refNo: true, filename: true, category: true, created_at: true } });
+  res.json({ entry: { ...entry, status: integrityStatus(lines), closedAt: integrityClosedAt(lines) }, lines, evidence,
+    nextStep: entry.touchesED && !lines.some(l => l.kind === "referred-outside")
+      ? "Refer outside within 5 working days (§7.2) — this concern touches the ED."
+      : null });
+});
+
+/** Record a concern. Written once; from here on it can only be added to. */
+app.post("/api/integrity/record", async (req, res) => {
+  try {
+    const me = integrityReader(req);
+    if (!me) return res.status(403).json({ error: INTEGRITY_REFUSAL });
+    const { dateReceived, category, summary, peopleConcerned, touchesED, reporterName } = req.body || {};
+    if (!INTEGRITY_CATEGORIES.includes(String(category))) return res.status(400).json({ error: `Category must be one of: ${INTEGRITY_CATEGORIES.join(", ")}.` });
+    if (!String(summary || "").trim()) return res.status(400).json({ error: "A concern needs a summary." });
+    const received = /^\d{4}-\d{2}-\d{2}$/.test(String(dateReceived || "")) ? String(dateReceived) : localDate();
+    const ref = await nextIntegrityRef(received.slice(0, 4));
+    const entry = await prisma.integrityEntry.create({
+      data: {
+        id: `ir-${Date.now()}`, ref, dateReceived: received, category: String(category),
+        summary: String(summary), peopleConcerned: String(peopleConcerned || ""),
+        touchesED: !!touchesED,
+        // §6.5 — only with their agreement; absent that, this stays empty.
+        reporterName: String(reporterName || ""),
+        createdBy: me.id, createdAt: new Date().toISOString(),
+      },
+    });
+    // The audit line names the reference only. It must not leak what the concern says.
+    await createAuditLog(me.id, me.name, "Integrity Concern Recorded", `${entry.ref} recorded${entry.touchesED ? " — touches the ED, must be referred outside within 5 working days (§7.2)" : ""}.`);
+    res.json({ success: true, ref: entry.ref, id: entry.id });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+/** Add a later fact. The ONLY way an entry ever changes. */
+app.post("/api/integrity/line", async (req, res) => {
+  try {
+    const me = integrityReader(req);
+    if (!me) return res.status(403).json({ error: INTEGRITY_REFUSAL });
+    const { entryId, kind, text, at } = req.body || {};
+    const entry = await prisma.integrityEntry.findUnique({ where: { id: String(entryId) } });
+    if (!entry) return res.status(404).json({ error: "No such entry." });
+    if (!INTEGRITY_KINDS.includes(String(kind))) return res.status(400).json({ error: `Kind must be one of: ${INTEGRITY_KINDS.join(", ")}.` });
+    if (entry.touchesED && !INTEGRITY_KINDS_WHEN_IT_TOUCHES_ED.includes(String(kind))) {
+      return res.status(403).json({ error: "This concern touches the ED, who takes no further part in it (§7.2). Refer it outside, or add a note." });
+    }
+    if (!String(text || "").trim()) return res.status(400).json({ error: "A line needs its text." });
+    await prisma.integrityLine.create({
+      data: {
+        id: `irl-${Date.now()}`, entryId: entry.id,
+        at: /^\d{4}-\d{2}-\d{2}$/.test(String(at || "")) ? String(at) : localDate(),
+        kind: String(kind), text: String(text), byUserId: me.id, byName: me.name, createdAt: new Date().toISOString(),
+      },
+    });
+    await createAuditLog(me.id, me.name, "Integrity Line Added", `${entry.ref}: ${kind}.`);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+/** §7.5 — the once-a-year summary for the audit consultant. Counts and durations only:
+ *  no names, no summaries, no people, no references. Shaped so it CANNOT carry them. */
+app.get("/api/integrity/summary", async (req, res) => {
+  const me = (req as any).dbUser;
+  if (!me || !INTEGRITY_SUMMARY_READERS.includes(me.role)) {
+    return res.status(403).json({ error: "The integrity summary is for finance and the audit consultant." });
+  }
+  const entries = await prisma.integrityEntry.findMany({ select: { id: true, category: true, dateReceived: true } });
+  const lines = await prisma.integrityLine.findMany({ where: { kind: "closed" }, select: { entryId: true, at: true } });
+  const days = (a: string, b: string) => Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000));
+  const byCategory: Record<string, number> = {};
+  let open = 0, closed = 0; const durations: number[] = [];
+  for (const e of entries) {
+    byCategory[e.category] = (byCategory[e.category] || 0) + 1;
+    const closedAt = lines.filter(l => l.entryId === e.id).map(l => l.at).sort().pop();
+    if (closedAt) { closed++; durations.push(days(e.dateReceived, closedAt)); } else open++;
+  }
+  res.json({
+    total: entries.length, byCategory, open, closed,
+    daysToClose: durations.length ? { shortest: Math.min(...durations), longest: Math.max(...durations),
+      average: Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) } : null,
+    note: "Counts and durations only — Policy 001 §7.5 requires this summary to carry no names.",
+  });
 });
 
 app.post("/api/calendar/feed", async (req, res) => {
@@ -11085,6 +11241,7 @@ app.get("/api/document/:id/pdf", async (req, res) => {
     const doc = await prisma.appDoc.findUnique({ where: { id: req.params.id } });
     if (!doc) return res.status(404).json({ error: "Document not found." });
     const viewerId = await viewerIdFromReq(req);
+    if (await integrityBlocked(doc, viewerId)) return res.status(403).json({ error: "That document belongs to the integrity register." });
     if (await personnelBlocked(doc, viewerId)) {
       return res.status(403).json({ error: "This document is part of a personnel file." });
     }
@@ -11106,6 +11263,7 @@ app.get("/api/document/content/:id", async (req, res) => {
   try {
     const doc = await prisma.appDoc.findUnique({ where: { id: req.params.id } });
     if (!doc) return res.status(404).json({ error: "Document not found." });
+    if (await integrityBlocked(doc, await viewerIdFromReq(req))) return res.status(403).json({ error: "That document belongs to the integrity register." });
     if (await personnelBlocked(doc, await viewerIdFromReq(req))) {
       return res.status(403).json({ error: "This document is part of a personnel file." });
     }
@@ -11130,6 +11288,15 @@ app.get("/api/document/content/:id", async (req, res) => {
 /** Personnel gate for the byte-serving routes. A passport or ID leaves the server only
  *  for the people who hold the personnel file, or for the person it is about — filtering
  *  app state is not enough on its own, because the document URLs are guessable. */
+/** Policy 001 §7.1 — evidence on an integrity entry is as private as the entry. Document
+ *  URLs are guessable and the byte routes are otherwise gated only on personnel, so without
+ *  this any signed-in account could read the register's evidence. ED only, never a stand-in. */
+async function integrityBlocked(doc: any, uid: string): Promise<boolean> {
+  if (String(doc?.linkedRecordType || "") !== "Integrity") return false;
+  const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
+  return !(viewer && viewer.active && viewer.role === "Super Admin");
+}
+
 async function personnelBlocked(doc: any, uid: string): Promise<boolean> {
   if (!isPersonnelDoc(doc)) return false;
   const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
@@ -11145,6 +11312,7 @@ async function personnelBlocked(doc: any, uid: string): Promise<boolean> {
 async function docOnDisk(id: string, uid = ""): Promise<{ file: string; cleanup: () => void; doc: any }> {
   const doc = await prisma.appDoc.findUnique({ where: { id } });
   if (!doc) throw Object.assign(new Error("Document not found."), { status: 404 });
+  if (await integrityBlocked(doc, uid)) throw Object.assign(new Error("That document belongs to the integrity register."), { status: 403 });
   if (await personnelBlocked(doc, uid)) throw Object.assign(new Error("This document is part of a personnel file."), { status: 403 });
   const vaultPath = vaultPathFromPointer(doc.base64 || "");
   if (vaultPath) {
@@ -11238,6 +11406,13 @@ app.get("/api/document/docx-text/:id", async (req, res) => {
 app.post("/api/document/upload", async (req, res) => {
   try {
     const { filename, mimeType, sizeStr, base64, category, linkedRecordType, linkedRecordId, user, partyId, receiptNo } = req.body;
+
+    // Policy 001 §7.1 — only the ED attaches evidence to the integrity register, and not
+    // through a seat they are standing in. This route is otherwise open to every signed-in
+    // account, so without this anyone could file into the register.
+    if (String(linkedRecordType || "") === "Integrity" && !integrityReader(req)) {
+      return res.status(403).json({ error: INTEGRITY_REFUSAL });
+    }
 
     // A signed receipt is the same receipt that was issued, carrying the same number —
     // filed as a second row so the log still shows one entry per receipt. Receipting money

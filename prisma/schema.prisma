@@ -1041,3 +1041,46 @@ model ConsultantPack {
   sha256       String
   contentsJson String @default("[]")
 }
+
+/// Policy 001 §7.1 — the integrity (whistleblowing) register. One row per concern.
+///
+/// APPEND-ONLY BY CONSTRUCTION, not by good manners: this row is written once and never
+/// updated. Everything that happens afterwards is an IntegrityLine beneath it — and even
+/// "closed" is a line, not a column, so there is no mutable field left for anyone to edit.
+/// §7.1 is explicit that an entry cannot be changed or removed "by anyone, including the ED".
+///
+/// PRIVATE: it never enters loadState. It is reachable only through the ED-only routes, so
+/// every opening leaves an audit line (§7.1 "each opening is logged").
+model IntegrityEntry {
+  id              String  @id
+  /// IR-YYYY-NNN, unique, sequential within the year.
+  ref             String  @unique
+  dateReceived    String
+  /// fraud | corruption | sanctions | conflict-of-interest | harassment | safeguarding | other
+  category        String
+  summary         String
+  peopleConcerned String
+  /// §7.2 step 2 — the concern touches the ED, or a payment or decision they approved.
+  /// The ED records that fact, takes no further part, and refers it outside within 5 days.
+  touchesED       Boolean @default(false)
+  /// §6.5 — a reporter's name is NEVER written here without their agreement, so this is
+  /// blank unless they consented. Anonymity is the default, not an option.
+  reporterName    String  @default("")
+  createdBy       String
+  createdAt       String
+}
+
+/// A later fact about an entry: a step taken, a decision, the closing. Only ever appended.
+model IntegrityLine {
+  id        String @id
+  entryId   String
+  at        String
+  /// acknowledged | referred-outside | review | investigation | decision | appeal | closed | note
+  kind      String
+  text      String
+  byUserId  String
+  byName    String
+  createdAt String
+
+  @@index([entryId])
+}
