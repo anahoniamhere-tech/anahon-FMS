@@ -43,7 +43,7 @@ ok("the caller sends the net, not the gross — WHT is withheld, not paid to the
 ok("in the currency the voucher was paid in, not converted to USD",
   /amount: `\$\{net\.toLocaleString\([^`]*\)\} \$\{exp\.currency\}`/.test(expenses));
 ok("dated from when it was paid, falling back to when it was raised",
-  /date: \(exp\.paid_at \|\| exp\.created_at \|\| ""\)\.slice\(0, 10\)/.test(expenses));
+  /date: \(exp\.paid_at \|\| exp\.transactionDate \|\| exp\.created_at \|\| ""\)\.slice\(0, 10\)/.test(expenses)); // ee6affd: the day the money left first, then the true date, then the recording day
 // Every date in the live table is a full ISO timestamp. "on 2026-06-23T10:00:00Z" is
 // machine noise in a message to a shopkeeper.
 ok("as a plain date — no timestamp reaches the reader",
