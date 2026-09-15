@@ -10,6 +10,9 @@
 /** Who a quotation is issued as. Numbering is one NNN/YYYY sequence for both. */
 export const QUOTE_ISSUERS = ["anahon", "icontent"] as const;
 export type QuoteIssuer = typeof QUOTE_ISSUERS[number];
+/** Saad, 15 Sep 2026: production quotations are issued by iContent Studio from now on. Only the NEW
+ *  quotation form defaults to it; AnaHon Production stays selectable and saved quotations keep theirs. */
+export const DEFAULT_NEW_QUOTE_ISSUER: QuoteIssuer = "icontent";
 export const QUOTE_ISSUER_LABELS: Record<QuoteIssuer, string> = { anahon: "AnaHon Production", icontent: "iContent Studio" };
 export const DEFAULT_DISCOUNT_LABEL = "Discount";
 

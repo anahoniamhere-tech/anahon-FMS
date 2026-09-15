@@ -8,7 +8,7 @@ import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import { FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
 import { outstandingOn, paidOn } from "../quoteTranches";
-import { QUOTE_ISSUERS, QUOTE_ISSUER_LABELS, quoteTotals, discountBlocker, DEFAULT_DISCOUNT_LABEL } from "../quoteTotals";
+import { DEFAULT_NEW_QUOTE_ISSUER, QUOTE_ISSUERS, QUOTE_ISSUER_LABELS, quoteTotals, discountBlocker, DEFAULT_DISCOUNT_LABEL } from "../quoteTotals";
 import { RECEIPT_CATEGORY, receiptLog, receiptNoOf } from "../receipts";
 import ReceiveOffbankForm from "./ReceiveOffbankForm";
 
@@ -302,6 +302,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                   {MANAGERS.includes(currentUser.role) && !quoteForm && (
                     <button onClick={() => setQuoteForm({
                       status: "Draft",
+                      issuedAs: DEFAULT_NEW_QUOTE_ISSUER,
                       currency: "USD",
                       date: new Date().toISOString().slice(0, 10),
                       validUntil: defaultValidUntil(new Date().toISOString().slice(0, 10)),

@@ -4,7 +4,7 @@
  */
 import assert from "assert";
 import fs from "fs";
-import { quoteTotals, discountBlocker, QUOTE_ISSUERS } from "../src/quoteTotals.js";
+import { quoteTotals, discountBlocker, QUOTE_ISSUERS, DEFAULT_NEW_QUOTE_ISSUER } from "../src/quoteTotals.js";
 import { quotationHtml } from "../docgen.js";
 
 // A — arithmetic: the VxV 3030 case (006/2026) as it will be entered.
@@ -72,5 +72,10 @@ assert.ok(!/@font-face/.test(an), "the AnaHon quotation does not carry the iCont
 const tab = fs.readFileSync("src/tabs/ProductionTab.tsx", "utf8");
 assert.ok(tab.includes('disabled={!!discountProblem}') && tab.includes('t("Cannot save — fix the discount")'), "save refuses a bad discount, saying so");
 assert.ok(tab.includes('id="qt-issuer"'), "Issued as is chosen per quotation");
+// Saad, 15 Sep 2026: a NEW quotation defaults to iContent Studio; AnaHon stays selectable; saved ones keep theirs.
+assert.equal(DEFAULT_NEW_QUOTE_ISSUER, "icontent", "new quotations default to iContent Studio");
+assert.ok(/status: "Draft",\s*issuedAs: DEFAULT_NEW_QUOTE_ISSUER,/.test(tab), "the New Quotation form uses that default");
+assert.ok(QUOTE_ISSUERS.includes("anahon"), "AnaHon Production stays selectable");
+assert.ok(/issuedAs: issuedAs === undefined \? \(prior\?\.issuedAs \|\| "anahon"\) : issuedAs/.test(server), "a saved quotation keeps its issuer — no backfill");
 
 console.log("✓ check-quote-issuer-discount: net amount, never negative, iContent letterhead with embedded fonts, default unchanged");
