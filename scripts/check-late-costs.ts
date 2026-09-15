@@ -64,7 +64,8 @@ assert.ok(submissionBlocker({ ...ok, asSubmittedNative: null, note: " " }), "unk
 assert.ok(submissionBlocker({ ...ok, asSubmittedNative: "", note: "" }), "a blank amount with no reason is refused");
 assert.equal(usdEquivalent(null, "USD"), null, "no amount, no USD equivalent");
 const route = fs.readFileSync("server.ts", "utf8");
-assert.ok(/if \(activity && completesObligation\) await prisma\.projectActivity\.update/.test(route), "a part-submission leaves its obligation open");
+assert.ok(/if \(activity && completesObligation && !alreadyCompleted\) await prisma\.projectActivity\.update/.test(route), "a part-submission leaves its obligation open, and a resubmission never re-dates one already completed");
+assert.ok(/const alreadyCompleted = !!activity && activity\.status === "Done" && !!activity\.completedOn;/.test(route), "'already completed' means Done with a completion date");
 assert.ok(/const completesObligation = completesIn !== false;/.test(route), "completing is the default");
 assert.ok(/asSubmittedNative Float\?/.test(fs.readFileSync("prisma/schema.prisma", "utf8")), "the amount column may be null");
 

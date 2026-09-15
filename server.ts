@@ -2981,7 +2981,10 @@ app.post("/api/reports/submission", async (req, res) => {
     } });
     // The obligation it answers is done, on the day it was really submitted.
     // Only a submission that completes the obligation closes it; a part (TRF's narrative, invoice still out) leaves it open.
-    if (activity && completesObligation) await prisma.projectActivity.update({ where: { id: activity.id }, data: { status: "Done", completedOn: submittedOn } });
+    // The FIRST submission that completes an obligation dates it; a resubmission is recorded as its
+    // own row and never moves completedOn (FPU: final 12 Mar 2026, corrected report 18 Jun 2026).
+    const alreadyCompleted = !!activity && activity.status === "Done" && !!activity.completedOn;
+    if (activity && completesObligation && !alreadyCompleted) await prisma.projectActivity.update({ where: { id: activity.id }, data: { status: "Done", completedOn: submittedOn } });
     await createAuditLog(user?.id, user?.name, "Donor Report Submission Recorded",
       `${project.code}: report for ${periodStart} → ${periodEnd} submitted on ${submittedOn}, ${figure.native == null ? `amount unknown (${String(note || "").trim()})` : `${currency} ${figure.native.toFixed(2)}`}${figure.native != null && currency !== "USD" ? (figure.usd != null ? ` (USD ${figure.usd.toFixed(2)} at the stated ${usdPerUnit} USD/${currency})` : " (no rate stated — no USD equivalent)") : ""} (${basis}), evidence "${String(evidence).trim()}"${activity ? `, answering "${activity.title}"${completesObligation ? "" : " — the obligation stays open"}` : ""}${String(note || "").trim() && figure.native != null ? `; note: ${String(note).trim()}` : ""} (${row.id}).`);
     res.json({ success: true, submission: row });
