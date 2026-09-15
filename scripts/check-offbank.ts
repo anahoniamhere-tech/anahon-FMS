@@ -133,6 +133,11 @@ ok("the FX sweep and the EUR rounding are dated by the last BLOM statement line,
   ok("…and its fee is a bank charge", cls("Cash withdrawal fee [Cash Withdrawal Fee]") === "fee" && cls("Cash withdrawal fee [عمولة سحب نقدي]") === "fee");
   ok("BLOM's 'other commissions' is a bank charge, hostinger a card spend", cls("Other commissions [عمولا ت أخر]") === "fee" && cls("hostinger.com USD13.99") === "card");
 }
+ok("FX clearing is swept only for conversions whose two legs are both on statements; reversals always sweep",
+  /pairedIds = new Set<string>\(fxLegs\.filter\(l => l\.reversal\)\.map\(l => l\.id\)\)/.test(rebuild)
+  && /fxLegs\.filter\(l => l\.eur && !l\.reversal\)/.test(rebuild) && /!u\.eur && !u\.reversal && !pairedIds\.has\(u\.id\) && u\.type !== e\.type/.test(rebuild)
+  && /let fxNet = r2\(fxLegs\.filter\(l => pairedIds\.has\(l\.id\)\)/.test(rebuild));
+ok("ICFJ's reimbursement is a liability until its costs are recorded — never income", /Intl Ctr for Journalists \\\(ICFJ\\\)\/\.test\(bt\.description\)\) contra = \{ accountCode: ACC\.REIMBURSE \}/.test(rebuild) && /REIMBURSE: "2930"/.test(rebuild));
 ok("the receipt markers carry their purpose to the rebuild", isOffbankRef(OFFBANK_REF("quotation", "q1")) && offbankPurposeOf(OFFBANK_REF("other", "x")) === "other" && /purpose === "other"\) contra = \{ accountCode: OTHER_INCOME_LEDGER \}/.test(rebuild));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");

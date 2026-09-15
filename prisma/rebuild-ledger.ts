@@ -23,7 +23,7 @@ const prisma = new PrismaClient();
 
 const ACC = {
   BANK_USD: "1100", BANK_EUR: "1110", PETTY: "1120", AP: "2100", WHT: "2315",
-  SUSPENSE: "2900", FXCLEAR: "2910", GRANT: "4100", SERVICE: "4200",
+  SUSPENSE: "2900", FXCLEAR: "2910", REIMBURSE: "2930", GRANT: "4100", SERVICE: "4200",
   FXGAIN: "4500", STAFF: "5100", FREELANCE: "5120", DIRECT: "6000",
   TRAVEL: "6200", EQUIP: "6300", SOFTWARE: "6400", RENT: "7100", BANKFEES: "7400", FXLOSS: "7700",
 };
@@ -74,6 +74,7 @@ async function main() {
     [ACC.SUSPENSE, "Suspense — Unidentified Receipts", "Liability", "Suspense"],
     [ACC.FXCLEAR, "FX Conversion Clearing", "Liability", "Suspense"],
     [COUNT_DIFFERENCES_LEDGER, "Petty Cash Count Differences — pending Executive Director review", "Liability", "Suspense"],
+    [ACC.REIMBURSE, "Reimbursements received — the costs they repay not yet recorded", "Liability", "Suspense"],
   ] as const) {
     if (!acctByCode.has(code)) {
       await prisma.account.create({ data: { code, name, type, currency: "USD", reportingGroup: group, balance: 0, active: true } });
@@ -160,6 +161,9 @@ async function main() {
   const expenseByVoucher = new Map(expenses.map(e => [e.voucherNo, e]));
   const eurNote = (txAccountId: string) => eurAccountIds.has(txAccountId) ? ` [EUR @ ${fx}]` : "";
 
+  // Every line posted to FX clearing, so the sweep can pair each conversion's two legs (below).
+  const fxLegs: { id: string; date: string; eur: boolean; type: string; net: number; reversal: boolean }[] = [];
+
   // ---- 1. statement lines: the only source of bank movements ----
   for (const bt of bankTx) {
     const amt = usd(bt.amount, bt.bankAccountId);
@@ -200,7 +204,11 @@ async function main() {
       const purpose = offbankPurposeOf(bt.noticeRef);
       if (purpose === "quotation") contra = { accountCode: ACC.SERVICE }; // a client paying a quotation outside the bank
       else if (purpose === "other") contra = { accountCode: OTHER_INCOME_LEDGER };
-      else if (fxRe.test(bt.description)) contra = { accountCode: ACC.FXCLEAR };
+      else if (fxRe.test(bt.description)) { contra = { accountCode: ACC.FXCLEAR }; fxLegs.push({ id: bt.id, date: bt.date, eur: eurAccountIds.has(bt.bankAccountId), type: bt.type, net: amt, reversal: /الغاء|Reversal/i.test(bt.description) }); }
+      // ICFJ's USD 200 of 28 Aug 2026 (Tipalti, "Invoice Aug 2026") repays transport and logistics for attending
+      // its Training of Trainers — not income, no project (Saad, 13 Sep 2026). No voucher for those costs exists
+      // yet, so it waits as a liability until they are recorded against it.
+      else if (/Intl Ctr for Journalists \(ICFJ\)/.test(bt.description)) contra = { accountCode: ACC.REIMBURSE };
       else if (bt.projectId) {
         const p = projById.get(bt.projectId);
         contra = { accountCode: p?.fundingType === "Unrestricted Service" ? ACC.SERVICE : ACC.GRANT, projectId: bt.projectId, donorId: p?.donorId };
@@ -248,6 +256,7 @@ async function main() {
       post(bt.date, "Bank", `${bt.description}${note}`, ref, [
         { accountCode: ACC.BANKFEES, debit: amt }, { accountCode: bank, credit: amt }]);
     } else if (fxRe.test(bt.description)) {
+      fxLegs.push({ id: bt.id, date: bt.date, eur: eurAccountIds.has(bt.bankAccountId), type: bt.type, net: -amt, reversal: /الغاء|Reversal/i.test(bt.description) });
       post(bt.date, "Bank", `${bt.description}${note}`, ref, [
         { accountCode: ACC.FXCLEAR, debit: amt }, { accountCode: bank, credit: amt }]);
     } else if (atmRe.test(bt.description)) {
@@ -339,11 +348,21 @@ async function main() {
     .reduce((m, t) => t.date > m ? t.date : m, "");
 
   // ---- 3. sweep FX clearing to gain/loss ----
-  let fxNet = 0; // credit balance = gain
-  for (const en of entries) for (const it of JSON.parse(en.itemsJson)) {
-    if (it.accountCode === ACC.FXCLEAR) fxNet += (it.credit || 0) - (it.debit || 0);
+  // Only a conversion whose two legs are both on statements is swept: EUR out with USD in (or back), within five
+  // days. A leg whose partner has not arrived is money in transit between our own accounts, not a loss — it stays
+  // on 2910 until the other statement shows it (8 Sep 2026: EUR 300 converted, the USD leg not yet posted).
+  // A reversal (الغاء) is BLOM undoing a line on the same account — e.g. EUR 13 of 2 Jan 2025 — never half of a
+  // conversion, so it is always swept; only conversion legs wait for their partner.
+  const pairedIds = new Set<string>(fxLegs.filter(l => l.reversal).map(l => l.id));
+  const dayGap = (a: string, b: string) => Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 86400000;
+  for (const e of fxLegs.filter(l => l.eur && !l.reversal)) {
+    const partner = fxLegs.filter(u => !u.eur && !u.reversal && !pairedIds.has(u.id) && u.type !== e.type && dayGap(u.date, e.date) <= 5)
+      .sort((a, b) => dayGap(a.date, e.date) - dayGap(b.date, e.date))[0];
+    if (partner) { pairedIds.add(e.id); pairedIds.add(partner.id); }
   }
-  fxNet = r2(fxNet);
+  const unpaired = fxLegs.filter(l => !pairedIds.has(l.id));
+  let fxNet = r2(fxLegs.filter(l => pairedIds.has(l.id)).reduce((sum, l) => sum + l.net, 0)); // credit balance = gain
+  console.log(`FX legs: ${fxLegs.length}, paired ${pairedIds.size}, held on 2910 until their partner posts: ${unpaired.map(l => `${l.date} ${l.eur ? "EUR" : "USD"} ${l.type} ${Math.abs(l.net)}`).join("; ") || "none"}`);
   if (Math.abs(fxNet) > 0.01) {
     post(lastStatementDate, "Adjustment",
       `FX conversion translation difference swept to ${fxNet > 0 ? "gain" : "loss"} (today-rate convention @ ${fx})`, "ADJ-FX-SWEEP",
@@ -382,7 +401,7 @@ async function main() {
     bal.set(it.accountCode, b);
   }
   const known = new Set(accounts.map(a => a.code));
-  for (const a of accounts.concat((await prisma.account.findMany({ where: { code: { in: [ACC.SUSPENSE, ACC.FXCLEAR, FLOAT_LEDGER, COUNT_DIFFERENCES_LEDGER] } } })).filter(a => !known.has(a.code)))) {
+  for (const a of accounts.concat((await prisma.account.findMany({ where: { code: { in: [ACC.SUSPENSE, ACC.FXCLEAR, ACC.REIMBURSE, FLOAT_LEDGER, COUNT_DIFFERENCES_LEDGER] } } })).filter(a => !known.has(a.code)))) {
     const b = bal.get(a.code) || { dr: 0, cr: 0 };
     const natural = ["Asset", "Expense"].includes(a.type) ? b.dr - b.cr : b.cr - b.dr;
     // 1110 is displayed in EUR — divide the USD journal figure back by the same single rate.
