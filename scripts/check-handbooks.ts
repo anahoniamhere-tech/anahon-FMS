@@ -18,7 +18,7 @@ const ok = (label: string, cond: boolean, detail = "") => {
   if (!cond) { failed++; console.error(`  FAIL  ${label}${detail ? " — " + detail : ""}`); } else console.log(`  ok    ${label}`);
 };
 
-// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020),
+// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020 and 013 into 001),
 // so the parser is proven against real wording, not an invented fixture.
 const REAL_INDEX = `
 AnaHon Media Platform — Policies and Handbooks
@@ -29,14 +29,13 @@ The numbers never change. The management system enforces some policies by number
 •005 Fact-Checking Policy
 •022 Artificial Intelligence Policy — absorbs 021 AI Visuals Generation by its own terms
 2. Team Handbook
-•001 Internal Code of Conduct — amended 12 Sep 2026: equipment damage follows 017, and whistleblowing has a route outside the Executive Director
+•001 Code of Conduct and Integrity — merged with 013 and 020's anti-fraud annex and approved 15 Sep 2026: fraud, corruption, conflicts of interest, sanctions, safeguarding, and how concerns are raised
 •004 Diversity and Inclusion · 006 HR Policy · 015 Compensation · 016 Wellbeing
 Read with the declaration of 12 September 2026: AnaHon has no employees. Everyone on the team is a service provider on an annual contract stating total salary and terms of reference, with subcontracts per project, and no payment where there is no project.
 3. Finance and Controls Handbook
 •020 Finance and Procurement Policy — merged with 003 and approved 15 Sep 2026: accounts, procurement, payments, petty cash, money received outside the bank, and financial records
 •012 Due Diligence · 009 Risk Management
 •017 Resources and Assets — written 12 Sep 2026; the file previously under that number was a duplicate of 016
-•013 Anti-Terrorism Financing, Sanctions and Anti-Corruption — written 12 Sep 2026
 4. Programmes and Funding Handbook
 •018 Fundraising · 019 Proposal and Grants Management · 011 Community Needs Assessment · 008 Key Performance Indicators
 •AnaHon's income sources, moved here from 003
@@ -45,14 +44,13 @@ Read with the declaration of 12 September 2026: AnaHon has no employees. Everyon
 Standing on its own
 •010 Information, Data and Source Privacy — written 12 Sep 2026, replacing the Centralized Knowledge Sharing Repository Policy. It cuts across all four handbooks and belongs to none.
 Numbers not in use
-014 was never issued. 021 is absorbed into 022, and its file was lost in August 2026. 003 is merged into 020 (15 September 2026). The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
+014 was never issued. 021 is absorbed into 022, and its file was lost in August 2026. 003 is merged into 020 and 013 into 001 (15 September 2026). The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
 Still to settle
-•An independent whistleblowing recipient — named in 001 as [to be named]. Until someone outside management is named, the external route is the donors' own channels.
+•An independent whistleblowing recipient — 001 §6.3 leaves the name open. Until someone outside AnaHon is named, concerns about the Executive Director go to the donors' own channels.
 •Targets for the KPIs (008) — the measures exist, the numbers do not.
 •A start year for the Strategy (007).
 •An external audit — required by 020 §12.1. A financial consultant is being engaged through the SKF project to prepare it; none has yet been completed.
 •Journalist safety and security — touched on in 002 and 001, never written as its own policy.
-•The text of 013 — listed in the Finance and Controls Handbook but not yet compiled into it.
 `;
 
 console.log("\nA. the Index parses into the five handbooks, Policy 010, and nothing invented");
@@ -62,8 +60,9 @@ ok("Editorial Standards carries 002, 005, 022",
   parsed.handbooks[0].chapters.map(c => c.no).join(",") === "002,005,022");
 ok("Team carries 001, 004, 006, 015, 016",
   parsed.handbooks[1].chapters.map(c => c.no).join(",") === "001,004,006,015,016");
-ok("Finance and Controls carries 020, 012, 009, 017, 013 — 003 is merged into 020",
-  parsed.handbooks[2].chapters.map(c => c.no).join(",") === "020,012,009,017,013");
+ok("Finance and Controls carries 020, 012, 009, 017 — 003 is merged into 020, 013 into 001",
+  parsed.handbooks[2].chapters.map(c => c.no).join(",") === "020,012,009,017");
+ok("001 is the Code of Conduct and Integrity", parsed.handbooks[1].chapters[0].title === "Code of Conduct and Integrity");
 ok("020 is the Finance and Procurement Policy", parsed.handbooks[2].chapters[0].title === "Finance and Procurement Policy");
 ok("Programmes and Funding carries 018, 019, 011, 008 — not the unnumbered income-sources line",
   parsed.handbooks[3].chapters.map(c => c.no).join(",") === "018,019,011,008");
@@ -79,14 +78,15 @@ const faults = findIndexFaults(duped);
 ok("a number reused across handbooks is reported", faults.length === 1 && /002/.test(faults[0]), faults.join("; "));
 
 console.log("\nC. a chapter the Index promises but the compiled text never wrote is caught");
-// Policy 013 is a real, current example: the Finance and Controls Handbook's own text
-// (edition 2, 15 Sep 2026) has no "Part … (Policy 013)" heading — its text was never
-// compiled into the handbook, and the Index lists that under "Still to settle".
-const FINANCE_HAS_NO_013 = `Part One — Finance and Procurement Policy (Policy 020)\nPart Two — Due Diligence Policy (Policy 012)\nPart Three — Risk Management Policy (Policy 009)\nPart Four — Resources and Assets Policy (Policy 017)\n`;
-const financeAnchors = chapterAnchors(FINANCE_HAS_NO_013);
-const missing = missingChapterText(parsed.handbooks[2].chapters, financeAnchors);
-ok("013 is flagged as text-less in the handbook that is supposed to carry it",
-  missing.length === 1 && missing[0].no === "013", missing.map(c => c.no).join(","));
+// Until 15 Sep 2026 this was Policy 013, listed under Finance with no compiled text. 013 is now
+// merged into 001, so the case is rebuilt from the real Finance headings with Part Four dropped:
+// the Index still promises 017, and the text no longer carries it.
+const FINANCE_WITHOUT_017 = `Part One — Finance and Procurement Policy (Policy 020)\nPart Two — Due Diligence Policy (Policy 012)\nPart Three — Risk Management Policy (Policy 009)\n`;
+const missing = missingChapterText(parsed.handbooks[2].chapters, chapterAnchors(FINANCE_WITHOUT_017));
+ok("a chapter the Index lists but the text lacks is flagged",
+  missing.length === 1 && missing[0].no === "017", missing.map(c => c.no).join(","));
+ok("and the real Finance headings flag nothing",
+  missingChapterText(parsed.handbooks[2].chapters, chapterAnchors(FINANCE_WITHOUT_017 + "Part Four — Resources and Assets Policy (Policy 017)\n")).length === 0);
 ok("a single-chapter document (no Part heading at all) is never flagged this way",
   missingChapterText(parsed.handbooks[4].chapters, chapterAnchors("just prose, no heading")).length === 0);
 
