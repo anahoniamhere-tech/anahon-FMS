@@ -123,6 +123,16 @@ ok("a rebuild keeps manual adjustments and reclassifications", /\/\^je-rc-\/\.te
 ok("the FX sweep and the EUR rounding are dated by the last BLOM statement line, never by a channel receipt",
   /const lastStatementDate = bankTx\.filter\(t => !t\.pending && bankAccountIds\.has\(t\.bankAccountId\)\)/.test(rebuild)
   && (rebuild.match(/post\(lastStatementDate, "Adjustment",/g) || []).length === 2 && !/bankTx\[bankTx\.length - 1\]\.date/.test(rebuild));
+{
+  // Saad, 15 Sep 2026: the EUR "Cash withdrawal [Cash Withdrawal]" of 24 Aug is cash drawn to spend (1120), its fee
+  // is a bank charge. The rebuild's own patterns, run against the statement narratives.
+  const re = (name: string) => new RegExp(rebuild.match(new RegExp(`const ${name} = /(.+)/i;`))![1], "i");
+  const [atm, fee, spend] = [re("atmRe"), re("feeRe"), re("spendRe")];
+  const cls = (d: string) => fee.test(d) ? "fee" : atm.test(d) ? "cash" : spend.test(d) ? "card" : "unclassified";
+  ok("the 24 Aug EUR cash withdrawal is cash drawn, not suspense", cls("Cash withdrawal [Cash Withdrawal]") === "cash" && cls("Cash withdrawal [سحب نقدي]") === "cash");
+  ok("…and its fee is a bank charge", cls("Cash withdrawal fee [Cash Withdrawal Fee]") === "fee" && cls("Cash withdrawal fee [عمولة سحب نقدي]") === "fee");
+  ok("BLOM's 'other commissions' is a bank charge, hostinger a card spend", cls("Other commissions [عمولا ت أخر]") === "fee" && cls("hostinger.com USD13.99") === "card");
+}
 ok("the receipt markers carry their purpose to the rebuild", isOffbankRef(OFFBANK_REF("quotation", "q1")) && offbankPurposeOf(OFFBANK_REF("other", "x")) === "other" && /purpose === "other"\) contra = \{ accountCode: OTHER_INCOME_LEDGER \}/.test(rebuild));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");

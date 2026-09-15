@@ -107,9 +107,12 @@ async function main() {
 
   // ---- match card statement lines to card vouchers (so the same spend posts once) ----
   const cardVouchers = expenses.filter(e => e.paymentMethod === "Card");
-  const spendRe = /APPLE|HIGGSFIELD|NOKNOK|FASTCOMET|GOOGLE|OPENAI|CANVA|ADOBE|META|MIDJOURNEY|ANTHROPIC|CLAUDE|SIMLY|UBER|MASSIVE|PHOTOROOM/i;
-  const feeRe = /عمولة|مصاريف|طوابع|فوائد|Statement fee|Commission|maintenance|Debit interest|Withdrawal Fee/i;
-  const atmRe = /ZBLMN|سحب|Cash Withdrawal$/i;
+  const spendRe = /APPLE|HOSTINGER|HIGGSFIELD|NOKNOK|FASTCOMET|GOOGLE|OPENAI|CANVA|ADOBE|META|MIDJOURNEY|ANTHROPIC|CLAUDE|SIMLY|UBER|MASSIVE|PHOTOROOM/i;
+  const feeRe = /عمولة|عمولا ?ت|مصاريف|طوابع|فوائد|Statement fee|Commission|maintenance|Debit interest|Withdrawal Fee/i;
+  // "Cash withdrawal [Cash Withdrawal]" (EUR, 24 Aug 2026) is cash Saad drew to spend, like the Arabic-labelled
+  // one of 31 Aug — it belongs with cash awaiting vouchers, not suspense (Saad, 15 Sep 2026). Its fee is caught
+  // by feeRe first.
+  const atmRe = /ZBLMN|سحب|Cash Withdrawal\]?$/i;
   const fxRe = /FX conversion|ع\.قطع|الغاء|Reversal/i;
 
   const matchedLines = new Map<string, any>(); // bankTx.id -> voucher
