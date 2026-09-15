@@ -418,6 +418,21 @@ export function unvaluedAssetItems(me: Me, s: State): DeskItem[] {
     }));
 }
 
+/* ── Confidential payments due for review ────────────────────────────────────
+ * Policy 010 §6: the ED reviews payments to protected sources each quarter. The server sends
+ * confidentialReview only to the ED and the Finance Officer, with `due` already worked out
+ * (payments exist, none reviewed since the quarter began). One standing item, no names on it.
+ */
+export function confidentialReviewItems(me: Me, s: State): DeskItem[] {
+  const r = (s as any).confidentialReview;
+  if (me.role !== "Super Admin" || !r?.due) return [];
+  return [{
+    id: "confidentialReview:quarter", kind: "expenses" as Kind, recordId: "confidentialReview", door: "expenses",
+    title: `${r.count} · USD ${Number(r.totalUSD || 0).toLocaleString("en-US")}`, verb: "Review confidential payments", status: "Review due",
+    when: null, urgency: "waiting" as Urgency, group: "mine" as const, standing: true as const, seats: [], record: r,
+  }];
+}
+
 export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
   const out: DeskItem[] = [];
   for (const rule of RULES) {
@@ -466,6 +481,7 @@ export function deskItems(me: Me, s: State, today = localToday()): DeskItem[] {
   kept.push(...cashCountItems(me, s, today));
   kept.push(...cashDrawItems(me, s, today));
   kept.push(...unvaluedAssetItems(me, s));
+  kept.push(...confidentialReviewItems(me, s));
   const rank = { overdue: 0, week: 1, waiting: 2 };
   return kept.sort((a, b) => rank[a.urgency] - rank[b.urgency] || (a.when || "9999").localeCompare(b.when || "9999") || a.title.localeCompare(b.title));
 }

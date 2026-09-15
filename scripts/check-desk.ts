@@ -245,6 +245,14 @@ ok("an item valued by receipt, estimate, gift or voucher is not", ["receipt", "e
 ok("an item that has ended (sold, lost, given away) is not", deskItems(fin, st({ fixedAssets: [eq({ endKind: "Sold" })] }), today).every(i => !i.id.startsWith("unvalued:")));
 ok("and no seat outside Finance sees it", deskItems(viewer("Procurement and Logistics Officer"), st({ fixedAssets: [eq({})] }), today).every(i => !i.id.startsWith("unvalued:")));
 
+// Confidential payments (Policy 010 §6): one standing item for the ED while a quarterly review is due.
+const cr = (due: boolean) => ({ count: 2, totalUSD: 300, bySource: [], lastReviewedOn: "", due });
+const crOf = (role: string, due: boolean) => deskItems(viewer(role), st({ confidentialReview: cr(due) } as any), today).filter(i => i.id === "confidentialReview:quarter");
+ok("a due confidential-payments review is on the ED's desk, standing, undated, opening Payment requests",
+  crOf("Super Admin", true).length === 1 && crOf("Super Admin", true)[0].standing === true && crOf("Super Admin", true)[0].when === null && crOf("Super Admin", true)[0].door === "expenses");
+ok("not once reviewed this quarter", crOf("Super Admin", false).length === 0);
+ok("and never on the Finance Officer's desk, who sees the list but does not sign the review", crOf("Finance Officer", true).length === 0);
+
 console.log("\nG. papers the file is missing");
 // One rule, three checklists, nothing stored. The item exists because a paper is absent,
 // so filing it removes the item for everyone with nothing to tick.

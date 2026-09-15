@@ -456,6 +456,8 @@ export const AR: Record<string, string> = {
   "Raised": "مقدَّم",
   "Count due": "موعد الجرد",
   "Record the opening value": "سجّل القيمة الافتتاحية",
+  "Review confidential payments": "راجع المدفوعات السرّية",
+  "Review due": "المراجعة مستحقة",
   "No value yet": "لا قيمة بعد",
   "Clear the withdrawal": "سوِّ السحب النقدي",
   "Uncleared": "غير مُسوّى",
