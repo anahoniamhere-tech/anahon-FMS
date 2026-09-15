@@ -10937,7 +10937,12 @@ app.get("/api/reports/period", async (req, res) => {
     const projects = fundedOnly(allProjects, bankTx);
 
     const spentStatuses = ["Approved", "Paid", "Posted"];
-    const periodExpenses = expenses.filter(e => spentStatuses.includes(e.status) && inWindow(e.created_at));
+    // A cost belongs to the period it happened in: its true date (Expense.transactionDate), and the day it
+    // was typed in only when no true date was captured. Windowed by created_at, a voucher backfilled
+    // today for 2024 landed in this month's report. The date-only value is read at noon UTC so it
+    // cannot slip a day at a month boundary.
+    const periodExpenses = expenses.filter(e => spentStatuses.includes(e.status)
+      && inWindow(e.transactionDate ? `${e.transactionDate}T12:00:00Z` : e.created_at));
 
     // per-project: allocated, actual in period, actual to date
     const perProject = projects.map(p => {
