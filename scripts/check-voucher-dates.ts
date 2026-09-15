@@ -30,6 +30,12 @@ ok("a voucher backfilled today for 31 Mar 2024 lands in March 2024 …", inWindo
 ok("… and not in September 2026", !inWindow(placed(backfilled), ...sep2026));
 ok("an old voucher with no true date still falls back to when it was recorded", inWindow(placed({ transactionDate: "", created_at: "2026-09-02T10:00:00Z" }), ...sep2026));
 
+console.log("\n1b. Books' other readers of a voucher's date (sweep of 15 Sep 2026)");
+const ledgerTab = read("src/tabs/LedgerTab.tsx");
+ok("the ledger's reclassify picker orders vouchers by their true date first", /b\.transactionDate \|\| b\.paid_at \|\| b\.created_at/.test(ledgerTab) && !/\(b\.paid_at \|\| b\.created_at/.test(ledgerTab));
+const audit = server.slice(server.indexOf('app.post("/api/gemini/compliance-audit"'), server.indexOf("\n});\n", server.indexOf('app.post("/api/gemini/compliance-audit"')));
+ok("the compliance audit is given each voucher's true date AND when it was recorded", /date: e\.transactionDate \|\| e\.created_at\?\.split\("T"\)\[0\], recordedOn: e\.created_at/.test(audit));
+
 console.log("\n2. nothing writes a synthetic created_at on a voucher");
 // Every place a voucher is written: the server and every backfill/import script. prisma/seed.ts is the
 // demo fixture for an empty database and never runs against the books.

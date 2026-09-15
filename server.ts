@@ -11319,7 +11319,8 @@ app.post("/api/gemini/compliance-audit", async (req, res) => {
       voucher: e.voucherNo, title: e.title, amount: e.amount, currency: e.currency,
       convertedUSD: e.convertedAmount, whtUSD: e.whtAmount, netUSD: e.netAmount,
       status: e.status, paymentMethod: e.paymentMethod, budgetLineId: e.budgetLineId,
-      hasAttachment: e.hasAttachment, date: e.created_at?.split("T")[0]
+      // The date the cost happened, and separately when it was recorded — a late record must read as late (§6.8).
+      hasAttachment: e.hasAttachment, date: e.transactionDate || e.created_at?.split("T")[0], recordedOn: e.created_at?.split("T")[0]
     }));
 
     const glSummary = accounts.filter(a => a.balance !== 0).map(a => ({ code: a.code, name: a.name, type: a.type, balance: a.balance }));

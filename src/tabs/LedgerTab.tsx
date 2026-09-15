@@ -208,7 +208,8 @@ export default function LedgerTab({ currentUser, formatUSD, refreshState, state,
                           {(state.expenses || [])
                             .filter((x: any) => postedOn(x.voucherNo).length === 1)
                             .slice()
-                            .sort((a: any, b: any) => (b.paid_at || b.created_at || "").localeCompare(a.paid_at || a.created_at || ""))
+                            // Newest by when the cost happened; the day it was typed in only when no true date was captured.
+                            .sort((a: any, b: any) => (b.transactionDate || b.paid_at || b.created_at || "").localeCompare(a.transactionDate || a.paid_at || a.created_at || ""))
                             .map((x: any) => {
                               const on = postedOn(x.voucherNo)[0];
                               const onName = state.accounts.find((a: Account) => a.code === on)?.name || "";
