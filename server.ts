@@ -8414,7 +8414,8 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
       filename,
       html,
       linkedRecordType: "quotation",
-      linkedRecordId: quote.id
+      linkedRecordId: quote.id,
+      plainReference: quote.issuedAs === "icontent"
     });
     await createAuditLog(user?.id, user?.name, "Quotation Document Generated", `Rendered quotation ${quote.quoteNo} for ${client.name} (${quote.currency} ${quote.amount}) → vault GENERAL/Quotations/${filename}.`);
     // The viewer chooses its renderer from the filename, so hand it back rather than
@@ -8463,7 +8464,8 @@ app.get("/api/quotations/:id/pdf", async (req, res) => {
     });
 
     const pdf = await htmlToPdf(html);
-    const name = `AnaHon_Quotation_${quote.quoteNo.replace("/", "-")}_${client.name.replace(/\s+/g, "")}.pdf`;
+    // The file the client receives is named for the issuer too.
+    const name = `${quote.issuedAs === "icontent" ? "iContent" : "AnaHon"}_Quotation_${quote.quoteNo.replace("/", "-")}_${client.name.replace(/\s+/g, "")}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
     res.send(pdf);

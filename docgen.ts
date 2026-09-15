@@ -8,7 +8,7 @@
 // a single <h1>, <th scope> on every table header and a caption, so a screen reader can
 // navigate them and the print view stays correct.
 import fs from "fs";
-import { QUOTE_REVISION_CLAUSE, QUOTE_REVISION_CLAUSE_AR } from "./src/constants.js";
+import { QUOTE_REVISION_CLAUSE, QUOTE_REVISION_CLAUSE_AR, QUOTE_REVISION_CLAUSE_ICONTENT, QUOTE_REVISION_CLAUSE_ICONTENT_AR, ICONTENT_PHONE, ICONTENT_EMAIL } from "./src/constants.js";
 import { quoteTotals, DEFAULT_DISCOUNT_LABEL } from "./src/quoteTotals.js";
 import { ICONTENT_FONT_FACES } from "./src/brandFonts.js";
 import { AR } from "./src/i18n.js";
@@ -474,6 +474,9 @@ export function quotationHtml(o: {
   issuedAs?: string; discountAmount?: number; discountLabel?: string;
 }) {
   const icontent = o.issuedAs === "icontent";
+  // A client document issued as iContent names no AnaHon and no AnaHon title (Saad, 15 Sep 2026).
+  const preparedBy = icontent ? o.preparedBy.split(" — ")[0] : o.preparedBy;
+  const icontentContact = [ICONTENT_PHONE, ICONTENT_EMAIL].filter(Boolean).join(" · ");
   const brand = icontent ? "iContent Studio" : "ANAHON PRODUCTION";
   const sums = quoteTotals(o.items, o.discountAmount || 0);
   const rows = o.items.map((it, i) => `<tr>
@@ -491,8 +494,7 @@ export function quotationHtml(o: {
   const issuerBlock = icontent
     ? `<div>
     <p class="wm"><span class="i">i</span>Content<small>STUDIO · BRANDING &amp; CONTENT</small></p>
-    <p style="font-size:10.5px;color:#666;margin-top:10px">Tripoli, Lebanon · +961 81 408 171 · info@anahon.org<br>
-    A programme of AnaHon (Lebanese Civil Company 90/2023) · MOF 3893185</p>
+    <p style="font-size:10.5px;color:#666;margin-top:10px">Tripoli, Lebanon · ${esc(icontentContact)}</p>
   </div>`
     : `<div>
     <h1 style="border:none;margin-bottom:0">ANAHON PRODUCTION</h1>
@@ -514,7 +516,7 @@ export function quotationHtml(o: {
     <p style="font-size:12px;margin:4px 0">№ <strong>${esc(o.quoteNo)}</strong><br>
     Date: ${longDate(o.date)}<br>
     Valid until: ${o.validUntil ? longDate(o.validUntil) : "—"}<br>
-    Prepared by: ${esc(o.preparedBy)}</p>
+    Prepared by: ${esc(preparedBy)}</p>
   </div>
 </div>
 ${icontent ? `<div class="bar"></div>` : ""}
@@ -543,13 +545,17 @@ ${noteBlock("EXTRAS", o.terms.extras)}
 ${o.notes ? noteBlock("NOTES", o.notes) : ""}
 <h3 style="font-size:12px;letter-spacing:1px;margin:14px 0 4px">ACCEPTANCE</h3>
 <p style="margin:0;font-size:10.5px">By signing below, the client accepts the services, quantities and prices set out above, and the notes attached to them. Production is booked once this page is signed and returned.</p>
-<p style="margin:6px 0 0;font-size:10.5px">${esc(QUOTE_REVISION_CLAUSE)}</p>
-<p dir="rtl" lang="ar" style="margin:4px 0 0;font-size:11.5px;line-height:1.7;text-align:right;unicode-bidi:isolate;font-family:'Noto Naskh Arabic','Noto Sans Arabic','Tajawal',serif">${esc(QUOTE_REVISION_CLAUSE_AR)}</p>
+<p style="margin:6px 0 0;font-size:10.5px">${esc(icontent ? QUOTE_REVISION_CLAUSE_ICONTENT : QUOTE_REVISION_CLAUSE)}</p>
+<p dir="rtl" lang="ar" style="margin:4px 0 0;font-size:11.5px;line-height:1.7;text-align:right;unicode-bidi:isolate;font-family:'Noto Naskh Arabic','Noto Sans Arabic','Tajawal',serif">${icontent
+  ? esc(QUOTE_REVISION_CLAUSE_ICONTENT_AR).replace("{ICONTENT}", `<span dir="ltr">iContent Studio</span>`)
+  : esc(QUOTE_REVISION_CLAUSE_AR)}</p>
 <div class="sig">
-<div>${esc(o.preparedBy)}<br>For ${icontent ? "iContent Studio (AnaHon)" : "ANAHON PRODUCTION"} — date &amp; signature</div>
+<div>${esc(preparedBy)}<br>For ${icontent ? "iContent Studio" : "ANAHON PRODUCTION"} — date &amp; signature</div>
 <div>${esc(o.clientName)}<br>Client — date &amp; signature</div>
 </div>
-<p class="note">If you have any questions concerning this quotation, contact: Saad Matar — Executive Director · Mobile: +961 81 408 171 · info@anahon.org<br>
+<p class="note">${icontent
+  ? `If you have any questions concerning this quotation, contact: Saad Matar · ${esc(icontentContact)}`
+  : "If you have any questions concerning this quotation, contact: Saad Matar — Executive Director · Mobile: +961 81 408 171 · info@anahon.org"}<br>
 ${icontent ? "iContent Studio" : "ANAHON production"} · This quotation is not an invoice; services are booked upon written acceptance.</p>`,
     icontent ? { letterhead: false, style: ICONTENT_STYLE } : {});
 }
@@ -844,6 +850,8 @@ export async function nextDocRef(prisma: any): Promise<string> {
 export async function archive(prisma: any, o: {
   docId: string; projectCode: string; category: string; filename: string; html: string;
   linkedRecordType: string; linkedRecordId: string; partyId?: string; receiptNo?: string; note?: string;
+  /** For a document the client sees under another name (an iContent quotation): print the reference only. */
+  plainReference?: boolean;
 }) {
   // A document keeps its reference for life — regeneration reuses it, only a
   // brand-new registration draws the next number.
@@ -851,7 +859,9 @@ export async function archive(prisma: any, o: {
   const refNo = existing?.refNo || await nextDocRef(prisma);
   const html = o.html.replace(
     "</body>",
-    `<p class="note">Document reference: <strong>${esc(refNo)}</strong> — issued via AnaHon FMS.</p></body>`
+    o.plainReference
+      ? `<p class="note">Document reference: <strong>${esc(refNo)}</strong></p></body>`
+      : `<p class="note">Document reference: <strong>${esc(refNo)}</strong> — issued via AnaHon FMS.</p></body>`
   );
 
   const dir = path.join(VAULT_ROOT, o.projectCode, o.category);

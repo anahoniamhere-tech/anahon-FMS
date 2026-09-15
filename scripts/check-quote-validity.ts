@@ -5,7 +5,7 @@
  */
 import assert from "assert";
 import fs from "fs";
-import { QUOTE_VALIDITY_DAYS, defaultValidUntil, QUOTE_REVISION_CLAUSE, QUOTE_REVISION_CLAUSE_AR } from "../src/constants.js";
+import { QUOTE_VALIDITY_DAYS, defaultValidUntil, QUOTE_REVISION_CLAUSE, QUOTE_REVISION_CLAUSE_AR, QUOTE_REVISION_CLAUSE_ICONTENT, QUOTE_REVISION_CLAUSE_ICONTENT_AR } from "../src/constants.js";
 import { quotationHtml } from "../docgen.js";
 import { deskItems } from "../src/workflow.js";
 
@@ -31,6 +31,14 @@ assert.equal(html.split(QUOTE_REVISION_CLAUSE_AR).length - 1, 1, "the Arabic cla
 assert.ok(/<p dir="rtl" lang="ar"[^>]*>[^<]*يحقّ لأنا هون/.test(html), "the Arabic clause is an isolated rtl block, marked as Arabic");
 assert.ok(html.indexOf(QUOTE_REVISION_CLAUSE) < html.indexOf(QUOTE_REVISION_CLAUSE_AR), "the Arabic sits under the English line");
 assert.ok(!/monospace/.test(html.slice(html.indexOf('lang="ar"') - 20, html.indexOf(QUOTE_REVISION_CLAUSE_AR))), "not in a monospace face");
+// iContent variant (Saad, 15 Sep 2026): same rule, iContent Studio as the party; the AnaHon wording must not appear.
+const icHtml = quotationHtml({ quoteNo: "T/2026", date: "2026-09-14", validUntil: "", preparedBy: "x", clientName: "C", clientContact: "", clientPhone: "", clientTaxId: "", currency: "USD", total: 1, items: [], terms: {} as any, notes: "", issuedAs: "icontent" } as any);
+assert.equal(icHtml.split(QUOTE_REVISION_CLAUSE_ICONTENT).length - 1, 1, "the iContent clause appears exactly once on an iContent quotation");
+assert.ok(!icHtml.includes(QUOTE_REVISION_CLAUSE) && !icHtml.includes(QUOTE_REVISION_CLAUSE_AR), "an iContent quotation does not carry the AnaHon clause");
+assert.equal(QUOTE_REVISION_CLAUSE_ICONTENT.replace("iContent Studio", "AnaHon"), QUOTE_REVISION_CLAUSE, "same wording, only the subject differs");
+const icAr = QUOTE_REVISION_CLAUSE_ICONTENT_AR.replace("{ICONTENT}", '<span dir="ltr">iContent Studio</span>');
+assert.equal(icHtml.split(icAr).length - 1, 1, "the Arabic iContent clause prints once, the name in an LTR span");
+assert.equal(QUOTE_REVISION_CLAUSE_ICONTENT_AR.replace("يحقّ لـ {ICONTENT}", "يحقّ لأنا هون"), QUOTE_REVISION_CLAUSE_AR, "Arabic: same wording, only the subject differs");
 assert.ok(/Valid until: —/.test(html), "a quotation with no expiry still prints the dash, not an invented date");
 
 // C — the desk rule that chases a Sent quotation, with 15-day validity (workflow.ts is read, not edited).

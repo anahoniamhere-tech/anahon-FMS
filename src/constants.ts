@@ -78,4 +78,15 @@ export const defaultValidUntil = (issueDate: string): string => {
 };
 /** Printed on every quotation PDF. The Arabic text is the same rule, for the bilingual set. */
 export const QUOTE_REVISION_CLAUSE = "AnaHon may revise the prices, scope or terms of this quotation at any time until the client accepts it in writing; after acceptance, changes require the agreement of both parties.";
+/**
+ * iContent Studio's client-facing contact line (Saad, 15 Sep 2026). A client document issued as
+ * iContent never names AnaHon; internally everything stays AnaHon. The email is blank until Saad
+ * gives one — when set, it prints beside the phone.
+ */
+export const ICONTENT_PHONE = "+961 81 408 171";
+export const ICONTENT_EMAIL = "";
+/** The same rule as QUOTE_REVISION_CLAUSE, with iContent Studio as the party that may revise. */
+export const QUOTE_REVISION_CLAUSE_ICONTENT = "iContent Studio may revise the prices, scope or terms of this quotation at any time until the client accepts it in writing; after acceptance, changes require the agreement of both parties.";
+/** Arabic; the name is wrapped in an LTR span where it prints. */
+export const QUOTE_REVISION_CLAUSE_ICONTENT_AR = "يحقّ لـ {ICONTENT} تعديل الأسعار أو نطاق العمل أو شروط عرض السعر هذا في أي وقت إلى أن يقبله العميل خطّياً؛ وبعد القبول، لا يُجرى أي تعديل إلا بموافقة الطرفين.";
 export const QUOTE_REVISION_CLAUSE_AR = "يحقّ لأنا هون تعديل الأسعار أو نطاق العمل أو شروط عرض السعر هذا في أي وقت إلى أن يقبله العميل خطّياً؛ وبعد القبول، لا يُجرى أي تعديل إلا بموافقة الطرفين.";
