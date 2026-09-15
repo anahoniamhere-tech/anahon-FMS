@@ -9,6 +9,7 @@ import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { evidenceOf, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATION_SIGNED } from "./src/declarations.js";
+import { CONFIDENTIAL_PURPOSE, nextSourceCode, maySealedRead, SEALED_REFUSAL, confidentialRaiseBlocker, SANCTIONS_RESULTS, SEALED_DOC_KINDS, hasSealedReceipt, reviewDue, type SealedDoc } from "./src/sources.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
@@ -307,6 +308,10 @@ const READ_AUDIT: [RegExp, string][] = [
   [/^\/api\/document\/docx-text\/[^/]+$/, "Document, as text"],
   [/^\/api\/subscriptions\/detect$/, "Bank statement suggestions"],
   [/^\/api\/audit\/acting$/, "Seat-assumption log"],
+  // Policy 010 §6 — every opening of a sealed source file, and every refusal. The label names the
+  // file by its id, never the person.
+  [/^\/api\/sources\/[^/]+$/, "Sealed source file"],
+  [/^\/api\/sources\/[^/]+\/document\/[^/]+$/, "Sealed source file, a paper"],
 ];
 
 /** Name the paper, not just its id — a line an auditor cannot interpret is half a line. */
@@ -663,6 +668,10 @@ async function loadState(viewer?: any) {
   // Where each payment's evidence stands (Policy 020 §6.6) — one rule, here, for every seat. A
   // missing-receipt declaration counts only once signed by the person paid AND approved.
   const declarations = await prisma.missingReceiptDeclaration.findMany();
+  // Policy 010 §6: a confidential payment's receipt is signed in the real name and kept in the sealed
+  // file. Read here only as a yes/no — nothing from the file leaves this function.
+  const sealedDocs = new Map<string, SealedDoc[]>((await prisma.sourceFile.findMany({ select: { id: true, docsJson: true } }))
+    .map(f => [f.id, (() => { try { return JSON.parse(f.docsJson || "[]"); } catch { return []; } })()]));
   const expenseDocs = new Map<string, any[]>();
   for (const d of documents) if (d.linkedRecordType === "Expense") expenseDocs.set(d.linkedRecordId, [...(expenseDocs.get(d.linkedRecordId) || []), d]);
   const declarationFor = (e: any) => {
@@ -684,9 +693,26 @@ async function loadState(viewer?: any) {
       /** Why this cost never involved choosing a supplier, or "" when it did. */
       noSupplierChoice: noSupplierChoice(codes),
       declaration: declarationFor(e),
-      evidence: evidenceOf(expenseDocs.get(e.id) || [], declarationFor(e))
+      evidence: e.confidential && hasSealedReceipt(sealedDocs.get(e.sourceId) || [], e.id) ? "proof" : evidenceOf(expenseDocs.get(e.id) || [], declarationFor(e))
     };
   });
+
+  // Policy 010 §6 — the ED's quarterly review of confidential payments: count and totals by code name,
+  // nothing from any sealed file. Sent to the ED and the Finance Officer only (below).
+  const confidentialReview = await (async () => {
+    const rows = formattedExpenses.filter((e: any) => e.confidential);
+    const byCode = new Map<string, { codeName: string; count: number; totalUSD: number; lastDate: string }>();
+    for (const e of rows) {
+      const c = byCode.get(e.title) || { codeName: e.title, count: 0, totalUSD: 0, lastDate: "" };
+      c.count++; c.totalUSD = Math.round((c.totalUSD + e.convertedAmount) * 100) / 100;
+      const d = e.transactionDate || String(e.created_at || "").slice(0, 10); if (d > c.lastDate) c.lastDate = d;
+      byCode.set(e.title, c);
+    }
+    const last = await prisma.auditLog.findFirst({ where: { action: "Confidential Payments Reviewed" }, orderBy: { timestamp: "desc" } });
+    const lastReviewedOn = String(last?.timestamp || "").slice(0, 10);
+    return { count: rows.length, totalUSD: Math.round(rows.reduce((t: number, e: any) => t + e.convertedAmount, 0) * 100) / 100,
+      bySource: [...byCode.values()], lastReviewedOn, due: reviewDue(lastReviewedOn, localDate(), rows.length > 0) };
+  })();
 
   const formattedProcurements = procurements.map(p => ({
     ...p,
@@ -892,6 +918,7 @@ async function loadState(viewer?: any) {
     timesheets: formattedTimesheets,
     fixedAssets,
     partnerAccounts,
+    confidentialReview: viewer && ["Super Admin", "Finance Officer"].includes(viewer.role) ? confidentialReview : null,
     // Passports, IDs and CVs are stripped here, not hidden in the browser: a personnel
     // document only reaches the people who hold the personnel file, or the person it is about.
     // The integrity register is the ED's alone (§7.1); its evidence must not ride along
@@ -2267,6 +2294,95 @@ const INTEGRITY_KINDS = ["acknowledged", "referred-outside", "review", "investig
 // §7.2 step 2: once a concern touches the ED they take no further part. The only marks they
 // may still make are referring it outside and noting a fact.
 const INTEGRITY_KINDS_WHEN_IT_TOUCHES_ED = ["referred-outside", "note"];
+
+/* ── Policy 010 §6: sealed source files ──────────────────────────────────────────────────────────
+ * Opened only by the ED (as themselves) and the Finance Officer. The GETs are in READ_AUDIT, so every
+ * opening and every refusal is a line; the writes log what changed by field name, never the value —
+ * the audit log is read by more seats than the file is. None of it enters loadState.
+ */
+const sealedReader = (req: any) => (maySealedRead((req as any).dbUser, String(req.get("X-Acting-As") || "")) ? (req as any).dbUser : null);
+const sealedView = (f: any) => ({ ...f, docs: (() => { try { return (JSON.parse(f.docsJson || "[]") as SealedDoc[]).map(({ path: _p, ...d }) => d); } catch { return []; } })(), docsJson: undefined });
+
+app.get("/api/sources/:id", async (req, res) => {
+  const me = sealedReader(req);
+  if (!me) return res.status(403).json({ error: SEALED_REFUSAL });
+  const f = await prisma.sourceFile.findUnique({ where: { id: req.params.id } });
+  if (!f) return res.status(404).json({ error: "No such sealed file." });
+  const payments = await prisma.expense.findMany({ where: { sourceId: f.id }, select: { id: true, voucherNo: true, status: true, amount: true, currency: true, convertedAmount: true, transactionDate: true } });
+  res.json({ file: sealedView(f), payments });
+});
+
+app.get("/api/sources/:id/document/:docId", async (req, res) => {
+  const me = sealedReader(req);
+  if (!me) return res.status(403).json({ error: SEALED_REFUSAL });
+  const f = await prisma.sourceFile.findUnique({ where: { id: req.params.id } });
+  const doc = f ? (JSON.parse(f.docsJson || "[]") as SealedDoc[]).find(d => d.id === req.params.docId) : null;
+  const abs = doc ? path.resolve(VAULT_ROOT, doc.path) : "";
+  if (!doc || !abs.startsWith(path.resolve(VAULT_ROOT, "SEALED")) || !fs.existsSync(abs)) return res.status(404).json({ error: "No such paper in this file." });
+  res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Content-Disposition", `inline; filename="${doc.id}"`);
+  fs.createReadStream(abs).pipe(res);
+});
+
+app.post("/api/sources/update", async (req, res) => {
+  try {
+    const me = sealedReader(req);
+    if (!me) { await createAuditLog(req.body.user?.id, req.body.user?.name, "Action Refused", `Tried to change sealed source file ${String(req.body.sourceId || "")}.`); return res.status(403).json({ error: SEALED_REFUSAL }); }
+    const f = await prisma.sourceFile.findUnique({ where: { id: String(req.body.sourceId || "") } });
+    if (!f) return res.status(404).json({ error: "No such sealed file." });
+    const b = req.body;
+    const next: any = {};
+    for (const k of ["realName", "contact", "idDocument", "sanctionsNote"]) if (typeof b[k] === "string" && b[k].trim() !== (f as any)[k]) next[k] = b[k].trim();
+    if (typeof b.sanctionsResult === "string" && b.sanctionsResult !== f.sanctionsResult) {
+      if (!(SANCTIONS_RESULTS as readonly string[]).includes(b.sanctionsResult)) return res.status(400).json({ error: "Record the sanctions check as clear, a possible match referred, or not run." });
+      Object.assign(next, { sanctionsResult: b.sanctionsResult, sanctionsCheckedAt: new Date().toISOString(), sanctionsCheckedBy: me.id });
+    }
+    if (!Object.keys(next).length) return res.status(400).json({ error: "Nothing was changed." });
+    await prisma.sourceFile.update({ where: { id: f.id }, data: { ...next, updatedAt: new Date().toISOString() } });
+    await createAuditLog(me.id, me.name, "Sealed Source File Changed",
+      `${me.name} changed ${f.codeName}'s sealed file: ${Object.keys(next).filter(k => !k.startsWith("sanctionsChecked")).join(", ")}${next.sanctionsResult ? ` (sanctions check: ${next.sanctionsResult})` : ""}. Values are kept in the file, not here.`);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+app.post("/api/sources/document", async (req, res) => {
+  try {
+    const me = sealedReader(req);
+    if (!me) { await createAuditLog(req.body.user?.id, req.body.user?.name, "Action Refused", `Tried to file into sealed source file ${String(req.body.sourceId || "")}.`); return res.status(403).json({ error: SEALED_REFUSAL }); }
+    const b = req.body;
+    const f = await prisma.sourceFile.findUnique({ where: { id: String(b.sourceId || "") } });
+    if (!f) return res.status(404).json({ error: "No such sealed file." });
+    if (!(SEALED_DOC_KINDS as readonly string[]).includes(b.kind)) return res.status(400).json({ error: "Say what the paper is: identity, the signed receipt, or other." });
+    const expenseId = String(b.expenseId || "");
+    if (b.kind === "signed-receipt") {
+      const exp = expenseId ? await prisma.expense.findUnique({ where: { id: expenseId } }) : null;
+      if (!exp || exp.sourceId !== f.id) return res.status(400).json({ error: "A signed receipt belongs to one of this source's payments — choose it." });
+    }
+    const bytes = Buffer.from(String(b.base64 || ""), "base64");
+    if (!bytes.length) return res.status(400).json({ error: "The file is empty." });
+    const id = `sd-${Date.now()}`;
+    const ext = (String(b.filename || "").match(/\.[A-Za-z0-9]{1,5}$/) || [""])[0];
+    const rel = path.join("SEALED", f.id, `${id}${ext}`); // named by id: the vault never carries the person's name
+    fs.mkdirSync(path.join(VAULT_ROOT, "SEALED", f.id), { recursive: true });
+    fs.writeFileSync(path.join(VAULT_ROOT, rel), bytes);
+    const docs: SealedDoc[] = JSON.parse(f.docsJson || "[]");
+    docs.push({ id, kind: b.kind, filename: String(b.filename || id), mimeType: String(b.mimeType || ""), path: rel, expenseId, addedAt: new Date().toISOString(), addedById: me.id });
+    await prisma.sourceFile.update({ where: { id: f.id }, data: { docsJson: JSON.stringify(docs), updatedAt: new Date().toISOString() } });
+    await createAuditLog(me.id, me.name, "Sealed Source File Paper Filed", `${me.name} filed a ${b.kind} paper into ${f.codeName}'s sealed file.`);
+    res.json({ success: true, id });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// §6: "The ED reviews the list each quarter." The review is recorded as an audit line; the desk
+// item reads the latest one. ED as themselves only.
+app.post("/api/sources/review", async (req, res) => {
+  const me = (req as any).dbUser;
+  if (!me || me.role !== "Super Admin" || String(req.get("X-Acting-As") || "").trim()) return res.status(403).json({ error: "The quarterly review of confidential payments is the Executive Director's, as themselves." });
+  const n = await prisma.expense.count({ where: { confidential: true } });
+  await createAuditLog(me.id, me.name, "Confidential Payments Reviewed", `${me.name} reviewed the ${n} confidential payment(s) on record (Policy 010 §6).`);
+  res.json({ success: true });
+});
 
 /** The ED, as themselves. Returns the viewer, or null — never a seat they are standing in. */
 function integrityReader(req: any): any | null {
@@ -8506,7 +8622,8 @@ app.post("/api/quotations/delete", async (req, res) => {
 // Post Expense request
 app.post("/api/expense/new", async (req, res) => {
   try {
-    const { title, purpose, vendorId, projectId, budgetLineId, currency, amount, allocations, customRate, procurementId, costAccountCode, transactionDate, user } = req.body;
+    const { vendorId, projectId, budgetLineId, currency, amount, allocations, customRate, procurementId, costAccountCode, transactionDate, confidential, sourceCode, user } = req.body;
+    let { title, purpose } = req.body;
 
     if (!projectId) {
       return res.status(400).json({ error: "Please map request to an active Project Code." });
@@ -8593,6 +8710,28 @@ app.post("/api/expense/new", async (req, res) => {
       }
     }
 
+    // Policy 010 §6 — a protected source. Decided HERE, after every rule above has run on the request
+    // exactly as it would for anyone: confidential changes only what the record calls the person.
+    // The title becomes the code name and nobody is named as supplier; the identity is entered by the
+    // Finance Officer into the sealed file, never into the voucher.
+    let sourceId = "";
+    if (confidential === true) {
+      const refusedC = confidentialRaiseBlocker({ vendorId });
+      if (refusedC) return res.status(400).json({ error: refusedC });
+      const wanted = String(sourceCode || "").trim();
+      let file = wanted ? await prisma.sourceFile.findUnique({ where: { codeName: wanted } }) : null;
+      if (wanted && !file) return res.status(404).json({ error: `There is no source called ${wanted}. Leave it blank to give this person a new code name.` });
+      for (let attempt = 0; !file; attempt++) {
+        const codes = (await prisma.sourceFile.findMany({ select: { codeName: true } })).map(f => f.codeName);
+        try {
+          file = await prisma.sourceFile.create({ data: { id: `src-${Date.now()}`, codeName: nextSourceCode(txDate.slice(0, 4), codes), createdAt: new Date().toISOString(), createdById: user?.id || "" } });
+        } catch (e: any) { if (e?.code !== "P2002" || attempt >= 2) throw e; }
+      }
+      sourceId = file!.id;
+      title = file!.codeName;
+      purpose = CONFIDENTIAL_PURPOSE;
+    }
+
     const count = await prisma.expense.count();
     const voucherNo = `PV-2026-${String(count + 1).padStart(3, "0")}`;
 
@@ -8604,6 +8743,8 @@ app.post("/api/expense/new", async (req, res) => {
         procurementId: procurementId || "",
         costAccountCode: costAccount,
         transactionDate: txDate,
+        confidential: confidential === true,
+        sourceId,
         id: `exp-${Date.now()}`,
         voucherNo,
         title,
@@ -11412,6 +11553,12 @@ app.post("/api/document/upload", async (req, res) => {
     // account, so without this anyone could file into the register.
     if (String(linkedRecordType || "") === "Integrity" && !integrityReader(req)) {
       return res.status(403).json({ error: INTEGRITY_REFUSAL });
+    }
+    // Policy 010 §6 — nothing filed on a confidential payment goes into the ordinary documents, where
+    // every seat's state, the byte routes and the month pack would carry it. It goes into the sealed file.
+    if (String(linkedRecordType || "") === "Expense") {
+      const target = await prisma.expense.findUnique({ where: { id: String(linkedRecordId || "") }, select: { confidential: true } });
+      if (target?.confidential) return res.status(403).json({ error: "This is a confidential payment — its papers go into the sealed file, not the ordinary documents (Policy 010 §6)." });
     }
 
     // A signed receipt is the same receipt that was issued, carrying the same number —

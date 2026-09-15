@@ -211,6 +211,10 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // Policy 001 §7 — the integrity register. MASTER_ONLY is the Super Admin seat; the routes
   // themselves additionally refuse a Super Admin who is standing in as another seat, and
   // there is deliberately NO update or delete route here or anywhere (§7.1 append-only).
+  // Policy 010 §6 — sealed source files. The routes also refuse a stand-in seat and log refusals.
+  "/api/sources/update": ["Super Admin", "Finance Officer"],
+  "/api/sources/document": ["Super Admin", "Finance Officer"],
+  "/api/sources/review": MASTER_ONLY,
   "/api/integrity/record": MASTER_ONLY,
   "/api/integrity/line": MASTER_ONLY,
   "/api/compliance/save": DIRECTORS,

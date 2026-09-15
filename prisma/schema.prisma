@@ -169,6 +169,10 @@ model Expense {
   /// The TRUE date of the transaction (the invoice or receipt date), YYYY-MM-DD. Never the day it
   /// was typed in — that is created_at. Blank on rows raised before 14 Sep 2026: not captured.
   transactionDate String  @default("")
+  /// Policy 010 §6: a payment to a protected source. The title is the code name and no supplier is
+  /// named; the identity lives only in SourceFile (sourceId), which never enters loadState.
+  confidential    Boolean @default(false)
+  sourceId        String  @default("")
   commentsJson    String  // Serialized Comments Array [Comment]
   allocationsJson String  @default("[]") // Serialized allocations for shared cost splits
   hasAttachment   Boolean @default(false)
@@ -1083,4 +1087,26 @@ model IntegrityLine {
   createdAt String
 
   @@index([entryId])
+}
+
+/// Policy 010 §6 — the sealed file of a protected source. Opened only by the ED (as themselves) and the
+/// Finance Officer, through /api/sources/*, every opening in the audit log. Never part of loadState.
+model SourceFile {
+  id                 String @id
+  /// "Source S-YYYY-NN" — the only name any other record carries.
+  codeName           String @unique
+  realName           String @default("")
+  contact            String @default("")
+  idDocument         String @default("")
+  /// "" | clear | possible match — referred | not run (Policy 001 §4)
+  sanctionsResult    String @default("")
+  sanctionsNote      String @default("")
+  sanctionsCheckedAt String @default("")
+  sanctionsCheckedBy String @default("")
+  /// The sealed papers: identity, the receipt signed in the real name. Files in the vault's SEALED
+  /// folder, never AppDoc rows, so no document list or byte route can reach them.
+  docsJson           String @default("[]")
+  createdAt          String
+  createdById        String
+  updatedAt          String @default("")
 }

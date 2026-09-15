@@ -18,6 +18,10 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
   const [expenseTitle, setExpenseTitle] = useState("");
 
   const [expensePurpose, setExpensePurpose] = useState("");
+  // Policy 010 §6 — a payment to a protected source: no name, no supplier, no free text that could
+  // carry one. The server gives it a code name; the Finance Officer fills the sealed file.
+  const [confidential, setConfidential] = useState(false);
+  const [sourceCode, setSourceCode] = useState("");
 
   const [expenseVendor, setExpenseVendor] = useState("");
 
@@ -125,7 +129,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
 
   const handleExpenseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expenseTitle || !expenseAmount || !expenseProject) {
+    if ((!expenseTitle && !confidential) || !expenseAmount || !expenseProject) {
       triggerToast("Voucher name, amount value, and Project Code are required to route funds.", "error");
       return;
     }
@@ -162,9 +166,10 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: expenseTitle,
-          purpose: expensePurpose,
-          vendorId: expenseVendor,
+          title: confidential ? "" : expenseTitle,
+          purpose: confidential ? "" : expensePurpose,
+          vendorId: confidential ? "" : expenseVendor,
+          confidential, sourceCode: confidential ? sourceCode.trim() : "",
           projectId: expenseProject,
           budgetLineId: expenseBudgetLine,
           procurementId: expenseProcurement,
@@ -187,8 +192,8 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
       const resData = await res.json();
       const newVouId = resData.expense.id;
 
-      // Upload Temp Attachment if present
-      if (tempAttachment) {
+      // Upload Temp Attachment if present — never on a confidential payment: its papers go into the sealed file.
+      if (tempAttachment && !confidential) {
         await fetch("/api/document/upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -328,12 +333,41 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                 <p className="text-xs text-slate-500">Every item must be fully supported by digital quotes, conflict declaration checks, project mapping and mult-level signatures.</p>
               </div>
 
+              {/* Policy 010 §6 — the ED reviews confidential payments each quarter: code names and totals only. */}
+              {state.confidentialReview && state.confidentialReview.count > 0 && (
+                <div className={`p-4 rounded-xl border ${state.confidentialReview.due ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`}>
+                  <p className="text-xs font-bold text-slate-900">{t("Confidential payments — quarterly review (Policy 010 §6)")}</p>
+                  <p className="text-[11px] text-slate-600"><span dir="ltr">{state.confidentialReview.count} · {formatUSD(state.confidentialReview.totalUSD)}</span></p>
+                  <p className="text-[11px] text-slate-600">{t("last reviewed")}: <span dir="ltr">{state.confidentialReview.lastReviewedOn || "—"}</span></p>
+                  <ul className="mt-1 text-[11px] text-slate-700">
+                    {state.confidentialReview.bySource.map(r => <li key={r.codeName}><span dir="ltr">{r.codeName}</span> — {r.count} · {formatUSD(r.totalUSD)} · <span dir="ltr">{r.lastDate}</span></li>)}
+                  </ul>
+                  {currentUser.role === "Super Admin" && state.confidentialReview.due && (
+                    <button type="button" className="mt-2 text-[11px] bg-slate-800 text-white px-3 py-1.5 rounded font-medium"
+                      onClick={async () => { const r = await fetch("/api/sources/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }); const d = await r.json().catch(() => ({})); if (!r.ok) return triggerToast(d.error || "Refused.", "error"); triggerToast(t("Reviewed.")); refreshState(); }}>
+                      {t("I have reviewed this quarter's confidential payments")}
+                    </button>
+                  )}
+                </div>
+              )}
+
               {/* Expense submission Drawer form */}
               {REQUESTERS.includes(currentUser.role) && (
                 <div className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm">
                   <h3 className="text-sm font-bold text-slate-950 uppercase border-b border-slate-100 pb-2 mb-4">Lodge Disbursement Voucher PV-2026</h3>
                   <form onSubmit={handleExpenseSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div>
+                    <div className="md:col-span-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <label className="flex min-h-[44px] items-center gap-2 text-xs font-bold text-slate-800">
+                        <input type="checkbox" checked={confidential} onChange={e => setConfidential(e.target.checked)} className="h-4 w-4" />
+                        {t("Confidential — a payment to a protected source (Policy 010 §6)")}
+                      </label>
+                      {confidential && (<>
+                        <p className="text-[11px] text-slate-600">{t("Do not type the person's name anywhere on this request. It gets a code name; the Finance Officer records who they are in the sealed file. Every finance rule still applies.")}</p>
+                        <label htmlFor="exp-source-code" className="mt-2 block text-[11px] font-bold text-slate-700">{t("Paid before? Their code name (leave blank for a new one)")}</label>
+                        <input id="exp-source-code" value={sourceCode} onChange={e => setSourceCode(e.target.value)} placeholder="Source S-2026-01" dir="ltr" className="finance-input w-full md:w-72" />
+                      </>)}
+                    </div>
+                    {!confidential && <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">{t("Expenditure Purpose Title")}</label>
                       <input
                         type="text"
@@ -342,7 +376,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                         onChange={(e) => setExpenseTitle(e.target.value)}
                         className="finance-input w-full"
                       />
-                    </div>
+                    </div>}
                     <div>
                       <label htmlFor="exp-date" className="block text-xs font-bold text-slate-700 mb-1">{t("Date on the invoice or receipt")}</label>
                       <input
@@ -458,7 +492,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                         )}
                       </div>
                     )}
-                    <div>
+                    {!confidential && <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">{t("Accompanying Justification / Sinking rationale")}</label>
                       <input
                         type="text"
@@ -467,7 +501,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                         onChange={(e) => setExpensePurpose(e.target.value)}
                         className="finance-input w-full"
                       />
-                    </div>
+                    </div>}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">{t("Target Project Mapping")}</label>
                       <select
@@ -494,7 +528,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                         ))}
                       </select>
                     </div>
-                    <div>
+                    {!confidential && <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">{t("Vendor list / Contract partner")}</label>
                       <select
                         value={expenseVendor}
@@ -506,7 +540,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                           <option key={v.id} value={v.id}>{v.name}</option>
                         ))}
                       </select>
-                    </div>
+                    </div>}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">{t("Requested Currency")}</label>
                       <select

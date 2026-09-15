@@ -85,6 +85,7 @@ import { NAV, visibleNav, LANDING, ic } from "./nav";
 import { deskItems, localToday } from "./workflow";
 import { withTicket, refreshDocTicket } from "./docTicket";
 import { SharedProps } from "./tabs/shared";
+import SealedSourcePanel from "./tabs/SealedSourcePanel";
 import { auth } from "./firebaseConfig";
 import {
   signInWithEmailAndPassword,
@@ -1806,7 +1807,11 @@ export default function App() {
                 {/* Policy 020 §6.6 — a paid voucher whose receipt is missing. The re-issued copy is the
                     first route; a declaration only when no copy can be had. Finance files and prepares;
                     the Executive Director approves, never the person who prepared it. */}
-                {["Paid", "Posted"].includes(exp.status) && exp.evidence && exp.evidence !== "proof" && (() => {
+                {/* Policy 010 §6 — a protected source. The ED (as themselves) and the Finance Officer open the
+                    sealed file; the server logs every opening and refuses anyone else, stand-ins included. */}
+                {exp.confidential && <SealedSourcePanel exp={exp} currentUser={currentUser} acting={!!actingAs} triggerToast={triggerToast} refreshState={refreshState} />}
+
+                {!exp.confidential && ["Paid", "Posted"].includes(exp.status) && exp.evidence && exp.evidence !== "proof" && (() => {
                   const d = exp.declaration;
                   const isFinance = ["Super Admin", "Finance Officer"].includes(currentUser?.role || "");
                   const isDirector = ["Super Admin", "Program Director"].includes(currentUser?.role || "");

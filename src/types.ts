@@ -179,6 +179,9 @@ export interface Expense {
    *  Blank on rows raised before this existed. */
   costAccountCode?: string;
   transactionDate?: string;
+  /** Policy 010 §6: a payment to a protected source — the title is the code name, no supplier. */
+  confidential?: boolean;
+  sourceId?: string;
   /** Policy 020 §6.6, computed by the server for every seat. */
   evidence?: "proof" | "reconstructed" | "declaration-unsigned" | "declaration-awaiting-director" | "missing";
   declaration?: { id: string; generatedDocId: string; signedDocId: string; preparedById: string; preparedAt: string; approvedById: string; approvedAs: string; approvedAt: string; madeOn: string } | null;
@@ -746,6 +749,8 @@ export interface DatabaseState {
   employees: Employee[];
   timesheets: Timesheet[];
   fixedAssets: FixedAsset[];
+  /** Policy 010 §6 — the quarterly review, sent to the ED and the Finance Officer only. */
+  confidentialReview?: { count: number; totalUSD: number; bySource: { codeName: string; count: number; totalUSD: number; lastDate: string }[]; lastReviewedOn: string; due: boolean } | null;
   partnerAccounts: PartnerAccount[];
   documents: AppDoc[];
   auditLogs: AuditLog[];
