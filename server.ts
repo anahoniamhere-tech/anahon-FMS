@@ -1909,7 +1909,7 @@ async function shadowOfficeRun(reason: string) {
     // Someone with no FMS app on any device cannot be reminded at all. Rather than fail silently
     // every day, the Executive Director is told once, and every stage is recorded as passed.
     if (!devices && !isDirector(person.role)) {
-      for (const item of [...plan.first, ...plan.second]) escalations.push({ personName: `${person.name} (no FMS app installed)`, item, rows: { userId: person.id, channels: ["stall-1", "stall-2", "escalate"] } });
+      for (const item of [...plan.first, ...plan.second]) escalations.push({ personName: `${person.name} (notifications not turned on)`, item, rows: { userId: person.id, channels: ["stall-1", "stall-2", "escalate"] } });
       for (const item of plan.escalate) escalations.push({ personName: person.name, item, rows: { userId: person.id, channels: ["escalate"] } });
       continue;
     }
