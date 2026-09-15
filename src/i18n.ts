@@ -921,6 +921,7 @@ export const AR: Record<string, string> = {
   "Chase the decision": "تابع القرار",
   "Register the project from the deposit": "سجّل المشروع من الإيداع",
   "Chase the client": "تابع العميل",
+  "Chase the client — the quotation has no expiry date": "تابع العميل — عرض السعر بلا تاريخ انتهاء",
   "Issue the receipt and link the deposit": "أصدر الإيصال واربط الإيداع",
   "Link the deposit": "اربط الإيداع",
   "Settle": "سوِّ",
