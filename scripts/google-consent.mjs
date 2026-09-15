@@ -31,7 +31,20 @@ let [clientId, clientSecret] = process.argv.slice(2);
 if (clientId && !clientSecret && /\.json$/i.test(clientId)) {
   // The file Google's "Download JSON" button saves: { installed: { client_id, client_secret } }
   const j = JSON.parse(fs.readFileSync(clientId.replace(/^~/, os.homedir()), "utf8"));
-  const c = j.installed || j.web || j;
+  // A Web client cannot be used here. This flow catches the redirect on localhost, and a
+  // Web client only accepts redirect URIs registered against it — Google answers
+  // "Error 400: redirect_uri_mismatch". Only a Desktop app client ("installed") may use a
+  // loopback address with an arbitrary port. Saying so here beats being bounced by Google.
+  if (!j.installed && j.web) {
+    console.error("\nThat file is a WEB application client, not a Desktop app client.");
+    console.error("Its registered redirect URIs are:", (j.web.redirect_uris || ["(none)"]).join(", "));
+    console.error("This consent needs the Desktop client (Google Cloud Console → Credentials →");
+    console.error("the Desktop OAuth client → Download JSON), because it catches the redirect on");
+    console.error(`${"http://localhost"}:8737 and only a Desktop client allows a loopback address.`);
+    console.error("Or pass the pair directly:  node scripts/google-consent.mjs <client-id> <client-secret>");
+    process.exit(1);
+  }
+  const c = j.installed || j;
   clientId = c.client_id; clientSecret = c.client_secret;
 }
 if (!clientId || !clientSecret) {
