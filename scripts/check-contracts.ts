@@ -349,5 +349,10 @@ ok("the route uses it", /\$\{initialsFor\(partyKey, party\.name\)\}/.test(server
 ok("changing initials cannot disturb the parent lookup, which compares months",
   /r\.slice\(-7\) <= startMonth/.test(server) && !/slice\(0, *7\)[\s\S]{0,40}initials/i.test(server));
 
+// Policy 020, approved 15 Sep 2026, replaced the Accounting Policies Manual; the payment clause cites it in both languages.
+{ const d = doc({});
+  ok("the payment clause cites Policy 020 in English and Arabic, and the retired manual nowhere",
+    d.includes("AnaHon's Finance and Procurement Policy (Policy 020)") && d.includes("وفقاً لسياسة المالية والمشتريات لدى أنا هون")
+    && !/Accounting Policies Manual|السياسات المحاسبية/.test(d)); }
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

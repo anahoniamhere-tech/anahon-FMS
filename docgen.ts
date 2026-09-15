@@ -288,7 +288,7 @@ ${noFixedValue
 
   const paymentAr = `<p>يُدفع ${account
       ? `${emp.paymentMethod === "Cash" ? "نقداً مسحوباً من" : "بتحويل مصرفي من"} <b>${ltr(esc(account.name))}</b> (${ltr(esc(account.accountNo))})`
-      : "من الحساب المسجّل في نظام الإدارة المالية"}، مقابل سند صرف معتمد و${isService ? "فاتورة مقدّم الخدمة للمخرجات المسلّمة" : "كشف دوام موقّع للشهر"}، وفقاً لدليل السياسات المحاسبية للمؤسسة.${isService
+      : "من الحساب المسجّل في نظام الإدارة المالية"}، مقابل سند صرف معتمد و${isService ? "فاتورة مقدّم الخدمة للمخرجات المسلّمة" : "كشف دوام موقّع للشهر"}، وفقاً لسياسة المالية والمشتريات لدى أنا هون (السياسة ${ltr("020")}).${isService
       ? (registered
         ? " مقدّم الخدمة مسجّل لدى وزارة المالية؛ ويُطبَّق الاقتطاع الضريبي حيث يوجبه القانون."
         : ` ولأن مقدّم الخدمة غير مسجّل لدى وزارة المالية، <b>تُقتطع ضريبة استقطاع بنسبة 7.5% من المنبع</b> من كل دفعة وتُحوَّل إلى وزارة المالية من قِبل أنا هون؛ ويتقاضى مقدّم الخدمة المبلغ الصافي.${noFixedValue
@@ -390,8 +390,8 @@ ${noFixedValue
 <p>Payment is made ${account
       ? `${emp.paymentMethod === "Cash" ? "in cash withdrawn from" : "by bank transfer from"} <b>${esc(account.name)}</b> (${esc(account.accountNo)})`
       : "from the account recorded in the financial management system"}, against an approved payment voucher
-and ${isService ? "the provider's invoice for the delivered outputs" : "a signed timesheet for the month"}, in line with the
-organisation's Accounting Policies Manual.${isService
+and ${isService ? "the provider's invoice for the delivered outputs" : "a signed timesheet for the month"}, in line with
+AnaHon's Finance and Procurement Policy (Policy 020).${isService
       ? (registered
         ? " The provider is registered with the Ministry of Finance; withholding tax is applied where the law requires it."
         : ` Because the provider is not registered with the Ministry of Finance, <b>7.5% withholding tax is deducted at source</b> from each payment and remitted to the MoF by AnaHon; the provider receives the net amount.${noFixedValue
