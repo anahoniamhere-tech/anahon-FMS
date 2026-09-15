@@ -103,7 +103,8 @@ ok("it is extracted whole — no chunking, no keyword pre-selection",
 ok("extracted in process, never through the route", /await documentText\(r\.id\)/.test(srv)
   && !/fetch\([^)]*docx-text/.test(srv));
 ok("cached on every Handbook row's own content hash, so re-filing or retiring any of them invalidates it",
-  /rows\.map\(r => `\$\{r\.id\}:\$\{r\.contentHash\}`\)/.test(srv));
+  // policyCorpus keys on id:contentHash:base64 (a move to Superseded changes the pointer, not the bytes).
+  /rows\.map\(r => `\$\{r\.id\}:\$\{r\.contentHash\}:\$\{r\.base64\}`\)/.test(srv));
 ok("one unreadable document does not take the manual down", /could not read \$\{r\.filename\}/.test(srv));
 
 console.log("\nE2. retired documents are excluded by their own pointer, not a filename guess");

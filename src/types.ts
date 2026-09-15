@@ -744,6 +744,8 @@ export interface DatabaseState {
   cashDraws: CashDraw[];
   subscriptions: Subscription[];
   projectActivities: ProjectActivity[];
+  /** Donor reports as submitted — append-only (src/lateCosts.ts). */
+  donorReportSubmissions?: { id: string; projectId: string; activityId: string; periodStart: string; periodEnd: string; submittedOn: string; evidence: string; asSubmittedUSD: number; asSubmittedJson: string; basis: string; recordedAt: string; recordedById: string }[];
   contentItems: ContentItem[];
   editorialMeetings: EditorialMeeting[];
   clients: Client[];

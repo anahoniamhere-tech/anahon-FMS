@@ -20,13 +20,14 @@ for (const o of DONOR_OBLIGATIONS) {
     kind: "Report",
     dueDate: o.due,
     status: o.done ? "Done" : "Planned",
-    completedOn: o.done ? o.due || today : "",
+    // A due date is not a submission date (corrected 15 Sep 2026). completedOn stays blank until a
+    // submission is recorded with its real date (/api/reports/submission), and is never rewritten here.
     source: "agreement",
     assigneeUserId: "", budgetLineId: "",
     outlineNo: "", resultGroup: "", titleAr: "", startDate: "", periodsJson: "[]"
   };
   await prisma.projectActivity.upsert({
-    where: { id }, update: data, create: { id, ...data, created_at: new Date().toISOString() }
+    where: { id }, update: data, create: { id, ...data, completedOn: "", created_at: new Date().toISOString() }
   });
   console.log(`${o.due || "UNKNOWN".padEnd(10)}  ${o.projectId}  ${o.title.slice(0, 60)}`);
 }

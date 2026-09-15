@@ -10,6 +10,7 @@ import { ACTIVITY_EDITORS, DIRECTORS, FINANCE, MANAGERS } from "../roles";
 import { withTicket } from "../docTicket";
 import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES, CORE_SLOTS, missingCoreDocs, agreementDocs } from "../coreDocs";
 import ReceiveOffbankForm from "./ReceiveOffbankForm";
+import ReportSubmissions from "./ReportSubmissions";
 import { overdueObligations, daysLate, UNKNOWN_DUE } from "../donorDeadlines";
 
 /** The pages of a project's workspace, in the order they are shown. */
@@ -1291,6 +1292,10 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                           {o.status === "Done" ? "✓ " : late ? `⚠ ${daysLate(o.dueDate, today)} ${t("days overdue")} — ` : ""}{o.title}
                                         </p>
                                         <p className="text-[11px] text-slate-500 whitespace-pre-line">{o.detail}</p>
+                                        {/* A report can be submitted; the Year Plan condition and the partner video cannot (stable act-doc ids). */}
+                                        {o.kind === "Report" && !/-(year-plan|partner-video)$/.test(o.id) && (
+                                          <ReportSubmissions state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState} formatUSD={formatUSD} activity={o} />
+                                        )}
                                       </div>
                                     </div>
                                   );

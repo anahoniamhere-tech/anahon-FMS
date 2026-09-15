@@ -945,3 +945,23 @@ model PoolAssessment {
   @@unique([candidateId, field])
   @@index([field])
 }
+
+// A donor report as it was submitted (15 Sep 2026). Append-only: a row is never edited — a
+// resubmission (FPU's corrected financial report) is a new row. What was submitted stays as
+// submitted; costs recorded into its period afterwards are shown beside it (src/lateCosts.ts).
+model DonorReportSubmission {
+  id              String @id
+  projectId       String
+  activityId      String @default("")   // the Report obligation it answers (act-doc-*)
+  periodStart     String                // YYYY-MM-DD, inclusive
+  periodEnd       String                // YYYY-MM-DD, inclusive
+  submittedOn     String                // YYYY-MM-DD — the day it went to the donor
+  evidence        String                // ANH-DOC refNo, or the email's subject and date
+  asSubmittedUSD  Float
+  asSubmittedJson String @default("{}") // { byLine: {budgetLineId: usd}, voucherIds: [] } when frozen
+  basis           String                // "frozen" | "entered from the filed report"
+  recordedAt      String
+  recordedById    String @default("")
+
+  @@index([projectId])
+}
