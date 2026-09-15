@@ -3,6 +3,15 @@
 // records stay in the language they were entered in.
 export const AR: Record<string, string> = {
   // donor report submissions and late costs
+  "at the report's rate": "بسعر الصرف الوارد في التقرير",
+  "no rate stated in the report": "لا يذكر التقرير سعر صرف",
+  "vouchers are in USD; the report is in": "السندات بالدولار؛ والتقرير بعملة",
+  "and states no rate, so they are not converted": "ولا يذكر سعر صرف، فلا تُحوَّل",
+  "Currency reported in": "عملة التقرير",
+  "Total as submitted": "المجموع كما قُدّم",
+  "Rate the report states": "سعر الصرف الوارد في التقرير",
+  "blank if the report states none": "اتركه فارغاً إن لم يذكره التقرير",
+  "Record — enter the rate the report states": "تسجيل — أدخل سعر الصرف الوارد في التقرير",
   "Record — enter the report's period": "تسجيل — أدخل فترة التقرير",
   "Record — enter the day it was submitted": "تسجيل — أدخل يوم تقديمه",
   "Record — name the evidence": "تسجيل — اذكر الإثبات",

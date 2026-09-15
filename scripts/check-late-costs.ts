@@ -4,7 +4,7 @@
  */
 import assert from "assert";
 import fs from "fs";
-import { lateCosts, freezeSubmission, submissionBlocker, shareFor, endOfBeirutDay } from "../src/lateCosts.js";
+import { lateCosts, freezeSubmission, submissionBlocker, shareFor, endOfBeirutDay, inReportCurrency, usdEquivalent } from "../src/lateCosts.js";
 
 const sub = { id: "s1", projectId: "p1", periodStart: "2026-02-10", periodEnd: "2026-06-30", submittedOn: "2026-07-10" };
 const v = (o: any) => ({ id: o.id, voucherNo: o.id.toUpperCase(), projectId: "p1", budgetLineId: "bl", status: "Posted", convertedAmount: 100, transactionDate: "2026-05-01", created_at: "2026-09-16T08:00:00.000Z", ...o });
@@ -32,12 +32,31 @@ assert.equal(f.asSubmittedUSD, 100);
 assert.deepEqual(f.asSubmittedJson.voucherIds, ["a"], "only true-dated vouchers inside the period are frozen");
 
 // C — what may be recorded.
-const ok = { periodStart: "2026-02-10", periodEnd: "2026-06-30", submittedOn: "2026-07-10", today: "2026-09-15", evidence: "ANH-DOC-00001", basis: "entered from the filed report", asSubmittedUSD: 10020.04 };
+const ok = { periodStart: "2026-02-10", periodEnd: "2026-06-30", submittedOn: "2026-07-10", today: "2026-09-15", evidence: "ANH-DOC-00001", basis: "entered from the filed report", currency: "USD", asSubmittedNative: 10020.04 };
 assert.equal(submissionBlocker(ok), "");
 assert.ok(submissionBlocker({ ...ok, submittedOn: "2026-09-20" }), "no future submission date");
 assert.ok(submissionBlocker({ ...ok, periodEnd: "2026-01-01" }), "period must run forwards");
 assert.ok(submissionBlocker({ ...ok, evidence: " " }), "evidence required");
 assert.ok(submissionBlocker({ ...ok, basis: "guessed" }), "the basis is stated");
+
+// C2 — currency (Saad, 15 Sep 2026): kept as reported; converted only at the rate the REPORT states.
+assert.equal(usdEquivalent(22585.48, "EUR", null), null, "no stated rate, no invented USD equivalent");
+assert.equal(usdEquivalent(100, "EUR", 1.1), 110);
+assert.equal(usdEquivalent(10020.04, "USD"), 10020.04);
+assert.equal(inReportCurrency(110, { currency: "EUR", usdPerUnit: 1.1 }), 100, "late USD vouchers expressed in the report's currency at its own rate");
+assert.equal(inReportCurrency(110, { currency: "EUR", usdPerUnit: null }), null, "no rate: not converted");
+const eur = { ...sub, currency: "EUR", usdPerUnit: 1.25 };
+assert.equal(lateCosts(eur, [v({ id: "late" })]).lateNative, 80, "the late total in EUR at the report's rate");
+assert.equal(lateCosts({ ...eur, usdPerUnit: null }, [v({ id: "late" })]).lateNative, null, "no rate: the screen shows both currencies instead");
+assert.equal(lateCosts({ ...eur, usdPerUnit: null }, [v({ id: "late" })]).lateUSD, 100, "the USD total is always there");
+assert.ok(submissionBlocker({ ...ok, currency: "CHF" }), "an unknown currency is refused");
+assert.ok(submissionBlocker({ ...ok, currency: "EUR", usdPerUnit: 0 }), "a zero rate is refused");
+assert.equal(submissionBlocker({ ...ok, currency: "EUR", asSubmittedNative: 22585.48, usdPerUnit: null }), "", "a EUR report with no stated rate may be recorded");
+assert.ok(submissionBlocker({ ...ok, basis: "frozen", currency: "EUR", usdPerUnit: null }), "freezing a EUR report from USD vouchers needs its stated rate");
+const tabSrc = fs.readFileSync("src/tabs/ReportSubmissions.tsx", "utf8");
+assert.ok(tabSrc.includes("formatIn(s.asSubmittedNative, s.currency)"), "the native figure is what is shown");
+assert.ok(tabSrc.includes("and states no rate, so they are not converted"), "with no rate, both currencies are shown and the screen says why");
+assert.ok(/"currency" TEXT NOT NULL DEFAULT 'USD'/.test(fs.readFileSync("prisma/migrations/20260915150000_report_submission_currency/migration.sql", "utf8")), "currency is stored");
 
 // D — append-only, and the server never recomputes a submitted figure.
 const server = fs.readFileSync("server.ts", "utf8");

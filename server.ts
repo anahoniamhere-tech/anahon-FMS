@@ -22,7 +22,7 @@ import {
   isSupersededPointer, policyHeading,
 } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
-import { freezeSubmission, submissionBlocker } from "./src/lateCosts.js";
+import { freezeSubmission, submissionBlocker, inReportCurrency, usdEquivalent } from "./src/lateCosts.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
 import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, deleteBlocker, endBlocker, endIsEffective, isDisposal, endKindOf, END_KINDS, mayEndEquipment, confirmDisposalBlocker, disposalSides, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, assetAccounting, valuationBlocker, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
@@ -2942,28 +2942,36 @@ app.post("/api/projects/channel-rule", async (req, res) => {
 // afterwards are shown beside it (src/lateCosts.ts), never folded into it.
 app.post("/api/reports/submission", async (req, res) => {
   try {
-    const { projectId, activityId, periodStart, periodEnd, submittedOn, evidence, basis, asSubmittedUSD, user } = req.body;
+    const { projectId, activityId, periodStart, periodEnd, submittedOn, evidence, basis, currency: cur, asSubmittedNative, usdPerUnit: rateIn, user } = req.body;
+    const currency = String(cur || "USD");
+    const usdPerUnit = rateIn === "" || rateIn == null ? null : Number(rateIn);
     if (!MANAGERS_SEATS.includes(user?.role)) return res.status(403).json({ error: "Finance or a director records a donor report's submission." });
     const project = await prisma.project.findUnique({ where: { id: String(projectId || "") } });
     if (!project) return res.status(404).json({ error: "Project not found." });
-    const refused = submissionBlocker({ periodStart, periodEnd, submittedOn, today: localDate(), evidence, basis, asSubmittedUSD });
+    const refused = submissionBlocker({ periodStart, periodEnd, submittedOn, today: localDate(), evidence, basis, currency, asSubmittedNative, usdPerUnit });
     if (refused) return res.status(400).json({ error: refused });
     const activity = activityId ? await prisma.projectActivity.findUnique({ where: { id: String(activityId) } }) : null;
     if (activityId && (!activity || activity.projectId !== project.id || activity.kind !== "Report")) return res.status(400).json({ error: "That report obligation is not this project's." });
-    let figure = { asSubmittedUSD: Math.round(Number(asSubmittedUSD) * 100) / 100, asSubmittedJson: {} as any };
+    // The figure is kept in the currency actually reported; its USD equivalent only at the rate the
+    // report states. A frozen figure comes from USD vouchers, converted back at that same rate.
+    let native = Math.round(Number(asSubmittedNative) * 100) / 100;
+    let asSubmittedJson: any = {};
     if (basis === "frozen") {
       const vouchers = await prisma.expense.findMany({ where: { OR: [{ projectId: project.id }, { allocationsJson: { contains: project.id } }] } });
-      figure = freezeSubmission(project.id, periodStart, periodEnd, vouchers as any);
+      const frozen = freezeSubmission(project.id, periodStart, periodEnd, vouchers as any);
+      native = inReportCurrency(frozen.asSubmittedUSD, { currency, usdPerUnit })!;
+      asSubmittedJson = frozen.asSubmittedJson;
     }
+    const figure = { native, usd: usdEquivalent(native, currency, usdPerUnit) };
     const row = await prisma.donorReportSubmission.create({ data: {
       id: `drs-${Date.now()}`, projectId: project.id, activityId: activity?.id || "", periodStart, periodEnd, submittedOn,
-      evidence: String(evidence).trim(), asSubmittedUSD: figure.asSubmittedUSD, asSubmittedJson: JSON.stringify(figure.asSubmittedJson),
+      evidence: String(evidence).trim(), currency, asSubmittedNative: figure.native, usdPerUnit, asSubmittedUSD: figure.usd, asSubmittedJson: JSON.stringify(asSubmittedJson),
       basis, recordedAt: new Date().toISOString(), recordedById: user?.id || "",
     } });
     // The obligation it answers is done, on the day it was really submitted.
     if (activity) await prisma.projectActivity.update({ where: { id: activity.id }, data: { status: "Done", completedOn: submittedOn } });
     await createAuditLog(user?.id, user?.name, "Donor Report Submission Recorded",
-      `${project.code}: report for ${periodStart} → ${periodEnd} submitted on ${submittedOn}, USD ${figure.asSubmittedUSD.toFixed(2)} (${basis}), evidence "${String(evidence).trim()}"${activity ? `, answering "${activity.title}"` : ""} (${row.id}).`);
+      `${project.code}: report for ${periodStart} → ${periodEnd} submitted on ${submittedOn}, ${currency} ${figure.native.toFixed(2)}${currency !== "USD" ? (figure.usd != null ? ` (USD ${figure.usd.toFixed(2)} at the stated ${usdPerUnit} USD/${currency})` : " (no rate stated — no USD equivalent)") : ""} (${basis}), evidence "${String(evidence).trim()}"${activity ? `, answering "${activity.title}"` : ""} (${row.id}).`);
     res.json({ success: true, submission: row });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

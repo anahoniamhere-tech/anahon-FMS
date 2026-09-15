@@ -1294,7 +1294,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         <p className="text-[11px] text-slate-500 whitespace-pre-line">{o.detail}</p>
                                         {/* A report can be submitted; the Year Plan condition and the partner video cannot (stable act-doc ids). */}
                                         {o.kind === "Report" && !/-(year-plan|partner-video)$/.test(o.id) && (
-                                          <ReportSubmissions state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState} formatUSD={formatUSD} activity={o} />
+                                          <ReportSubmissions state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState} formatUSD={formatUSD} formatIn={formatIn} activity={o} />
                                         )}
                                       </div>
                                     </div>

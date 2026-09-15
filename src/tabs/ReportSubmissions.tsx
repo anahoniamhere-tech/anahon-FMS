@@ -2,9 +2,9 @@ import { useState } from "react";
 import { SharedProps } from "./shared";
 import { MANAGERS } from "../roles";
 import { agreementDocs } from "../coreDocs";
-import { lateCosts } from "../lateCosts";
+import { lateCosts, REPORT_CURRENCIES } from "../lateCosts";
 
-type Props = Pick<SharedProps, "state" | "currentUser" | "t" | "triggerToast" | "refreshState" | "formatUSD"> & {
+type Props = Pick<SharedProps, "state" | "currentUser" | "t" | "triggerToast" | "refreshState" | "formatUSD" | "formatIn"> & {
   activity: { id: string; projectId: string; title: string };
 };
 
@@ -12,9 +12,9 @@ type Props = Pick<SharedProps, "state" | "currentUser" | "t" | "triggerToast" | 
  * Under one donor-report obligation: each time it was submitted (append-only), and the costs
  * recorded into its period since — beside the submitted figure, never folded into it.
  */
-export default function ReportSubmissions({ state, currentUser, t, triggerToast, refreshState, formatUSD, activity }: Props) {
+export default function ReportSubmissions({ state, currentUser, t, triggerToast, refreshState, formatUSD, formatIn, activity }: Props) {
   const today = new Date().toLocaleDateString("en-CA");
-  const [form, setForm] = useState<null | { periodStart: string; periodEnd: string; submittedOn: string; evidence: string; basis: string; asSubmittedUSD: string }>(null);
+  const [form, setForm] = useState<null | { periodStart: string; periodEnd: string; submittedOn: string; evidence: string; basis: string; currency: string; asSubmittedNative: string; usdPerUnit: string }>(null);
   const [busy, setBusy] = useState(false);
   const subs = (state.donorReportSubmissions || []).filter(s => s.activityId === activity.id);
   const vouchers = (state.expenses || []) as any[];
@@ -25,7 +25,8 @@ export default function ReportSubmissions({ state, currentUser, t, triggerToast,
     : !form.periodStart || !form.periodEnd ? t("Record — enter the report's period")
     : !form.submittedOn ? t("Record — enter the day it was submitted")
     : !form.evidence.trim() ? t("Record — name the evidence")
-    : form.basis === "entered from the filed report" && form.asSubmittedUSD === "" ? t("Record — enter the total the filed report states")
+    : form.basis === "entered from the filed report" && form.asSubmittedNative === "" ? t("Record — enter the total the filed report states")
+    : form.basis === "frozen" && form.currency !== "USD" && !(Number(form.usdPerUnit) > 0) ? t("Record — enter the rate the report states")
     : t("Record the submission");
   const ready = !!form && !busy && label === t("Record the submission");
 
@@ -34,7 +35,7 @@ export default function ReportSubmissions({ state, currentUser, t, triggerToast,
     setBusy(true);
     try {
       const res = await fetch("/api/reports/submission", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: activity.projectId, activityId: activity.id, ...form, asSubmittedUSD: Number(form.asSubmittedUSD), user: currentUser }) });
+        body: JSON.stringify({ projectId: activity.projectId, activityId: activity.id, ...form, asSubmittedNative: Number(form.asSubmittedNative), usdPerUnit: form.usdPerUnit === "" ? null : Number(form.usdPerUnit), user: currentUser }) });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "Refused");
       triggerToast(t("Submission recorded — it will not change."));
@@ -53,12 +54,18 @@ export default function ReportSubmissions({ state, currentUser, t, triggerToast,
           <div key={s.id} className="text-[11px] border-s-2 border-slate-300 ps-2 space-y-1">
             <p className="text-slate-700">
               {t("Submitted on")} <span dir="ltr" className="font-mono">{s.submittedOn}</span> · {t("period")} <span dir="ltr" className="font-mono">{s.periodStart} → {s.periodEnd}</span> ·{" "}
-              <strong dir="ltr">{formatUSD(s.asSubmittedUSD)}</strong> <span className="text-slate-400">({s.basis === "frozen" ? t("frozen by the system") : t("entered from the filed report")} · {s.evidence})</span>
+              <strong dir="ltr">{formatIn(s.asSubmittedNative, s.currency)}</strong>
+              {s.currency !== "USD" && (s.usdPerUnit
+                ? <span className="text-slate-500"> (<span dir="ltr">{formatUSD(s.asSubmittedUSD || 0)}</span> {t("at the report's rate")} <span dir="ltr">{s.usdPerUnit} USD/{s.currency}</span>)</span>
+                : <span className="text-slate-500"> ({t("no rate stated in the report")})</span>)} <span className="text-slate-400">({s.basis === "frozen" ? t("frozen by the system") : t("entered from the filed report")} · {s.evidence})</span>
             </p>
             {lc.late.length > 0 ? (
               <div className="text-amber-800">
                 <p className="font-bold">
-                  {t("report submitted on")} <span dir="ltr">{s.submittedOn}</span> — {lc.late.length} {t("costs recorded since")}, <span dir="ltr">{formatUSD(lc.lateUSD)}</span>
+                  {t("report submitted on")} <span dir="ltr">{s.submittedOn}</span> — {lc.late.length} {t("costs recorded since")},{" "}
+                  {lc.lateNative != null
+                    ? <><span dir="ltr">{formatIn(lc.lateNative, s.currency)}</span>{s.currency !== "USD" && <span className="font-normal"> (<span dir="ltr">{formatUSD(lc.lateUSD)}</span> {t("at the report's rate")})</span>}</>
+                    : <><span dir="ltr">{formatUSD(lc.lateUSD)}</span> <span className="font-normal">— {t("vouchers are in USD; the report is in")} {s.currency} {t("and states no rate, so they are not converted")}</span></>}
                 </p>
                 <ul className="ps-3">
                   {lc.late.map(x => (
@@ -79,7 +86,7 @@ export default function ReportSubmissions({ state, currentUser, t, triggerToast,
       {subs.length > 0 && <p className="text-[10px] text-slate-400">{t("Counts vouchers only (a co-funded voucher by its share); payroll, journal-only and bank-only costs are not yet included.")}</p>}
 
       {mayRecord && !form && (
-        <button type="button" onClick={() => setForm({ periodStart: "", periodEnd: "", submittedOn: "", evidence: "", basis: "entered from the filed report", asSubmittedUSD: "" })}
+        <button type="button" onClick={() => setForm({ periodStart: "", periodEnd: "", submittedOn: "", evidence: "", basis: "entered from the filed report", currency: "USD", asSubmittedNative: "", usdPerUnit: "" })}
           className="text-xs rounded-lg px-3 min-h-[44px] bg-white border border-slate-200 hover:bg-slate-100">{subs.length ? t("Record a resubmission") : t("Mark submitted")}</button>
       )}
       {form && (
@@ -100,9 +107,18 @@ export default function ReportSubmissions({ state, currentUser, t, triggerToast,
                 <option value="entered from the filed report">{t("entered from the filed report")}</option>
                 <option value="frozen">{t("frozen by the system now")}</option>
               </select></div>
+            <div><label htmlFor={`rs-cur-${activity.id}`} className={lbl}>{t("Currency reported in")}</label>
+              <select id={`rs-cur-${activity.id}`} value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value, usdPerUnit: e.target.value === "USD" ? "" : form.usdPerUnit })} className={fld}>
+                {REPORT_CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select></div>
             {form.basis === "entered from the filed report" && (
-              <div><label htmlFor={`rs-usd-${activity.id}`} className={lbl}>{t("Total as submitted (USD)")}</label>
-                <input id={`rs-usd-${activity.id}`} type="number" min="0" step="any" value={form.asSubmittedUSD} onChange={e => setForm({ ...form, asSubmittedUSD: e.target.value })} className={`${fld} font-mono`} /></div>
+              <div><label htmlFor={`rs-nat-${activity.id}`} className={lbl}>{t("Total as submitted")} (<span dir="ltr">{form.currency}</span>)</label>
+                <input id={`rs-nat-${activity.id}`} type="number" min="0" step="any" value={form.asSubmittedNative} onChange={e => setForm({ ...form, asSubmittedNative: e.target.value })} className={`${fld} font-mono`} /></div>
+            )}
+            {form.currency !== "USD" && (
+              <div><label htmlFor={`rs-rate-${activity.id}`} className={lbl}>{t("Rate the report states")} (<span dir="ltr">USD / 1 {form.currency}</span>)</label>
+                <input id={`rs-rate-${activity.id}`} type="number" min="0" step="any" value={form.usdPerUnit} onChange={e => setForm({ ...form, usdPerUnit: e.target.value })}
+                  placeholder={t("blank if the report states none")} className={`${fld} font-mono`} /></div>
             )}
           </div>
           <p className="text-[10px] text-slate-500">{t("A recorded submission is never edited. If the donor received a corrected report, record it again as a resubmission.")}</p>
