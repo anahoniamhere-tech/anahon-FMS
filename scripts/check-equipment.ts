@@ -192,7 +192,7 @@ const people = [
   { id: "u-aud", name: "Auditor", email: "aud@x", role: AUDITOR, active: false },
 ];
 const me = (id: string) => { const u = people.find(p => p.id === id)!; return { id: u.id, email: u.email, role: u.role }; };
-const deskOf = (id: string, assets: any[]) => deskItems(me(id), { users: people, fixedAssets: assets } as any, TODAY).filter(i => i.kind === "fixedAssets");
+const deskOf = (id: string, assets: any[]) => deskItems(me(id), { users: people, fixedAssets: assets } as any, TODAY).filter(i => i.kind === "fixedAssets" && !i.standing); // dated turns only — the standing "Record the opening value" row is covered in check-desk
 const outItem = (holderId: string, dueBack: string) => ({ id: "a1", tag: "EQ-001", name: "Camera", status: "Out", holderId, dueBack, receivedBy: "u-plo" });
 const holderRow = deskOf("u-po", [outItem("u-po", TODAY)]);
 ok("due back today: on the holder's own desk, opening My Desk — a Project Officer has no Equipment door",
