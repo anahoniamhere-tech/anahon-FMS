@@ -17,6 +17,7 @@ import { EQUIPMENT_VERIFIERS,
 import { missingPersonnelDocs } from "./personnelDocs";
 import { missingSupplierDocs } from "./supplierDocs";
 import { missingCoreDocs } from "./coreDocs";
+import { QUOTE_VALIDITY_DAYS } from "./constants";
 import { isFloat, DIRECTOR_SEATS, COUNTER_SEATS, drawPosition, drawOverdue, CLEARING_ALERT_DAYS } from "./pettyCash";
 
 type Kind = keyof DatabaseState;
@@ -30,6 +31,7 @@ export type Rule = {
   person?: string;                 // record field holding a User.id or Employee.id; wins over everything when non-empty
   standIns?: (r: any, s: State) => string[]; // user ids owed the turn when `person` is empty; wins over `seat`
   when?: string;                   // record date field: YYYY-MM-DD, ISO, or YYYY-MM
+  after?: number;                  // days added to `when` before it becomes the due date
   datedOnly?: boolean;             // no item at all when `when` is empty
   horizon?: number;                // item exists only when `when` <= today + horizon (implies datedOnly)
   lapses?: boolean;                // once `when` has passed the item is gone: a closed call is the funnel's to mark, not the desk's to nag
@@ -107,6 +109,9 @@ export const RULES: Rule[] = [
   // Quotation — Draft, Sent, Accepted, Rejected, Expired, Invoiced, Paid.
   { kind: "quotations", status: "Draft",    seat: null,     door: "production", verb: "" },
   { kind: "quotations", status: "Sent",     seat: MANAGERS, when: "validUntil", horizon: 7, door: "production", verb: "Chase the client" },
+  // A quotation sent with no expiry is never chased by the row above, so it is chased on its own once
+  // the standard validity has run from its issue date (Saad, 15 Sep 2026 — 005/2026 was sent open).
+  { kind: "quotations", status: "Sent",     seat: MANAGERS, emptyField: "validUntil", when: "date", after: QUOTE_VALIDITY_DAYS, horizon: 0, door: "production", verb: "Chase the client — the quotation has no expiry date" },
   { kind: "quotations", status: "Accepted", seat: FINANCE,  door: "production", verb: "Issue the receipt and link the deposit" },
   { kind: "quotations", status: "Invoiced", seat: FINANCE,  door: "production", verb: "Link the deposit" },
   { kind: "quotations", status: "Paid",     seat: null, door: "production", verb: "" },
@@ -197,7 +202,7 @@ export function dueOf(rule: Rule, r: any): string | null {
   const v = rule.when ? String(r[rule.when] || "") : "";
   if (!v) return null;
   if (/^\d{4}-\d{2}$/.test(v)) { const [y, m] = v.split("-").map(Number); return `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}-01`; }
-  return v.slice(0, 10);
+  return rule.after ? addDays(v.slice(0, 10), rule.after) : v.slice(0, 10);
 }
 export const urgencyOf = (when: string | null, today: string): Urgency =>
   !when ? "waiting" : when < today ? "overdue" : when <= addDays(today, 7) ? "week" : "waiting";

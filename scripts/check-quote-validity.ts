@@ -26,6 +26,11 @@ const html = quotationHtml({ quoteNo: "T/2026", date: "2026-09-14", validUntil: 
 assert.equal(html.split(QUOTE_REVISION_CLAUSE).length - 1, 1, "the revision clause appears exactly once on the quotation");
 assert.ok(!fs.readFileSync("docgen.ts", "utf8").includes("AnaHon may revise"), "the wording lives only in the constant");
 assert.ok(QUOTE_REVISION_CLAUSE_AR.includes("خطّياً"), "the Arabic carries the same condition");
+// Saad, 15 Sep: the Arabic clause prints too — its own RTL block, directly under the English line.
+assert.equal(html.split(QUOTE_REVISION_CLAUSE_AR).length - 1, 1, "the Arabic clause appears exactly once on the quotation");
+assert.ok(/<p dir="rtl" lang="ar"[^>]*>[^<]*يحقّ لأنا هون/.test(html), "the Arabic clause is an isolated rtl block, marked as Arabic");
+assert.ok(html.indexOf(QUOTE_REVISION_CLAUSE) < html.indexOf(QUOTE_REVISION_CLAUSE_AR), "the Arabic sits under the English line");
+assert.ok(!/monospace/.test(html.slice(html.indexOf('lang="ar"') - 20, html.indexOf(QUOTE_REVISION_CLAUSE_AR))), "not in a monospace face");
 assert.ok(/Valid until: —/.test(html), "a quotation with no expiry still prints the dash, not an invented date");
 
 // C — the desk rule that chases a Sent quotation, with 15-day validity (workflow.ts is read, not edited).
@@ -35,6 +40,11 @@ const chase = (issued: string, today: string) => deskItems(me, sent(defaultValid
 assert.equal(chase("2026-09-14", "2026-09-21"), 0, "day 7 after issue: nothing to chase yet");
 assert.equal(chase("2026-09-14", "2026-09-22"), 1, "day 8: expiry is 7 days away, the chase appears");
 assert.equal(chase("2026-09-14", "2026-10-05"), 1, "after expiry it stays until someone moves the quotation (no lapses)");
-assert.equal(deskItems(me, sent(""), "2026-09-22").filter((i: any) => i.kind === "quotations").length, 0, "no expiry — like 005/2026 — is never chased");
+// Saad, 15 Sep 2026: a quotation sent with no expiry (like 005/2026) is chased once the standard
+// validity has run from its issue date — workflow.ts, quotations/Sent with emptyField validUntil.
+const noExpiry = (today: string) => deskItems(me, { quotations: [{ ...sent("").quotations[0], date: "2026-09-14" }] } as any, today).filter((i: any) => i.kind === "quotations");
+assert.equal(noExpiry("2026-09-28").length, 0, "no expiry: nothing before 15 days from issue");
+assert.equal(noExpiry("2026-09-29").length, 1, "no expiry: chased from day 15 after issue");
+assert.ok(noExpiry("2026-09-29")[0].verb.includes("no expiry"), "and the chase says the quotation has no expiry date");
 
-console.log("✓ check-quote-validity: 15-day default, clause once on every PDF, Sent chase from day 8");
+console.log("✓ check-quote-validity: 15-day default, clause once on every PDF, Sent chase from day 8, no-expiry chase from day 15");

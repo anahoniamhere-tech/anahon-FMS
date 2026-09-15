@@ -94,6 +94,8 @@ const record = (r: Rule): any => {
     raisedById: "u-x", amountUSD: 120, raisedByName: "X",
   };
   base[STATUS_FIELD[r.kind] || "status"] = r.status;
+  if (r.emptyField) base[r.emptyField] = "";
+  base.date = "2026-08-01";
   return base;
 };
 const withRecord = (s: any, r: Rule, rec: any) => ({ ...s, [r.kind]: r.kind === "projects" ? [rec] : [rec] });
@@ -223,6 +225,17 @@ r1 = turns(fin, st({ opportunities: [{ id: "o1", title: "Call", stage: "Prospect
 const r5 = turns(fin, st({ opportunities: [{ id: "o1", title: "Call", stage: "Prospect", deadline: "2026-09-10", decisionDate: "" }] }), today);
 ok("a funding call whose deadline passed leaves the desk; one due next week stays", r1.length === 0 && r5.length === 1);
 
+
+// Quotations sent with no expiry (Saad, 15 Sep 2026): chased QUOTE_VALIDITY_DAYS after the issue date.
+const qt = (over: any) => ({ id: "q1", quoteNo: "Q-1", title: "Shoot", status: "Sent", date: "2026-08-10", validUntil: "", ...over });
+let qr = turns(fin, st({ quotations: [qt({})] }), today);
+ok("a Sent quotation with no expiry, issued 10 Aug, is chased from 25 Aug", qr.length === 1 && qr[0].when === "2026-08-25" && qr[0].verb.includes("no expiry"), JSON.stringify(qr.map(i => [i.when, i.verb])));
+qr = turns(fin, st({ quotations: [qt({ date: "2026-08-25" })] }), today);
+ok("the same quotation issued 25 Aug is not chased yet on 4 Sep", qr.length === 0);
+qr = turns(fin, st({ quotations: [qt({ validUntil: "2026-09-08" })] }), today);
+ok("a quotation WITH an expiry is chased once, by the expiry rule, not twice", qr.length === 1 && qr[0].verb === "Chase the client");
+qr = turns(fin, st({ quotations: [qt({ status: "Accepted", validUntil: "" })] }), today);
+ok("an accepted quotation with no expiry is not chased", !qr.some(i => i.verb.includes("no expiry")));
 
 console.log("\nG. papers the file is missing");
 // One rule, three checklists, nothing stored. The item exists because a paper is absent,
