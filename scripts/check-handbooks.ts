@@ -18,11 +18,11 @@ const ok = (label: string, cond: boolean, detail = "") => {
   if (!cond) { failed++; console.error(`  FAIL  ${label}${detail ? " — " + detail : ""}`); } else console.log(`  ok    ${label}`);
 };
 
-// A frozen copy of the live Index's extracted text (fetched from the NAS 14 Sep 2026),
+// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020),
 // so the parser is proven against real wording, not an invented fixture.
 const REAL_INDEX = `
 AnaHon Media Platform — Policies and Handbooks
-Index · 12 September 2026. AnaHon's policies live in five documents, not nineteen. Each policy is a numbered chapter inside the handbook that carries it. The handbooks are the policy; the separate files that used to hold each one are kept in Superseded as history and no longer govern.
+Index · 12 September 2026, revised 15 September 2026. AnaHon's policies live in five documents, not nineteen. Each policy is a numbered chapter inside the handbook that carries it. The handbooks are the policy; the separate files that used to hold each one are kept in Superseded as history and no longer govern.
 The numbers never change. The management system enforces some policies by number — the publication gate cites Policy 002, the independent fact-check cites Policy 005 — and the help desk answers from them.
 1. Editorial Standards Handbook
 •002 Editorial Policies and Guidelines
@@ -33,10 +33,9 @@ The numbers never change. The management system enforces some policies by number
 •004 Diversity and Inclusion · 006 HR Policy · 015 Compensation · 016 Wellbeing
 Read with the declaration of 12 September 2026: AnaHon has no employees. Everyone on the team is a service provider on an annual contract stating total salary and terms of reference, with subcontracts per project, and no payment where there is no project.
 3. Finance and Controls Handbook
-•020 Accounting and Business Policy — three quotations above USD 1,000, two from USD 150 to 1,000, none below 150 (settled 12 Sep 2026)
+•020 Finance and Procurement Policy — merged with 003 and approved 15 Sep 2026: accounts, procurement, payments, petty cash, money received outside the bank, and financial records
 •012 Due Diligence · 009 Risk Management
 •017 Resources and Assets — written 12 Sep 2026; the file previously under that number was a duplicate of 016
-•003 Business and Purchase Policy — absorbed 12 Sep 2026: it carried a second, conflicting procurement table. Its purchase process is kept, its Purchase Committee deleted, its income sources moved to handbook 4
 •013 Anti-Terrorism Financing, Sanctions and Anti-Corruption — written 12 Sep 2026
 4. Programmes and Funding Handbook
 •018 Fundraising · 019 Proposal and Grants Management · 011 Community Needs Assessment · 008 Key Performance Indicators
@@ -46,14 +45,14 @@ Read with the declaration of 12 September 2026: AnaHon has no employees. Everyon
 Standing on its own
 •010 Information, Data and Source Privacy — written 12 Sep 2026, replacing the Centralized Knowledge Sharing Repository Policy. It cuts across all four handbooks and belongs to none.
 Numbers not in use
-014 was never issued. 021 is absorbed into 022, and its file was lost in August 2026. 003 and 018's second document are absorbed as described above.
+014 was never issued. 021 is absorbed into 022, and its file was lost in August 2026. 003 is merged into 020 (15 September 2026). The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
 Still to settle
 •An independent whistleblowing recipient — named in 001 as [to be named]. Until someone outside management is named, the external route is the donors' own channels.
 •Targets for the KPIs (008) — the measures exist, the numbers do not.
 •A start year for the Strategy (007).
-•An external audit — described in 009, 012 and 003, never carried out.
+•An external audit — required by 020 §12.1. A financial consultant is being engaged through the SKF project to prepare it; none has yet been completed.
 •Journalist safety and security — touched on in 002 and 001, never written as its own policy.
-•The system still enforces USD 300 for procurement until Buying & paying updates it.
+•The text of 013 — listed in the Finance and Controls Handbook but not yet compiled into it.
 `;
 
 console.log("\nA. the Index parses into the five handbooks, Policy 010, and nothing invented");
@@ -63,8 +62,9 @@ ok("Editorial Standards carries 002, 005, 022",
   parsed.handbooks[0].chapters.map(c => c.no).join(",") === "002,005,022");
 ok("Team carries 001, 004, 006, 015, 016",
   parsed.handbooks[1].chapters.map(c => c.no).join(",") === "001,004,006,015,016");
-ok("Finance and Controls carries 020, 012, 009, 017, 003, 013",
-  parsed.handbooks[2].chapters.map(c => c.no).join(",") === "020,012,009,017,003,013");
+ok("Finance and Controls carries 020, 012, 009, 017, 013 — 003 is merged into 020",
+  parsed.handbooks[2].chapters.map(c => c.no).join(",") === "020,012,009,017,013");
+ok("020 is the Finance and Procurement Policy", parsed.handbooks[2].chapters[0].title === "Finance and Procurement Policy");
 ok("Programmes and Funding carries 018, 019, 011, 008 — not the unnumbered income-sources line",
   parsed.handbooks[3].chapters.map(c => c.no).join(",") === "018,019,011,008");
 ok("Strategy carries only 007", parsed.handbooks[4].chapters.map(c => c.no).join(",") === "007");
@@ -80,9 +80,9 @@ ok("a number reused across handbooks is reported", faults.length === 1 && /002/.
 
 console.log("\nC. a chapter the Index promises but the compiled text never wrote is caught");
 // Policy 013 is a real, current example: the Finance and Controls Handbook's own text
-// (fetched from the NAS 14 Sep 2026) has no "Part … (Policy 013)" heading — it is
-// mentioned once in passing inside Part Five and never given its own section.
-const FINANCE_HAS_NO_013 = `Part One — Accounting and Business Policy (Policy 020)\nPart Two — Due Diligence Policy (Policy 012)\nPart Three — Risk Management Policy (Policy 009)\nPart Four — Resources and Assets Policy (Policy 017)\nPart Five — Business and Purchase Policy (absorbed from Policy 003, 12 September 2026)\n`;
+// (edition 2, 15 Sep 2026) has no "Part … (Policy 013)" heading — its text was never
+// compiled into the handbook, and the Index lists that under "Still to settle".
+const FINANCE_HAS_NO_013 = `Part One — Finance and Procurement Policy (Policy 020)\nPart Two — Due Diligence Policy (Policy 012)\nPart Three — Risk Management Policy (Policy 009)\nPart Four — Resources and Assets Policy (Policy 017)\n`;
 const financeAnchors = chapterAnchors(FINANCE_HAS_NO_013);
 const missing = missingChapterText(parsed.handbooks[2].chapters, financeAnchors);
 ok("013 is flagged as text-less in the handbook that is supposed to carry it",
