@@ -17,17 +17,21 @@ const brain = (server.match(/async function anahonBrainContext[\s\S]*?\n\}/) || 
 const corpus = (server.match(/async function strategyCorpus[\s\S]*?\n\}/) || [""])[0];
 const ids = (server.match(/const STRATEGY_DOC_IDS = \[[\s\S]*?\];/) || [""])[0];
 
-console.log("\nA. the four documents, named by id");
-ok("exactly four", (ids.match(/"doc-hb-/g) || []).length === 4);
-for (const [label, id] of [
-  ["Strategic Plan 007", "doc-hb-anahon-strategicplan-strategy-007"],
-  ["KPIs 008", "doc-hb-anahon-keyperformanceindicators-008"],
-  ["Fundraising Policy 018", "doc-hb-anahon-fundraisingpolicy-018"],
-  ["Proposal & Grants 019", "doc-hb-anahon-proposal-grantsmanagement-policy-019"],
-] as const) ok(`${label} is on the list`, ids.includes(id));
-// The trap this list exists to avoid: Anahon_Sharing Repository Policy_018 carries the
-// same number as the Fundraising Policy, so "the 018 one" is not a way to choose a paper.
-ok("the other 018 — Sharing Repository Policy — is not picked up", !ids.includes("sharing-repository"));
+console.log("\nA. the governing documents, named by id — never a retired one");
+// On 12 Sep the per-policy handbooks were compiled and the originals moved to Handbooks/Superseded.
+// The live DB can't be read offline, so the rule is the naming convention the compilation set:
+// governing handbooks are doc-hb-compiled-*; every older doc-hb-anahon-* file is retired.
+const named = [...ids.matchAll(/"(doc-[^"]+)"/g)].map(m => m[1]);
+const RETIRED = ["doc-hb-anahon-strategicplan-strategy-007", "doc-hb-anahon-keyperformanceindicators-008",
+  "doc-hb-anahon-fundraisingpolicy-018", "doc-hb-anahon-proposal-grantsmanagement-policy-019"];
+ok("the list names documents", named.length > 0);
+ok("every listed id is a governing compiled handbook", named.every(id => id.startsWith("doc-hb-compiled-")), named.filter(id => !id.startsWith("doc-hb-compiled-")).join(","));
+ok("none of the four retired per-policy files is listed", !named.some(id => RETIRED.includes(id)));
+ok("Strategy 007 (ANH-DOC-00652) is on the list", named.includes("doc-hb-compiled-anahon-strategy-007"));
+ok("the Programmes and Funding Handbook (ANH-DOC-00651) is on the list", named.includes("doc-hb-compiled-anahon-programmes-and-funding-handbook"));
+ok("a superseded row is skipped and logged, not read", /isSupersededPointer\(r\.base64\)[\s\S]{0,80}console\.warn/.test(corpus));
+// The trap the old list existed to avoid still holds: two handbooks were numbered 018.
+ok("the Sharing Repository Policy is not picked up", !ids.includes("sharing-repository"));
 ok("chosen by document id, never by the number in a filename",
   !/_\(?0?(007|008|018|019)\)?[^"]*\/\.test|filename.*match.*018/.test(corpus));
 
@@ -37,7 +41,7 @@ ok("no HTTP fetch of the document route — a server fetching itself is what kil
   !/fetch\(/.test(corpus) && !/docx-text/.test(corpus));
 ok("no second unzip/python of its own", !/zipfile|word\/document\.xml|PyMuPDF|fitz/.test(corpus));
 ok("cached on the documents' own content hashes, like the policy corpus",
-  /\$\{r\.id\}:\$\{r\.contentHash\}/.test(corpus) && /strategyCache && strategyCache\.key === key/.test(corpus));
+  /\$\{r\.id\}:\$\{r\.contentHash\}:\$\{r\.base64\}/.test(corpus) && /strategyCache && strategyCache\.key === key/.test(corpus));
 ok("a document that is not on file is survivable, and says so", /is not on file/.test(corpus));
 ok("an unreadable one does not take the brain down", /could not read/.test(corpus));
 
@@ -59,7 +63,7 @@ for (const [label, guard] of [
 // Retract keeps status "Published" on purpose (the record is permanent, Policy 005) and sets
 // retractedAt, so filtering on status alone would offer a funder work AnaHon has withdrawn.
 ok("only content the pipeline published AND has not retracted is claimed",
-  /contentItem\.findMany\(\{ where: \{ status: "Published", retractedAt: "" \}/.test(brain));
+  /contentItem\.findMany\(\{ where: \{ status: "Published", retractedAt: ""(, rehearsal: false)? \}/.test(brain));
 ok("a client with no quotation still reads as a client, not as an empty list",
   /no quotation yet/.test(brain));
 ok("quotations are attached to their own client, not pooled",

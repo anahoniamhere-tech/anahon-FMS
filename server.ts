@@ -3112,17 +3112,18 @@ app.post("/api/opportunities/proposal-doc", async (req, res) => {
  * else does.
  */
 const STRATEGY_DOC_IDS = [
-  "doc-hb-anahon-strategicplan-strategy-007",            // ANH-DOC-00412 · Strategic Plan 007
-  "doc-hb-anahon-keyperformanceindicators-008",          // ANH-DOC-00408 · KPIs 008
-  "doc-hb-anahon-fundraisingpolicy-018",                 // ANH-DOC-00405 · Fundraising Policy 018
-  "doc-hb-anahon-proposal-grantsmanagement-policy-019"   // ANH-DOC-00409 · Proposal & Grants 019
+  // The governing text since the 12 Sep compilation (Saad, 15 Sep 2026). The four per-policy files
+  // this list used to name (007, 008, 018, 019) are under Handbooks/Superseded and no longer govern.
+  "doc-hb-compiled-anahon-strategy-007",                    // ANH-DOC-00652 · Strategy 007
+  "doc-hb-compiled-anahon-programmes-and-funding-handbook"  // ANH-DOC-00651 · Parts One–Four = 018, 019, 011, 008
 ];
 
 let strategyCache: { key: string; text: string; chars: number; docs: number } | null = null;
 
 async function strategyCorpus(): Promise<{ text: string; chars: number; docs: number }> {
   const rows = await prisma.appDoc.findMany({ where: { id: { in: STRATEGY_DOC_IDS } } });
-  const key = rows.map(r => `${r.id}:${r.contentHash}`).join("|");
+  // Keyed like policyCorpus: a file moved to Superseded changes its pointer, not its bytes.
+  const key = rows.map(r => `${r.id}:${r.contentHash}:${r.base64}`).join("|");
   if (strategyCache && strategyCache.key === key) return strategyCache;
 
   const started = Date.now();
@@ -3131,6 +3132,9 @@ async function strategyCorpus(): Promise<{ text: string; chars: number; docs: nu
   for (const id of STRATEGY_DOC_IDS) {
     const r = rows.find(x => x.id === id);
     if (!r) { console.warn(`[strategy] ${id} is not on file — the brain runs without it`); continue; }
+    // A retired paper must never ground a proposal: skip it and say so, so a stale id cannot
+    // silently put out-of-date policy back in front of the model.
+    if (isSupersededPointer(r.base64)) { console.warn(`[strategy] ${id} (${r.refNo || r.filename}) is superseded — skipped; point STRATEGY_DOC_IDS at the governing document`); continue; }
     try {
       const text = (await documentText(r.id)).trim();
       if (text) parts.push(`### ${r.filename.replace(/\.(docx|pdf)$/i, "").replace(/_/g, " ")}\n${text}`);

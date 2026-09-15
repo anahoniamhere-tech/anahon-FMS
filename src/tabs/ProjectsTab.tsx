@@ -2186,7 +2186,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                   {/* Section 3: Official Reconciliation Review Sign-Off (Section 2.5 compliance) */}
                                   <div className="border-t-2 border-slate-200 pt-6 space-y-4 break-inside-avoid">
                                     <p className="text-[10px] text-slate-500 text-center leading-relaxed">
-                                      Under **Section 2.5 & 2.6 of the AnaHon Media Platform Accounting Policies Manual**, this reconciliation report verifies that all project expenditures, personnel allocations, timesheets, and shared split costs have been matched with primary supporting documents and validated with actual bank statement disbursements.
+                                      Under **Sections 2.5 and 2.6 of AnaHon's Finance and Procurement Policy (Policy 020)**, this reconciliation report verifies that all project expenditures, personnel allocations, timesheets, and shared split costs have been matched with primary supporting documents and validated with actual bank statement disbursements.
                                     </p>
 
                                     {hasPersonnelLines && (
