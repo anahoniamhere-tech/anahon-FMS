@@ -94,6 +94,7 @@ th[scope=row]{width:34%}
 .en{direction:ltr;text-align:left}
 .lang{margin-top:26px;padding-top:10px;border-top:1px dashed #b9a9a2}
 .lang>h3{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#6D1A1A;margin:0 0 8px}
+.alt{display:block;direction:rtl;unicode-bidi:isolate}
 th .alt{display:block;font-weight:400;font-size:10.5px;color:#6D1A1A;direction:rtl;text-align:right}
 .num{unicode-bidi:isolate}
 .note{font-size:10px;color:#666;margin-top:16px;line-height:1.5}

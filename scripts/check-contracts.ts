@@ -354,5 +354,10 @@ ok("changing initials cannot disturb the parent lookup, which compares months",
   ok("the payment clause cites Policy 020 in English and Arabic, and the retired manual nowhere",
     d.includes("AnaHon's Finance and Procurement Policy (Policy 020)") && d.includes("وفقاً لسياسة المالية والمشتريات لدى أنا هون")
     && !/Accounting Policies Manual|السياسات المحاسبية/.test(d)); }
+// The Arabic label (.alt) sits on its own line wherever it is used — a title, a table cell, a signature block —
+// not only in a th. With the rule scoped to th, the payslip's and contract's Arabic ran straight into the English (15 Sep 2026).
+{ const d = doc({});
+  ok("the .alt label is a block in every context, not only inside a table header",
+    /(^|[\n}])\.alt\{display:block;direction:rtl/.test(d) && /<div>[^<]*<br>[^<]*<span class="alt">/.test(d)); }
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
