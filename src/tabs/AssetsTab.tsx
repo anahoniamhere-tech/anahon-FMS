@@ -406,7 +406,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 {v && (
                   <p className="mt-1 text-[11px] text-slate-600">
                     {t("From the request")}: {supplierOf(v.vendorId)} · <span dir="ltr">{money(v.amount, v.currency)}</span>
-                    {" · "}<span dir="ltr">{String(v.paid_at || v.approved_at || v.created_at || "").slice(0, 10)}</span>
+                    {" · "}<span dir="ltr">{String(v.transactionDate || v.paid_at || v.approved_at || v.created_at || "").slice(0, 10)}</span>
                     {projectOf(v.projectId) ? ` · ${projectOf(v.projectId)}` : ""}
                   </p>
                 )}

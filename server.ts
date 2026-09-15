@@ -3988,7 +3988,7 @@ app.post("/api/vendors/payment-doc", async (req, res) => {
 
     const docId = `doc-provinv-${expense.id}`;
     const projectCode = project ? await vaultFolderForProject(prisma, project) : "GENERAL";
-    const filename = `${(expense.paid_at || expense.created_at || "").slice(0, 4)}_${expense.voucherNo}_SERVICE-INVOICE-RECEIPT_${vendor.name.replace(/\s+/g, "-")}_${expense.netAmount ?? expense.amount}.html`;
+    const filename = `${(expense.transactionDate || expense.paid_at || expense.created_at || "").slice(0, 4)}_${expense.voucherNo}_SERVICE-INVOICE-RECEIPT_${vendor.name.replace(/\s+/g, "-")}_${expense.netAmount ?? expense.amount}.html`;
     await archive(prisma, {
       docId,
       projectCode,
@@ -9550,7 +9550,7 @@ async function validateEquipmentFields(b: any, user: any, selfId: string, existi
     const left = exp.amount - onFile.filter(a => a.expenseId === exp.id && a.id !== selfId).reduce((s, a) => s + a.cost, 0);
     if (cost > left + 0.005) return bad(`Only ${left.toFixed(2)} ${exp.currency} of ${exp.voucherNo} is left to book as equipment.`);
     currency = existing && existing.expenseId === exp.id ? existing.currency : exp.currency;
-    purchaseDate = String(exp.paid_at || exp.approved_at || exp.created_at || "").slice(0, 10);
+    purchaseDate = String(exp.transactionDate || exp.paid_at || exp.approved_at || exp.created_at || "").slice(0, 10);
     fundingProjectId = exp.projectId;
     var voucherRate = exp.rate;
     against = ` against ${exp.voucherNo}`;

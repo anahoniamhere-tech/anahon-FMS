@@ -36,6 +36,18 @@ ok("the ledger's reclassify picker orders vouchers by their true date first", /b
 const audit = server.slice(server.indexOf('app.post("/api/gemini/compliance-audit"'), server.indexOf("\n});\n", server.indexOf('app.post("/api/gemini/compliance-audit"')));
 ok("the compliance audit is given each voucher's true date AND when it was recorded", /date: e\.transactionDate \|\| e\.created_at\?\.split\("T"\)\[0\], recordedOn: e\.created_at/.test(audit));
 
+console.log("\n1c. Buying & paying's readers of a voucher's date (15 Sep 2026)");
+const expensesTab = read("src/tabs/ExpensesTab.tsx"), assetsTab = read("src/tabs/AssetsTab.tsx");
+ok("the payment requests date filter reads the true date first", /const day = \(e\?\.transactionDate \|\| e\?\.paid_at \|\| e\?\.created_at/.test(expensesTab));
+ok("the supplier-paid message keeps the PAID date first, the true date before the recording day",
+  /date: \(exp\.paid_at \|\| exp\.transactionDate \|\| exp\.created_at/.test(expensesTab));
+ok("an item's voucher line shows the voucher's true date", /v\.transactionDate \|\| v\.paid_at \|\| v\.approved_at \|\| v\.created_at/.test(assetsTab));
+ok("an item bought on a request takes its purchase date from the request's true date",
+  /purchaseDate = String\(exp\.transactionDate \|\| exp\.paid_at \|\| exp\.approved_at \|\| exp\.created_at/.test(server));
+ok("the provider invoice's filename year is the cost's year", /\(expense\.transactionDate \|\| expense\.paid_at \|\| expense\.created_at \|\| ""\)\.slice\(0, 4\)/.test(server));
+ok("none of those five still starts from paid_at || created_at alone",
+  !/\(e\?\.paid_at \|\| e\?\.created_at/.test(expensesTab) && !/String\(v\.paid_at \|\| v\.approved_at/.test(assetsTab) && !/String\(exp\.paid_at \|\| exp\.approved_at/.test(server) && !/\(expense\.paid_at \|\| expense\.created_at/.test(server));
+
 console.log("\n2. nothing writes a synthetic created_at on a voucher");
 // Every place a voucher is written: the server and every backfill/import script. prisma/seed.ts is the
 // demo fixture for an empty database and never runs against the books.

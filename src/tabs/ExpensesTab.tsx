@@ -307,7 +307,8 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
       title.toLowerCase().includes(term.toLowerCase()) ||
       purpose.toLowerCase().includes(term.toLowerCase()) ||
       voucherNo.toLowerCase().includes(term.toLowerCase());
-    const day = (e?.paid_at || e?.created_at || "").slice(0, 10);
+    // The date filter reads the voucher's true date first, so a backfilled 2024 cost is found in 2024.
+    const day = (e?.transactionDate || e?.paid_at || e?.created_at || "").slice(0, 10);
     const cat = state?.budgetLines?.find(bl => bl.id === e?.budgetLineId)?.category || "";
     return matchesTerm &&
       (!vFilter.from || day >= vFilter.from) &&
@@ -1066,8 +1067,9 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                               // Stored as a full ISO timestamp; a supplier reading
                               // "on 2026-06-23T10:00:00Z" is reading machine noise.
                               // Three of the paid vouchers on file carry no paid_at,
-                              // so the date the voucher was raised stands in.
-                              date: (exp.paid_at || exp.created_at || "").slice(0, 10),
+                              // so the voucher's true date stands in, and only then the day it was raised.
+                              // paid_at stays first: this message says when the money was PAID.
+                              date: (exp.paid_at || exp.transactionDate || exp.created_at || "").slice(0, 10),
                             }));
                             return link ? (
                               <a
