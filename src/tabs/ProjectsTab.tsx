@@ -562,7 +562,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
       // Filter items for the specific reconMonth (YYYY-MM)
       const monthExpenses = projExpenses.filter(e => {
-        const dateVal = e.paid_at || e.created_at;
+        const dateVal = e.transactionDate || e.paid_at || e.created_at;
         return dateVal && dateVal.startsWith(reconMonth);
       });
 
@@ -619,7 +619,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
         const whtVal = alloc ? Number(alloc.amount) * (exp.whtAmount / exp.amount) : exp.whtAmount;
 
         return {
-          "Statement Date": exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0] || "",
+          "Statement Date": exp.transactionDate || exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0] || "",
           "Voucher / Ref": exp.voucherNo,
           "Transaction Memo": exp.title,
           "Withholding Tax (WHT)": whtVal * exp.rate,
@@ -1933,7 +1933,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                     {projectWorkspaceTab === "reconciliation" && (() => {
                       // Filter items for the specific reconMonth (YYYY-MM)
                       const monthExpenses = projExpenses.filter(e => {
-                        const dateVal = e.paid_at || e.created_at;
+                        const dateVal = e.transactionDate || e.paid_at || e.created_at;
                         return dateVal && dateVal.startsWith(reconMonth);
                       });
 
@@ -2133,7 +2133,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
                                               return (
                                                 <tr key={exp.id} className="hover:bg-slate-50 break-inside-avoid">
-                                                  <td className="px-4 py-2 text-slate-500 hidden md:table-cell">{exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0]}</td>
+                                                  <td className="px-4 py-2 text-slate-500 hidden md:table-cell">{exp.transactionDate || exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0]}</td>
                                                   <td className="px-4 py-2 text-slate-800 font-bold">{exp.voucherNo}</td>
                                                   <td className="px-4 py-2 text-slate-950 font-sans">{exp.title}</td>
                                                   <td className="px-4 py-2 text-end text-amber-600 hidden md:table-cell">{formatUSD(whtVal * exp.rate)}</td>
