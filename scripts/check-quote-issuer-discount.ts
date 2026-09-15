@@ -59,7 +59,8 @@ assert.ok(/colspan="2" class="r">Package value<\/td><td class="r">\$1,150\.00/.t
 const anPkg = quotationHtml({ ...base, total: 1150 });
 assert.ok(anPkg.includes("<th>#</th><th>Service</th><th>Output</th>") && anPkg.includes("$400.00"), "the AnaHon table keeps its columns and line prices");
 assert.ok(fs.readFileSync("src/constants.ts", "utf8").includes('ICONTENT_PHONE = "+961 3 677 246"'), "the iContent phone");
-assert.ok(ic.includes("contact: Saad Matar · +961 3 677 246") && ic.includes("Tripoli, Lebanon · +961 3 677 246"), "header and footer carry the iContent phone");
+assert.ok(ic.includes("contact: Saad Matar · +961 3 677 246 · hello@icontent.studio") && ic.includes("Tripoli, Lebanon · +961 3 677 246 · hello@icontent.studio"), "header and footer carry the iContent phone and email");
+assert.ok(!quotationHtml({ ...base, total: 1150 }).includes("icontent.studio"), "the iContent email never appears in AnaHon mode");
 assert.ok(!ic.includes("81 408 171"), "the AnaHon number is not on iContent paper");
 assert.ok(/\$\{quote\.issuedAs === "icontent" \? "iContent" : "AnaHon"\}_Quotation_/.test(srv), "the downloaded PDF is named for the issuer");
 const an = quotationHtml({ ...base, total: 1150 });
