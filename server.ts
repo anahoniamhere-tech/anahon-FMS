@@ -37,6 +37,13 @@ import { planReminders, describePlan, planIsEmpty, reminderTitle, reminderBody }
 import { planStallNudges, planIsQuiet, personMessage, escalationMessage, groupEscalations, STALL_CHANNELS } from "./src/stallNudges.js";
 import { canonEmail } from "./src/email.js";
 import { pickCoreDoc, CORE_PATTERNS, agreementDocs } from "./src/coreDocs.js";
+// The external consultant's reports and month pack (Books, 15 Sep 2026).
+import * as XLSX from "xlsx";
+import { FINANCE as FINANCE_SEATS } from "./src/roles.js";
+import { REQUIRED_PERSONNEL } from "./src/personnelDocs.js";
+import { isFloat as isFloatAccount } from "./src/pettyCash.js";
+import { pairFxLegs, isFxReversal, FX_PATTERN } from "./src/fxPairs.js";
+import { CONSULTANT_REVIEW_CATEGORY, isMonth, monthBounds, packExcludes, reconcileMarkBlocker, legsOf, trialBalance, openItems, paymentDate, lateRecords, safeName, type Recorded } from "./src/consultantPack.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
@@ -288,6 +295,7 @@ const READ_AUDIT: [RegExp, string][] = [
   [/^\/api\/cash\/count-sheet\.pdf$/, "Petty cash count sheet"],
   [/^\/api\/cash\/clearing$/, "Cash in transit"],
   [/^\/api\/offbank\/overview$/, "Money outside the bank"],
+  [/^\/api\/consultant\/(overview|report)$/, "Consultant reports"],
   [/^\/api\/document\/[^/]+\/pdf$/, "Document, rendered to PDF"],
   [/^\/api\/document\/content\/[^/]+$/, "Document"],
   [/^\/api\/document\/pages\/[^/]+$/, "Document, opened in the viewer"],
@@ -7298,6 +7306,353 @@ app.get("/api/offbank/overview", async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- The external consultant's reports and month pack (Policy 020 §4.3, §12.1, §12.4, §13) ----------------
+// The consultant has no login. Finance produces these files; Saad shares a dated view-only copy on Drive. Nothing
+// here uploads anywhere. Every read and export is audit-logged; every route is for the Finance seats only.
+
+async function financeReader(req: any) {
+  const rid = await viewerIdFromReq(req);
+  const reader = rid ? await prisma.user.findUnique({ where: { id: rid } }) : null;
+  return reader && reader.active && FINANCE_SEATS.includes(reader.role) ? reader : null;
+}
+
+/** The books as at the end of a month, shaped for the consultant. One loader for every report and the pack. */
+async function consultantBooks(month: string) {
+  const { start, end } = monthBounds(month);
+  const [accounts, entries, bankAccounts, lines, expenses, budgetLines, projects, users, counts, topUps, recs, packs, rates, vendors] = await Promise.all([
+    prisma.account.findMany(), prisma.journalEntry.findMany(), prisma.bankAccount.findMany(), prisma.bankTransaction.findMany(),
+    prisma.expense.findMany(), prisma.budgetLine.findMany(), prisma.project.findMany(), prisma.user.findMany(),
+    prisma.cashCount.findMany(), prisma.cashTopUp.findMany(), prisma.bankReconciliation.findMany({ where: { month } }),
+    prisma.consultantPack.findMany({ orderBy: { producedAt: "asc" } }), prisma.fxRates.findFirst(), prisma.vendor.findMany(),
+  ]);
+  const eur = Number(rates?.EUR) || 1;
+  const inMonth = (d: string) => d >= start && d <= end;
+  const legs = legsOf(entries as any);
+  const projectCode = (id: string) => projects.find(p => p.id === id)?.code || "";
+  const nameOf = (id: string) => users.find(u => u.id === id)?.name || "";
+  const accountName = (code: string) => accounts.find(a => a.code === code)?.name || "";
+  const expenseByVoucher = new Map(expenses.map(e => [e.voucherNo, e]));
+  const budgetCode = (id: string) => budgetLines.find(b => b.id === id)?.code || "";
+  // An entry's project is on whichever leg carries it (a receipt tags its income leg, not its cash leg).
+  const entryProject = new Map<string, string>();
+  for (const l of legs) if (l.projectId && !entryProject.has(l.entryId)) entryProject.set(l.entryId, l.projectId);
+
+  // 1. General ledger detail
+  const gl = legs.filter(l => inMonth(l.date)).sort((a, b) => a.date.localeCompare(b.date) || a.entryId.localeCompare(b.entryId)).map(l => {
+    const v = expenseByVoucher.get(l.referenceNo);
+    return {
+      Date: l.date, "Recorded at": l.recordedAt, Journal: l.journal, Entry: l.entryId, Account: l.accountCode, "Account name": accountName(l.accountCode),
+      Project: projectCode(l.projectId || entryProject.get(l.entryId) || ""), "Budget line": v ? budgetCode(v.budgetLineId) : "",
+      Debit: l.debit || "", Credit: l.credit || "", Reference: l.referenceNo, Description: l.description,
+    };
+  });
+
+  // 2. Reconciliations — the BLOM accounts, every live channel, the float and cash in transit
+  const payLineDate = new Map<string, string>();
+  for (const t of lines) if (t.type === "Withdrawal" && t.voucherNo && !payLineDate.has(t.voucherNo)) payLineDate.set(t.voucherNo, t.date);
+  const reconciliation = bankAccounts.filter(b => b.active && (b.type === "Bank" || isLiveChannel(b) || isFloatAccount(b) || isTransit(b))).map(b => {
+    const code = b.ledgerCode || (b.currency === "EUR" ? "1110" : "1100");
+    const own = lines.filter(t => t.bankAccountId === b.id);
+    const confirmed = own.filter(t => !t.pending && t.date <= end);
+    const signed = (t: any) => t.type === "Deposit" ? t.amount : -t.amount;
+    const statementClosing = r2m(confirmed.reduce((s, t) => s + signed(t), 0));
+    const bookUSD = r2m(legs.filter(l => l.accountCode === code && l.date <= end).reduce((s, l) => s + l.debit - l.credit, 0));
+    const bookClosing = b.currency === "EUR" ? r2m(bookUSD / eur) : bookUSD;
+    const monthLines = confirmed.filter(t => inMonth(t.date));
+    const waiting = own.filter(t => t.pending && t.date <= end);
+    const rec = recs.find(r => r.accountId === b.id);
+    return {
+      account: b, ledgerCode: code, statementClosing, bookClosing, difference: r2m(statementClosing - bookClosing),
+      linesInMonth: monthLines.length, matched: monthLines.filter(t => t.reconciled), unmatched: monthLines.filter(t => !t.reconciled),
+      awaitingMatch: waiting.filter(t => isStatementMatchRef(t.noticeRef) || t.voucherNo), pendingAdvices: waiting.filter(t => !isStatementMatchRef(t.noticeRef) && !t.voucherNo),
+      counts: isFloatAccount(b) ? counts.filter(c => c.bankAccountId === b.id && inMonth(c.date)) : [],
+      reconciliation: rec || null,
+    };
+  });
+
+  // 3. Standing schedules as at the month end
+  const on1120 = legs.filter(l => l.accountCode === HISTORICAL_CLEARING_LEDGER && l.date <= end);
+  const byProject = new Map<string, { received: number; drawn: number; documented: number; monthIn: number; monthOut: number }>();
+  const siblingsOf = new Map<string, string[]>();
+  for (const l of legs) siblingsOf.set(l.entryId, [...(siblingsOf.get(l.entryId) || []), l.accountCode]);
+  for (const l of on1120) {
+    const p = projectCode(l.projectId || entryProject.get(l.entryId) || "") || "(no project)";
+    const row = byProject.get(p) || { received: 0, drawn: 0, documented: 0, monthIn: 0, monthOut: 0 };
+    if (l.debit) { if ((siblingsOf.get(l.entryId) || []).some(c => c === "1100" || c === "1110")) row.drawn += l.debit; else row.received += l.debit; }
+    row.documented += l.credit;
+    if (inMonth(l.date)) { row.monthIn += l.debit; row.monthOut += l.credit; }
+    byProject.set(p, row);
+  }
+  const cashAwaiting = [...byProject.entries()].map(([project, v]) => ({
+    Project: project, "Drawn from BLOM": r2m(v.drawn), "Received off-bank": r2m(v.received), "Documented (vouchers)": r2m(v.documented),
+    Balance: r2m(v.drawn + v.received - v.documented), [`In ${month}`]: r2m(v.monthIn), [`Vouchered in ${month}`]: r2m(v.monthOut),
+  })).sort((a, b) => b.Balance - a.Balance);
+  const lineOf = (ref: string) => lines.find(t => `BT-${t.id}` === ref || t.id === ref);
+  const withLine = (rows: ReturnType<typeof openItems>) => rows.map(r => {
+    const t = lineOf(r.referenceNo);
+    return { "First dated": r.firstDate, Reference: t ? t.id : r.referenceNo, Account: t ? t.bankAccountId : "", "Open (USD)": r.net, Description: t ? t.description : r.description };
+  });
+  const fxLegsAll = lines.filter(t => !t.pending && t.date <= end && FX_PATTERN.test(t.description) && bankAccounts.find(b => b.id === t.bankAccountId)?.type === "Bank")
+    .map(t => { const isEur = bankAccounts.find(b => b.id === t.bankAccountId)?.currency === "EUR"; const usd = r2m(isEur ? t.amount * eur : t.amount);
+      return { id: t.id, date: t.date, eur: isEur, type: t.type, net: t.type === "Deposit" ? usd : -usd, reversal: isFxReversal(t.description), description: t.description, amount: t.amount }; });
+  const { unpaired } = pairFxLegs(fxLegsAll);
+  const schedules = {
+    cashAwaiting,
+    suspense: withLine(openItems(legs, "2900", end, "Liability")),
+    fxInTransit: unpaired.map(u => { const t = fxLegsAll.find(x => x.id === u.id)!; return { Date: u.date, Reference: u.id, Account: u.eur ? "BLOM EUR" : "BLOM USD", Direction: u.type, "Amount (account currency)": t.amount, "USD": Math.abs(u.net), Description: t.description, Waiting: "its other leg on the other account's statement" }; }),
+    reimbursements: withLine(openItems(legs, "2930", end, "Liability")),
+  };
+
+  // 4. Trial balance, payments paid in the month, counts and top-ups, late records
+  const trial = trialBalance(legs, accounts, end, eur);
+  const paid = expenses.filter(e => ["Paid", "Posted"].includes(e.status) && inMonth(paymentDate(e, payLineDate)));
+  const recorded: Recorded[] = [
+    ...expenses.map(e => ({ kind: "Payment request", id: e.voucherNo, trueDate: e.transactionDate || String(e.created_at).slice(0, 10), recordedAt: e.created_at, label: e.title, amount: e.convertedAmount })),
+    ...lines.filter(t => !t.pending).map(t => ({ kind: "Bank / cash line", id: t.id, trueDate: t.date, recordedAt: t.recordedAt, label: t.description, amount: t.amount })),
+    ...entries.filter(e => !e.id.startsWith("je-rb-")).map(e => ({ kind: "Journal entry", id: e.id, trueDate: e.date, recordedAt: e.recordedAt, label: e.description })),
+    ...counts.map(c => ({ kind: "Cash count", id: c.id, trueDate: c.date, recordedAt: c.created_at, label: `Counted ${c.countedUSD}`, amount: c.countedUSD })),
+  ];
+  const late = lateRecords(packs, recorded);
+  return {
+    month, start, end, eur, gl, reconciliation, schedules, trial, paid, payLineDate, expenses, vendors, projects, users, nameOf, late, packs,
+    counts: counts.filter(c => inMonth(c.date)), topUps: topUps.filter(t => inMonth(String(t.decidedAt || t.raisedAt).slice(0, 10))),
+  };
+}
+type ConsultantBooks = Awaited<ReturnType<typeof consultantBooks>>;
+
+/** The four reports as sheets: [title, rows]. One source for the XLSX, the PDF and the pack. */
+function consultantSheets(b: ConsultantBooks, report: string): [string, Record<string, any>[]][] {
+  if (report === "gl") return [["General ledger", b.gl]];
+  if (report === "trial-balance") return [["Trial balance", b.trial.map(r => ({ Account: r.code, Name: r.name, Type: r.type, Debits: r.debits, Credits: r.credits, "Balance (USD)": r.balanceUSD, "Balance (EUR)": r.balanceEUR ?? "" }))]];
+  if (report === "schedules") return [
+    ["1120 Cash awaiting vouchers", b.schedules.cashAwaiting], ["2900 Suspense", b.schedules.suspense],
+    ["2910 Conversions in transit", b.schedules.fxInTransit], ["2930 Reimbursements", b.schedules.reimbursements],
+  ];
+  if (report === "reconciliation") {
+    const summary = b.reconciliation.map(r => ({
+      Account: r.account.name, Ledger: r.ledgerCode, Currency: r.account.currency, "Statement / lines closing": r.statementClosing, "Book closing": r.bookClosing,
+      Difference: r.difference, "Lines in month": r.linesInMonth, Matched: r.matched.length, Unmatched: r.unmatched.length,
+      "Recorded, awaiting statement": r.awaitingMatch.length, "Pending advices": r.pendingAdvices.length,
+      "Prepared by": r.reconciliation ? `${r.reconciliation.preparedByName} on ${r.reconciliation.preparedAt.slice(0, 10)}` : "not yet prepared",
+      "Reviewed by the external consultant": r.reconciliation?.reviewedOn ? `on ${r.reconciliation.reviewedOn}` : "not yet reviewed",
+    }));
+    const detail = b.reconciliation.flatMap(r => [
+      ...r.unmatched.map(t => ({ Account: r.account.name, Status: "unmatched statement line", Date: t.date, Reference: t.id, Amount: t.type === "Deposit" ? t.amount : -t.amount, Description: t.description })),
+      ...r.awaitingMatch.map(t => ({ Account: r.account.name, Status: "recorded, awaiting its statement line", Date: t.date, Reference: t.noticeRef || t.voucherNo || t.id, Amount: t.type === "Deposit" ? t.amount : -t.amount, Description: t.description })),
+      ...r.pendingAdvices.map(t => ({ Account: r.account.name, Status: "eBLOM advice, not yet on a statement", Date: t.date, Reference: t.id, Amount: t.type === "Deposit" ? t.amount : -t.amount, Description: t.description })),
+      ...r.counts.map(c => ({ Account: r.account.name, Status: "cash count", Date: c.date, Reference: c.id, Amount: c.countedUSD, Description: `expected ${c.expectedUSD}${c.explanation ? ` — ${c.explanation}` : ""}` })),
+    ]);
+    return [["Reconciliations", summary], ["Open items", detail]];
+  }
+  throw Object.assign(new Error("Unknown report."), { status: 400 });
+}
+
+function sheetsToXlsx(sheets: [string, Record<string, any>[]][]): Buffer {
+  const wb = XLSX.utils.book_new();
+  for (const [title, rows] of sheets) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ "": "Nothing to report" }]), title.slice(0, 31));
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+function sheetsToHtml(title: string, b: ConsultantBooks, sheets: [string, Record<string, any>[]][], producedBy: string): string {
+  const money = (v: any) => typeof v === "number" ? v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : esc(v);
+  const tables = sheets.map(([t, rows]) => {
+    const cols = rows.length ? Object.keys(rows[0]) : [];
+    return `<h2>${esc(t)}</h2>${rows.length ? `<table><thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${cols.map(c => `<td class="${typeof r[c] === "number" ? "n" : ""}">${money(r[c])}</td>`).join("")}</tr>`).join("")}</tbody></table>` : `<p>Nothing to report.</p>`}`;
+  }).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page { size: A4 landscape; margin: 12mm; } body { font: 8.5px/1.4 -apple-system, "Segoe UI", Arial, sans-serif; color: #1f2937; }
+    h1 { font-size: 15px; margin: 0 0 2px; } h2 { font-size: 11px; margin: 14px 0 4px; } .meta { color: #4b5563; margin-bottom: 6px; }
+    table { width: 100%; border-collapse: collapse; } th { text-align: left; border-bottom: 1.5px solid #111827; padding: 3px 4px; font-size: 7.5px; text-transform: uppercase; }
+    td { border-bottom: 1px solid #e5e7eb; padding: 3px 4px; vertical-align: top; } .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  </style></head><body><h1>${esc(title)} — ${esc(b.month)}</h1>
+  <div class="meta">AnaHon Civil Company · ${esc(b.start)} to ${esc(b.end)} · produced ${esc(new Date().toISOString())} by ${esc(producedBy)} · EUR at ${b.eur} · Policy 020 §12.1, §12.4</div>${tables}</body></html>`;
+}
+
+const CONSULTANT_REPORTS: Record<string, string> = { gl: "General ledger detail", reconciliation: "Account reconciliations", schedules: "Standing schedules", "trial-balance": "Trial balance" };
+
+app.get("/api/consultant/overview", async (req, res) => {
+  try {
+    const reader = await financeReader(req);
+    if (!reader) return res.status(403).json({ error: "The consultant's reports are for the Finance seats." });
+    const month = String(req.query.month || "");
+    if (!isMonth(month)) return res.status(400).json({ error: "Choose a month (YYYY-MM)." });
+    const b = await consultantBooks(month);
+    const reviews = await prisma.appDoc.findMany({ where: { linkedRecordType: "BankReconciliation", category: CONSULTANT_REVIEW_CATEGORY }, select: { id: true, filename: true, linkedRecordId: true } });
+    res.json({
+      month, mayMark: !reconcileMarkBlocker(reader),
+      accounts: b.reconciliation.map(r => ({ id: r.account.id, name: r.account.name, currency: r.account.currency, ledgerCode: r.ledgerCode, statementClosing: r.statementClosing, bookClosing: r.bookClosing, difference: r.difference, awaiting: r.awaitingMatch.length, unmatched: r.unmatched.length, reconciliation: r.reconciliation, reviews: reviews.filter(d => d.linkedRecordId === r.reconciliation?.id) })),
+      packs: b.packs.slice().reverse().map(p => ({ id: p.id, month: p.month, producedAt: p.producedAt, producedByName: p.producedByName, fileName: p.fileName, sha256: p.sha256 })),
+      lateSinceLastPack: b.late.rows.length, lastPackAt: b.late.since,
+    });
+  } catch (err: any) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+app.get("/api/consultant/report", async (req, res) => {
+  try {
+    const reader = await financeReader(req);
+    if (!reader) return res.status(403).json({ error: "The consultant's reports are for the Finance seats." });
+    const month = String(req.query.month || ""), report = String(req.query.report || ""), format = String(req.query.format || "xlsx");
+    if (!isMonth(month) || !CONSULTANT_REPORTS[report] || !["xlsx", "pdf"].includes(format)) return res.status(400).json({ error: "Choose a month, a report and a format." });
+    const b = await consultantBooks(month);
+    const sheets = consultantSheets(b, report);
+    const name = `${month.slice(0, 4)}_ANAHON_${report.toUpperCase()}_${month}.${format}`;
+    const body = format === "xlsx" ? sheetsToXlsx(sheets) : await htmlToPdf(sheetsToHtml(CONSULTANT_REPORTS[report], b, sheets, reader.name));
+    await createAuditLog(reader.id, reader.name, "Consultant Report Exported", `${reader.name} exported ${CONSULTANT_REPORTS[report]} for ${month} as ${format.toUpperCase()} (${name}).`);
+    res.setHeader("Content-Type", format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+    res.send(body);
+  } catch (err: any) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// The month pack: one zip, built from the same loader, documents chosen by whitelist and screened by packExcludes.
+app.post("/api/consultant/pack", async (req, res) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "consultant-pack-"));
+  try {
+    const { month, user } = req.body;
+    if (!FINANCE_SEATS.includes(user?.role)) return res.status(403).json({ error: "The month pack is for the Finance seats." });
+    if (!isMonth(String(month || ""))) return res.status(400).json({ error: "Choose a month (YYYY-MM)." });
+    const b = await consultantBooks(month);
+    const producedAt = new Date().toISOString();
+    const docs = await prisma.appDoc.findMany();
+    const declarations: any[] = (prisma as any).missingReceiptDeclaration ? await (prisma as any).missingReceiptDeclaration.findMany() : [];
+    const root = `ANAHON_CONSULTANT-PACK_${month}`;
+    const dir = path.join(tmp, root);
+    fs.mkdirSync(dir, { recursive: true });
+    const manifest: string[][] = [["path", "docId", "category", "sha256", "note"]];
+    const excluded = new Map<string, number>();
+    const put = (rel: string, data: Buffer | string, docId = "", category = "", note = "") => {
+      const abs = path.join(dir, rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, data);
+      manifest.push([rel, docId, category, crypto.createHash("sha256").update(data).digest("hex"), note]);
+    };
+    const copyDoc = (folder: string, d: any) => {
+      const why = packExcludes(d);
+      if (why) { excluded.set(why, (excluded.get(why) || 0) + 1); return; }
+      const rel = `${folder}/${safeName(d.refNo ? `${d.refNo} ${d.filename}` : d.filename)}`;
+      if (manifest.some(m => m[1] === d.id && m[0].startsWith(folder.split("/")[0]))) return;
+      const vault = vaultPathFromPointer(d.base64 || "");
+      if (vault && !fs.existsSync(vault)) { manifest.push([rel, d.id, d.category, "", "missing from vault"]); return; }
+      put(rel, vault ? fs.readFileSync(vault) : Buffer.from(d.base64 || "", "base64"), d.id, d.category);
+    };
+
+    for (const [n, report] of [["01", "gl"], ["02", "reconciliation"], ["03", "schedules"], ["04", "trial-balance"]] as const) {
+      const sheets = consultantSheets(b, report);
+      put(`${n}-${report}-${month}.xlsx`, sheetsToXlsx(sheets));
+      put(`${n}-${report}-${month}.pdf`, await htmlToPdf(sheetsToHtml(CONSULTANT_REPORTS[report], b, sheets, user.name)));
+    }
+    put(`05-cash-counts-and-top-ups-${month}.xlsx`, sheetsToXlsx([
+      ["Cash counts", b.counts.map(c => ({ Date: c.date, "Counted by": c.counterUserId ? b.nameOf(c.counterUserId) : c.countedBy, "Expected (USD)": c.expectedUSD, "Counted (USD)": c.countedUSD, Difference: r2m(c.countedUSD - c.expectedUSD), "Without notice": c.withoutNotice ? "yes" : "", "Custodian present": c.custodianPresent ? "yes" : "", Explanation: c.explanation, Recorded: c.created_at }))],
+      ["Top-ups", b.topUps.map(t => ({ Raised: t.raisedAt, "Raised by": t.raisedByName, Kind: t.kind, "Amount (USD)": t.amountUSD, Status: t.status, Decided: t.decidedAt, "Decided by": t.decidedByName, Source: t.sourceAccountId, Reason: t.reason }))],
+    ]));
+
+    // Payments paid in the month, with their documents and declarations; the agreements they rely on.
+    const agreementCats = [...REQUIRED_PERSONNEL.find(r => r.key === "contract")!.accepts, "Agreement", "Grant Agreement"];
+    for (const e of b.paid) {
+      const folder = `06-payments/${safeName(e.voucherNo)}`;
+      const decl = declarations.find(d => d.expenseId === e.id);
+      put(`${folder}/voucher.txt`, [
+        `${e.voucherNo} — ${e.title}`, `Project: ${b.projects.find(p => p.id === e.projectId)?.code || "—"}`,
+        `Amount: ${e.currency} ${e.amount} (USD ${e.convertedAmount}); WHT ${e.whtAmount}; net ${e.netAmount}`,
+        `Paid on: ${paymentDate(e, b.payLineDate)} · method ${e.paymentMethod || "—"} · status ${e.status}`,
+        `Transaction date: ${e.transactionDate || "(not captured)"} · recorded ${e.created_at}`,
+        `Payee: ${b.vendors.find(v => v.id === e.vendorId)?.name || e.vendorId || "—"}`,
+        `Missing-receipt declaration: ${decl ? `prepared by ${b.nameOf(decl.preparedById)}; signed copy ${decl.signedDocId || "not filed"}; approved by ${decl.approvedById ? `${b.nameOf(decl.approvedById)} on ${String(decl.approvedAt).slice(0, 10)}` : "not yet approved"}` : "none"}`,
+      ].join("\n"));
+      for (const d of docs.filter(d => d.linkedRecordType === "Expense" && d.linkedRecordId === e.id)) copyDoc(folder, d);
+      if (decl?.signedDocId) { const d = docs.find(x => x.id === decl.signedDocId); if (d) copyDoc(folder, d); }
+      if (e.vendorId) for (const d of docs.filter(d => d.partyId === e.vendorId && agreementCats.includes(d.category))) copyDoc(`07-agreements/${safeName(b.vendors.find(v => v.id === e.vendorId)?.name || e.vendorId)}`, d);
+      if (e.projectId) for (const d of agreementDocs(docs as any, e.projectId)) copyDoc(`07-agreements/${safeName(b.projects.find(p => p.id === e.projectId)?.code || e.projectId)}`, d);
+    }
+    const sinceLabel = b.late.since ? b.late.since.slice(0, 10) : "first-pack";
+    put(`08-late-records-since-${sinceLabel}.xlsx`, sheetsToXlsx([["Recorded late", b.late.rows.map(r => ({ Kind: r.kind, Reference: r.id, "True date": r.trueDate, "Recorded at": r.recordedAt, Amount: r.amount ?? "", Description: r.label }))]]));
+
+    const missing = manifest.filter(m => m[4] === "missing from vault");
+    put("README.txt", [
+      `AnaHon Civil Company — month pack for the external financial consultant`, `Month: ${month} (${b.start} to ${b.end})`,
+      `Produced: ${producedAt} by ${user.name} (${user.role}). Policy 020 §12.1, §12.4, §13. View-only copy; nothing in this pack was uploaded by the system.`,
+      ``, `Inside:`, `  01 general ledger detail (XLSX, PDF)`, `  02 reconciliations per account, with who prepared them and the consultant's review line (XLSX, PDF)`,
+      `  03 standing schedules: 1120 cash awaiting vouchers by project, 2900 suspense, 2910 conversions in transit, 2930 reimbursements (XLSX, PDF)`,
+      `  04 trial balance at ${b.end} (XLSX, PDF)`, `  05 cash counts and top-ups`, `  06 payments paid in the month: ${b.paid.length}, each with its documents and any missing-receipt declaration`,
+      `  07 the agreements those payments rely on`, `  08 records added late since the previous pack (${b.late.since || "no previous pack"}): ${b.late.rows.length}`, `  manifest.csv — every file with its document id, category and SHA-256`,
+      ``, `Deliberately excluded (Policy 010 and the personnel file rule): identity documents, personnel papers other than the agreement itself, and all source or editorial material.`,
+      ...[...excluded.entries()].map(([why, n]) => `  ${n} document(s) withheld: ${why}`),
+      missing.length ? `Missing from the vault (listed in the manifest, not silently dropped): ${missing.length}` : `Every listed document was found in the vault.`,
+    ].join("\n"));
+    fs.writeFileSync(path.join(dir, "manifest.csv"), manifest.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n"));
+
+    const zipPath = path.join(tmp, `${root}.zip`);
+    const { execFile } = await import("child_process");
+    // Python's standard zipfile, compressed; no new dependency. Paths stay relative to the pack's own folder.
+    const zipScript = "import os,sys,zipfile\nout,root=sys.argv[1],sys.argv[2]\nwith zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:\n  for d,_,fs in os.walk(root):\n    for f in sorted(fs): z.write(os.path.join(d,f))";
+    await new Promise<void>((ok, fail) => execFile("python3", ["-c", zipScript, zipPath, root], { cwd: tmp, timeout: 120000 }, err => err ? fail(err) : ok()));
+    const zip = fs.readFileSync(zipPath);
+    const sha256 = crypto.createHash("sha256").update(zip).digest("hex");
+    const id = `cp-${Date.now()}`;
+    await prisma.consultantPack.create({ data: { id, month, producedAt, producedById: user.id, producedByName: user.name, fileName: `${root}.zip`, sha256, contentsJson: JSON.stringify(manifest.slice(1).map(m => ({ path: m[0], docId: m[1], note: m[4] }))) } });
+    await createAuditLog(user.id, user.name, "Consultant Month Pack Produced",
+      `${user.name} produced the ${month} month pack ${id} (${manifest.length - 1} files, ${b.paid.length} payments, ${b.late.rows.length} late records, ${[...excluded.values()].reduce((s, n) => s + n, 0)} documents withheld, ${missing.length} missing from vault), sha256 ${sha256}.`);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${root}.zip"`);
+    res.send(zip);
+  } catch (err: any) {
+    res.status(err.status || 500).json({ error: err.message });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+// §4.3 — the Finance Officer prepares the reconciliation. Checked on the person's own seat, so the Executive Director
+// cannot do it by standing in as the Finance Officer.
+app.post("/api/consultant/reconciliation/mark", async (req, res) => {
+  try {
+    const { accountId, month, note, user } = req.body;
+    const person = (req as any).dbUser;
+    const refused = reconcileMarkBlocker(person);
+    if (refused) return res.status(403).json({ error: refused });
+    if (!isMonth(String(month || ""))) return res.status(400).json({ error: "Choose a month (YYYY-MM)." });
+    if (monthBounds(month).end >= localDate()) return res.status(400).json({ error: "A month is reconciled once it has ended." });
+    const b = await consultantBooks(month);
+    const r = b.reconciliation.find(x => x.account.id === accountId);
+    if (!r) return res.status(404).json({ error: "That account is not reconciled here." });
+    const existing = await prisma.bankReconciliation.findUnique({ where: { accountId_month: { accountId, month } } });
+    if (existing?.reviewedOn) return res.status(400).json({ error: `The consultant reviewed this reconciliation on ${existing.reviewedOn}; it stands as reviewed.` });
+    const data = { statementClosing: r.statementClosing, bookClosing: r.bookClosing, difference: r.difference, note: String(note || "").trim(), preparedById: person.id, preparedByName: person.name, preparedAt: new Date().toISOString() };
+    const rec = existing
+      ? await prisma.bankReconciliation.update({ where: { id: existing.id }, data })
+      : await prisma.bankReconciliation.create({ data: { id: `rec-${Date.now()}`, accountId, month, ...data } });
+    await createAuditLog(person.id, person.name, "Reconciliation Prepared",
+      `${person.name} prepared the ${month} reconciliation of ${r.account.name}: statement/lines ${r.statementClosing} vs books ${r.bookClosing} (difference ${r.difference}), ${r.awaitingMatch.length} awaiting a statement line, ${r.unmatched.length} unmatched.${user?.role !== person.role ? ` Standing in as ${user?.role}.` : ""}`);
+    res.json({ success: true, reconciliation: rec });
+  } catch (err: any) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// The consultant's signed or commented copy, filed through the ordinary upload against the reconciliation.
+app.post("/api/consultant/reconciliation/review", async (req, res) => {
+  try {
+    const { reconciliationId, reviewDocId, reviewedOn, user } = req.body;
+    if (!FINANCE_SEATS.includes(user?.role)) return res.status(403).json({ error: "Filing the consultant's review is for the Finance seats." });
+    const rec = await prisma.bankReconciliation.findUnique({ where: { id: String(reconciliationId || "") } });
+    if (!rec) return res.status(404).json({ error: "Reconciliation not found." });
+    const doc = await prisma.appDoc.findUnique({ where: { id: String(reviewDocId || "") } });
+    if (!doc || doc.linkedRecordType !== "BankReconciliation" || doc.linkedRecordId !== rec.id || doc.category !== CONSULTANT_REVIEW_CATEGORY) {
+      return res.status(400).json({ error: "Upload the consultant's signed or commented copy against this reconciliation first." });
+    }
+    const day = String(reviewedOn || "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > localDate() || day < rec.preparedAt.slice(0, 10)) return res.status(400).json({ error: "Enter the date the consultant reviewed it — after it was prepared, not in the future." });
+    const updated = await prisma.bankReconciliation.update({ where: { id: rec.id }, data: { reviewDocId: doc.id, reviewedOn: day, reviewRecordedById: user.id, reviewRecordedAt: new Date().toISOString() } });
+    await createAuditLog(user.id, user.name, "Consultant Review Filed", `${user.name} filed the external consultant's review of ${rec.accountId} ${rec.month} (reviewed on ${day}): ${doc.filename} (${doc.id}).`);
+    res.json({ success: true, reconciliation: updated });
+  } catch (err: any) {
+    res.status(err.status || 500).json({ error: err.message });
   }
 });
 

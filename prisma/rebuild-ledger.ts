@@ -17,6 +17,7 @@
 import { PrismaClient } from "@prisma/client";
 
 import { costAccountFor } from "../src/costAccount.js";
+import { pairFxLegs, isFxReversal, type FxLeg } from "../src/fxPairs.js";
 import { FLOAT_LEDGER, COUNT_DIFFERENCES_LEDGER, CASH_CLEARING_LEDGER, isFloat, isTransit, isTopUpRef, isDrawRef, isDrawReturnRef, countDifference, cashLedgerFor, channelLedgerFor, isLiveChannel, isStatementMatchRef, isOffbankDepositRef, offbankPurposeOf, DEPOSITS_IN_TRANSIT_LEDGER, OTHER_INCOME_LEDGER, CASH_AWAITING_VOUCHERS_NAME, pastCashLedgerFor } from "../src/pettyCash.js";
 
 const prisma = new PrismaClient();
@@ -162,7 +163,7 @@ async function main() {
   const eurNote = (txAccountId: string) => eurAccountIds.has(txAccountId) ? ` [EUR @ ${fx}]` : "";
 
   // Every line posted to FX clearing, so the sweep can pair each conversion's two legs (below).
-  const fxLegs: { id: string; date: string; eur: boolean; type: string; net: number; reversal: boolean }[] = [];
+  const fxLegs: FxLeg[] = [];
 
   // ---- 1. statement lines: the only source of bank movements ----
   for (const bt of bankTx) {
@@ -204,7 +205,7 @@ async function main() {
       const purpose = offbankPurposeOf(bt.noticeRef);
       if (purpose === "quotation") contra = { accountCode: ACC.SERVICE }; // a client paying a quotation outside the bank
       else if (purpose === "other") contra = { accountCode: OTHER_INCOME_LEDGER };
-      else if (fxRe.test(bt.description)) { contra = { accountCode: ACC.FXCLEAR }; fxLegs.push({ id: bt.id, date: bt.date, eur: eurAccountIds.has(bt.bankAccountId), type: bt.type, net: amt, reversal: /الغاء|Reversal/i.test(bt.description) }); }
+      else if (fxRe.test(bt.description)) { contra = { accountCode: ACC.FXCLEAR }; fxLegs.push({ id: bt.id, date: bt.date, eur: eurAccountIds.has(bt.bankAccountId), type: bt.type, net: amt, reversal: isFxReversal(bt.description) }); }
       // ICFJ's USD 200 of 28 Aug 2026 (Tipalti, "Invoice Aug 2026") repays transport and logistics for attending
       // its Training of Trainers — not income, no project (Saad, 13 Sep 2026). No voucher for those costs exists
       // yet, so it waits as a liability until they are recorded against it.
@@ -256,7 +257,7 @@ async function main() {
       post(bt.date, "Bank", `${bt.description}${note}`, ref, [
         { accountCode: ACC.BANKFEES, debit: amt }, { accountCode: bank, credit: amt }]);
     } else if (fxRe.test(bt.description)) {
-      fxLegs.push({ id: bt.id, date: bt.date, eur: eurAccountIds.has(bt.bankAccountId), type: bt.type, net: -amt, reversal: /الغاء|Reversal/i.test(bt.description) });
+      fxLegs.push({ id: bt.id, date: bt.date, eur: eurAccountIds.has(bt.bankAccountId), type: bt.type, net: -amt, reversal: isFxReversal(bt.description) });
       post(bt.date, "Bank", `${bt.description}${note}`, ref, [
         { accountCode: ACC.FXCLEAR, debit: amt }, { accountCode: bank, credit: amt }]);
     } else if (atmRe.test(bt.description)) {
@@ -348,19 +349,8 @@ async function main() {
     .reduce((m, t) => t.date > m ? t.date : m, "");
 
   // ---- 3. sweep FX clearing to gain/loss ----
-  // Only a conversion whose two legs are both on statements is swept: EUR out with USD in (or back), within five
-  // days. A leg whose partner has not arrived is money in transit between our own accounts, not a loss — it stays
-  // on 2910 until the other statement shows it (8 Sep 2026: EUR 300 converted, the USD leg not yet posted).
-  // A reversal (الغاء) is BLOM undoing a line on the same account — e.g. EUR 13 of 2 Jan 2025 — never half of a
-  // conversion, so it is always swept; only conversion legs wait for their partner.
-  const pairedIds = new Set<string>(fxLegs.filter(l => l.reversal).map(l => l.id));
-  const dayGap = (a: string, b: string) => Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 86400000;
-  for (const e of fxLegs.filter(l => l.eur && !l.reversal)) {
-    const partner = fxLegs.filter(u => !u.eur && !u.reversal && !pairedIds.has(u.id) && u.type !== e.type && dayGap(u.date, e.date) <= 5)
-      .sort((a, b) => dayGap(a.date, e.date) - dayGap(b.date, e.date))[0];
-    if (partner) { pairedIds.add(e.id); pairedIds.add(partner.id); }
-  }
-  const unpaired = fxLegs.filter(l => !pairedIds.has(l.id));
+  // Only a conversion whose two legs are both on statements is swept; the rule lives in src/fxPairs.ts.
+  const { pairedIds, unpaired } = pairFxLegs(fxLegs);
   let fxNet = r2(fxLegs.filter(l => pairedIds.has(l.id)).reduce((sum, l) => sum + l.net, 0)); // credit balance = gain
   console.log(`FX legs: ${fxLegs.length}, paired ${pairedIds.size}, held on 2910 until their partner posts: ${unpaired.map(l => `${l.date} ${l.eur ? "EUR" : "USD"} ${l.type} ${Math.abs(l.net)}`).join("; ") || "none"}`);
   if (Math.abs(fxNet) > 0.01) {

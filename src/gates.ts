@@ -65,6 +65,11 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/offbank/receive": BOOKS,
   "/api/offbank/deposit": BOOKS,
   "/api/bank/match-line": BOOKS,
+  // The external consultant's month pack and reconciliations (Policy 020 §4.3, §12.1). Marking a reconciliation is
+  // further narrowed to the Finance Officer's own seat, by person, in the route.
+  "/api/consultant/pack": BOOKS,
+  "/api/consultant/reconciliation/mark": BOOKS,
+  "/api/consultant/reconciliation/review": BOOKS,
   "/api/fxRates": BOOKS,
   "/api/fxRates/sync-inforeuro": BOOKS,
   "/api/partners/draw": DIRECTORS,

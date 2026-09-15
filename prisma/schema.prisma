@@ -1006,3 +1006,38 @@ model DonorReportSubmission {
 
   @@index([projectId])
 }
+
+/// A bank or cash account's reconciliation for one month (Policy 020 §4.3, §12.4). Prepared by the Finance
+/// Officer — checked on the person's own seat — and reviewed by the external consultant, whose signed or
+/// commented copy is filed as an AppDoc linked here.
+model BankReconciliation {
+  id               String @id
+  accountId        String
+  month            String
+  statementClosing Float
+  bookClosing      Float
+  difference       Float
+  note             String @default("")
+  preparedById     String
+  preparedByName   String @default("")
+  preparedAt       String
+  reviewDocId      String @default("")
+  reviewedOn       String @default("")
+  reviewRecordedById String @default("")
+  reviewRecordedAt String @default("")
+
+  @@unique([accountId, month])
+}
+
+/// Every month pack produced for the external consultant (Policy 020 §12.1): what went out, when, by whom.
+/// The next pack lists the records added late into months these already covered.
+model ConsultantPack {
+  id           String @id
+  month        String
+  producedAt   String
+  producedById String
+  producedByName String @default("")
+  fileName     String
+  sha256       String
+  contentsJson String @default("[]")
+}

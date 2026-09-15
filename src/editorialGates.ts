@@ -232,3 +232,17 @@ export function rehearsalSeatsBlockers(c: Seats): string[] {
   }
   return out;
 }
+
+/**
+ * Source and editorial material — Policy 010. One rule, read by the newsroom and by the consultant's month
+ * pack (Books, 15 Sep 2026), so neither can leak a source's file the other protects. A document is source
+ * material when it belongs to editorial work (a piece, its references, a meeting, the website) or its category
+ * says it is raw material. The month pack also chooses its documents by whitelist; this is the second guard.
+ * Editorial reviews this definition.
+ */
+export const EDITORIAL_RECORD_TYPES = ["Content", "Content Reference", "Meeting", "Website"] as const;
+export const SOURCE_CATEGORY_PATTERN = /reference material|meeting recording|recording|interview|footage|\bsources?\b/i;
+export function isSourceMaterial(doc: { category?: string | null; linkedRecordType?: string | null }): boolean {
+  return (EDITORIAL_RECORD_TYPES as readonly string[]).includes(String(doc?.linkedRecordType || ""))
+    || SOURCE_CATEGORY_PATTERN.test(String(doc?.category || ""));
+}

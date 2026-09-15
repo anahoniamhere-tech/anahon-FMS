@@ -1,10 +1,11 @@
 import { useState } from "react";
+import ConsultantPackPanel from "./ConsultantPackPanel";
 import { Download } from "lucide-react";
 import { Account, Project } from "../types";
 import { tr } from "../i18n";
 import { SharedProps } from "./shared";
 
-export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) {
+export default function ReportsTab({ formatUSD, t, triggerToast, currentUser }: SharedProps) {
   // Periodic reports (Policy 11.2)
   const [reportData, setReportData] = useState<any>(null);
 
@@ -79,6 +80,8 @@ export default function ReportsTab({ formatUSD, t, triggerToast }: SharedProps) 
   };
   return (
             <div className="space-y-6">
+              {/* The external consultant's reports and month pack (Policy 020 §12.1). Finance seats only. */}
+              <ConsultantPackPanel currentUser={currentUser} t={t} triggerToast={triggerToast} formatUSD={formatUSD} />
               <style>{`@media print { body * { visibility: hidden; } #period-report, #period-report * { visibility: visible; } #period-report { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; } }`}</style>
               <div>
                 <h2 className="text-xl font-bold">{t("Periodic Financial Reports")}</h2>
