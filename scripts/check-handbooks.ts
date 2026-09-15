@@ -18,7 +18,7 @@ const ok = (label: string, cond: boolean, detail = "") => {
   if (!cond) { failed++; console.error(`  FAIL  ${label}${detail ? " — " + detail : ""}`); } else console.log(`  ok    ${label}`);
 };
 
-// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020 and 013 into 001),
+// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020, 013 into 001, and 020's Annex B into 010),
 // so the parser is proven against real wording, not an invented fixture.
 const REAL_INDEX = `
 AnaHon Media Platform — Policies and Handbooks
@@ -42,7 +42,7 @@ Read with the declaration of 12 September 2026: AnaHon has no employees. Everyon
 5. Strategy
 •007 Strategic Plan — a plan, not a rule, and the document the four handbooks serve
 Standing on its own
-•010 Information, Data and Source Privacy — written 12 Sep 2026, replacing the Centralized Knowledge Sharing Repository Policy. It cuts across all four handbooks and belongs to none.
+•010 Information, Data and Source Privacy — merged with 020's data-protection annex and approved 15 Sep 2026: where information lives, access and two-step sign-in, source protection, confidential payments to protected sources, incidents. It cuts across all four handbooks and belongs to none.
 Numbers not in use
 014 was never issued. 021 is absorbed into 022, and its file was lost in August 2026. 003 is merged into 020 and 013 into 001 (15 September 2026). The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
 Still to settle
