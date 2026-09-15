@@ -963,27 +963,19 @@ export default function App() {
    *  third-party evidence, and counting them would hide exactly what this panel is for. */
   const evidenceGaps = (() => {
     const COUNTED = ["Approved", "Paid", "Posted"];
-    // Proof means a document AnaHon did not author after the fact. Neither the app's own
-    // digitized copy nor a reconstructed voucher qualifies — both are our own reconstruction
-    // of a record, and counting them would let the gap close itself.
-    const hasProof = (expId: string) => state.documents.some(d =>
-      d.linkedRecordType === "Expense" && d.linkedRecordId === expId
-      && !/^Digitized/i.test(d.category || "") && !/^Reconstructed Voucher/i.test(d.category || ""));
     const proj = (id: string) => state.projects.find(p => p.id === id);
     const money = (n: number) => formatUSD(n);
 
-    // A reconstructed voucher is AnaHon's own document reissued because the signed hard copy was
-    // lost on a closed grant. It is a documented position, not independent evidence — so it neither
-    // counts as proof nor sits in the unexplained pile. Three states, and the difference is stated.
-    const isReconstructed = (expId: string) => state.documents.some(d =>
-      d.linkedRecordType === "Expense" && d.linkedRecordId === expId && /^Reconstructed Voucher/i.test(d.category || ""));
-
+    // Where each payment's evidence stands is answered by the server (Policy 020 §6.6), for every
+    // seat alike. It used to be derived here, where any linked file closed the gap — so an unsigned,
+    // unapproved missing-receipt declaration would have cleared it alone. The app's own digitized
+    // copy and a reconstructed voucher are still not proof; a declaration is, once signed AND approved.
     const reconstructed = state.expenses
-      .filter(e => COUNTED.includes(e.status) && !hasProof(e.id) && isReconstructed(e.id))
+      .filter(e => COUNTED.includes(e.status) && e.evidence === "reconstructed")
       .sort((a, b) => b.convertedAmount - a.convertedAmount);
 
     const noEvidence = state.expenses
-      .filter(e => COUNTED.includes(e.status) && !hasProof(e.id) && !isReconstructed(e.id))
+      .filter(e => COUNTED.includes(e.status) && e.evidence !== "proof" && e.evidence !== "reconstructed")
       .sort((a, b) => b.convertedAmount - a.convertedAmount);
 
     // An RFQ is a question about choosing a supplier. Where there was no supplier to choose —
@@ -1093,7 +1085,7 @@ export default function App() {
     e: React.ChangeEvent<HTMLInputElement>,
     expenseId: string,
     voucherNo: string,
-    category: "Invoice" | "Evidence"
+    category: "Invoice" | "Evidence" | "Receipt (re-issued copy)" | "Missing-Receipt Declaration (signed)"
   ) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const files: File[] = Array.from(e.target.files);
@@ -1810,6 +1802,65 @@ export default function App() {
                     </a>
                   ))}
                 </div>
+
+                {/* Policy 020 §6.6 — a paid voucher whose receipt is missing. The re-issued copy is the
+                    first route; a declaration only when no copy can be had. Finance files and prepares;
+                    the Executive Director approves, never the person who prepared it. */}
+                {["Paid", "Posted"].includes(exp.status) && exp.evidence && exp.evidence !== "proof" && (() => {
+                  const d = exp.declaration;
+                  const isFinance = ["Super Admin", "Finance Officer"].includes(currentUser?.role || "");
+                  const isDirector = ["Super Admin", "Program Director"].includes(currentUser?.role || "");
+                  const donor = state.donors.find(x => x.id === proj?.donorId)?.name;
+                  const upload = (category: string) => (ev: React.ChangeEvent<HTMLInputElement>) => handleVoucherDocUpload(ev, exp.id, exp.voucherNo, category as any);
+                  const decide = async (path: string, body: any, ok: string) => {
+                    const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) return triggerToast(data.error || "Refused.", "error");
+                    triggerToast(ok); refreshState();
+                  };
+                  return (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-amber-900">Missing receipt — Policy 020 §6.6</p>
+                      <p className="text-xs text-amber-900">{
+                        exp.evidence === "declaration-unsigned" ? "A declaration is prepared. It counts once the person paid signs it and the Executive Director approves it."
+                        : exp.evidence === "declaration-awaiting-director" ? "The signed declaration is filed. It is waiting for the Executive Director's approval."
+                        : exp.evidence === "reconstructed" ? "Only a reconstructed voucher is on file — it is not independent evidence."
+                        : "No receipt or invoice is on file. This payment counts as a missing document until one is."}</p>
+                      {!d && isFinance && (<>
+                        <label className="block text-xs font-bold text-slate-800 cursor-pointer">
+                          First choice: file a copy re-issued by the supplier, bank or transfer company
+                          <input type="file" className="block mt-1 text-[11px]" onChange={upload("Receipt (re-issued copy)")} />
+                        </label>
+                        <p className="text-xs font-bold text-slate-800">Only if no copy can be obtained: a missing-receipt declaration</p>
+                        {donor && <p className="text-[11px] text-amber-800">Check {donor}'s agreement first: some donors do not accept declarations, or not above a certain amount (§6.6).</p>}
+                        <button type="button"
+                          onClick={() => {
+                            const needName = !exp.vendorId;
+                            const payeeName = needName ? (window.prompt("No supplier is named on this request. Name of the person or company paid:") || "").trim() : "";
+                            if (needName && !payeeName) return;
+                            decide("/api/declarations/prepare", { expenseId: exp.id, payeeName }, "Declaration prepared — print it for the person paid to sign.");
+                          }}
+                          className="text-[11px] bg-slate-800 hover:bg-slate-950 text-white px-3 py-1.5 rounded font-medium">Prepare the declaration</button>
+                      </>)}
+                      {d && (<>
+                        <p className="text-[11px] text-slate-700">Declaration made on <span dir="ltr">{d.madeOn}</span>{d.approvedAt ? ` · approved ${d.approvedAt.slice(0, 10)}` : ""}</p>
+                        {!d.signedDocId && isFinance && (
+                          <label className="block text-xs font-bold text-slate-800 cursor-pointer">
+                            File the declaration signed by the person paid
+                            <input type="file" className="block mt-1 text-[11px]" onChange={upload("Missing-Receipt Declaration (signed)")} />
+                          </label>
+                        )}
+                        {d.signedDocId && !d.approvedById && isDirector && currentUser?.id !== d.preparedById && (
+                          <button type="button" onClick={() => decide("/api/declarations/approve", { declarationId: d.id }, "Declaration approved — it now stands in place of the receipt.")}
+                            className="text-[11px] bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1.5 rounded font-medium">Approve the declaration (Executive Director)</button>
+                        )}
+                        {d.signedDocId && !d.approvedById && currentUser?.id === d.preparedById && (
+                          <p className="text-[11px] text-amber-800">You prepared it — the approval must be somebody else's.</p>
+                        )}
+                      </>)}
+                    </div>
+                  );
+                })()}
 
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Bank statement match</p>

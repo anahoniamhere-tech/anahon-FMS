@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { Archive, Camera, CheckCheck, ClipboardList, Gift, History, Lock, LogIn, LogOut, MapPin, Package, Pencil, Printer, Receipt, Ruler, ScanLine, Search, Tag, Trash2, Wrench } from "lucide-react";
 import { SharedProps } from "./shared";
-import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS } from "../roles";
+import { EQUIPMENT_VERIFIERS, FINANCE, SUPPLIER_EDITORS } from "../roles";
 import { withTicket } from "../docTicket";
-import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, EQUIPMENT_LOCATIONS, OTHER_LOCATION, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, LOCKED_FIELDS, END_KINDS, endKindOf, checkOutBlocker, deleteBlocker, endBlocker, endIsEffective, isDisposal, mayEndEquipment, confirmDisposalBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife, currentMovement } from "../equipment";
+import { CONDITIONS, CURRENCIES, NO_SERIAL, EQUIPMENT_KINDS, USEFUL_LIFE_BY_KIND, EQUIPMENT_LOCATIONS, OTHER_LOCATION, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, STICKER_SIZES, DEFAULT_STICKER_MM, LOCKED_FIELDS, END_KINDS, endKindOf, checkOutBlocker, deleteBlocker, endBlocker, endIsEffective, isDisposal, mayEndEquipment, confirmDisposalBlocker, equipmentStatus, mayVerifyEquipment, usefulLifeFor, mayOverrideUsefulLife, currentMovement, CAPITALISE_FROM_USD } from "../equipment";
 import { addDays, localToday } from "../workflow";
 
 /** A request equipment can be booked against: the money is committed. The route asks the same. */
@@ -91,6 +91,22 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   // A correction in progress. Its own copy of the form, seeded from the item: nothing is
   // written until it is submitted, and the item on the screen keeps saying what it says.
   const [edit, setEdit] = useState<{ id: string; f: typeof BLANK } | null>(null);
+  // Finance's value on an item and where it comes from (Policy 020 §9) — never the desk's.
+  const [valuing, setValuing] = useState<{ id: string; basis: string; cost: string; currency: string; rate: string; docId: string; note: string } | null>(null);
+  const mayValue = FINANCE.includes(String(currentUser?.role));
+  const handleValue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!valuing) return;
+    const res = await fetch("/api/assets/value", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assetId: valuing.id, basis: valuing.basis, cost: valuing.cost, currency: valuing.currency, rate: valuing.rate, docId: valuing.docId, note: valuing.note }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return triggerToast(data.error || "The value was refused.", "error");
+    triggerToast(t("Value recorded."));
+    setValuing(null);
+    refreshState();
+  };
   const [highlight, setHighlight] = useState<string | null>(null);
   // Which items to print stickers for, and at what size.
   const [stickersOpen, setStickersOpen] = useState(false);
@@ -185,8 +201,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
         body: JSON.stringify({
           name: f.name, brand: f.brand, model: f.model, specs: f.specs, kind: f.kind,
           serialNumber: f.serial, noSerial: f.noSerial,
-          expenseId: f.expenseId, gift: f.gift, cost: f.gift ? "0" : f.cost, currency: f.gift ? "" : f.currency,
-          purchaseDate: f.purchaseDate, fundingProjectId: f.projectId,
+          expenseId: f.expenseId, gift: f.gift, cost: f.expenseId ? f.cost : "", purchaseDate: f.purchaseDate,
           ...(overriding && f.lifeOverride ? { usefulLifeYears: f.lifeOverride } : {}),
           holderKind: f.holderKind, holderId: f.holderId, location: f.location, locationOther: f.locationOther, condition: f.condition,
         }),
@@ -240,8 +255,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
         assetId: edit.id,
         name: g.name, brand: g.brand, model: g.model, specs: g.specs, kind: g.kind,
         serialNumber: g.serial, noSerial: g.noSerial,
-        expenseId: g.expenseId, gift: g.gift, cost: g.gift ? "0" : g.cost, currency: g.gift ? "" : g.currency,
-        purchaseDate: g.purchaseDate, fundingProjectId: g.projectId,
+        expenseId: g.expenseId, purchaseDate: g.purchaseDate,
         ...(overriding && g.lifeOverride ? { usefulLifeYears: g.lifeOverride } : {}),
         condition: g.condition,
       }),
@@ -338,6 +352,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   // other. Who has it and where it is are NOT here — custody is the movement log's, and a
   // correction never touches what happened to an item (12 Sep 2026).
   const itemFields = (form: typeof BLANK, patch: (p: Partial<typeof BLANK>) => void, idp: string, selfId = "") => {
+    const correcting = !!selfId;
     const set = (k: keyof typeof BLANK, val: string | boolean) => patch({ [k]: val } as Partial<typeof BLANK>);
     const setKind = (kind: string) => patch({ kind, lifeOverride: "" });
     const life = usefulLifeFor(form.kind);
@@ -397,51 +412,35 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 )}
               </div>
   
-              <div>
-                <label htmlFor={`${idp}-cost`} className={lbl}>{t("Cost of this item")}</label>
-                <div className="flex gap-2">
-                  <input
-                    id={`${idp}-cost`} type="number" step="0.01" min="0" required={!form.gift} disabled={form.gift}
-                    dir="ltr" value={form.gift ? "" : form.cost} onChange={e => set("cost", e.target.value)}
-                    placeholder={form.gift ? "0.00" : undefined}
-                    className={`${inp} font-mono`}
-                  />
-                  {v ? (
+              {/* Policy 020 §9 (15 Sep 2026): the desk books an item's share of a payment request, or
+                  says it was a gift. Any other value is Finance's, entered with where it comes from —
+                  and a correction never touches a value at all. */}
+              {!correcting && v && (
+                <div>
+                  <label htmlFor={`${idp}-cost`} className={lbl}>{t("Cost of this item")}</label>
+                  <div className="flex gap-2">
+                    <input id={`${idp}-cost`} type="number" step="0.01" min="0" required dir="ltr"
+                      value={form.cost} onChange={e => set("cost", e.target.value)} className={`${inp} font-mono`} />
                     <span className="self-center font-mono text-xs font-bold">{v.currency}</span>
-                  ) : (
-                    <select
-                      aria-label={t("Currency")} required={!form.gift} disabled={form.gift}
-                      value={form.currency} onChange={e => set("currency", e.target.value)}
-                      className="finance-input min-h-[44px] bg-white text-xs md:min-h-0"
-                    >
-                      <option value="">—</option>
-                      {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  )}
+                  </div>
+                  <span className="text-[10px] text-slate-500">{t("One request can buy several items — book only this one's share.")}</span>
                 </div>
-                {v && <span className="text-[10px] text-slate-500">{t("One request can buy several items — book only this one's share.")}</span>}
-                {/* A voucher already proves money changed hands, so the gift tick sits only
-                    off that path — the two claims cannot both be true of the same item. */}
-                {!v && (
-                  <label className="mt-1 flex min-h-[44px] items-center gap-2 text-[11px] text-slate-600 md:min-h-0">
+              )}
+              {!correcting && !v && (
+                <div>
+                  <label className="flex min-h-[44px] items-center gap-2 text-[11px] text-slate-600 md:min-h-0">
                     <input type="checkbox" checked={form.gift} onChange={e => set("gift", e.target.checked)} className="h-4 w-4" />
                     {t("Received as a gift — no cost to record")}
                   </label>
-                )}
-              </div>
-              {!v && (<>
+                  {!form.gift && <p className="text-[10px] text-slate-500">{t("No value yet — Finance enters it on the register, with where it comes from.")}</p>}
+                </div>
+              )}
+              {!v && (
                 <div>
                   <label htmlFor={`${idp}-date`} className={lbl}>{t("Bought on")}</label>
                   <input id={`${idp}-date`} type="date" required value={form.purchaseDate} onChange={e => set("purchaseDate", e.target.value)} className={inp} />
                 </div>
-                <div>
-                  <label htmlFor={`${idp}-project`} className={lbl}>{t("Funded by project")}</label>
-                  <select id={`${idp}-project`} value={form.projectId} onChange={e => set("projectId", e.target.value)} className={`${inp} bg-white`}>
-                    <option value="">{t("— none —")}</option>
-                    {state.projects.map(p => <option key={p.id} value={p.id}>{p.code}</option>)}
-                  </select>
-                </div>
-              </>)}
+              )}
               <div>
                 <label htmlFor={`${idp}-kind`} className={lbl}>{t("What kind of equipment")}</label>
                 <select id={`${idp}-kind`} value={form.kind} onChange={e => setKind(e.target.value)} className={`${inp} bg-white`}>
@@ -826,33 +825,51 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 <p className="text-[11px] text-slate-600">
                   <Receipt className="inline h-3.5 w-3.5" /> {v ? (<>
                     <span dir="ltr" className="font-mono">{v.voucherNo}</span> · {supplierOf(v.vendorId)} · <span dir="ltr">{a.purchaseDate}</span>
-                    {projectOf(a.fundingProjectId) ? ` · ${projectOf(a.fundingProjectId)}` : ""}
                   </>) : t("Bought on a payment request on file")}
                 </p>
               )}
-
-              {a.cost > 0 ? (
-                <div className="grid grid-cols-3 gap-2 border-t border-slate-100 pt-2 font-mono text-[11px]">
-                  <div>
-                    <span className="block text-[9px] text-slate-400">{t("COST")}</span>
-                    <span dir="ltr" className="font-bold text-slate-800">{money(a.cost, a.currency)}</span>
-                  </div>
-                  <div>
-                    <span className="block text-[9px] text-slate-400">{t("ACCUM DEP")}</span>
-                    <span dir="ltr" className="font-bold text-slate-800">-{money(a.accumulatedDepreciation, a.currency)}</span>
-                  </div>
-                  <div>
-                    <span className="block text-[9px] text-slate-400">{t("BOOK VALUE")}</span>
-                    <span dir="ltr" className="font-bold text-red-650">{money(a.currentBookValue, a.currency)}</span>
-                  </div>
-                </div>
-              ) : (
-                // Zero cost never came from a purchase — it is only ever a gift, so it is
-                // said as one, not shown as three columns of "0.00" with no currency.
-                <p className="border-t border-slate-100 pt-2 text-[11px] font-semibold text-slate-500">
-                  <Gift className="inline h-3.5 w-3.5" /> {t("Gift — no cost recorded")}
+              {/* The grant is read from the payment request on the server, never typed on the item. */}
+              {a.grant?.projectCode && (
+                <p className="text-[11px] text-slate-600">
+                  {t("Bought on the grant")}: <span dir="ltr" className="font-mono">{a.grant.projectCode}</span>
+                  {a.grant.donorName ? ` · ${a.grant.donorName}` : ""}{a.grant.budgetLine ? ` · ${a.grant.budgetLine}` : ""}
                 </p>
               )}
+
+              {/* How the item is accounted for (Policy 020 §9): computed on the server from its value,
+                  its basis and the USD figure fixed when it was valued. */}
+              {(() => {
+                const acc = a.accounting || { state: "unvalued" };
+                const basisLabel: Record<string, string> = { voucher: "from the payment request", receipt: "from a receipt", estimate: "a documented estimate", gift: "a gift" };
+                if (acc.state === "unvalued") return (
+                  <p className="border-t border-slate-100 pt-2 text-[11px] font-semibold text-amber-800">{t("No value yet — waiting for the financial consultant's opening value")}</p>
+                );
+                if (acc.state === "gift") return (
+                  <p className="border-t border-slate-100 pt-2 text-[11px] font-semibold text-slate-500"><Gift className="inline h-3.5 w-3.5" /> {t("Gift — no cost")}</p>
+                );
+                if (acc.state === "expensed") return (
+                  <p className="border-t border-slate-100 pt-2 text-[11px] text-slate-600">
+                    <span dir="ltr" className="font-mono font-bold">{money(a.cost, a.currency)}</span> · {t(basisLabel[a.costBasis] || "")} · <b>{t("Expensed")}</b> — {t("under USD")} <span dir="ltr">{CAPITALISE_FROM_USD}</span>, {t("no book value")}
+                  </p>
+                );
+                return (
+                  <div className="grid grid-cols-3 gap-2 border-t border-slate-100 pt-2 font-mono text-[11px]">
+                    <div>
+                      <span className="block text-[9px] text-slate-400">{t("COST")}</span>
+                      <span dir="ltr" className="font-bold text-slate-800">{money(a.cost, a.currency)}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[9px] text-slate-400">{t("ACCUM DEP")}</span>
+                      <span dir="ltr" className="font-bold text-slate-800">-{money(acc.accumulated || 0, a.currency)}</span>
+                    </div>
+                    <div>
+                      <span className="block text-[9px] text-slate-400">{t("BOOK VALUE")}</span>
+                      <span dir="ltr" className="font-bold text-red-650">{money(acc.bookValue ?? a.cost, a.currency)}</span>
+                    </div>
+                    <p className="col-span-3 font-sans text-[10px] text-slate-500">{t(basisLabel[a.costBasis] || "")}{acc.depreciationFrom ? <> · {t("depreciated from")} <span dir="ltr">{acc.depreciationFrom}</span></> : ""}</p>
+                  </div>
+                );
+              })()}
 
               {a.receivedAt && (
                 <p className="flex items-center gap-1 text-[11px] text-slate-600"><Package className="h-3.5 w-3.5" /> {t("Received by")} {nameOf(a.receivedBy)} · <span dir="ltr">{a.receivedAt.slice(0, 10)}</span></p>
@@ -902,6 +919,11 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                   )}
                   <button type="button" onClick={() => openPanel(a.id, "repair", { date: today })} className={btnGhost}><Wrench className="h-4 w-4" /> {t("Log a repair")}</button>
                   <button type="button" aria-expanded={edit?.id === a.id} onClick={() => startEdit(a)} className={btnGhost}><Pencil className="h-4 w-4" /> {t("Correct the details")}</button>
+                  {mayValue && !a.expenseId && (
+                    <button type="button" aria-expanded={valuing?.id === a.id}
+                      onClick={() => setValuing(valuing?.id === a.id ? null : { id: a.id, basis: a.costBasis === "voucher" ? "" : (a.costBasis || ""), cost: a.cost ? String(a.cost) : "", currency: a.currency || "USD", rate: a.costRate && a.currency !== "USD" ? String(a.costRate) : "", docId: a.costBasisDocId || "", note: a.costBasisNote || "" })}
+                      className={btnGhost}><Receipt className="h-4 w-4" /> {t("Value")}</button>
+                  )}
                   {/* Removing is offered only for a mistake nobody has vouched for. Once an
                       item is confirmed, out, or repaired, the button is GONE rather than
                       greyed — a disabled Delete invites somebody to go looking for the way
@@ -1152,6 +1174,63 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                   </div>
                 );
               })()}
+
+              {valuing?.id === a.id && (
+                <form onSubmit={handleValue} className="space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3">
+                  <h5 className="text-xs font-bold text-sky-900"><Receipt className="inline h-3.5 w-3.5" /> {t("Value this item — Policy 020 §9")}</h5>
+                  <p className="text-[11px] text-sky-900">{t("Only with where the figure comes from. Every change is recorded with what it was and what it became; the physical confirmation is not affected.")}</p>
+                  <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
+                    <div className="md:col-span-4">
+                      <label htmlFor={`val-basis-${a.id}`} className={lbl}>{t("Where the value comes from")}</label>
+                      <select id={`val-basis-${a.id}`} required value={valuing.basis} onChange={e => setValuing({ ...valuing, basis: e.target.value })} className={`${inp} bg-white`}>
+                        <option value="">{t("— choose —")}</option>
+                        <option value="receipt">{t("A receipt or invoice in the vault")}</option>
+                        <option value="estimate">{t("A documented estimate")}</option>
+                        <option value="gift">{t("A genuine gift — 0")}</option>
+                      </select>
+                    </div>
+                    {valuing.basis && valuing.basis !== "gift" && (<>
+                      <div>
+                        <label htmlFor={`val-cost-${a.id}`} className={lbl}>{t("Value")}</label>
+                        <input id={`val-cost-${a.id}`} type="number" step="0.01" min="0" required dir="ltr" value={valuing.cost} onChange={e => setValuing({ ...valuing, cost: e.target.value })} className={`${inp} font-mono`} />
+                      </div>
+                      <div>
+                        <label htmlFor={`val-ccy-${a.id}`} className={lbl}>{t("Currency")}</label>
+                        <select id={`val-ccy-${a.id}`} value={valuing.currency} onChange={e => setValuing({ ...valuing, currency: e.target.value })} className={`${inp} bg-white`}>
+                          {CURRENCIES.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      {valuing.currency !== "USD" && (
+                        <div>
+                          <label htmlFor={`val-rate-${a.id}`} className={lbl}>{t("Rate to USD, fixed now")}</label>
+                          <input id={`val-rate-${a.id}`} type="number" step="any" min="0" required dir="ltr" value={valuing.rate} onChange={e => setValuing({ ...valuing, rate: e.target.value })} className={`${inp} font-mono`} />
+                        </div>
+                      )}
+                    </>)}
+                    {valuing.basis === "receipt" && (
+                      <div className="md:col-span-4">
+                        <label htmlFor={`val-doc-${a.id}`} className={lbl}>{t("The receipt or invoice")}</label>
+                        <select id={`val-doc-${a.id}`} required value={valuing.docId} onChange={e => setValuing({ ...valuing, docId: e.target.value })} className={`${inp} bg-white`}>
+                          <option value="">{t("— choose —")}</option>
+                          {(state.documents || []).filter(d => /receipt|invoice/i.test(d.category || "") && !/^Missing-Receipt Declaration/i.test(d.category || "")).map(d => (
+                            <option key={d.id} value={d.id}>{d.refNo || d.id} · {d.category} · {d.filename}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {(valuing.basis === "estimate" || (a.costBasis === "receipt" && valuing.basis !== "receipt")) && (
+                      <div className="md:col-span-4">
+                        <label htmlFor={`val-note-${a.id}`} className={lbl}>{t("How the estimate was reached")}</label>
+                        <textarea id={`val-note-${a.id}`} rows={2} required value={valuing.note} onChange={e => setValuing({ ...valuing, note: e.target.value })} className="finance-input w-full text-xs" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="submit" className={btn}><Receipt className="h-4 w-4" /> {t("Record the value")}</button>
+                    <button type="button" onClick={() => setValuing(null)} className={btnGhost}>{t("Cancel")}</button>
+                  </div>
+                </form>
+              )}
 
               {/* A correction describes the item. What happened to it — the sticker, the delivery,
                   the confirmation, the log — is shown here as read-only, with the reason. */}

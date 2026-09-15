@@ -49,8 +49,7 @@ export function resolveLocation(location: unknown, other: unknown): { ok: boolea
 /**
  * What kind of thing this is, and how many years it depreciates over — Finance's policy,
  * not a guess made at the receiving desk. One place, so a number changes once and every
- * item that reads it agrees. Proposed 12 Sep 2026, pending Marwan's confirmation of the
- * years; the kinds themselves are not in question.
+ * item that reads it agrees. Policy 017 §9 states these same lives (12 Sep 2026).
  *
  * "other" is the fallback for anything that does not fit, and it is also what an unknown
  * or missing kind resolves to — a save is never blocked for want of a category.
@@ -72,6 +71,65 @@ export const USEFUL_LIFE_BY_KIND: Record<EquipmentKind, number> = {
   furniture: 7,
   other: 5,
 };
+
+/**
+ * Policy 020 §9 (edition 2, 15 Sep 2026): an item costing USD 500 or more and lasting more than a
+ * year is capitalised and depreciated straight-line over the lives above; anything cheaper is
+ * expensed when bought — and registered all the same. The threshold decides how an item is
+ * ACCOUNTED for, never whether it is looked after.
+ */
+export const CAPITALISE_FROM_USD = 500;
+/** Depreciation starts on the first day of the month AFTER the purchase (Home & desk, 15 Sep 2026 —
+ *  the rule the superseded 020 §9.4 stated; to be written into §9 at the next handbook edit). */
+export const DEPRECIATION_STARTS_MONTHS_AFTER_PURCHASE = 1;
+
+/**
+ * Where a cost came from. Only Finance enters a cost without a payment request behind it, and
+ * never without saying which of these it is (Policy 020 §9: the consultant's opening values).
+ *   ""        not valued yet — NOT a gift, and never shown as one
+ *   voucher   the payment request it was bought on
+ *   receipt   a receipt or invoice in the vault (costBasisDocId)
+ *   estimate  a documented estimate (costBasisNote says how it was reached)
+ *   gift      a genuine gift — 0
+ */
+export const COST_BASES = ["voucher", "receipt", "estimate", "gift"] as const;
+export type CostBasis = typeof COST_BASES[number] | "";
+
+/** Finance's valuation, checked before anything is written. */
+export function valuationBlocker(v: {
+  basis: string; cost: number; currency: string; rate: number; docFound: boolean; note: string;
+  previousBasis?: string; hasVoucher?: boolean;
+}): string {
+  if (v.hasVoucher) return "This item was bought on a payment request — its cost is the request's, corrected there.";
+  if (!["receipt", "estimate", "gift"].includes(v.basis)) return "Say where the value comes from: a receipt, a documented estimate, or a genuine gift.";
+  if (v.basis === "gift") return v.cost === 0 ? "" : "A gift is recorded at 0.";
+  if (!(v.cost > 0)) return "Give the value — more than zero. A gift is recorded as a gift.";
+  if (!["USD", "EUR", "LBP"].includes(v.currency)) return "Choose the currency of the value.";
+  if (!(v.rate > 0)) return "The rate to USD must be more than zero.";
+  if (v.basis === "receipt" && !v.docFound) return "Choose the receipt or invoice in the vault that this value is read from.";
+  if (v.basis === "estimate" && !v.note.trim()) return "An estimate needs a note saying how it was reached.";
+  if (v.previousBasis === "receipt" && v.basis === "estimate" && !v.note.trim()) return "Replacing a receipt with an estimate needs a note saying why.";
+  return "";
+}
+
+/** How the register accounts for an item on a given day — computed, never stored. */
+export function assetAccounting(a: {
+  cost: number; currency?: string; costUSD?: number | null; costBasis?: string | null;
+  purchaseDate?: string | null; usefulLifeYears: number;
+}, today: string): { state: "unvalued" | "gift" | "expensed" | "capitalised"; depreciationFrom?: string; accumulated?: number; bookValue?: number } {
+  const basis = String(a.costBasis || "");
+  if (!basis) return { state: "unvalued" };
+  if (basis === "gift" || !(a.cost > 0)) return { state: "gift" };
+  if (Number(a.costUSD || 0) < CAPITALISE_FROM_USD || a.usefulLifeYears <= 1) return { state: "expensed" };
+  const m = /^(\d{4})-(\d{2})/.exec(String(a.purchaseDate || ""));
+  if (!m) return { state: "capitalised", accumulated: 0, bookValue: a.cost };
+  const startIdx = Number(m[1]) * 12 + (Number(m[2]) - 1) + DEPRECIATION_STARTS_MONTHS_AFTER_PURCHASE;
+  const depreciationFrom = `${Math.floor(startIdx / 12)}-${String(startIdx % 12 + 1).padStart(2, "0")}-01`;
+  const t = /^(\d{4})-(\d{2})/.exec(today)!;
+  const months = Math.max(0, Math.min(a.usefulLifeYears * 12, Number(t[1]) * 12 + (Number(t[2]) - 1) - startIdx + 1));
+  const accumulated = Math.round(a.cost * months / (a.usefulLifeYears * 12) * 100) / 100;
+  return { state: "capitalised", depreciationFrom, accumulated, bookValue: Math.round((a.cost - accumulated) * 100) / 100 };
+}
 
 /** A kind the form or the scan actually offered, or the fallback — never blank, never invented. */
 export function normalizeKind(k: string | null | undefined): EquipmentKind {
@@ -221,10 +279,7 @@ export const EDITABLE_FIELDS: { field: string; label: string }[] = [
   { field: "kind", label: "What kind of equipment" },
   { field: "serialNumber", label: "Serial number" },
   { field: "condition", label: "Condition" },
-  { field: "cost", label: "Cost" },
-  { field: "currency", label: "Currency" },
   { field: "purchaseDate", label: "Bought on" },
-  { field: "fundingProjectId", label: "Funded by project" },
   { field: "expenseId", label: "Bought on payment request" },
   { field: "usefulLifeYears", label: "Useful Life (Years)" },
 ];

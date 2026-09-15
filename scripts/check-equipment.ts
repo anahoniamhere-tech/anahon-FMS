@@ -16,7 +16,7 @@ import { NO_SERIAL, nextEquipmentTag, parseTag, sameSerial, equipmentStatus, may
   HOLDER_KINDS, EQUIPMENT_LOCATIONS, OTHER_LOCATION, resolveLocation, currentMovement,
   EDITABLE_FIELDS, LOCKED_FIELDS, VERIFIED_FIELDS, equipmentChanges, verificationLapses,
   deleteBlocker, endBlocker, endIsEffective, isDisposal, endKindOf, END_KINDS, mayEndEquipment,
-  confirmDisposalBlocker, disposalSides } from "../src/equipment.js";
+  confirmDisposalBlocker, disposalSides, CAPITALISE_FROM_USD, DEPRECIATION_STARTS_MONTHS_AFTER_PURCHASE, assetAccounting, valuationBlocker } from "../src/equipment.js";
 import { RULES, deskItems } from "../src/workflow.js";
 import { ROUTE_SEATS } from "../src/gates.js";
 import { EQUIPMENT_VERIFIERS, SUPPLIER_EDITORS, PLO, AUDITOR, FINANCE } from "../src/roles.js";
@@ -35,7 +35,7 @@ const scan = between('app.post("/api/assets/scan-label"', 'app.post("/api/assets
 // rules than the first entry. The register's own slice is the helper plus the route.
 const fields = between("async function validateEquipmentFields", 'app.post("/api/assets/register"');
 const reg = fields + between('app.post("/api/assets/register"', 'app.post("/api/assets/update"');
-const edit = between('app.post("/api/assets/update"', 'app.post("/api/assets/verify"');
+const edit = between('app.post("/api/assets/update"', 'app.post("/api/assets/value"');
 const ver = between('app.post("/api/assets/verify"', 'app.post("/api/assets/checkout"');
 const out = between('app.post("/api/assets/checkout"', 'app.post("/api/assets/checkin"');
 const back = between('app.post("/api/assets/checkin"', 'app.post("/api/assets/move"');
@@ -78,7 +78,7 @@ console.log("\nC. the rest comes from the form or the voucher, not from a defaul
 ok("condition is the person's, from the four the register knows", !/condition: "Excellent"/.test(reg) && /CONDITIONS as readonly string\[\]\)\.includes\(b\.condition\)/.test(reg));
 ok("currency is never assumed to be USD", !/currency: "USD"/.test(reg));
 ok("on a voucher: its currency, date and project, not retyped",
-  /currency = exp\.currency;/.test(reg) && /fundingProjectId = exp\.projectId;/.test(reg) && /exp\.paid_at \|\| exp\.approved_at \|\| exp\.created_at/.test(reg));
+  /currency = existing && existing\.expenseId === exp\.id \? existing\.currency : exp\.currency;/.test(reg) && /fundingProjectId = exp\.projectId;/.test(reg) && /exp\.paid_at \|\| exp\.approved_at \|\| exp\.created_at/.test(reg));
 ok("only a request whose money is committed", /\["Approved", "Paid", "Posted"\]\.includes\(exp\.status\)/.test(reg));
 ok("and never more than is left of it once other items on it are counted", /if \(cost > left \+ 0\.005\)/.test(reg));
 ok("the browser offers the same three statuses the route accepts", /const BOOKABLE = \["Approved", "Paid", "Posted"\];/.test(tab));
@@ -354,24 +354,59 @@ ok("every kind label used on the screen has Arabic", kindLabelHits.every(k => i1
 // The blanket check ("every t(...) on the screen") already runs in section O, after
 // this file is read — nothing kind-specific to add beyond the labels above.
 
-console.log("\nV. a gift has no cost, and a voucher already proves it wasn't one — 12 Sep 2026");
+console.log("\nV. a gift has no cost, a voucher proves it wasn't one — and since 15 Sep any other value is Finance's");
 ok("a gift is only ever off a voucher — the two claims cannot both be true",
-  /const gift = b\.gift === true && !b\.expenseId;/.test(reg));
+  /const gift = existing \? existing\.costBasis === "gift" : \(b\.gift === true && !b\.expenseId\);/.test(reg));
 ok("claiming both is refused outright, not silently resolved one way",
-  /if \(b\.gift === true && b\.expenseId\) return bad\("A voucher paid for this/.test(reg));
-ok("a gift costs exactly 0 — never asked, never invented", /const cost = gift \? 0 : Number\(b\.cost\);/.test(reg));
-ok("a real item off a voucher still needs a real cost", /if \(!gift && !\(cost > 0\)\)/.test(reg));
-ok("a gift has no currency to choose", /currency = gift \? "" : String\(b\.currency \|\| ""\);/.test(reg));
-ok("the audit line says \"a gift\", never a false \"0.00 \" figure",
-  /\$\{gift \? "a gift" : `\$\{cost\.toFixed\(2\)\}\$\{"[^"]*"\}\$\{currency\}`\}/.test(reg.replace(/ /g, "")) || /gift \? "a gift" : `\$\{cost\.toFixed\(2\)\} \$\{currency\}`/.test(reg));
-ok("the toggle sits only where a voucher is not chosen — a voucher is proof it wasn't free",
-  /\{!v && \(\s*<label className="mt-1 flex min-h-\[44px\]/.test(tab));
-ok("ticking it clears cost and currency from the body, rather than sending an invented 0/blank the route then has to trust",
-  /cost: f\.gift \? "0" : f\.cost, currency: f\.gift \? "" : f\.currency/.test(tab));
-ok("the inputs are disabled while ticked, so nothing typed there can leak through",
-  /required=\{!form\.gift\} disabled=\{form\.gift\}/.test(tab) && (tab.match(/disabled=\{form\.gift\}/g) || []).length >= 2);
-ok("the card says \"Gift\" rather than three columns of \"0.00\" with no currency",
-  /a\.cost > 0 \? \(/.test(tab) && tab.includes('<Gift className="inline h-3.5 w-3.5" /> {t("Gift — no cost recorded")}'));
+  /if \(!existing && b\.gift === true && b\.expenseId\) return bad\("A voucher paid for this/.test(reg));
+ok("a gift costs exactly 0; off a voucher and not a gift, the desk records NO value",
+  /const cost = existing \? Number\(existing\.cost\) \|\| 0 : gift \? 0 : b\.expenseId \? Number\(b\.cost\) : 0;/.test(reg));
+ok("an item's share of a voucher still needs a real cost", /if \(!existing && b\.expenseId && !\(cost > 0\)\)/.test(reg));
+ok("a typed value with no voucher is refused — it is Finance's, with its basis",
+  /if \(!existing && !b\.expenseId && !gift && Number\(b\.cost\) > 0\)/.test(reg));
+ok("a correction keeps the value it has — cost and currency are never written by /update",
+  !/cost: v\.cost|currency: v\.currency|fundingProjectId: v\.fundingProjectId|currentBookValue/.test(edit));
+ok("the grant is never typed: off a voucher the project is blank", /fundingProjectId = "";/.test(reg) && !/b\.fundingProjectId/.test(reg));
+ok("cost, currency and project are gone from what a correction may touch",
+  !EDITABLE_FIELDS.some(f => ["cost", "currency", "fundingProjectId"].includes(f.field)));
+ok("register fixes the USD value at the request's own rate, basis voucher; a gift says gift",
+  /costBasis: "voucher", costRate: chk\.v\.voucherRate, costUSD:/.test(reg) && /costBasis: "gift"/.test(reg));
+ok("the audit line says \"a gift\" or \"no value yet\", never a false \"0.00\"",
+  /gift \? "a gift" : chk\.v\.expenseId \? `\$\{cost\.toFixed\(2\)\} \$\{currency\}` : "no value yet \(Finance values it\)"/.test(reg));
+ok("the desk's cost box exists only against a voucher, and never on a correction", /\{!correcting && v && \(/.test(tab) && /\{!correcting && !v && \(/.test(tab));
+ok("the card reads the server's accounting, and says \"No value yet\" — never \"Gift\" for an unvalued item",
+  /a\.accounting \|\| \{ state: "unvalued" \}/.test(tab) && !/a\.cost > 0 \? \(/.test(tab));
+
+console.log("\nV2. Policy 020 §9 — capitalise from USD 500, straight-line from the month after purchase");
+ok("one constant, 500", CAPITALISE_FROM_USD === 500 && DEPRECIATION_STARTS_MONTHS_AFTER_PURCHASE === 1);
+const acc = (x: any, day = "2026-09-15") => assetAccounting({ usefulLifeYears: 5, purchaseDate: "2026-01-20", currency: "USD", ...x }, day);
+ok("no basis is unvalued, whatever the cost column says", acc({ cost: 0, costBasis: "" }).state === "unvalued" && acc({ cost: 900, costBasis: "" }).state === "unvalued");
+ok("a gift is a gift", acc({ cost: 0, costBasis: "gift" }).state === "gift");
+ok("USD 499.99 is expensed, with no book value", acc({ cost: 499.99, costUSD: 499.99, costBasis: "receipt" }).state === "expensed" && acc({ cost: 499.99, costUSD: 499.99, costBasis: "receipt" }).bookValue === undefined);
+ok("USD 500 is capitalised", acc({ cost: 500, costUSD: 500, costBasis: "receipt" }).state === "capitalised");
+ok("the line is the USD value fixed at valuation, not the native figure", acc({ cost: 480, currency: "EUR", costUSD: 547, costBasis: "estimate" }).state === "capitalised");
+const c1 = acc({ cost: 6000, costUSD: 6000, costBasis: "voucher" });
+ok("January purchase depreciates from 1 February", c1.depreciationFrom === "2026-02-01");
+ok("by September: 8 months of 60 → 800 off 6,000", c1.accumulated === 800 && c1.bookValue === 5200);
+ok("never below zero after the life ends", acc({ cost: 6000, costUSD: 6000, costBasis: "voucher" }, "2040-01-01").bookValue === 0);
+ok("nothing in the month it was bought", acc({ cost: 6000, costUSD: 6000, costBasis: "voucher" }, "2026-01-31").accumulated === 0);
+
+console.log("\nV3. Finance's value, with its basis (Policy 020 §9)");
+const vb = (x: any) => valuationBlocker({ basis: "receipt", cost: 700, currency: "USD", rate: 1, docFound: true, note: "", ...x });
+ok("a receipt with its document passes", vb({}) === "");
+ok("a receipt with no document is refused", /Choose the receipt/.test(vb({ docFound: false })));
+ok("an estimate needs its note", /needs a note/.test(vb({ basis: "estimate" })) && vb({ basis: "estimate", note: "Market price of the same model, Sep 2026" }) === "");
+ok("a gift is 0", vb({ basis: "gift", cost: 0 }) === "" && /at 0/.test(vb({ basis: "gift", cost: 5 })));
+ok("an estimate may be replaced by a receipt", vb({ previousBasis: "estimate" }) === "");
+ok("a receipt replaced by an estimate needs a note", /needs a note/.test(vb({ basis: "estimate", previousBasis: "receipt" })));
+ok("an item bought on a payment request is valued there, not here", /payment request/.test(vb({ hasVoucher: true })));
+ok("no basis, no value", /Say where the value comes from/.test(vb({ basis: "" })));
+const valueRoute = between('app.post("/api/assets/value"', 'app.post("/api/declarations/prepare"');
+ok("the value route is read (not a truncated slice)", valueRoute.length > 1500);
+ok("the value route is Finance's seat", /"\/api\/assets\/value": FINANCE/.test(read("src/gates.ts")));
+ok("every changed field is audited old → new", /\$\{labels\[k\]\}: \$\{String\(\(asset as any\)\[k\] \?\? ""\) \|\| "\(blank\)"\} → /.test(valueRoute) && /"Equipment Valued"/.test(valueRoute));
+ok("a valuation never touches what a confirmation was about", !VERIFIED_FIELDS.some(f => new RegExp(`\\b${f}:`).test(valueRoute.slice(valueRoute.indexOf("const after")))) && !/verifiedAt/.test(valueRoute));
+
 ok("FixedAsset.currency admits the one honest case with no sum to name", /currency: "USD" \| "EUR" \| "LBP" \| "";/.test(types));
 
 console.log("\nW. \"Currently with / in\" is a derived field over the movement log — 12 Sep 2026");
@@ -468,7 +503,7 @@ ok("the only place verifiedAt is written here is to CLEAR it — never to set on
 ok("the item must exist before anything is read off the request", /if \(!asset\) return res\.status\(404\)/.test(edit));
 
 console.log("\nFF. exactly the rules the first entry was held to — one validator, not a second looser copy");
-ok("register and correction call the same function", /validateEquipmentFields\(b, user, ""\)/.test(reg) && /validateEquipmentFields\(b, user, asset\.id\)/.test(edit));
+ok("register and correction call the same function", /validateEquipmentFields\(b, user, ""\)/.test(reg) && /validateEquipmentFields\(b, user, asset\.id, asset\)/.test(edit));
 ok("the serial twin check, the no-serial rule, the approved-voucher rule and its cap all live in it",
   /const twin = onFile\.find/.test(fields) && /blankIfPlaceholder\(b\.serialNumber\)/.test(fields)
   && /\["Approved", "Paid", "Posted"\]\.includes\(exp\.status\)/.test(fields) && /if \(cost > left \+ 0\.005\)/.test(fields));

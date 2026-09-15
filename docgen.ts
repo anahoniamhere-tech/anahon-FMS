@@ -730,6 +730,57 @@ the Arabic prevails.</p>
 القراءتان العربية والإنكليزية في ما دُفع؛ وعند اختلاف الصياغة في المعنى يُعمل بالنص العربي.</p>`);
 }
 
+/**
+ * Missing-receipt declaration — Policy 020 §6.6 (15 Sep 2026). Filed in place of a lost receipt
+ * only once the person paid has signed it and the Executive Director has approved it.
+ *
+ * The same rules as the contract and payslip: Arabic text first, then English; every figure and
+ * date printed ONCE, in the particulars, read from the voucher and never retyped; the Arabic
+ * text governs. The title says DECLARATION in both languages so it can never pass for a receipt.
+ */
+export function declarationHtml(o: {
+  voucherNo: string; payeeName: string; paymentDate: string; amount: number; currency: string;
+  paidFor: string; projectCode: string; projectName: string; madeOn: string; preparedBy: string;
+}) {
+  const prow = (ar: string, en: string, v: string, cls = "") =>
+    `<tr><th scope="row">${esc(en)}<span class="alt">${esc(ar)}</span></th><td${cls ? ` class="${cls}"` : ""}>${v}</td></tr>`;
+  return page(`Missing-receipt declaration ${o.voucherNo} · إقرار بفقدان إيصال`, `
+<h1>MISSING-RECEIPT DECLARATION — NOT A RECEIPT<span dir="rtl" lang="ar" style="display:block;font-size:14px;letter-spacing:0;margin-top:4px">إقرار بفقدان إيصال — ليس إيصالاً</span></h1>
+<h2>Policy 020 §6.6 · ${esc(o.voucherNo)}</h2>
+<table>
+  <caption>Particulars <span dir="rtl" lang="ar">· البيانات</span></caption>
+  <tbody>
+  ${prow("المستفيد (الجهة التي قبضت)", "Paid to", `<strong>${esc(o.payeeName)}</strong>`)}
+  ${prow("تاريخ الدفع", "Date of payment", `${esc(longDate(o.paymentDate))}<span dir="rtl" lang="ar" style="display:block">${esc(longDateAr(o.paymentDate))}</span>`)}
+  ${prow("المبلغ", "Amount", ltr(money(o.amount, o.currency)), "amt")}
+  ${prow("لقاء", "Paid for", esc(o.paidFor))}
+  ${prow("المشروع", "Project", `${ltr(esc(o.projectCode))} — ${esc(o.projectName)}`)}
+  ${prow("سند الصرف", "Payment voucher", ltr(esc(o.voucherNo)))}
+  ${prow("تاريخ تحرير هذا الإقرار", "This declaration made on", `${esc(longDate(o.madeOn))}<span dir="rtl" lang="ar" style="display:block">${esc(longDateAr(o.madeOn))}</span>`)}
+  </tbody>
+</table>
+<div class="lang ar" lang="ar" dir="rtl">
+<h3>النص العربي</h3>
+<p>أنا الموقّع أدناه، المستفيد المذكور في البيانات أعلاه، أُقرّ بأنني قبضت من منصة أنا هون المبلغ المذكور أعلاه، في التاريخ المذكور، لقاء ما هو مبيَّن في البيانات، وذلك ضمن المشروع المذكور.</p>
+<p>وأُقرّ بأن الإيصال الأصلي لهذه الدفعة لم يعد متوفراً، وبأنه تعذّر الحصول على نسخة معاد إصدارها منه، وبأن هذه الدفعة لم يُطالَب بها ولن يُطالَب بها مرة ثانية.</p>
+<p>حُرّر هذا الإقرار في التاريخ المذكور في البيانات، وهو تاريخ تحريره لا تاريخ الدفع. ولا يحلّ محلّ الإيصال إلا بعد توقيعي عليه وموافقة المدير التنفيذي.</p>
+</div>
+<div class="lang en" lang="en" dir="ltr">
+<h3>English text</h3>
+<p>I, the undersigned, the person paid named in the particulars above, declare that I received from AnaHon Media Platform the amount stated above, on the date stated, for what the particulars describe, under the project named.</p>
+<p>I declare that the original receipt for this payment is no longer available, that a re-issued copy could not be obtained, and that this payment has not been and will not be claimed a second time.</p>
+<p>This declaration is dated the day it was made, not the day of the payment. It stands in place of the receipt only once I have signed it and the Executive Director has approved it.</p>
+</div>
+<div class="sig">
+  <div>Person paid — ${esc(o.payeeName)}<br>Signature &amp; date<span dir="rtl" lang="ar" style="display:block">المستفيد — التوقيع والتاريخ</span></div>
+  <div>Approved — Executive Director<br>Signature &amp; date<span dir="rtl" lang="ar" style="display:block">موافقة المدير التنفيذي — التوقيع والتاريخ</span></div>
+</div>
+<p class="note">Prepared by ${esc(o.preparedBy)} from voucher ${esc(o.voucherNo)}; the figures are the voucher's and are not re-entered by hand. A donor's own rule on declarations takes precedence (Policy 020 §0.4, §6.6).
+<br><strong>This declaration is bilingual, and the Arabic text governs.</strong> Every figure appears once only, so the two texts cannot differ about what was paid; where their wording differs in meaning, the Arabic prevails.</p>
+<p class="note ar" lang="ar" dir="rtl">أعدّه ${ltr(esc(o.preparedBy))} من سند الصرف ${ltr(esc(o.voucherNo))}؛ والأرقام مأخوذة من السند وغير مُدخلة يدوياً. وتتقدّم قاعدة الجهة المانحة الخاصة بالإقرارات عند وجودها (السياسة ${ltr("020 §0.4")}، ${ltr("§6.6")}).
+<br><strong>هذا الإقرار ثنائي اللغة، والنص العربي هو الملزم.</strong> يرد كل رقم مرة واحدة فقط، فلا يمكن أن يختلف النصّان في ما دُفع؛ وعند اختلاف الصياغة في المعنى يُعمل بالنص العربي.</p>`);
+}
+
 /** Next unique document reference (ANH-DOC-NNNNN). Max-based so deletions can't
  *  cause a collision with the unique index. */
 export async function nextDocRef(prisma: any): Promise<string> {

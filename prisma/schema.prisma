@@ -345,6 +345,39 @@ model FixedAsset {
   endConfirmedBy           String?
   endConfirmedAs           String?
   endConfirmedAt           String?
+  /// Where the cost came from (src/equipment.ts COST_BASES): "" not valued yet, voucher, receipt,
+  /// estimate or gift. Only Finance values an item without a payment request (Policy 020 §9).
+  costBasis                String  @default("")
+  costBasisDocId           String  @default("")
+  costBasisNote            String  @default("")
+  /// The USD value and the rate used, fixed when the value is entered, so the USD 500
+  /// capitalisation line never flips with the exchange rate.
+  costUSD                  Float   @default(0)
+  costRate                 Float   @default(0)
+  valuedById               String  @default("")
+  valuedAt                 String  @default("")
+}
+
+/// A missing-receipt declaration (Policy 020 §6.6): the person paid signs it, the Executive Director
+/// approves it, and only then does it stand in for the receipt. Figures are read from the voucher.
+model MissingReceiptDeclaration {
+  id             String  @id
+  expenseId      String  @unique
+  payeeName      String
+  paymentDate    String
+  amount         Float
+  currency       String
+  paidFor        String
+  projectId      String
+  /// The day the declaration was made — never the payment's date (§6.8).
+  madeOn         String
+  generatedDocId String
+  signedDocId    String  @default("")
+  preparedById   String
+  preparedAt     String
+  approvedById   String  @default("")
+  approvedAs     String  @default("")
+  approvedAt     String  @default("")
 }
 
 /// A row the register removed. Kept so a sticker number is never issued twice — the series

@@ -8,7 +8,8 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
-import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
+import { evidenceOf, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATION_SIGNED } from "./src/declarations.js";
+import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { itemOpenFacts } from "./src/fillMarkers.js";
@@ -24,7 +25,7 @@ import { NAV } from "./src/nav.js";
 import { freezeSubmission, submissionBlocker } from "./src/lateCosts.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
-import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, deleteBlocker, endBlocker, endIsEffective, isDisposal, endKindOf, END_KINDS, mayEndEquipment, confirmDisposalBlocker, disposalSides, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
+import { NO_SERIAL, CONDITIONS, CURRENCIES, EQUIPMENT_KINDS, HOLDER_KINDS, normalizeKind, usefulLifeFor, mayOverrideUsefulLife, resolveLocation, nextEquipmentTag, mayVerifyEquipment, sameSerial, blankIfPlaceholder, equipmentStatus, checkOutBlocker, equipmentChanges, verificationLapses, VERIFIED_FIELDS, deleteBlocker, endBlocker, endIsEffective, isDisposal, endKindOf, END_KINDS, mayEndEquipment, confirmDisposalBlocker, disposalSides, CHECK_EVERY_MONTHS, DEFAULT_CHECK_MONTHS, stickerLink, stickerSheetHtml, assetAccounting, valuationBlocker, type HolderKind, type Movement, type Repair } from "./src/equipment.js";
 import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcurement, quotationsRequired } from "./src/procurementPolicy.js";
 import { noSupplierChoice } from "./src/spendKind.js";
 import { costAccountFor, reclassifyLegs, debitedExpenseAccounts, costPositions } from "./src/costAccount.js";
@@ -606,8 +607,20 @@ async function loadState(viewer?: any) {
   // the reminder to bring it back has to reach a Project Officer on a shoot, who has no
   // Equipment door and would otherwise be sent nothing. Only what the desk needs, no money.
   const log = (j: any) => { try { return JSON.parse(j || "[]"); } catch { return []; } };
+  // How each item is accounted for today (Policy 020 §9) and the grant it was bought on — read
+  // from its payment request, never typed on the item (15 Sep 2026).
+  const assetDay = localDate();
+  const grantOf = (expenseId: string) => {
+    const e = expenseId ? expenses.find((x: any) => x.id === expenseId) : null;
+    if (!e) return null;
+    const p = projects.find((x: any) => x.id === e.projectId);
+    const bl = budgetLines.find((x: any) => x.id === e.budgetLineId);
+    return { voucherNo: e.voucherNo, projectCode: p?.code || "", projectName: p?.name || "",
+      donorName: donors.find((d: any) => d.id === p?.donorId)?.name || "", budgetLine: bl ? `${bl.code} · ${bl.description}` : "" };
+  };
   const fixedAssets = rawAssets.map(({ movementsJson, repairsJson, ...a }: any) =>
-    ({ ...a, status: equipmentStatus(a), movements: log(movementsJson), repairs: log(repairsJson) }));
+    ({ ...a, status: equipmentStatus(a), movements: log(movementsJson), repairs: log(repairsJson),
+      accounting: assetAccounting(a, assetDay), grant: grantOf(a.expenseId) }));
   const heldByViewer = viewer ? fixedAssets.filter((a: any) => a.holderId === viewer.id).map((a: any) =>
     ({ id: a.id, tag: a.tag, name: a.name, status: a.status, holderId: a.holderId, heldFor: a.heldFor, outAt: a.outAt, dueBack: a.dueBack })) : [];
 
@@ -634,6 +647,18 @@ async function loadState(viewer?: any) {
     for (const leg of JSON.parse(j.itemsJson || "[]")) list.push(leg);
     legsByVoucher.set(j.referenceNo, list);
   }
+  // Where each payment's evidence stands (Policy 020 §6.6) — one rule, here, for every seat. A
+  // missing-receipt declaration counts only once signed by the person paid AND approved.
+  const declarations = await prisma.missingReceiptDeclaration.findMany();
+  const expenseDocs = new Map<string, any[]>();
+  for (const d of documents) if (d.linkedRecordType === "Expense") expenseDocs.set(d.linkedRecordId, [...(expenseDocs.get(d.linkedRecordId) || []), d]);
+  const declarationFor = (e: any) => {
+    const d = declarations.find(x => x.expenseId === e.id);
+    if (!d) return null;
+    const signed = d.signedDocId || (expenseDocs.get(e.id) || []).filter(x => x.category === DECLARATION_SIGNED).map(x => x.id).pop() || "";
+    return { id: d.id, generatedDocId: d.generatedDocId, signedDocId: signed, preparedById: d.preparedById, preparedAt: d.preparedAt,
+      approvedById: d.approvedById, approvedAs: d.approvedAs, approvedAt: d.approvedAt, madeOn: d.madeOn };
+  };
   const formattedExpenses = expenses.map(e => {
     const posted = debitedExpenseAccounts(legsByVoucher.get(e.voucherNo) || []).filter(c => expenseAccountCodes.has(c));
     const codes = posted.length
@@ -644,7 +669,9 @@ async function loadState(viewer?: any) {
       comments: JSON.parse(e.commentsJson || "[]"),
       allocations: JSON.parse(e.allocationsJson || "[]"),
       /** Why this cost never involved choosing a supplier, or "" when it did. */
-      noSupplierChoice: noSupplierChoice(codes)
+      noSupplierChoice: noSupplierChoice(codes),
+      declaration: declarationFor(e),
+      evidence: evidenceOf(expenseDocs.get(e.id) || [], declarationFor(e))
     };
   });
 
@@ -9455,7 +9482,7 @@ async function holderDisplayName(holderKind: string, holderId: string): Promise<
 // is not a duplicate of itself, and its own cost is not something already booked elsewhere.
 // Flat result, never a union: this project does not run strictNullChecks, so a discriminated
 // union would not narrow and the caller would be reading fields TypeScript thinks are absent.
-async function validateEquipmentFields(b: any, user: any, selfId: string): Promise<{ error: string; status: number; v: any }> {
+async function validateEquipmentFields(b: any, user: any, selfId: string, existing: any = null): Promise<{ error: string; status: number; v: any }> {
   const bad = (error: string, status = 400) => ({ error, status, v: null });
 
   const name = String(b.name || "").trim();
@@ -9485,10 +9512,18 @@ async function validateEquipmentFields(b: any, user: any, selfId: string): Promi
   // A gift has no cost, and no voucher — a voucher is proof money changed hands, so the
   // two claims cannot both be true of the same item. Nothing is invented either way: a
   // real purchase must give a real number, a gift is recorded as exactly what it is, 0.
-  const gift = b.gift === true && !b.expenseId;
-  if (b.gift === true && b.expenseId) return bad("A voucher paid for this — it was not a gift.");
-  const cost = gift ? 0 : Number(b.cost);
-  if (!gift && !(cost > 0)) return bad("Give the cost of this item.");
+  //
+  // Since 15 Sep 2026 (Policy 020 §9) a cost without a payment request behind it is entered only
+  // by Finance, with its basis, through /api/assets/value. The desk books an item's share of a
+  // request, or ticks a gift; otherwise the item is registered with no value yet. A correction
+  // never touches the value at all — it keeps what the item has.
+  const gift = existing ? existing.costBasis === "gift" : (b.gift === true && !b.expenseId);
+  if (!existing && b.gift === true && b.expenseId) return bad("A voucher paid for this — it was not a gift.");
+  const cost = existing ? Number(existing.cost) || 0 : gift ? 0 : b.expenseId ? Number(b.cost) : 0;
+  if (!existing && b.expenseId && !(cost > 0)) return bad("Give this item's share of the payment request.");
+  if (!existing && !b.expenseId && !gift && Number(b.cost) > 0) {
+    return bad("A value without a payment request is entered by Finance with where it comes from — register the item, and Finance values it on the register.");
+  }
 
   const onFile = await prisma.fixedAsset.findMany({ select: { id: true, tag: true, serialNumber: true, cost: true, expenseId: true } });
   const twin = onFile.find(a => a.id !== selfId && sameSerial(a.serialNumber, serialNumber));
@@ -9506,21 +9541,22 @@ async function validateEquipmentFields(b: any, user: any, selfId: string): Promi
     }
     const left = exp.amount - onFile.filter(a => a.expenseId === exp.id && a.id !== selfId).reduce((s, a) => s + a.cost, 0);
     if (cost > left + 0.005) return bad(`Only ${left.toFixed(2)} ${exp.currency} of ${exp.voucherNo} is left to book as equipment.`);
-    currency = exp.currency;
+    currency = existing && existing.expenseId === exp.id ? existing.currency : exp.currency;
     purchaseDate = String(exp.paid_at || exp.approved_at || exp.created_at || "").slice(0, 10);
     fundingProjectId = exp.projectId;
+    var voucherRate = exp.rate;
     against = ` against ${exp.voucherNo}`;
   } else {
     // A gift has no currency to choose — there is no sum to name it in.
-    currency = gift ? "" : String(b.currency || "");
-    if (!gift && !(CURRENCIES as readonly string[]).includes(currency)) return bad("Choose the currency it was bought in.");
+    currency = existing ? existing.currency : "";
     purchaseDate = String(b.purchaseDate || "");
     if (!/^\d{4}-\d{2}-\d{2}$/.test(purchaseDate)) return bad("Give the date it was bought.");
-    fundingProjectId = String(b.fundingProjectId || "");
+    // The grant an item was bought on is read from its payment request, never typed (§9).
+    fundingProjectId = "";
   }
 
   return { error: "", status: 200, v: {
-    name, serialNumber, kind, usefulLifeYears, gift, cost, currency, purchaseDate, fundingProjectId, against,
+    name, serialNumber, kind, usefulLifeYears, gift, cost, currency, purchaseDate, fundingProjectId, against, voucherRate: typeof voucherRate === "number" ? voucherRate : 0,
     condition: String(b.condition), expenseId: String(b.expenseId || ""),
     brand: String(b.brand || "").trim(), model: String(b.model || "").trim(), specs: String(b.specs || "").trim()
   } };
@@ -9575,7 +9611,10 @@ app.post("/api/assets/register", async (req, res) => {
             fundingProjectId, purchaseDate, cost, currency, usefulLifeYears,
             custodian, location, condition: b.condition,
             currentBookValue: cost, depreciationMethod: "Straight Line", accumulatedDepreciation: 0,
-            receivedAt, receivedBy: user.id, movementsJson: JSON.stringify([firstMovement])
+            receivedAt, receivedBy: user.id, movementsJson: JSON.stringify([firstMovement]),
+            // The request's own rate fixes the USD value once, so the §9 line never moves with FX.
+            ...(chk.v.expenseId ? { costBasis: "voucher", costRate: chk.v.voucherRate, costUSD: Math.round(cost * chk.v.voucherRate * 100) / 100, valuedById: user.id, valuedAt: receivedAt }
+              : gift ? { costBasis: "gift", valuedById: user.id, valuedAt: receivedAt } : {})
           }
         });
       } catch (e: any) {
@@ -9584,7 +9623,7 @@ app.post("/api/assets/register", async (req, res) => {
     }
 
     await createAuditLog(user.id, user.name, "Equipment Received",
-      `${asset.tag} "${name}" (serial ${serialNumber}), ${gift ? "a gift" : `${cost.toFixed(2)} ${currency}`}${against}, arrived ${b.condition}; kept at ${location}, held by ${custodian}.`);
+      `${asset.tag} "${name}" (serial ${serialNumber}), ${gift ? "a gift" : chk.v.expenseId ? `${cost.toFixed(2)} ${currency}` : "no value yet (Finance values it)"}${against}, arrived ${b.condition}; kept at ${location}, held by ${custodian}.`);
     res.json({ success: true, asset });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -9616,7 +9655,7 @@ app.post("/api/assets/update", async (req, res) => {
     // The same rules the first entry was held to — the serial twin check (which knows not to
     // call this item a duplicate of itself), the no-serial rule, the voucher's remaining
     // amount (which no longer counts this item's own cost against it), Finance's useful life.
-    const chk = await validateEquipmentFields(b, user, asset.id);
+    const chk = await validateEquipmentFields(b, user, asset.id, asset);
     if (chk.error) return res.status(chk.status).json({ error: chk.error });
     const v = chk.v;
 
@@ -9628,11 +9667,9 @@ app.post("/api/assets/update", async (req, res) => {
       where: { id: asset.id },
       data: {
         name: v.name, brand: v.brand, model: v.model, specs: v.specs, kind: v.kind,
-        serialNumber: v.serialNumber, condition: v.condition,
-        cost: v.cost, currency: v.currency, purchaseDate: v.purchaseDate,
-        fundingProjectId: v.fundingProjectId, expenseId: v.expenseId, usefulLifeYears: v.usefulLifeYears,
-        // A corrected cost is a corrected basis; what has already been written off stays written off.
-        currentBookValue: v.cost - asset.accumulatedDepreciation,
+        serialNumber: v.serialNumber, condition: v.condition, purchaseDate: v.purchaseDate,
+        expenseId: v.expenseId, usefulLifeYears: v.usefulLifeYears,
+        // The value is Finance's (/api/assets/value) and is never touched by a correction.
         ...(lapses ? { verifiedAt: null, verifiedBy: null, nextCheckDue: null } : {})
       }
     });
@@ -9645,6 +9682,96 @@ app.post("/api/assets/update", async (req, res) => {
       `${asset.tag || asset.name} "${asset.name}" corrected — ${said}.` +
       (lapses ? ` ${lapsed} changed, so the physical confirmation of ${String(asset.verifiedAt).slice(0, 10)} no longer describes this item: it must be confirmed again.` : ""));
     res.json({ success: true, asset: updated, verificationCleared: lapses });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Finance's value on an item (Policy 020 §9, 15 Sep 2026). The 13 items registered before this
+// carry cost 0 and no basis: the external financial consultant supplies their opening values, from
+// a receipt where one exists or a documented estimate where not. Nothing here enters a figure by
+// itself. What a physical confirmation was about is never touched, so a valuation never lapses one.
+app.post("/api/assets/value", async (req, res) => {
+  try {
+    const user = req.body.user;
+    const b = req.body;
+    const asset = await prisma.fixedAsset.findUnique({ where: { id: String(b.assetId || "") } });
+    if (!asset) return res.status(404).json({ error: "That item is not on the register." });
+    const basis = String(b.basis || "");
+    const cost = basis === "gift" ? 0 : Number(b.cost);
+    const currency = basis === "gift" ? "" : String(b.currency || "");
+    const rate = basis === "gift" ? 0 : currency === "USD" ? 1 : Number(b.rate);
+    const docId = basis === "receipt" ? String(b.docId || "") : "";
+    const doc = docId ? await prisma.appDoc.findUnique({ where: { id: docId } }) : null;
+    const note = String(b.note || "").trim();
+    const refused = valuationBlocker({ basis, cost, currency, rate, docFound: !!doc, note, previousBasis: asset.costBasis, hasVoucher: !!asset.expenseId });
+    if (refused) return res.status(400).json({ error: refused });
+    const costUSD = Math.round(cost * rate * 100) / 100;
+    const now = new Date().toISOString();
+    const after = { cost, currency, costBasis: basis, costBasisDocId: docId, costBasisNote: note, costUSD, costRate: rate };
+    const labels: Record<string, string> = { cost: "Value", currency: "Currency", costBasis: "Basis", costBasisDocId: "Receipt", costBasisNote: "Note", costUSD: "USD value", costRate: "Rate to USD" };
+    const said = Object.entries(after).filter(([k, v]) => String((asset as any)[k] ?? "") !== String(v ?? ""))
+      .map(([k, v]) => `${labels[k]}: ${String((asset as any)[k] ?? "") || "(blank)"} → ${String(v) || "(blank)"}`);
+    if (!said.length) return res.status(400).json({ error: "Nothing was changed." });
+    const updated = await prisma.fixedAsset.update({ where: { id: asset.id }, data: { ...after, valuedById: user.id, valuedAt: now } });
+    await createAuditLog(user.id, user.name, "Equipment Valued",
+      `${asset.tag || asset.name} "${asset.name}" valued — ${said.join("; ")}${doc ? ` (receipt ${doc.refNo || doc.id} "${doc.filename}")` : ""}.`);
+    res.json({ success: true, asset: updated });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Missing-receipt declaration (Policy 020 §6.6). Prepared by Finance from the voucher itself — the
+// date, amount, what it paid for and the project are the voucher's, never retyped; only the payee's
+// name may be given when no supplier row names them. The printed document is signed by the person
+// paid, the signed scan is filed against the voucher, and the Executive Director approves it.
+app.post("/api/declarations/prepare", async (req, res) => {
+  try {
+    const user = req.body.user;
+    const exp = await prisma.expense.findUnique({ where: { id: String(req.body.expenseId || "") } });
+    if (!exp) return res.status(404).json({ error: "That payment request was not found." });
+    if (!["Paid", "Posted"].includes(exp.status)) return res.status(400).json({ error: "A declaration stands in for the receipt of a payment already made." });
+    if (await prisma.missingReceiptDeclaration.findUnique({ where: { expenseId: exp.id } })) return res.status(409).json({ error: `${exp.voucherNo} already has a declaration.` });
+    const docs = await prisma.appDoc.findMany({ where: { linkedRecordType: "Expense", linkedRecordId: exp.id } });
+    if (evidenceOf(docs, null) === "proof") return res.status(400).json({ error: `${exp.voucherNo} already has its evidence on file.` });
+    const vendor = exp.vendorId ? await prisma.vendor.findUnique({ where: { id: exp.vendorId } }) : null;
+    const payeeName = vendor?.name || String(req.body.payeeName || "").trim();
+    if (!payeeName) return res.status(400).json({ error: "No supplier is named on the request — give the name of the person or company paid." });
+    const project = await prisma.project.findUnique({ where: { id: exp.projectId } });
+    const paymentDate = exp.transactionDate || String(exp.paid_at || "").slice(0, 10);
+    const madeOn = localDate();
+    const id = `mrd-${Date.now()}`, docId = `doc-${id}`;
+    const amount = exp.netAmount || exp.amount;
+    const html = declarationHtml({ voucherNo: exp.voucherNo, payeeName, paymentDate, amount, currency: exp.currency,
+      paidFor: exp.title, projectCode: project?.code || "", projectName: project?.name || "", madeOn, preparedBy: user.name });
+    await archive(prisma, { docId, projectCode: project ? await vaultFolderForProject(prisma, project) : "GENERAL", category: DECLARATION_UNSIGNED,
+      filename: `${exp.voucherNo}_missing-receipt-declaration_${madeOn}.html`, html, linkedRecordType: "Expense", linkedRecordId: exp.id,
+      note: `Missing-receipt declaration for ${exp.voucherNo} — to be signed by ${payeeName} and approved by the Executive Director (Policy 020 §6.6). Not a receipt.` });
+    await prisma.missingReceiptDeclaration.create({ data: { id, expenseId: exp.id, payeeName, paymentDate, amount, currency: exp.currency,
+      paidFor: exp.title, projectId: exp.projectId, madeOn, generatedDocId: docId, preparedById: user.id, preparedAt: new Date().toISOString() } });
+    await createAuditLog(user.id, user.name, "Missing-Receipt Declaration Prepared",
+      `${user.name} prepared a missing-receipt declaration for ${exp.voucherNo} (${amount} ${exp.currency}, paid ${paymentDate}, to ${payeeName}). It counts only once signed by the payee and approved by the Executive Director.`);
+    res.json({ success: true, declarationId: id, docId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/declarations/approve", async (req, res) => {
+  try {
+    const user = req.body.user;
+    const d = await prisma.missingReceiptDeclaration.findUnique({ where: { id: String(req.body.declarationId || "") } });
+    if (!d) return res.status(404).json({ error: "That declaration was not found." });
+    const signed = await prisma.appDoc.findFirst({ where: { linkedRecordType: "Expense", linkedRecordId: d.expenseId, category: DECLARATION_SIGNED }, orderBy: { created_at: "desc" } });
+    const refused = declarationApproveBlocker({ ...d, signedDocId: signed?.id || "" }, { id: user.id, role: user.role }, DIRECTORS);
+    if (refused) return res.status(403).json({ error: refused });
+    const exp = await prisma.expense.findUnique({ where: { id: d.expenseId } });
+    await prisma.missingReceiptDeclaration.update({ where: { id: d.id }, data: {
+      signedDocId: signed!.id, approvedById: user.id, approvedAs: actor(user).as || user.role, approvedAt: new Date().toISOString() } });
+    await createAuditLog(user.id, user.name, "Missing-Receipt Declaration Approved",
+      `${user.name} approved the missing-receipt declaration for ${exp?.voucherNo || d.expenseId}, signed by ${d.payeeName} (scan ${signed!.refNo || signed!.id}). It now stands in place of the receipt, marked as a declaration.`);
+    res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

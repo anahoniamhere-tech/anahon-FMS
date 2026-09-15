@@ -179,6 +179,9 @@ export interface Expense {
    *  Blank on rows raised before this existed. */
   costAccountCode?: string;
   transactionDate?: string;
+  /** Policy 020 §6.6, computed by the server for every seat. */
+  evidence?: "proof" | "reconstructed" | "declaration-unsigned" | "declaration-awaiting-director" | "missing";
+  declaration?: { id: string; generatedDocId: string; signedDocId: string; preparedById: string; preparedAt: string; approvedById: string; approvedAs: string; approvedAt: string; madeOn: string } | null;
   /** Why this cost never involved choosing a supplier ("a salary under an employment
    *  contract"), or "" when it did. Derived in loadState from the account the books actually
    *  debited — netted, so a corrected voucher reads where the cost is now — and shipped to
@@ -349,6 +352,18 @@ export interface FixedAsset {
   currentBookValue: number;
   depreciationMethod: "Straight Line" | "Double Declining";
   accumulatedDepreciation: number;
+  /** Policy 020 §9: where the value comes from ("" = not valued yet), fixed USD value and rate. */
+  costBasis?: "" | "voucher" | "receipt" | "estimate" | "gift";
+  costBasisDocId?: string;
+  costBasisNote?: string;
+  costUSD?: number;
+  costRate?: number;
+  valuedById?: string;
+  valuedAt?: string;
+  /** Computed by the server on every load — never stored. */
+  accounting?: { state: "unvalued" | "gift" | "expensed" | "capitalised"; depreciationFrom?: string; accumulated?: number; bookValue?: number };
+  /** The grant it was bought on, read from its payment request. */
+  grant?: { voucherNo: string; projectCode: string; projectName: string; donorName: string; budgetLine: string } | null;
   /** EQ-001… the sticker number. Null only on rows registered before receiving existed. */
   tag?: string | null;
   brand?: string;

@@ -93,6 +93,9 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/subscriptions/roll": SUPPLIER_EDITORS,
   "/api/assets/register": SUPPLIER_EDITORS,
   "/api/assets/update": SUPPLIER_EDITORS,              // correcting what an item is; never what happened to it
+  "/api/assets/value": FINANCE,                        // a value and where it comes from (Policy 020 §9)
+  "/api/declarations/prepare": FINANCE,                // a missing-receipt declaration, from the voucher (§6.6)
+  "/api/declarations/approve": DIRECTORS,              // the Executive Director, never the preparer
   "/api/assets/scan-label": SUPPLIER_EDITORS,        // reads a label, saves nothing
   "/api/assets/checkout": SUPPLIER_EDITORS,
   "/api/assets/checkin": SUPPLIER_EDITORS,

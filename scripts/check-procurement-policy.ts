@@ -312,7 +312,7 @@ const bankPay = act.slice(act.indexOf('} else if (action === "cashbook-pay") {')
 ok("a BLOM payment is written pending with its voucher, and leaves the balance to the statement",
   /pending: awaitsStatement\(account\), reconciled: !awaitsStatement\(account\)/.test(bankPay) && /if \(!awaitsStatement\(account\)\) \{\s+await prisma\.bankAccount\.update/.test(bankPay));
 ok("a past cash payment without a receipt still counts as missing evidence (§6.6)",
-  /const noEvidence = state\.expenses\s+\.filter\(e => COUNTED\.includes\(e\.status\) && !hasProof\(e\.id\)/.test(read("src/App.tsx")));
+  /const noEvidence = state\.expenses\s+\.filter\(e => COUNTED\.includes\(e\.status\) && e\.evidence !== "proof"/.test(read("src/App.tsx")));
 ok("the pay panel offers past cash only while the voucher predates the opening",
   /exp\.transactionDate < openedOn/.test(read("src/tabs/ExpensesTab.tsx")) && /pastCash: true/.test(read("src/tabs/ExpensesTab.tsx")));
 
@@ -333,6 +333,37 @@ ok("past cash is always cash", /if \(approverPaysCash\(true\)\) return res\.stat
 ok("the message names §4.3 and cash", /Policy 020 §4\.3: you approved \$\{exp\.voucherNo\} — a different officer must pay it in cash\./.test(act));
 ok("the pay panel keeps the bank for the approver and hides cash",
   /!\(approvedByMe && b\.type !== "Bank"\)/.test(read("src/tabs/ExpensesTab.tsx")) && /pastCashOk = !approvedByMe/.test(read("src/tabs/ExpensesTab.tsx")));
+
+console.log("\nQ. a missing receipt: re-issued copy first, else a declaration signed AND approved (Policy 020 §6.6)");
+{
+  const { evidenceOf, declarationApproveBlocker, isOwnDocument } = await import("../src/declarations.js");
+  const doc = (category: string) => ({ category });
+  ok("an invoice is proof", evidenceOf([doc("Invoice")]) === "proof");
+  ok("a re-issued copy is proof", evidenceOf([doc("Receipt (re-issued copy)")]) === "proof");
+  ok("the app's digitized copy is not", evidenceOf([doc("Digitized")]) === "missing");
+  ok("an unsigned declaration does NOT clear the gap", evidenceOf([doc("Missing-Receipt Declaration (unsigned)")], { signedDocId: "", approvedById: "" }) === "declaration-unsigned");
+  ok("a signed but unapproved one does NOT either", evidenceOf([doc("Missing-Receipt Declaration (signed)")], { signedDocId: "d1", approvedById: "" }) === "declaration-awaiting-director");
+  ok("a declaration file alone, with no declaration record, is never proof", evidenceOf([doc("Missing-Receipt Declaration (signed)")]) === "missing" && isOwnDocument("Missing-Receipt Declaration (signed)"));
+  ok("signed AND approved stands in for the receipt", evidenceOf([], { signedDocId: "d1", approvedById: "u-1" }) === "proof");
+  const D = ["Super Admin", "Program Director"];
+  const decl = { preparedById: "u-7", signedDocId: "d1", approvedById: "" };
+  ok("the Executive Director approves a signed one", declarationApproveBlocker(decl, { id: "u-1", role: "Super Admin" }, D) === "");
+  ok("never the person who prepared it", /prepared this declaration/.test(declarationApproveBlocker({ ...decl, preparedById: "u-1" }, { id: "u-1", role: "Super Admin" }, D)));
+  ok("never the Finance Officer", /Executive Director approves/.test(declarationApproveBlocker(decl, { id: "u-9", role: "Finance Officer" }, D)));
+  ok("never before the person paid has signed", /signed by the person paid/.test(declarationApproveBlocker({ ...decl, signedDocId: "" }, { id: "u-1", role: "Super Admin" }, D)));
+  const prep = server.slice(server.indexOf('app.post("/api/declarations/prepare"'), server.indexOf('app.post("/api/declarations/approve"'));
+  ok("the prepare route is read (not a truncated slice)", prep.length > 2000);
+  ok("figures come from the voucher, never the body — only a payee name when no supplier row names one",
+    /const payeeName = vendor\?\.name \|\| String\(req\.body\.payeeName/.test(prep) && !/req\.body\.(amount|paymentDate|currency|paidFor|projectId)/.test(prep));
+  ok("it is dated the day it is made, not the payment's (§6.8)", /const madeOn = localDate\(\);/.test(prep));
+  ok("the gap is answered on the server for every seat, and the browser reads it", /evidence: evidenceOf\(/.test(server) && /e\.evidence !== "proof"/.test(read("src/App.tsx")) && !/const hasProof/.test(read("src/App.tsx")));
+  ok("the seats: Finance prepares, the directors approve", /"\/api\/declarations\/prepare": FINANCE/.test(read("src/gates.ts")) && /"\/api\/declarations\/approve": DIRECTORS/.test(read("src/gates.ts")));
+  const { declarationHtml } = await import("../docgen.js");
+  const html = declarationHtml({ voucherNo: "PV-2026-001", payeeName: "Test Payee", paymentDate: "2025-03-10", amount: 120, currency: "USD", paidFor: "Taxi", projectCode: "TRF-2026", projectName: "TRF", madeOn: "2026-09-15", preparedBy: "Finance" });
+  ok("the document says DECLARATION, not a receipt, in both languages", html.includes("NOT A RECEIPT") && html.includes("ليس إيصالاً"));
+  ok("the amount is printed once", (html.match(/\$120\.00/g) || []).length === 1);
+  ok("Arabic first, and the Arabic governs", html.indexOf('class="lang ar"') < html.indexOf('class="lang en"') && html.includes("النص العربي هو الملزم"));
+}
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
