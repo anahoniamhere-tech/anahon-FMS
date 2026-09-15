@@ -18,7 +18,7 @@ const ok = (label: string, cond: boolean, detail = "") => {
   if (!cond) { failed++; console.error(`  FAIL  ${label}${detail ? " — " + detail : ""}`); } else console.log(`  ok    ${label}`);
 };
 
-// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020, 013 into 001, 020's Annex B into 010, 004/015/016 into 006, 009 into 012, 021/022 into 002, and 019 into 018),
+// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020, 013 into 001, 020's Annex B into 010, 004/015/016 into 006, 009 into 012, 021/022 into 002, 019 into 018, and 008 into 011),
 // so the parser is proven against real wording, not an invented fixture.
 const REAL_INDEX = `
 AnaHon Media Platform — Policies and Handbooks
@@ -37,16 +37,16 @@ Written for the declaration of 12 September 2026: AnaHon has no employees. Every
 •017 Resources and Assets — written 12 Sep 2026; the file previously under that number was a duplicate of 016
 4. Programmes and Funding Handbook
 •018 Fundraising and Grants — merged with 019 and approved 15 Sep 2026: where income comes from, money AnaHon does not take, the go / no-go check, proposals, grant management, reporting and closure
-•011 Community Needs Assessment · 008 Key Performance Indicators
+•011 Programme Quality — merged with 008 and approved 15 Sep 2026: community needs assessment, indicators with baselines and targets, reporting and learning
 5. Strategy
 •007 Strategic Plan — a plan, not a rule, and the document the four handbooks serve
 Standing on its own
 •010 Information, Data and Source Privacy — merged with 020's data-protection annex and approved 15 Sep 2026: where information lives, access and two-step sign-in, source protection, confidential payments to protected sources, incidents. It cuts across all four handbooks and belongs to none.
 Numbers not in use
-014 was never issued. 021's file was lost in August 2026. On 15 September 2026, 003 was merged into 020, 013 into 001, 004, 015 and 016 into 006, 009 into 012, 021 and 022 into 002, and 019 into 018. The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
+014 was never issued. 021's file was lost in August 2026. On 15 September 2026, 003 was merged into 020, 013 into 001, 004, 015 and 016 into 006, 009 into 012, 021 and 022 into 002, 019 into 018, and 008 into 011. The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
 Still to settle
 •An independent whistleblowing recipient — 001 §6.3 leaves the name open. Until someone outside AnaHon is named, concerns about the Executive Director go to the donors' own channels.
-•Targets for the KPIs (008) — the measures exist, the numbers do not.
+•Indicator baselines and targets (011 §2.2) — the Executive Director and the Finance Officer set them by 31 October 2026, from figures in the management system.
 •A start year for the Strategy (007).
 •An interim editorial approver — 002 §4.2 needs two different people to approve a piece. The Executive Director will name who holds the Production Manager approval until that seat is filled; until then no piece passes the approval step.
 •An external audit — required by 020 §12.1. A financial consultant is being engaged through the SKF project to prepare it; none has yet been completed.
@@ -65,8 +65,9 @@ ok("Finance and Controls carries 020, 012, 017 — 003 merged into 020, 013 into
   parsed.handbooks[2].chapters.map(c => c.no).join(",") === "020,012,017");
 ok("012 is Risk and Due Diligence", parsed.handbooks[2].chapters[1].title === "Risk and Due Diligence");
 ok("020 is the Finance and Procurement Policy", parsed.handbooks[2].chapters[0].title === "Finance and Procurement Policy");
-ok("Programmes and Funding carries 018, 011, 008 — 019 merged into 018",
-  parsed.handbooks[3].chapters.map(c => c.no).join(",") === "018,011,008");
+ok("Programmes and Funding carries 018 and 011 — 019 merged into 018, 008 into 011",
+  parsed.handbooks[3].chapters.map(c => c.no).join(",") === "018,011");
+ok("011 is Programme Quality", parsed.handbooks[3].chapters[1].title === "Programme Quality");
 ok("Strategy carries only 007", parsed.handbooks[4].chapters.map(c => c.no).join(",") === "007");
 ok("Policy 010 stands alone, not folded into a handbook",
   parsed.standalone.length === 1 && parsed.standalone[0].no === "010");
