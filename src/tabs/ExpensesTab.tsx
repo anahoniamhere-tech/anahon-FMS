@@ -958,8 +958,16 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             // §4.4.2: a Finance Officer's approval does not open the cash accounts above
                             // USD 150 — hide them and say why, rather than offer a payment that bounces.
                             const approverSeat = exp.approvedAs || (state?.users || []).find((u: any) => u.id === exp.approvedById)?.role;
-                            const payFrom = (state?.bankAccounts || []).filter(b => !cashApprovalBlocker(b, netVal * (exp.rate || 1), approverSeat));
+                            // §4.3 (Saad, 15 Sep): the approver may still pay by bank, never in cash.
+                            const approvedByMe = exp.approvedById === currentUser.id;
+                            const payFrom = (state?.bankAccounts || []).filter(b => !cashApprovalBlocker(b, netVal * (exp.rate || 1), approverSeat)
+                              && !(approvedByMe && b.type !== "Bank"));
                             const cashHeld = payFrom.length < (state?.bankAccounts || []).length;
+                            // Backfill: a request dated before the float opened may have been paid out of cash
+                            // nobody vouchered then (§4.4.5). Offered only while that is still true.
+                            const openedOn = (state?.bankAccounts || []).find(b => b.type === "Petty Cash" && b.ledgerCode === "1125")?.openedOn;
+                            const pastCashOk = !approvedByMe && !!exp.transactionDate && (!openedOn || exp.transactionDate < openedOn)
+                              && !cashApprovalBlocker({ type: "Petty Cash" }, netVal * (exp.rate || 1), approverSeat);
 
                             return (
                               <div className="flex flex-col gap-3 p-4 bg-slate-50 border border-slate-200 rounded-lg w-full">
@@ -998,8 +1006,14 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                     {payFrom.map(b => (
                                       <option key={b.id} value={b.id}>{b.name} (Bal: {(b.balance || 0).toLocaleString()})</option>
                                     ))}
+                                    {pastCashOk && (
+                                      <option value="past-cash">{t("Paid before")} {openedOn || t("the float opened")} {t("from cash awaiting vouchers")}</option>
+                                    )}
                                   </select>
-                                  {cashHeld && (
+                                  {approvedByMe && (
+                                    <span className="text-[11px] text-amber-800">{t("You approved this request — pay it by bank, or a different officer pays it in cash (Policy 020 §4.3).")}</span>
+                                  )}
+                                  {cashHeld && !approvedByMe && (
                                     <span className="text-[11px] text-amber-800">
                                       {t("Not in cash: above USD 150 it needs the Executive Director's approval (§4.4.2).")}
                                     </span>
@@ -1007,7 +1021,9 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                   <button
                                     onClick={() => {
                                       const sel = (document.getElementById(`ba-sel-${exp.id}`) as HTMLSelectElement).value;
-                                      handleExpenseAction(exp.id, "cashbook-pay", {
+                                      handleExpenseAction(exp.id, "cashbook-pay", sel === "past-cash" ? {
+                                        pastCash: true, whtAmount: whtVal, netAmount: netVal,
+                                      } : {
                                         bankAccountId: sel,
                                         paymentMethod: "Petty cash envelope",
                                         paymentRef: `VOU-${exp.voucherNo}`,

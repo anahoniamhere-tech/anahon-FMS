@@ -15,7 +15,7 @@ import { QUOTES_REQUIRED_ABOVE, TWO_QUOTES_FROM, THRESHOLD_LABEL, needsProcureme
 import { NO_SUPPLIER_CHOICE, noSupplierChoice, costAccountChoices } from "../src/spendKind.js";
 import { debitedExpenseAccounts } from "../src/costAccount.js";
 import { CATEGORY_ACCOUNT, costAccountFor } from "../src/costAccount.js";
-import { payoutBlocker, payoutLedgerFor, cashApprovalBlocker } from "../src/pettyCash.js";
+import { payoutBlocker, payoutLedgerFor, cashApprovalBlocker, pastCashLedgerFor, CASH_AWAITING_VOUCHERS_NAME } from "../src/pettyCash.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -116,7 +116,7 @@ console.log("\nG. the answer exists when the request is RAISED, not only after p
 ok("the voucher carries the expense account it belongs to",
   /costAccountCode String  @default\(""\)/.test(read("prisma/schema.prisma"))
   && /ALTER TABLE "Expense" ADD COLUMN "costAccountCode"/.test(read("prisma/migrations/20260912150000_expense_cost_account/migration.sql")));
-ok("the route reads it off the request and stores it", /costAccountCode, user \} = req\.body/.test(server) && /costAccountCode: costAccount,/.test(server));
+ok("the route reads it off the request and stores it", /costAccountCode, transactionDate, user \} = req\.body/.test(server) && /costAccountCode: costAccount,/.test(server));
 ok("it is checked against the chart of accounts, never taken as free text",
   /acc\.type !== "Expense"/.test(server) && /Choose what kind of cost this is from the chart of accounts/.test(server));
 ok("required only above the threshold — the one place the answer changes what happens",
@@ -156,7 +156,7 @@ ok("and the default is 6000 direct project costs, never 6100 video production",
   && costAccountFor("Local Office") === "7100" && costAccountFor("Personnel") === "5100");
 
 console.log("\nI. the approver confirms the cost, because their signature writes the journal");
-ok("the signature carries a confirmed account", /costAccountCode, user \} = req\.body/.test(server)
+ok("the signature carries a confirmed account", /costAccountCode, pastCash, user \} = req\.body/.test(server)
   && /handleExpenseAction\(exp\.id, "approve", \{/.test(expenses)
   && /costAccountCode: confirmCostAccount\[exp\.id\]/.test(expenses));
 ok("the approver's pick is checked against the chart too, never free text",
@@ -260,7 +260,7 @@ ok("a legacy channel line still credits the historical clearing", payoutLedgerFo
 ok("neither route maps cash by the account's type any more", !/type === "Petty Cash" \? "1120"/.test(server));
 ok("both routes refuse through payoutBlocker", (server.match(/payoutBlocker\(account,/g) || []).length === 2);
 ok("both payment lines carry who recorded them",
-  (server.match(/type: "Withdrawal",\s+reconciled: true,\s+voucherNo[^\n]*\n\s+recordedAt: new Date\(\)\.toISOString\(\), recordedById/g) || []).length === 2);
+  (server.match(/type: "Withdrawal",\s+(?:reconciled: true|pending: awaitsStatement\(account\), reconciled: !awaitsStatement\(account\)),\s+voucherNo[^\n]*\n\s+recordedAt: new Date\(\)\.toISOString\(\), recordedById/g) || []).length === 2);
 ok("a request keeps its true transaction date, never a future one",
   /transactionDate: txDate/.test(server) && /txDate > localDate\(\)/.test(server)
   && /ADD COLUMN "transactionDate"/.test(read("prisma/migrations/20260914150000_expense_transaction_date/migration.sql")));
@@ -292,6 +292,47 @@ ok("the pay step reads the approver's seat, not approved_at",
   /cashApprovalBlocker\(account, disbursalUSD, exp\.approvedAs \|\| approver\?\.role\)/.test(pay2) && !/!exp\.approved_at/.test(pay2));
 ok("direct cash above 150 still requires a director", /disbursalUSD > CASH_SINGLE_PAYMENT_USD && !isDirector\(user\?\.role\)/.test(server));
 ok("the screen hides cash rather than offering a payment that bounces", /cashApprovalBlocker\(b, netVal/.test(read("src/tabs/ExpensesTab.tsx")));
+
+console.log("\nO. backfill: true dates, past cash from 1120, BLOM payments wait for the statement (Books, 46014f6)");
+const act = server.slice(server.indexOf('app.post("/api/expense/action"'), server.indexOf('app.post("/api/expense/direct-petty-cash"'));
+const pastPay = act.slice(act.indexOf('action === "cashbook-pay" && pastCash'), act.indexOf('} else if (action === "cashbook-pay") {'));
+const post = act.slice(act.indexOf('action === "general-ledger-post"'));
+ok("a 2025 cash voucher, before the float opens, credits 1120", pastCashLedgerFor("2025-03-10", "2026-09-20") === "1120" && pastCashLedgerFor("2025-03-10", "") === "1120");
+ok("after the opening there is no past cash", pastCashLedgerFor("2026-09-21", "2026-09-20") === "");
+ok("the past-cash pay step refuses without a true date, and after the opening", /!exp\.transactionDate/.test(pastPay) && /if \(!pastCashLedgerFor\(exp\.transactionDate, box\?\.openedOn\)\)/.test(pastPay));
+ok("it keeps the true date and says who recorded it", /paidAt = `\$\{exp\.transactionDate\}T00:00:00\.000Z`/.test(pastPay) && /paidById: me\.id/.test(pastPay));
+ok("it writes no payment line and moves no account balance", !/bankTransaction\.create|bankAccount\.update/.test(pastPay));
+ok("it still needs a director for cash above 150", /cashApprovalBlocker\(\{ type: FLOAT_TYPE \}/.test(pastPay));
+ok("posting credits the past-cash ledger, refusing before any budget moves",
+  /bankAssetAccount = pastLedger/.test(post) && post.indexOf('if (pastLedger === "")') < post.indexOf("budgetLine.update"));
+ok("posting marks it by one name", /paymentMethod === CASH_AWAITING_VOUCHERS_NAME/.test(post) && CASH_AWAITING_VOUCHERS_NAME === "Cash awaiting vouchers");
+ok("the settlement is dated by the payment, else the voucher's true date — never simply today",
+  /date: payTx\?\.date \|\| exp\.transactionDate \|\| localDate\(\)/.test(post));
+const bankPay = act.slice(act.indexOf('} else if (action === "cashbook-pay") {'), act.indexOf('action === "general-ledger-post"'));
+ok("a BLOM payment is written pending with its voucher, and leaves the balance to the statement",
+  /pending: awaitsStatement\(account\), reconciled: !awaitsStatement\(account\)/.test(bankPay) && /if \(!awaitsStatement\(account\)\) \{\s+await prisma\.bankAccount\.update/.test(bankPay));
+ok("a past cash payment without a receipt still counts as missing evidence (§6.6)",
+  /const noEvidence = state\.expenses\s+\.filter\(e => COUNTED\.includes\(e\.status\) && !hasProof\(e\.id\)/.test(read("src/App.tsx")));
+ok("the pay panel offers past cash only while the voucher predates the opening",
+  /exp\.transactionDate < openedOn/.test(read("src/tabs/ExpensesTab.tsx")) && /pastCash: true/.test(read("src/tabs/ExpensesTab.tsx")));
+
+console.log("\nP. whoever approves a request never pays it in cash; a bank payment is exempt (Saad, 15 Sep 2026, §4.3)");
+// The rule is lifted from the route's own line, so the check runs what the route runs.
+const rule = act.match(/const approverPaysCash = \(isCash: boolean\) => ([^;]+);/);
+const approverPaysCash = rule ? new Function("isCash", "exp", "user", `return ${rule[1]};`) as (c: boolean, e: any, u: any) => boolean : () => false;
+const ed = { id: "u-1" }, fo = { id: "u-7" }, byEd = { approvedById: "u-1" };
+ok("the rule exists in the route", !!rule);
+ok("an ED-approved bank payment recorded by the ED passes", approverPaysCash(false, byEd, ed) === false);
+ok("the same payment in cash, by the ED, is refused", approverPaysCash(true, byEd, ed) === true);
+ok("someone else pays it in cash", approverPaysCash(true, byEd, fo) === false);
+ok("a legacy voucher with no approver on record is not blocked", approverPaysCash(true, { approvedById: null }, ed) === false);
+const bankBranch = act.slice(act.indexOf('} else if (action === "cashbook-pay") {'), act.indexOf('action === "general-ledger-post"'));
+ok("the bank branch asks by the account it pays from, once loaded",
+  /if \(approverPaysCash\(account\.type !== "Bank"\)\) return res\.status\(403\)/.test(bankBranch));
+ok("past cash is always cash", /if \(approverPaysCash\(true\)\) return res\.status\(403\)/.test(pastPay));
+ok("the message names §4.3 and cash", /Policy 020 §4\.3: you approved \$\{exp\.voucherNo\} — a different officer must pay it in cash\./.test(act));
+ok("the pay panel keeps the bank for the approver and hides cash",
+  /!\(approvedByMe && b\.type !== "Bank"\)/.test(read("src/tabs/ExpensesTab.tsx")) && /pastCashOk = !approvedByMe/.test(read("src/tabs/ExpensesTab.tsx")));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

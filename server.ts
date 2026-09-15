@@ -8019,7 +8019,7 @@ app.post("/api/expense/new", async (req, res) => {
 // Action on expense lifecycle
 app.post("/api/expense/action", async (req, res) => {
   try {
-    const { expenseId, action, comment, paymentMethod, paymentRef, bankAccountId, whtAmount, netAmount, costAccountCode, user } = req.body;
+    const { expenseId, action, comment, paymentMethod, paymentRef, bankAccountId, whtAmount, netAmount, costAccountCode, pastCash, user } = req.body;
 
     const exp = await prisma.expense.findUnique({ where: { id: expenseId } });
     if (!exp) return res.status(404).json({ error: "Expense request not found." });
@@ -8029,6 +8029,11 @@ app.post("/api/expense/action", async (req, res) => {
     if ((action === "approve" || action === "finance-review") && exp.requestorId && user?.id === exp.requestorId) {
       return res.status(403).json({ error: `Segregation of duties (§4.3): you raised ${exp.voucherNo} — a different officer must review and approve it.` });
     }
+    // §4.3 again, one step later (Saad, 15 Sep 2026): whoever approved a request never pays it IN CASH —
+    // the float, cash in transit, or past cash. Checked by person. A BLOM payment is exempt: the transfer
+    // letter the ED signs, the statement line it waits for and Finance's reconciliation are the second person.
+    const approverPaysCash = (isCash: boolean) => isCash && !!exp.approvedById && user?.id === exp.approvedById;
+    const APPROVER_PAYS_CASH = `Policy 020 §4.3: you approved ${exp.voucherNo} — a different officer must pay it in cash.`;
 
     const commentsList = JSON.parse(exp.commentsJson || "[]");
     let updatedStatus = exp.status;
@@ -8222,12 +8227,38 @@ app.post("/api/expense/action", async (req, res) => {
         "Voucher Returned",
         `Voucher ${exp.voucherNo} sent back to Project Lead with correction feedback: "${comment}"`
       );
+    } else if (action === "cashbook-pay" && pastCash) {
+      // Backfill (Policy 020 §4.4.5, §6.6): a request paid BEFORE the float opened, out of cash
+      // nobody vouchered at the time. There is no payment line and no account to take it from —
+      // posting credits 1120 "Cash awaiting vouchers", which is how that balance gets settled.
+      // After the opening there is no such cash: it came out of the float or out of 1127.
+      if (approverPaysCash(true)) return res.status(403).json({ error: APPROVER_PAYS_CASH });
+      signed = { ...signed, paidById: me.id, paidAs: me.as };
+      if (!exp.transactionDate) return res.status(400).json({ error: "A past payment is placed by its true date — enter the date on the invoice or receipt first." });
+      const box = await pettyFloat();
+      if (!pastCashLedgerFor(exp.transactionDate, box?.openedOn)) {
+        return res.status(400).json({ error: `The float opened on ${box?.openedOn}; cash paid since then came out of the petty-cash float or out of cash in transit (1127) — pay it from one of them.` });
+      }
+      updatedWhtAmount = typeof whtAmount === "number" ? whtAmount : 0;
+      updatedNetAmount = typeof netAmount === "number" ? netAmount : exp.amount;
+      {
+        const approver = exp.approvedById ? await prisma.user.findUnique({ where: { id: exp.approvedById } }) : null;
+        const cashRefused = cashApprovalBlocker({ type: FLOAT_TYPE }, updatedNetAmount * exp.rate, exp.approvedAs || approver?.role);
+        if (cashRefused) return res.status(400).json({ error: cashRefused });
+      }
+      updatedStatus = "Paid";
+      paidAt = `${exp.transactionDate}T00:00:00.000Z`; // the true date, not today; paidById says who recorded it
+      updatedPaymentMethod = CASH_AWAITING_VOUCHERS_NAME;
+      updatedPaymentRef = paymentRef || `PAST-CASH-${exp.voucherNo}`;
+      await createAuditLog(user?.id, user?.name, "Past Cash Payment Recorded",
+        `${user?.name} recorded ${exp.voucherNo} as paid on ${exp.transactionDate}, before the float opened${box?.openedOn ? ` on ${box.openedOn}` : ""}, from cash awaiting vouchers (1120). Net ${updatedNetAmount} ${exp.currency}. Posting credits 1120. A missing receipt stays a missing document until filed (§6.6).`);
     } else if (action === "cashbook-pay") {
       if (!bankAccountId) return res.status(400).json({ error: "Cash vault or bank account required to disburse funds." });
       signed = { ...signed, paidById: me.id, paidAs: me.as };
 
       const account = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
       if (!account) return res.status(404).json({ error: "Cash/Bank vault not configured." });
+      if (approverPaysCash(account.type !== "Bank")) return res.status(403).json({ error: APPROVER_PAYS_CASH });
       // Determine payout amounts: if whtAmount/netAmount is passed use them, otherwise default to no tax
       updatedWhtAmount = typeof whtAmount === "number" ? whtAmount : 0;
       updatedNetAmount = typeof netAmount === "number" ? netAmount : exp.amount;
@@ -8272,11 +8303,15 @@ app.post("/api/expense/action", async (req, res) => {
         return res.status(400).json({ error: `Insufficient cash reserve in ${account.name}. Required: ${disbursalInAccountCurrency} ${account.currency}, Available: ${account.balance} ${account.currency}` });
       }
 
-      // Deduct balance (pay the net amount to payee) in the account's own currency
-      await prisma.bankAccount.update({
-        where: { id: bankAccountId },
-        data: { balance: account.balance - disbursalInAccountCurrency }
-      });
+      // Deduct balance (pay the net amount to payee) in the account's own currency. A BLOM payment
+      // waits for its statement line instead (Books, 46014f6): written confirmed, the next statement
+      // import would bring the same withdrawal a second time.
+      if (!awaitsStatement(account)) {
+        await prisma.bankAccount.update({
+          where: { id: bankAccountId },
+          data: { balance: account.balance - disbursalInAccountCurrency }
+        });
+      }
 
       updatedStatus = "Paid";
       paidAt = new Date().toISOString();
@@ -8296,7 +8331,7 @@ app.post("/api/expense/action", async (req, res) => {
           description: `Disbursed ${exp.voucherNo} - ${exp.title} (Net payout, WHT applied)`,
           amount: disbursalInAccountCurrency,
           type: "Withdrawal",
-          reconciled: true,
+          pending: awaitsStatement(account), reconciled: !awaitsStatement(account),
           voucherNo: exp.voucherNo,
           recordedAt: new Date().toISOString(), recordedById: user?.id || ""
         }
@@ -8309,6 +8344,10 @@ app.post("/api/expense/action", async (req, res) => {
         `Funds cleared from account ${account.name} using ${paymentMethod}. Net amount paid: ${disbursalAmount} ${exp.currency}, WHT withheld: ${updatedWhtAmount} ${exp.currency}.`
       );
     } else if (action === "general-ledger-post") {
+      // A past cash payment credits 1120 — refused before anything moves if its date is after the opening.
+      const pastLedger = exp.paymentMethod === CASH_AWAITING_VOUCHERS_NAME
+        ? pastCashLedgerFor(exp.transactionDate || "", (await pettyFloat())?.openedOn) : null;
+      if (pastLedger === "") return res.status(400).json({ error: "This request is marked paid from cash awaiting vouchers, but its date is after the float opened — pay it from the float or from cash in transit (1127)." });
       updatedStatus = "Posted";
       signed = { ...signed, postedById: me.id, postedAs: me.as };
 
@@ -8356,6 +8395,8 @@ app.post("/api/expense/action", async (req, res) => {
       if (payTx) {
         const payAcct = await prisma.bankAccount.findUnique({ where: { id: payTx.bankAccountId } });
         if (payAcct) bankAssetAccount = payoutLedgerFor(payAcct, payTx.date);
+      } else if (pastLedger) {
+        bankAssetAccount = pastLedger;
       }
       // 2315 matches the rebuilt ledger convention (2310 is the payroll-tax account;
       // the old 2310 postings needed a manual reclass — see ADJ-WHT-2315).
@@ -8376,7 +8417,8 @@ app.post("/api/expense/action", async (req, res) => {
         data: {
           id: `je-${Date.now()}`,
           journal: "Cash Payments",
-          date: localDate(),
+          // The payment's own date (a matched statement line carries the bank's), else the voucher's true date.
+          date: payTx?.date || exp.transactionDate || localDate(),
           description: `Settled Accounts Payable for ${exp.voucherNo}: ${exp.title} (Net payout, WHT applied)`,
           referenceNo: exp.voucherNo,
           isPosted: true,
