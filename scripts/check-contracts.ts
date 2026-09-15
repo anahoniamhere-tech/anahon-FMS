@@ -359,5 +359,15 @@ ok("changing initials cannot disturb the parent lookup, which compares months",
 { const d = doc({});
   ok("the .alt label is a block in every context, not only inside a table header",
     /(^|[\n}])\.alt\{display:block;direction:rtl/.test(d) && /<div>[^<]*<br>[^<]*<span class="alt">/.test(d)); }
+// The Arabic signature line governs: a role title the system translates prints in Arabic; free text keeps its English
+// in its own isolated LTR span; nothing is translated by guess.
+{ const known = doc({ party: { ...BASE.party, position: "Graphic Designer" } });
+  const free = doc({ party: { ...BASE.party, position: "Production Team Leader & iContent Programme Manager" } });
+  ok("a translated role title prints in Arabic on the Arabic signature line",
+    known.includes('<span class="alt">مصمم غرافيك — التاريخ والتوقيع</span>'));
+  ok("a free-text position keeps its English, isolated LTR, on the Arabic signature line",
+    free.includes('<span class="alt"><span dir="ltr" class="num">Production Team Leader &amp; iContent Programme Manager</span> — التاريخ والتوقيع</span>'));
+  ok("an English position word is never loose inside the Arabic signature line",
+    !/<span class="alt">[A-Za-z][^<]*— التاريخ والتوقيع/.test(known + free)); }
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
