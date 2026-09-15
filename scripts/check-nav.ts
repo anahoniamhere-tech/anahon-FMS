@@ -41,8 +41,9 @@ const before = {
   "Podcaster": ["editorial", "help"],
   "Employee (Self-Service)": ["payroll"],
 };
-const added = ["doors", "handbooks", "mydesk"];   // visible to the restricted roles now
-const addedSelf = ["doors", "handbooks", "help", "mydesk"]; // self-service had none of them
+// The Virtual Office opened to everyone on 15 Sep 2026 (Saad): the board route shows staff only their own cards.
+const added = ["doors", "handbooks", "mydesk", "office"];   // visible to the restricted roles now
+const addedSelf = ["doors", "handbooks", "help", "mydesk", "office"]; // self-service had none of them
 // Seats placed in phase 2 (they had no login before, so there is no "before" to compare):
 const placed: Record<string, string[]> = {
   "Procurement and Logistics Officer": ["doors", "mydesk", "help", "handbooks", "projects", "network", "procurement", "vendors", "subscriptions", "expenses", "assets", "payroll"],
@@ -54,7 +55,7 @@ const placed: Record<string, string[]> = {
   "Production Manager": ["doors", "mydesk", "help", "handbooks", "editorial", "live", "archive", "payroll"],
   "Graphic Designer": ["editorial", "help", "handbooks", "mydesk", "doors"],
 };
-for (const [role, want] of Object.entries(placed)) ok(`${role}: ${want.length} doors`, same(keys(role), [...want].sort()), `got ${keys(role).join(",")}`);
+for (const [role, want] of Object.entries(placed).map(([r, w]) => [r, [...w, "office"]] as const)) ok(`${role}: ${want.length} doors`, same(keys(role), [...want].sort()), `got ${keys(role).join(",")}`);
 for (const [role, had] of Object.entries(before)) {
   const expect = [...had, ...(role === "Employee (Self-Service)" ? addedSelf : added)].sort();
   ok(`${role}: ${expect.length} doors`, same(keys(role), expect), `got ${keys(role).join(",")}`);

@@ -1907,11 +1907,11 @@ async function deliverPush(userId: string, payload: string) {
 }
 
 /** A person's own turn list — exactly the reading pushTurnsFor makes. */
-async function turnsOf(viewer: any) {
+async function turnsOf(viewer: any, withStanding = false) {
   const state = await loadState(viewer);
   const canOpen = new Set(doorsFor(viewer.role).map(String));
   return deskItems({ id: viewer.id, email: viewer.email, role: viewer.role }, state as any, localDate())
-    .filter(i => (i.group === "mine" || i.group === "cover") && canOpen.has(i.door) && !i.standing);
+    .filter(i => (i.group === "mine" || i.group === "cover") && canOpen.has(i.door) && (withStanding || !i.standing));
 }
 
 /** Plan every active person's follow-ups. Writes nothing: the preview route and the run share it. */
@@ -2016,6 +2016,71 @@ app.get("/api/shadow/plan", async (req, res) => {
         escalate: plan.escalate.map(i => `${i.verb}: ${i.title}`),
         closing: plan.close.length,
       })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------------
+// The office board — what the village at /village draws. READ-ONLY.
+//
+// Everything here is already decided elsewhere: each person's turns are turnsOf() (the same
+// reading the shadow office and push make), and a card's stage is the shadow office's own
+// Reminder rows. Staff see their own cards; colleagues come back as a name and a state only.
+// Directors see every card. Nothing is written.
+// ---------------------------------------------------------------------------------
+const HOUSE_OF: Record<string, string> = {
+  banking: "finance", expenses: "finance", payroll: "finance",
+  projects: "projects", funnel: "projects", production: "projects",
+  procurement: "store", vendors: "store", assets: "store", tools: "store",
+  editorial: "digital", network: "digital",
+};
+const STAGE_OF: Record<string, string> = { "stall-1": "reminded", "stall-2": "second", escalate: "escalated" };
+
+app.get("/api/office/board", async (req, res) => {
+  try {
+    const viewer = (req as any).dbUser;
+    const director = isDirector(viewer.role);
+    const today = localDate();
+    // ponytail: loads every person's state per request (a handful of users); cache per minute if the team grows.
+    const people = await prisma.user.findMany({ where: { active: true }, orderBy: { name: "asc" } });
+    const rows = await prisma.reminder.findMany({ where: { channel: { in: [...STALL_CHANNELS] } } });
+    const devices = new Map((await prisma.pushSubscription.groupBy({ by: ["userId"], _count: true })).map(d => [d.userId, d._count]));
+    const order = [...STALL_CHANNELS];
+    const stageOf = (userId: string, itemId: string) => {
+      const mine = rows.filter(r => r.userId === userId && r.itemId === itemId && r.state === "active").map(r => order.indexOf(r.channel as any));
+      return mine.length ? STAGE_OF[order[Math.max(...mine)]] : null;
+    };
+    const board = [];
+    for (const person of people) {
+      // Standing gaps (equipment with no value, missing papers) are shown, but never make anyone "stalled".
+      const all = await turnsOf(person, true), turns = all.filter(t => !t.standing);
+      const overdue = turns.filter(t => t.urgency === "overdue").length, week = turns.filter(t => t.urgency === "week").length;
+      const seesCards = director || person.id === viewer.id;
+      board.push({
+        id: person.id, name: person.name, role: person.role, isMe: person.id === viewer.id,
+        state: overdue ? "stalled" : week ? "busy" : turns.length ? "waiting" : "clear",
+        cards: seesCards ? all.map(t => ({
+          id: t.id, house: HOUSE_OF[t.door] || "desk", door: t.door, focus: `${t.kind}:${t.recordId}`,
+          verb: t.verb, title: t.title, when: t.when, urgency: t.urgency, stage: stageOf(person.id, t.id),
+        })) : null,
+      });
+    }
+    const todays = rows.filter(r => String(r.createdAt).startsWith(today));
+    const mail = (await prisma.mailHit.findMany({ where: { kind: "mail", status: "Pending" }, orderBy: { receivedAt: "desc" } }))
+      .filter(m => director || m.assigneeUserId === viewer.id)
+      .map(m => ({ id: m.id, sender: m.sender, subject: m.subject, receivedAt: m.receivedAt }));
+    res.json({
+      viewer: { id: viewer.id, name: viewer.name, director },
+      machine: {
+        on: process.env.SHADOW_OFFICE === "on", hour: SHADOW_OFFICE_HOUR, today, ranToday: shadowLastRun === today || todays.length > 0,
+        reminded: new Set(todays.filter(r => r.channel !== "escalate" && devices.get(r.userId)).map(r => r.userId)).size,
+        escalated: new Set(todays.filter(r => r.channel === "escalate").map(r => r.itemId)).size,
+        notificationsOff: director ? people.filter(p => !isDirector(p.role) && !devices.get(p.id)).map(p => p.name) : null,
+      },
+      people: board,
+      mail,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

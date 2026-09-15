@@ -48,7 +48,7 @@ export const NAV: NavSection[] = [
     items: [
       { navKey: "doors", label: "Doors", icon: ic(LayoutGrid) },
       { navKey: "mydesk", label: "My Desk", icon: ic(UserCheck) },
-      { navKey: "office", label: "Virtual Office", icon: ic(Building2), roles: ["*full"] },
+      { navKey: "office", label: "Virtual Office", icon: ic(Building2) },
       { navKey: "dashboard", label: "Organisation overview", icon: ic(Activity), roles: ["*full", ...OFFICER] },
       { navKey: "help", label: "Help & Q&A", icon: glyph("?") },
       { navKey: "handbooks", label: "Policies & handbooks", icon: ic(BookOpen) },
