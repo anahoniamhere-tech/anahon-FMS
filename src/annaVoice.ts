@@ -65,11 +65,13 @@ export const clipBase64 = (clip: Blob) => new Promise<string>((resolve, reject) 
 });
 
 /** Reads an answer aloud with the device's own voices; nothing leaves the device. */
-export function speak(text: string) {
+export function speak(text: string, onSpeaking: (on: boolean) => void = () => {}) {
   if (typeof speechSynthesis === "undefined") return;
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text.replace(/\*\*/g, ""));
   u.lang = /[؀-ۿ]/.test(text) ? "ar" : "en";
+  u.onstart = () => onSpeaking(true);
+  u.onend = u.onerror = () => onSpeaking(false);
   speechSynthesis.speak(u);
 }
 export const hush = () => { if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel(); };

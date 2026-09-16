@@ -181,7 +181,8 @@ ok("deleting asks first", (chat.match(/window\.confirm\(/g) || []).length === 1 
 ok("the confirm route is checked against the closed list first, and a contract never posts",
   /if \(!\(CONFIRM_ROUTES as readonly string\[\]\)\.includes\(p\.confirmRoute\) \|\| p\.confirmRoute === "form:contract"\) return;\s*setCards/.test(chat));
 ok("a confirmed quotation is always a Draft", /const body = p\.kind === "quotation" \? \{ \.\.\.p\.data, status: "Draft" \} : p\.data;/.test(chat));
-ok("only navigation runs on arrival; cards and name choices wait for a tap", /actions\.forEach\(a => \{ if \(a\.type === "open_door" \|\| a\.type === "open_record"\) run\(a\); \}\);/.test(chat));
+ok("only navigation runs on arrival; cards and name choices wait for a tap", /const navs = actions\.filter\(a => a\.type === "open_door" \|\| a\.type === "open_record"\) as NavAction\[\];\s*navs\.forEach\(run\);/.test(chat)
+  && !/actions\.forEach\(/.test(chat));
 ok("only plain text turns are sent", /messages: history\.map\(m => \(\{ role: m\.role, content: m\.content \}\)\)/.test(chat));
 ok("a failed turn is never sent back", /msgs\.filter\(m => !m\.error\)/.test(chat));
 ok("a navigation action can only open a door or a record",
@@ -225,12 +226,23 @@ ok("a stored position is read back as two clamped numbers only", /return v && Nu
 ok("only Anna's people get the floating Anna; the help bubble stays where it was", /useState<OrbAt \| null>\(\(\) => \(anna \? readOrb\(\) : null\)\)/.test(desk)
   && /style=\{anna && orbAt \? place\(orbAt\.fx, orbAt\.fy\) : undefined\}/.test(launcher) && /onPointerDown=\{anna \?/.test(launcher));
 ok("a drag never opens the panel", /onClick=\{\(\) => \{ if \(drag\.current\?\.moved\) return;/.test(launcher));
-ok("her mic opens the panel already listening, and only that once", /onClick=\{\(\) => openPanel\(true\)\}/.test(launcher)
-  && /useEffect\(\(\) => \{ if \(listenNow\) void mic\(\); \}, \[\]\);/.test(chat)
-  && /useEffect\(\(\) => \{ if \(!open \|\| mode === "help"\) setListenNow\(false\); \}, \[open, mode\]\);/.test(desk));
+ok("her mic opens the panel already listening, and only once per tap", /onClick=\{\(\) => openPanel\(true\)\}/.test(launcher)
+  && /if \(listen\) setListenSignal\(n => n \+ 1\);/.test(desk)
+  && /if \(!listenSignal \|\| listenSignal === listenHandled\) return;\s*listenHandled = listenSignal;\s*void mic\(\);/.test(chat));
 ok("she is never left on the orange missing pill", /const at = clearOfPill\(orbAt\);/.test(launcher) && /if \(open \|\| !anna \|\| !orbAt \|\| drag\.current\) return;\s*const at = clearOfPill\(orbAt\);/.test(desk)
   && /document\.querySelector\('\[data-float="gaps"\]'\)/.test(desk));
 ok("the page does not scroll while she is dragged on a phone", /style=\{anna \? \{ touchAction: "none" \} : undefined\}/.test(launcher));
+
+console.log("\nD. her waveform tells her state, and the chat outlives a closed panel");
+ok("five states, from what she is actually doing", /const mood: AnnaMood = voice === "listening" \? "listening" : busy \|\| voice === "sending" \? "thinking" : opening \? "opening" : speaking \? "speaking" : "idle";/.test(chat));
+ok("the waveform is on the floating button and in the header", /\{anna \? <AnnaWave mood=\{mood\.mood\} level=\{mood\.level\} t=\{t\} \/>/.test(launcher)
+  && /\{mode === "anna" && <AnnaWave mood=\{mood\.mood\} level=\{mood\.level\} t=\{t\} \/>\}/.test(desk));
+ok("the bars stand still with reduced motion", /motion-reduce:animate-none/.test(desk) && /@keyframes anna-wave/.test(read("../src/index.css")));
+ok("it says its state to a screen reader", /role="img" aria-label=\{t\(MOOD_LABEL\[mood\]\)\}/.test(desk));
+ok("speaking is reported by the voice itself", /u\.onstart = \(\) => onSpeaking\(true\);\s*u\.onend = u\.onerror = \(\) => onSpeaking\(false\);/.test(voiceSrc) && /speak\(String\(d\.answer\), setSpeaking\)/.test(chat));
+ok("the chat stays mounted but hidden when the panel closes, so an answer on its way still lands",
+  /<div\s+ref=\{boxRef\}\s+hidden=\{!open\}/.test(desk) && /<div hidden=\{mode !== "anna"\} className="flex min-h-0 flex-1 flex-col">\s*<AnnaChat /.test(desk));
+ok("closing still stops a recording and her voice", /useEffect\(\(\) => \{ if \(!open\) \{ recRef\.current\?\.cancel\(\); hush\(\); \}/.test(chat) && /open=\{open && mode === "anna"\}/.test(desk));
 
 console.log("\n6. drafts are cards; Saad's press writes, through the existing routes");
 ok("four confirm routes, exactly", JSON.stringify(CONFIRM_ROUTES) === '["/api/quotations/save","/api/compliance/save","/api/requests/save","form:contract"]');

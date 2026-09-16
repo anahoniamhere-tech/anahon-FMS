@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
-import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, Volume2, VolumeX, AudioLines } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
+import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, Volume2, VolumeX } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
 import { voiceSupported, record, clipBase64, speak, hush, type Recording } from "./annaVoice";
 
@@ -57,6 +57,36 @@ const readOrb = (): OrbAt | null => {
 };
 const ORB = 48, ORB_MARGIN = 12;
 
+/* ── Anna's waveform (stage D): how she is doing, at a glance, on the floating button and in
+   the panel's header. Listening follows the microphone; thinking, speaking and opening a
+   screen each have their own beat; with reduced motion the bars stand still. */
+type AnnaMood = "idle" | "listening" | "thinking" | "speaking" | "opening";
+const WAVE_SHAPE = [0.35, 0.65, 1, 0.65, 0.35];
+const WAVE_BEAT: Record<AnnaMood, string> = {
+  idle: "", listening: "",
+  thinking: "animate-[anna-wave_1.4s_ease-in-out_infinite]",
+  speaking: "animate-[anna-wave_0.55s_ease-in-out_infinite]",
+  opening: "animate-[anna-wave_0.3s_ease-in-out_infinite]",
+};
+const MOOD_LABEL: Record<AnnaMood, string> = {
+  idle: "Anna is ready", listening: "Anna is listening", thinking: "Anna is thinking",
+  speaking: "Anna is speaking", opening: "Anna is opening a screen",
+};
+function AnnaWave({ mood, level = 0, t, className = "" }: { mood: AnnaMood; level?: number; t: (s: string) => string; className?: string }) {
+  return (
+    <span role="img" aria-label={t(MOOD_LABEL[mood])} data-anna-mood={mood} className={`flex h-5 items-center gap-[3px] ${className}`}>
+      {WAVE_SHAPE.map((k, i) => (
+        <span key={i}
+          className={`h-full w-[3px] origin-center rounded-full bg-current motion-reduce:animate-none ${WAVE_BEAT[mood]}`}
+          style={{
+            transform: `scaleY(${mood === "listening" ? Math.max(0.15, Math.min(1, level * 1.6 * k)) : mood === "idle" ? k * 0.7 : k})`,
+            animationDelay: `${i * 90}ms`,
+          }} />
+      ))}
+    </span>
+  );
+}
+
 /* ── Anna (src/anna.ts). Each finished turn is saved on the server in Saad's own chat
    (decision B); the page keeps nothing in browser storage. Past chats open read-only for
    their cards: a card's buttons belong to the turn that made it, so an old draft cannot be
@@ -75,16 +105,20 @@ const focusBox = (el: HTMLTextAreaElement | null) => { if (!window.matchMedia?.(
 /** Voice choices last only as long as the page, like the open chat: no browser storage. */
 let voiceLangPick: "en" | "ar" | "" = "";
 let readAloud = false;
+let listenHandled = 0;
 type VoiceState = "idle" | "listening" | "sending" | { note: string };
 const KIND_LABEL: Record<string, string> = {
   voucher: "Voucher", quotation: "Quotation", project: "Project", client: "Client",
   vendor: "Supplier", document: "Document", task: "Task", engagement: "Event",
 };
 
-function AnnaChat({ t, lang, voiceReady, listenNow = false, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
+function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   t: (s: string) => string;
-  /** Opened from the floating button's mic: start listening at once. */
-  listenNow?: boolean;
+  /** The panel is showing. The chat stays mounted while it is closed, so an answer on its way still lands. */
+  open: boolean;
+  /** Bumped by the floating button's mic: start listening once per bump. */
+  listenSignal: number;
+  onMood: (mood: AnnaMood, level: number) => void;
   lang: string;
   voiceReady: boolean;
   doorLabel: (navKey: string) => string;
@@ -109,10 +143,20 @@ function AnnaChat({ t, lang, voiceReady, listenNow = false, doorLabel, onOpenDoo
   useEffect(() => { openChatId = chatId; }, [chatId]);
   useEffect(() => { voiceLangPick = vLang; }, [vLang]);
   useEffect(() => { readAloud = aloud; if (!aloud) hush(); }, [aloud]);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { if (listenNow) void mic(); }, []);
-  // Closing the panel ends a recording (nothing is sent) and any speech.
+  const [speaking, setSpeaking] = useState(false);
+  const [opening, setOpening] = useState(false);
+  // A bump from the floating mic is acted on once, even if this chat is later remounted.
+  useEffect(() => {
+    if (!listenSignal || listenSignal === listenHandled) return;
+    listenHandled = listenSignal;
+    void mic();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listenSignal]);
+  // Closing the panel ends a recording (nothing is sent) and any speech; so does leaving.
+  useEffect(() => { if (!open) { recRef.current?.cancel(); hush(); } else focusBox(inputRef.current); }, [open]);
   useEffect(() => () => { recRef.current?.cancel(); hush(); }, []);
+  const mood: AnnaMood = voice === "listening" ? "listening" : busy || voice === "sending" ? "thinking" : opening ? "opening" : speaking ? "speaking" : "idle";
+  useEffect(() => { onMood(mood, level); }, [mood, level, onMood]);
 
   /** Tap: start. Tap again: stop and send. The clip also ends itself when Saad goes quiet. */
   const mic = async () => {
@@ -144,7 +188,7 @@ function AnnaChat({ t, lang, voiceReady, listenNow = false, doorLabel, onOpenDoo
       setVoice({ note: t("The microphone is not allowed. Allow it for this app, then try again.") });
     }
   };
-  useEffect(() => { if (chatId) openChat(chatId); else focusBox(inputRef.current); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { if (chatId) openChat(chatId); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const showList = async () => {
     setListErr("");
@@ -218,9 +262,11 @@ function AnnaChat({ t, lang, voiceReady, listenNow = false, doorLabel, onOpenDoo
       if (!r.ok) throw new Error(d.error || t("Anna could not answer just now."));
       const actions: AnnaAction[] = Array.isArray(d.actions) ? d.actions : [];
       if (d.chatId) setChatId(d.chatId);
-      if (readAloud && d.answer) speak(String(d.answer));
+      if (readAloud && d.answer) speak(String(d.answer), setSpeaking);
       setMsgs(prev => [...prev, { role: "assistant", content: String(d.answer || ""), actions, usd: d.usage?.usd }]);
-      actions.forEach(a => { if (a.type === "open_door" || a.type === "open_record") run(a); });
+      const navs = actions.filter(a => a.type === "open_door" || a.type === "open_record") as NavAction[];
+      navs.forEach(run);
+      if (navs.length) { setOpening(true); setTimeout(() => setOpening(false), 1200); }
     } catch (e: any) {
       // A failed turn is shown but never sent back as history; the question stays so it can be retried.
       setMsgs(prev => [...prev.slice(0, -1), { ...prev[prev.length - 1], error: true }, { role: "assistant", content: e.message, error: true }]);
@@ -432,13 +478,13 @@ export default function HelpDesk({
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [listenNow, setListenNow] = useState(false);
+  const [listenSignal, setListenSignal] = useState(0);
+  const [mood, setMood] = useState<{ mood: AnnaMood; level: number }>({ mood: "idle", level: 0 });
+  const onMood = useCallback((m: AnnaMood, level: number) => setMood({ mood: m, level }), []);
   const [orbAt, setOrbAt] = useState<OrbAt | null>(() => (anna ? readOrb() : null));
   const [, setResized] = useState(0);
   const orbRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
-  // A later open, the Help tab or a policy page must not start the mic again.
-  useEffect(() => { if (!open || mode === "help") setListenNow(false); }, [open, mode]);
   // Each time the launcher appears, place a remembered Anna against the real column (the ref
   // is empty on the render that creates it), not the window.
   useEffect(() => { if (!open) setResized(n => n + 1); }, [open]);
@@ -448,7 +494,10 @@ export default function HelpDesk({
     const col = (orbRef.current?.offsetParent as HTMLElement | null)?.getBoundingClientRect();
     const me = orbRef.current?.getBoundingClientRect();
     const pill = document.querySelector('[data-float="gaps"]')?.getBoundingClientRect();
-    if (!col || !me || !pill || me.right < pill.left - 8 || me.left > pill.right + 8 || me.bottom < pill.top - 8 || me.top > pill.bottom + 8) return at;
+    if (!col || !me || !pill) return at;
+    // How far apart the two boxes are on the nearer axis; within 8px counts as touching.
+    const apart = Math.max(pill.left - me.right, me.left - pill.right, pill.top - me.bottom, me.top - pill.bottom);
+    if (8 < apart) return at;
     const top = pill.top - 8 - ORB - col.top;
     return { ...at, fy: Math.min(1, Math.max(0, (top - ORB_MARGIN) / Math.max(1, col.height - ORB - 2 * ORB_MARGIN))) };
   };
@@ -513,8 +562,9 @@ export default function HelpDesk({
   // z-[95] keeps it beside the "N missing" pill and under that drawer's backdrop
   // (z-[96]) — the column is `relative` with no z-index, so it is a containing block
   // but not a stacking context, and this still competes on z with the whole page.
-  const openPanel = (listen: boolean) => { setMode("anna"); setListenNow(listen); setOpen(true); };
+  const openPanel = (listen: boolean) => { setMode("anna"); if (listen) setListenSignal(n => n + 1); setOpen(true); };
 
+  let launcher: ReactNode = null;
   if (!open) {
     // The column the bubble is placed in; a dragged Anna is kept inside it.
     const box = orbRef.current?.offsetParent as HTMLElement | null;
@@ -532,7 +582,7 @@ export default function HelpDesk({
       const clamp = (v: number) => Math.min(1, Math.max(0, v));
       return { fx: clamp((e.clientX - r.left - ORB / 2 - ORB_MARGIN) / span(r.width)), fy: clamp((e.clientY - r.top - ORB / 2 - ORB_MARGIN) / span(r.height)) };
     };
-    return (
+    launcher = (
       <div
         ref={orbRef}
         data-float="help"
@@ -565,7 +615,7 @@ export default function HelpDesk({
           style={anna ? { touchAction: "none" } : undefined}
           className="flex h-12 w-12 items-center justify-center rounded-full bg-[#6D1A1A] text-white shadow-lg shadow-[#6D1A1A]/25 transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-[#4A1010] hover:shadow-xl hover:shadow-[#6D1A1A]/30"
         >
-          {anna ? <AudioLines className="h-5 w-5" /> : <MessageCircleQuestion className="h-5 w-5" />}
+          {anna ? <AnnaWave mood={mood.mood} level={mood.level} t={t} /> : <MessageCircleQuestion className="h-5 w-5" />}
         </button>
         {anna && (
           <button
@@ -587,14 +637,18 @@ export default function HelpDesk({
   // not fixed (Arabic wraps differently), so this raises the bottom, never the top.
   // `lg` and not `sm`: from `md` the panel starts at the content edge (288px), which at
   // 768-771px puts its right edge back under the pill. Measured, not guessed.
-  return (
+  return (<>
+    {launcher}
     <div
       ref={boxRef}
+      hidden={!open}
       dir={rtl ? "rtl" : "ltr"}
       className="absolute bottom-24 start-5 md:start-8 z-[95] flex max-h-[70vh] w-[min(22rem,100%-2.5rem)] flex-col overflow-hidden rounded-2xl border border-[#E6D3CA] bg-white shadow-2xl shadow-[#4A1010]/20 lg:bottom-5"
     >
       <div className="flex items-center justify-between gap-2 bg-[#6D1A1A] ps-3 pe-1.5 py-1.5 text-white">
         {anna ? (
+          <div className="flex items-center gap-2">
+          {mode === "anna" && <AnnaWave mood={mood.mood} level={mood.level} t={t} />}
           <div role="tablist" className="flex items-center gap-1">
             {(["anna", "help"] as const).map(m => (
               <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
@@ -602,6 +656,7 @@ export default function HelpDesk({
                 {m === "anna" ? "Anna" : t("Help")}
               </button>
             ))}
+          </div>
           </div>
         ) : (
           <p className="flex items-center gap-2 text-xs font-bold">
@@ -613,9 +668,13 @@ export default function HelpDesk({
         </button>
       </div>
 
-      {mode === "anna" && anna ? (
-        <AnnaChat t={t} lang={lang} voiceReady={annaVoice} listenNow={listenNow} doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
-      ) : (<>
+      {anna && (
+        <div hidden={mode !== "anna"} className="flex min-h-0 flex-1 flex-col">
+          <AnnaChat t={t} lang={lang} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood}
+            doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
+        </div>
+      )}
+      {(mode === "help" || !anna) && (<>
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {!turns.length && (
           <p className="text-[12px] leading-relaxed text-slate-500">
@@ -671,5 +730,5 @@ export default function HelpDesk({
       </div>
       </>)}
     </div>
-  );
+  </>);
 }

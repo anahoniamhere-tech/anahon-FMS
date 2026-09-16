@@ -259,6 +259,12 @@ body {
   height: calc(100svh - 9rem);
 }
 
+/* Anna's waveform (HelpDesk.tsx AnnaWave): each bar breathes on its own delay. */
+@keyframes anna-wave {
+  0%, 100% { transform: scaleY(0.3); }
+  50% { transform: scaleY(1); }
+}
+
 /* Reading a policy on a phone (HandbooksTab sets body[data-reading]): the help bubble steps
    aside — "Ask about this policy" is on the page — and the missing-evidence pill shrinks to
    its count. The pill stays on purpose (App.tsx: a gap you must look for is one nobody sees). */
