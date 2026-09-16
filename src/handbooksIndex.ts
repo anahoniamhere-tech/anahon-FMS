@@ -72,7 +72,8 @@ export function parseHandbooksIndex(text: string): ParsedIndex {
     const heading = /^\d\.\s+(.+)$/.exec(line);
     if (heading) { current = { heading: heading[1], chapters: [] }; handbooks.push(current); section = "handbook"; continue; }
     if (line === "Standing on its own") { section = "standalone"; current = null; continue; }
-    if (line === "Numbers not in use") { section = "numbers"; current = null; continue; }
+    // "Old policy numbers (for documents signed before 16 September 2026)" since 16 Sep 2026; the older heading still parses.
+    if (line === "Numbers not in use" || /^Old policy numbers\b/.test(line)) { section = "numbers"; current = null; continue; }
     if (line === "Still to settle") { section = "settle"; current = null; continue; }
 
     if (section === "handbook" && current) current.chapters.push(...bulletChapters(line));
