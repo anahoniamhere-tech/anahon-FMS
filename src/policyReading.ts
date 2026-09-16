@@ -116,7 +116,7 @@ const splitRefs = (p: Piece): Piece[] => {
   let at = 0;
   for (const m of p.text.matchAll(REF)) {
     // A quoted sample of how to cite ('"§7.2"' in P5 §0) is talking about references, not making one.
-    if (/["“'‘]/.test(p.text[m.index! - 1] ?? "")) continue;
+    if (/["“'‘«]/.test(p.text[m.index! - 1] ?? "")) continue;
     if (m.index! > at) out.push({ text: p.text.slice(at, m.index), mark: false });
     out.push({ text: m[0], mark: "ref", ref: m[1] ? { policy: `P${m[1]}`, sec: m[2] } : { sec: m[3] } });
     at = m.index! + m[0].length;
