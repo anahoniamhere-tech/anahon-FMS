@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BookOpen, Search, ChevronDown, ChevronRight, History as HistoryIcon, MessageCircleQuestion, ArrowRight, AlertTriangle } from "lucide-react";
 import { SharedProps } from "./shared";
 import { withTicket } from "../docTicket";
@@ -85,7 +85,7 @@ const accentFor = (heading: string, standalone?: boolean) =>
  * a TOC entry, since it is not a peer of "1. Our commitments" the reader would jump to.
  */
 type BodyBlock =
-  | { kind: "h2" | "h3"; id: string; num: string; title: string }
+  | { kind: "h3"; id: string; num: string; title: string }
   | { kind: "label"; text: string }
   | { kind: "bullet" | "numbered"; text: string }
   | { kind: "p"; text: string };
@@ -98,45 +98,54 @@ const H3_LINE = /^(\d+\.\d+)\s+(.+)$/;
 const BULLET_LINE = /^\t•\t(.+)$/;
 const NUMBERED_LINE = /^\t\d+\.\t(.+)$/;
 
+type Section = { id: string; num: string; title: string; blocks: BodyBlock[] };
+
+/** Returns the lead (everything before the first numbered section — the approval line and
+ *  "At a glance"), one Section per H2 holding everything up to the next H2, and the TOC.
+ *  A chapter with no numbered sections (Strategy) is all lead, so it reads as before. */
 function parseBody(body: string) {
-  const blocks: BodyBlock[] = [];
-  const toc: { id: string; num: string; title: string; level: 2 | 3 }[] = [];
+  const lead: BodyBlock[] = [];
+  const sections: Section[] = [];
+  const toc: { id: string; num: string; title: string; level: 2 | 3; parent: string }[] = [];
+  const push = (b: BodyBlock) => (sections.length ? sections[sections.length - 1].blocks : lead).push(b);
   const lines = body.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
     const h2 = H2_LINE.exec(raw);
     if (h2 && isHeadingText(h2[2])) {
       const id = `sec-${h2[1].replace(/\./g, "-")}`;
-      blocks.push({ kind: "h2", id, num: h2[1], title: h2[2] });
-      toc.push({ id, num: h2[1], title: h2[2], level: 2 });
+      sections.push({ id, num: h2[1], title: h2[2], blocks: [] });
+      toc.push({ id, num: h2[1], title: h2[2], level: 2, parent: id });
       continue;
     }
     const h3 = H3_LINE.exec(raw);
     if (h3 && isHeadingText(h3[2])) {
       const id = `sec-${h3[1].replace(/\./g, "-")}`;
-      blocks.push({ kind: "h3", id, num: h3[1], title: h3[2] });
-      toc.push({ id, num: h3[1], title: h3[2], level: 3 });
+      push({ kind: "h3", id, num: h3[1], title: h3[2] });
+      toc.push({ id, num: h3[1], title: h3[2], level: 3, parent: sections.length ? sections[sections.length - 1].id : id });
       continue;
     }
     const bullet = BULLET_LINE.exec(raw);
-    if (bullet) { blocks.push({ kind: "bullet", text: bullet[1] }); continue; }
+    if (bullet) { push({ kind: "bullet", text: bullet[1] }); continue; }
     const numbered = NUMBERED_LINE.exec(raw);
-    if (numbered) { blocks.push({ kind: "numbered", text: numbered[1] }); continue; }
+    if (numbered) { push({ kind: "numbered", text: numbered[1] }); continue; }
     const next = lines[i + 1] || "";
     if (isLabelText(raw) && (BULLET_LINE.test(next) || NUMBERED_LINE.test(next))) {
-      blocks.push({ kind: "label", text: raw });
+      push({ kind: "label", text: raw });
       continue;
     }
-    if (raw.trim()) blocks.push({ kind: "p", text: raw });
+    if (raw.trim()) push({ kind: "p", text: raw });
   }
-  return { blocks, toc };
+  return { lead, sections, toc };
 }
+
+/** Clears the phone's sticky reading bar when a TOC jump scrolls a heading to the top. */
+const JUMP_MARGIN = "scroll-mt-28 md:scroll-mt-4";
 
 /** Renders the classified blocks, grouping consecutive bullet/numbered lines into one
  *  real <ul>/<ol> rather than a run of stray <li>s, and a "label" block together with the
- *  list it introduces into one highlighted callout. accentText colours only the numbered
- *  H2s, a light touch rather than repainting every line of a document meant to be read. */
-function renderBody(blocks: BodyBlock[], accentText: string) {
+ *  list it introduces into one highlighted callout. */
+function renderBody(blocks: BodyBlock[]) {
   const nodes: ReactNode[] = [];
   let i = 0;
   const readList = () => {
@@ -174,25 +183,10 @@ function renderBody(blocks: BodyBlock[], accentText: string) {
       );
       continue;
     }
-    if (b.kind === "h2") {
-      const intro = isIntroNum(b.num);
-      nodes.push(
-        <h2 key={i} id={b.id} className={`mt-8 scroll-mt-4 border-b border-slate-100 pb-2 text-xl font-bold first:mt-0 ${intro ? "text-slate-800" : accentText}`}>
-          {intro ? b.title : (
-            // dir="ltr": a bare "N." immediately followed by a Latin-word title inverts
-            // under RTL — measured live, this exact shape ("0.2" trading places with
-            // "What moved out") — so num and title are isolated as one run, same as the
-            // app's other digit-leading headings. Section 0 has no number left to invert.
-            <span dir="ltr"><span className="me-2 font-mono text-base text-slate-400">{b.num}.</span>{b.title}</span>
-          )}
-        </h2>
-      );
-      i++; continue;
-    }
     if (b.kind === "h3") {
       const intro = isIntroNum(b.num);
       nodes.push(
-        <h3 key={i} id={b.id} className="mt-5 scroll-mt-4 text-[15px] font-bold text-slate-800">
+        <h3 key={i} id={b.id} className={`mt-5 text-[15px] font-bold text-slate-800 first:mt-0 ${JUMP_MARGIN}`}>
           {intro ? b.title : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{b.num}</span>{b.title}</span>}
         </h3>
       );
@@ -233,6 +227,13 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   const [selected, setSelected] = useState<Selected | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [sectionsOpen, setSectionsOpen] = useState(false);
+  // Per-section open/closed choices; a section nobody has touched falls back to "open if
+  // it is the intro (0)". Reset whenever another policy opens.
+  const [openSecs, setOpenSecs] = useState<Record<string, boolean>>({});
+  const [currentSec, setCurrentSec] = useState<string | null>(null);
+  const [jumpTo, setJumpTo] = useState<string | null>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const articleRef = useRef<HTMLDivElement>(null);
 
   const fetchText = async (doc: AppDoc) => {
     if (docText[doc.id]) return docText[doc.id];
@@ -256,6 +257,8 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   const openChapter = async (doc: AppDoc, chapters: Chapter[], no: string, title: string) => {
     setHistoryOpen(false);
     setSectionsOpen(false);
+    setOpenSecs({});
+    setCurrentSec(null);
     setSelected({ doc, no, title, chapters });
     await fetchText(doc);
   };
@@ -336,7 +339,43 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   const selectedAnchors = selected ? chapterAnchors(selectedText) : {};
   const selectedIsMissing = selected ? missingChapterText(selected.chapters, selectedAnchors).some(c => c.no === selected.no) : false;
   const selectedBody = selected && !selectedIsMissing ? chapterSlice(selectedText, selected.no, selectedAnchors) : "";
-  const { blocks, toc } = useMemo(() => parseBody(selectedBody), [selectedBody]);
+  const { lead, sections, toc } = useMemo(() => parseBody(selectedBody), [selectedBody]);
+
+  // A TOC jump may target a section that is still collapsed: open it first, then scroll
+  // once React has rendered it.
+  useEffect(() => {
+    if (!jumpTo) return;
+    document.getElementById(jumpTo)?.scrollIntoView({ block: "start" });
+    setJumpTo(null);
+  }, [jumpTo]);
+
+  // "Where am I": the last section header that has scrolled up past the sticky bar (or
+  // the top of the content column on desktop). Scroll events don't bubble, so this
+  // listens in the capture phase and catches <main>'s own scrolling. At the very bottom
+  // the last section counts as reached even if its header never gets to the top.
+  useEffect(() => {
+    if (!sections.length) return;
+    let raf = 0;
+    const measure = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const main = articleRef.current?.closest("main");
+        if (!main) return;
+        const limit = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top) + 24;
+        let cur = sections[0].id;
+        for (const s of sections) {
+          const el = document.getElementById(s.id);
+          if (!el || el.getBoundingClientRect().top > limit) break;
+          cur = s.id;
+        }
+        if (main.scrollTop > 0 && main.scrollTop + main.clientHeight >= main.scrollHeight - 4) cur = sections[sections.length - 1].id;
+        setCurrentSec(cur);
+      });
+    };
+    document.addEventListener("scroll", measure, { capture: true, passive: true });
+    measure();
+    return () => { document.removeEventListener("scroll", measure, { capture: true }); cancelAnimationFrame(raf); };
+  }, [sections]);
 
   if (selected) {
     const isMissing = selectedIsMissing;
@@ -346,22 +385,79 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     const selectedHeading = parsed?.handbooks.find(h => h.chapters.some(c => c.no === selected.no))?.heading;
     const accent = accentFor(selectedHeading || "", !selectedHeading);
 
-    const tocList = (onJump?: () => void) => (
+    const isOpen = (s: Section) => openSecs[s.id] ?? isIntroNum(s.num);
+    const setAll = (open: boolean) => setOpenSecs(Object.fromEntries(sections.map(s => [s.id, open])));
+    const jump = (id: string, parent: string) => {
+      setOpenSecs(o => ({ ...o, [parent]: true }));
+      setSectionsOpen(false);
+      setJumpTo(id);
+    };
+
+    // Progress counts numbered sections by position; the intro (0) reads as "Introduction".
+    const numbered = sections.filter(s => !isIntroNum(s.num));
+    const cur = sections.find(s => s.id === currentSec);
+    const curPos = cur && !isIntroNum(cur.num) ? numbered.indexOf(cur) + 1 : 0;
+    const progressLabel = curPos
+      ? t("Section {n} of {m}").replace("{n}", String(curPos)).replace("{m}", String(numbered.length))
+      : t("Introduction");
+    const progressPct = numbered.length ? Math.round((curPos / numbered.length) * 100) : 0;
+
+    // dir="ltr": a bare "N." immediately followed by a Latin-word title inverts under RTL —
+    // measured live ("0.2" trading places with "What moved out") — so num and title are
+    // isolated as one run. Section 0 has no number left to invert.
+    const numTitle = (num: string, title: string, numClass: string) =>
+      isIntroNum(num) ? title : <span dir="ltr"><span className={`me-2 font-mono ${numClass}`}>{num}{num.includes(".") ? "" : "."}</span>{title}</span>;
+
+    const tocList = () => (
       <nav className="space-y-0.5">
         {toc.map(s => (
-          <a key={s.id} href={`#${s.id}`} onClick={onJump}
-            className={`block rounded-md px-2 py-1.5 text-[13px] hover:bg-slate-50 ${s.level === 3 ? "ps-5 text-slate-500" : "font-semibold text-slate-700"}`}>
-            {isIntroNum(s.num) ? s.title : <span dir="ltr">{s.num} {s.title}</span>}
-          </a>
+          <button key={s.id} onClick={() => jump(s.id, s.parent)}
+            className={`block min-h-11 w-full rounded-md px-2 py-2 text-start text-[13px] md:min-h-0 md:py-1.5 ${
+              s.level === 3 ? "ps-5 text-slate-500 hover:bg-slate-50" :
+              s.id === currentSec ? "bg-slate-100 font-semibold text-slate-900" : "font-semibold text-slate-700 hover:bg-slate-50"}`}>
+            {numTitle(s.num, s.title, "text-slate-400")}
+          </button>
         ))}
       </nav>
     );
 
+    const backLabel = t("Back to Policies & handbooks");
+
     return (
       <div className="space-y-5">
+        {/* Phone: one sticky bar keeps "back", the section list and the reader's place
+            within reach however far down a long policy they are. Bleeds over <main>'s
+            p-4 so it spans the screen. */}
+        <div ref={barRef} className="sticky -top-4 z-20 -mx-4 -mt-4 border-b border-slate-200 bg-white/95 px-2 backdrop-blur md:hidden">
+          <div className="flex items-center gap-1">
+            <button onClick={() => setSelected(null)} aria-label={backLabel} title={backLabel}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100">
+              <ArrowRight className="h-5 w-5 rotate-180 rtl:rotate-0" />
+            </button>
+            {sections.length > 0 ? (
+              <button onClick={() => setSectionsOpen(o => !o)} aria-expanded={sectionsOpen}
+                className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 text-start">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[11px] font-semibold text-slate-500">{progressLabel}</span>
+                  <span className="block truncate text-[13px] font-bold text-slate-800">{cur ? cur.title : selected.title}</span>
+                </span>
+                <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${sectionsOpen ? "rotate-180" : ""}`} />
+              </button>
+            ) : (
+              <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800">{selected.title}</span>
+            )}
+          </div>
+          {sections.length > 0 && (
+            <div className="-mx-2 h-1 bg-slate-100" role="progressbar" aria-valuenow={progressPct} aria-valuemin={0} aria-valuemax={100} aria-label={progressLabel}>
+              <div className={`h-full transition-[width] duration-300 ${accent.badge}`} style={{ width: `${progressPct}%` }} />
+            </div>
+          )}
+          {sectionsOpen && <div className="max-h-[60vh] overflow-y-auto py-2">{tocList()}</div>}
+        </div>
+
         <button onClick={() => setSelected(null)}
-          className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800">
-          <ArrowRight className="h-4 w-4 rotate-180 rtl:rotate-0" /> {t("Back to Policies & handbooks")}
+          className="hidden items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-800 md:inline-flex">
+          <ArrowRight className="h-4 w-4 rotate-180 rtl:rotate-0" /> {backLabel}
         </button>
 
         <div className={`border-s-4 ps-4 ${accent.ring}`}>
@@ -388,23 +484,11 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
           {ic(MessageCircleQuestion, "h-3.5 w-3.5")} {t("Ask about this policy")}
         </button>
 
-        {/* Sections: a phone gets a collapsible toggle, since a fixed sidebar would eat
-            too much of a narrow screen; desktop gets a real sticky column beside the
-            text, so the reader's place in a long policy is never more than a glance
-            away. Plain <a href="#id"> anchors — no scroll-handler JS needed, and they
-            work the same under RTL. */}
-        {toc.length > 0 && (
-          <div className="rounded-xl border border-slate-200 bg-white md:hidden">
-            <button onClick={() => setSectionsOpen(o => !o)}
-              className="flex w-full items-center gap-2 p-3 text-start text-[13px] font-bold text-slate-700">
-              {t("Sections")} ({toc.length})
-              {sectionsOpen ? <ChevronDown className="h-4 w-4 ms-auto" /> : <ChevronRight className="h-4 w-4 ms-auto rtl:rotate-180" />}
-            </button>
-            {sectionsOpen && <div className="border-t border-slate-100 p-3">{tocList(() => setSectionsOpen(false))}</div>}
-          </div>
-        )}
-
-        <div className={toc.length > 0 ? "md:grid md:grid-cols-[1fr_15rem] md:items-start md:gap-8" : ""}>
+        {/* Desktop keeps a sticky section column beside the text; the phone has the
+            sticky bar above. Each numbered section is an accordion — the lead (approval
+            line, "At a glance") and the intro (0) start open, the rules start folded so
+            a reader sees the whole policy's shape before its detail. */}
+        <div ref={articleRef} className={sections.length > 0 ? "md:grid md:grid-cols-[1fr_15rem] md:items-start md:gap-8" : ""}>
           <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 md:p-6">
             {busyDoc === selected.doc.id ? (
               <p className="text-sm text-slate-500">{t("Reading the handbook…")}</p>
@@ -414,14 +498,40 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                 <p>{t("The Index lists this chapter here, but the handbook's own text does not carry it yet.")}{chapterMeta?.note ? ` ${chapterMeta.note}.` : ""}</p>
               </div>
             ) : (
-              <div className="mx-auto max-w-[70ch]">{renderBody(blocks, accent.text)}</div>
+              <div className="mx-auto max-w-[70ch]">
+                {renderBody(lead)}
+                {sections.length > 0 && (
+                  <div className="mt-4 flex justify-end gap-1 border-b border-slate-100 pb-1">
+                    <button onClick={() => setAll(true)} className="min-h-11 rounded-lg px-3 text-[12px] font-semibold text-slate-600 hover:bg-slate-100">{t("Expand all")}</button>
+                    <button onClick={() => setAll(false)} className="min-h-11 rounded-lg px-3 text-[12px] font-semibold text-slate-600 hover:bg-slate-100">{t("Collapse all")}</button>
+                  </div>
+                )}
+                {sections.map(s => {
+                  const open = isOpen(s);
+                  return (
+                    <section key={s.id} className="border-b border-slate-100 last:border-0">
+                      <h2 id={s.id} className={JUMP_MARGIN}>
+                        <button onClick={() => setOpenSecs(o => ({ ...o, [s.id]: !open }))}
+                          aria-expanded={open} aria-controls={`${s.id}-body`}
+                          className="flex min-h-11 w-full items-center gap-3 py-3 text-start hover:bg-slate-50/60">
+                          <span className={`min-w-0 flex-1 text-lg font-bold leading-snug ${isIntroNum(s.num) ? "text-slate-800" : accent.text}`}>
+                            {numTitle(s.num, s.title, "text-base text-slate-400")}
+                          </span>
+                          <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+                        </button>
+                      </h2>
+                      {open && <div id={`${s.id}-body`} className="pb-5">{renderBody(s.blocks)}</div>}
+                    </section>
+                  );
+                })}
+              </div>
             )}
           </div>
-          {toc.length > 0 && (
-            <nav className="sticky top-4 mt-6 hidden max-h-[75vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 md:mt-0 md:block">
+          {sections.length > 0 && (
+            <div className="sticky top-4 mt-6 hidden max-h-[75vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 md:mt-0 md:block">
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Sections")}</p>
               {tocList()}
-            </nav>
+            </div>
           )}
         </div>
 
