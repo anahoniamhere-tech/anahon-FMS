@@ -643,7 +643,9 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
   const peekTwin = peekLoc && wantAr ? twinOf(peekLoc.doc) : undefined;
   const peekDoc = peekTwin ?? peekLoc?.doc;
   const peekText = peekDoc ? docText[peekDoc.id] : undefined;
+  const peekEnText = peekTwin && peekLoc ? docText[peekLoc.doc.id] : undefined;
   useEffect(() => {
+    if (peekTwin && peekLoc && peekEnText === undefined) fetchText(peekLoc.doc);
     if (peekDoc && peekText === undefined) fetchText(peekDoc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peek?.no]);
@@ -748,21 +750,30 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
     // if a large handbook ever makes the sheet feel slow.
     const peekView = (() => {
       if (!peek || !peekLoc || peekText === undefined) return null;
-      const read = readChapter(peekText, !!peekTwin, peekLoc.chapters, peekLoc.no);
-      const missing = { heading: null as string | null, blocks: null as BodyBlock[] | null, title: read.title };
-      if (read.missing) return missing;
-      const parsedPeek = parseBody(read.body);
-      if (!peek.sec) return { heading: null, title: read.title, blocks: parsedPeek.lead.length ? parsedPeek.lead : parsedPeek.sections[0]?.blocks ?? [] };
-      const id = secId(peek.sec);
-      const top = parsedPeek.sections.find(x => x.id === parentOf(id));
-      if (!top) return missing;
-      if (top.id === id) return { heading: `${top.num}. ${top.title}`, title: read.title, blocks: top.blocks };
-      const at = top.blocks.findIndex(b => "id" in b && b.id === id);
-      if (at < 0) return missing;
-      const h = top.blocks[at] as { kind: "h3" | "h4"; num: string; title: string };
-      let end = at + 1;
-      while (end < top.blocks.length && top.blocks[end].kind !== "h3" && !(h.kind === "h4" && top.blocks[end].kind === "h4")) end++;
-      return { heading: `${h.num} ${h.title}`, title: read.title, blocks: top.blocks.slice(at + 1, end) };
+      // The referenced stretch of one text: a section, a subsection (to the next one), or the opening.
+      const pick = (text: string, ar: boolean) => {
+        const read = readChapter(text, ar, peekLoc.chapters, peekLoc.no);
+        if (read.missing) return { read, heading: null as string | null, blocks: null as BodyBlock[] | null };
+        const pb = parseBody(read.body);
+        if (!peek.sec) return { read, heading: null, blocks: pb.lead.length ? pb.lead : pb.sections[0]?.blocks ?? [] };
+        const id = secId(peek.sec);
+        const top = pb.sections.find(x => x.id === parentOf(id));
+        if (!top) return { read, heading: null, blocks: null };
+        if (top.id === id) return { read, heading: `${top.num}. ${top.title}`, blocks: top.blocks };
+        const at = top.blocks.findIndex(b => "id" in b && b.id === id);
+        if (at < 0) return { read, heading: null, blocks: null };
+        const h = top.blocks[at] as { kind: "h3" | "h4"; num: string; title: string };
+        let end = at + 1;
+        while (end < top.blocks.length && top.blocks[end].kind !== "h3" && !(h.kind === "h4" && top.blocks[end].kind === "h4")) end++;
+        return { read, heading: `${h.num} ${h.title}`, blocks: top.blocks.slice(at + 1, end) };
+      };
+      const shown = pick(peekText, !!peekTwin);
+      const en = new Map<BodyBlock, BodyBlock>();
+      if (peekTwin && peekEnText && shown.blocks) {
+        const e = pick(peekEnText, false).blocks;
+        if (e) pairBlocks(shown.blocks, e, en);
+      }
+      return { heading: shown.heading, blocks: shown.blocks, title: shown.read.title, en };
     })();
     const openPeek = () => {
       if (!peek || !peekLoc) return;
@@ -1040,7 +1051,7 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {!peekView ? <p className="text-sm text-slate-500">{t("Reading the handbook…")}</p>
                   : !peekView.blocks ? <p className="text-sm text-amber-800">{t("That section is not in the policy's current text.")}</p>
-                  : <div dir={peekTwin ? "rtl" : "ltr"}>{renderBody(peekView.blocks, accentFor(peekLoc?.heading || "", !peekLoc?.heading), "", { roles: roleDefs(peekText || ""), dir: peekTwin ? "rtl" : "ltr" })}</div>}
+                  : <div dir={peekTwin ? "rtl" : "ltr"}>{renderBody(peekView.blocks, accentFor(peekLoc?.heading || "", !peekLoc?.heading), "", { roles: roleDefs(peekText || ""), dir: peekTwin ? "rtl" : "ltr", en: peekView.en })}</div>}
               </div>
               <div className="border-t border-slate-100 p-3">
                 <button onClick={openPeek} disabled={!peekLoc}
