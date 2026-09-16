@@ -56,8 +56,8 @@ const accentFor = (heading: string, standalone?: boolean) =>
 /**
  * A policy chapter's body, split into headed sections for the reading view's table of
  * contents. Presentation only — the body is rendered exactly as written; this only
- * decides how consecutive LINES group (heading / bullet / numbered step / paragraph),
- * the way a person reading the raw text already does.
+ * decides how consecutive LINES group (heading / bullet / numbered step / paragraph /
+ * label callout), the way a person reading the raw text already does.
  *
  * A short, punctuation-free "N. Title" or "N.N Title" line is a section heading. Checked
  * against the Team, Finance and Information/Privacy handbooks before picking the length
@@ -68,13 +68,31 @@ const accentFor = (heading: string, standalone?: boolean) =>
  * sections at all — guessing which short lines are headings there risks false positives
  * the numbered handbooks don't have, so its body renders as plain paragraphs, same as
  * before this pass.
+ *
+ * Section "0" is every numbered handbook's own front matter ("0. How this policy works" —
+ * identical wording checked across all five, never varies) — real content, but not a rule
+ * a reader is meant to count alongside "1. Our commitments". It stays a real heading (same
+ * TOC entry, same anchor) with its "0"/"0.N" number hidden rather than shown, both in the
+ * body and the TOC — checked live across every handbook before deciding the title reads
+ * fine alone ("How this policy works", "Scope", "Roles" — no invented text needed).
+ *
+ * A short standalone line with nothing after it but a bulleted or numbered list — "At a
+ * glance", "Editor's note — ...", "Changed on ..." — is the SAME shape in every handbook
+ * that has one (confirmed: Team, Finance, Programmes, Information/Privacy, Editorial all
+ * open a chapter with "At a glance" the same way). One rule catches the family rather than
+ * hardcoding "At a glance" alone, matching how it was asked: handled consistently, not
+ * patched once. Rendered as a highlighted callout, not a numbered section — it never gets
+ * a TOC entry, since it is not a peer of "1. Our commitments" the reader would jump to.
  */
 type BodyBlock =
   | { kind: "h2" | "h3"; id: string; num: string; title: string }
+  | { kind: "label"; text: string }
   | { kind: "bullet" | "numbered"; text: string }
   | { kind: "p"; text: string };
 
 const isHeadingText = (s: string) => s.length > 0 && s.length <= 70 && !/[.,;:]$/.test(s.trim());
+const isLabelText = (s: string) => s.length > 0 && s.length <= 60 && !/^\d/.test(s) && !/[.,;:]$/.test(s.trim());
+const isIntroNum = (num: string) => num === "0" || num.startsWith("0.");
 const H2_LINE = /^(\d+)\.\s+(.+)$/;
 const H3_LINE = /^(\d+\.\d+)\s+(.+)$/;
 const BULLET_LINE = /^\t•\t(.+)$/;
@@ -83,7 +101,9 @@ const NUMBERED_LINE = /^\t\d+\.\t(.+)$/;
 function parseBody(body: string) {
   const blocks: BodyBlock[] = [];
   const toc: { id: string; num: string; title: string; level: 2 | 3 }[] = [];
-  for (const raw of body.split("\n")) {
+  const lines = body.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
     const h2 = H2_LINE.exec(raw);
     if (h2 && isHeadingText(h2[2])) {
       const id = `sec-${h2[1].replace(/\./g, "-")}`;
@@ -102,47 +122,78 @@ function parseBody(body: string) {
     if (bullet) { blocks.push({ kind: "bullet", text: bullet[1] }); continue; }
     const numbered = NUMBERED_LINE.exec(raw);
     if (numbered) { blocks.push({ kind: "numbered", text: numbered[1] }); continue; }
+    const next = lines[i + 1] || "";
+    if (isLabelText(raw) && (BULLET_LINE.test(next) || NUMBERED_LINE.test(next))) {
+      blocks.push({ kind: "label", text: raw });
+      continue;
+    }
     if (raw.trim()) blocks.push({ kind: "p", text: raw });
   }
   return { blocks, toc };
 }
 
 /** Renders the classified blocks, grouping consecutive bullet/numbered lines into one
- *  real <ul>/<ol> rather than a run of stray <li>s. accentText colours only the H2s, a
- *  light touch rather than repainting every line of a document meant to be read. */
+ *  real <ul>/<ol> rather than a run of stray <li>s, and a "label" block together with the
+ *  list it introduces into one highlighted callout. accentText colours only the numbered
+ *  H2s, a light touch rather than repainting every line of a document meant to be read. */
 function renderBody(blocks: BodyBlock[], accentText: string) {
   const nodes: ReactNode[] = [];
   let i = 0;
+  const readList = () => {
+    const kind = blocks[i].kind as "bullet" | "numbered";
+    const items: string[] = [];
+    while (i < blocks.length && blocks[i].kind === kind) { items.push((blocks[i] as { text: string }).text); i++; }
+    return { kind, items };
+  };
   while (i < blocks.length) {
     const b = blocks[i];
-    if (b.kind === "bullet" || b.kind === "numbered") {
-      const isOrdered = b.kind === "numbered";
-      const items: string[] = [];
-      while (i < blocks.length && blocks[i].kind === b.kind) { items.push((blocks[i] as { text: string }).text); i++; }
-      const Tag = isOrdered ? "ol" : "ul";
+    if (b.kind === "label") {
+      const label = b.text;
+      i++;
+      const { kind, items } = i < blocks.length && (blocks[i].kind === "bullet" || blocks[i].kind === "numbered") ? readList() : { kind: "bullet" as const, items: [] };
+      const Tag = kind === "numbered" ? "ol" : "ul";
       nodes.push(
-        <Tag key={`list-${i}`} className={`my-3 space-y-1.5 ps-5 text-[13px] leading-relaxed text-slate-800 ${isOrdered ? "list-decimal" : "list-disc"}`}>
+        <div key={`label-${i}`} className="my-4 rounded-xl border border-amber-100 bg-amber-50/60 p-4">
+          <p className="text-[13px] font-bold text-amber-900">{label}</p>
+          {items.length > 0 && (
+            <Tag className={`mt-2 space-y-1.5 ps-5 text-[13px] leading-relaxed text-amber-950 ${kind === "numbered" ? "list-decimal" : "list-disc"}`}>
+              {items.map((it, j) => <li key={j}>{it}</li>)}
+            </Tag>
+          )}
+        </div>
+      );
+      continue;
+    }
+    if (b.kind === "bullet" || b.kind === "numbered") {
+      const { kind, items } = readList();
+      const Tag = kind === "numbered" ? "ol" : "ul";
+      nodes.push(
+        <Tag key={`list-${i}`} className={`my-3 space-y-1.5 ps-5 text-[13px] leading-relaxed text-slate-800 ${kind === "numbered" ? "list-decimal" : "list-disc"}`}>
           {items.map((it, j) => <li key={j}>{it}</li>)}
         </Tag>
       );
       continue;
     }
     if (b.kind === "h2") {
+      const intro = isIntroNum(b.num);
       nodes.push(
-        <h2 key={i} id={b.id} className={`mt-8 scroll-mt-4 border-b border-slate-100 pb-2 text-xl font-bold first:mt-0 ${accentText}`}>
-          {/* dir="ltr": a bare "N." immediately followed by a Latin-word title inverts
-              under RTL — measured live, this exact shape ("0.2" trading places with
-              "What moved out") — so num and title are isolated as one run, same as the
-              app's other digit-leading headings. */}
-          <span dir="ltr"><span className="me-2 font-mono text-base text-slate-400">{b.num}.</span>{b.title}</span>
+        <h2 key={i} id={b.id} className={`mt-8 scroll-mt-4 border-b border-slate-100 pb-2 text-xl font-bold first:mt-0 ${intro ? "text-slate-800" : accentText}`}>
+          {intro ? b.title : (
+            // dir="ltr": a bare "N." immediately followed by a Latin-word title inverts
+            // under RTL — measured live, this exact shape ("0.2" trading places with
+            // "What moved out") — so num and title are isolated as one run, same as the
+            // app's other digit-leading headings. Section 0 has no number left to invert.
+            <span dir="ltr"><span className="me-2 font-mono text-base text-slate-400">{b.num}.</span>{b.title}</span>
+          )}
         </h2>
       );
       i++; continue;
     }
     if (b.kind === "h3") {
+      const intro = isIntroNum(b.num);
       nodes.push(
         <h3 key={i} id={b.id} className="mt-5 scroll-mt-4 text-[15px] font-bold text-slate-800">
-          <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{b.num}</span>{b.title}</span>
+          {intro ? b.title : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{b.num}</span>{b.title}</span>}
         </h3>
       );
       i++; continue;
@@ -300,7 +351,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
         {toc.map(s => (
           <a key={s.id} href={`#${s.id}`} onClick={onJump}
             className={`block rounded-md px-2 py-1.5 text-[13px] hover:bg-slate-50 ${s.level === 3 ? "ps-5 text-slate-500" : "font-semibold text-slate-700"}`}>
-            <span dir="ltr">{s.num} {s.title}</span>
+            {isIntroNum(s.num) ? s.title : <span dir="ltr">{s.num} {s.title}</span>}
           </a>
         ))}
       </nav>
