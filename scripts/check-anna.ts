@@ -7,7 +7,7 @@
 // Run: npx tsx scripts/check-anna.ts
 import { readFileSync } from "node:fs";
 import {
-  ANNA_TARGETS, GUIDE_MAX_STEPS, LOOSE_TOOLS, ANNA_MODEL, ANNA_USERS, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, READ_TOOLS, DRAFT_TOOLS, RECORD_KINDS, CONFIRM_ROUTES,
+  ANNA_TARGETS, GUIDE_MAX_STEPS, LOOSE_TOOLS, ANNA_MODELS, ANNA_PRICE, parseRollout, annaModelFor, annaDailyCap, ANNA_CLIP_FACTOR, DRAFT_ROUTE, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, READ_TOOLS, DRAFT_TOOLS, RECORD_KINDS, CONFIRM_ROUTES,
   annaTools, annaSystem, readTool, draftTool, clientAction, cleanHistory, visibleRows, type AnnaCtx,
 } from "../src/anna.js";
 import { searchHits } from "../src/globalSearch.js";
@@ -25,16 +25,28 @@ const route = (() => {
 })();
 ok("the route exists", route.length > 500);
 
-console.log("\n1. Saad only");
-ok("ANNA_USERS is exactly Saad (u-1)", ANNA_USERS.length === 1 && ANNA_USERS[0] === "u-1");
-ok("the route checks the real signed-in user, first",
-  /const viewer = \(req as any\)\.dbUser;\s*if \(!ANNA_USERS\.includes\(viewer\.id\)\)/.test(route));
+console.log("\n1. only the people on the rollout list (ANNA_ROLLOUT, plan §10f)");
+const r0 = parseRollout(undefined), r1 = parseRollout("u-1, u-7 ,u-9:sonnet, bad id!, u-8:opus"), rAll = parseRollout("u-1,*");
+ok("unset means Saad alone, on Sonnet", JSON.stringify(r0) === '{"all":false,"people":{"u-1":"sonnet"}}' && annaModelFor(r0, "u-7") === null);
+ok("named people get Haiku unless the list says Sonnet; junk and unknown tiers never add a model",
+  annaModelFor(r1, "u-1") === ANNA_MODELS.sonnet && annaModelFor(r1, "u-7") === ANNA_MODELS.haiku && annaModelFor(r1, "u-9") === ANNA_MODELS.sonnet
+  && annaModelFor(r1, "u-8") === ANNA_MODELS.haiku && !Object.keys(r1.people).some(k => /\s|!/.test(k)) && annaModelFor(r1, "u-2") === null);
+ok("'*' gives everyone Haiku, Saad keeps Sonnet", annaModelFor(rAll, "u-5") === ANNA_MODELS.haiku && annaModelFor(rAll, "u-1") === ANNA_MODELS.sonnet);
+ok("no Opus, ever", Object.values(ANNA_MODELS).every(m => !/opus/.test(m)) && JSON.stringify(Object.keys(ANNA_PRICE).sort()) === JSON.stringify(Object.values(ANNA_MODELS).sort()));
+ok("the list is read from the server's settings, for the real signed-in person",
+  /const annaModelOf = \(user: any\) => \(user\?\.active \? annaModelFor\(parseRollout\(process\.env\.ANNA_ROLLOUT\), user\.id\) : null\);/.test(server));
+ok("the route checks it first",
+  /const viewer = \(req as any\)\.dbUser;\s*const model = annaModelOf\(viewer\);\s*if \(!model\) \{/.test(route));
 ok("a refusal is a 403 with an audit line", /"Anna Refused", "Not on the Anna user list\."\);\s*return res\.status\(403\)/.test(route));
-ok("the panel flag reads the real user too", /anna: \{ enabled: !!viewer && ANNA_USERS\.includes\(viewer\.id\)[,} ]/.test(server));
+ok("the panel flag reads the real person, on every branch of the state",
+  /async function loadState\(viewer\?: any\) \{\s*const state: any = await loadStateFor\(viewer\);\s*const on = !!annaModelOf\(viewer\);/.test(server)
+  && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), spend \};/.test(server) && (server.match(/anna: \{ enabled/g) || []).length === 0);
+ok("each person's model is the one the turn uses", /model, max_tokens: ANNA_LIMITS\.maxTokens,/.test(route) && !/ANNA_MODEL\b/.test(server));
+ok("Haiku runs without thinking or effort", /\.\.\.\(model === "claude-haiku-4-5" \? \{\} : \{ thinking: \{ type: "adaptive" \}, output_config: \{ effort: "medium" \} \}\),/.test(route));
 ok("the route is gated", /"\/api\/anna\/turn": ANY/.test(read("../src/gates.ts")));
 
 console.log("\n2. paid only, never the free tier");
-ok("the model is Sonnet 5 (D2)", ANNA_MODEL === "claude-sonnet-5");
+ok("Saad's model is Sonnet 5 (D2), staff on Haiku 4.5 (D10-2)", ANNA_MODELS.sonnet === "claude-sonnet-5" && ANNA_MODELS.haiku === "claude-haiku-4-5");
 ok("the route never names Gemini", !/gemini/i.test(route));
 ok("its policy call is paid-only", /REPLY_SCHEMA, undefined, "low", "haiku", true\)/.test(route));
 ok("paid-only never falls through to Gemini", /if \(paidOnly \|\| !process\.env\.GEMINI_API_KEY\) throw err;/.test(server)
@@ -58,13 +70,13 @@ const chatRoutes = ['app.get("/api/anna/chats"', 'app.get("/api/anna/chats/:id"'
   const a = server.indexOf(h); return a < 0 ? "" : server.slice(a, server.indexOf("\n});\n", a));
 });
 ok("the three chat routes check the owner first", chatRoutes.every(r => /^[^\n]*\n  const me = annaOwner\(req\);\n  if \(!me\) return res\.status\(403\)/.test(r)));
-ok("the owner is the real signed-in person on Anna's list", /const annaOwner = \(req: any\) => \{\s*const me = req\.dbUser;\s*return me\?\.active && ANNA_USERS\.includes\(me\.id\) \? me : null;/.test(server));
+ok("the owner is the real signed-in person on Anna's list", /const annaOwner = \(req: any\) => \{\s*const me = req\.dbUser;\s*return annaModelOf\(me\) \? me : null;/.test(server));
 ok("a delete is logged as a count only", /"Anna Chats Deleted", `\$\{count\} chat\$\{count === 1 \? "" : "s"\}\$\{all \? " \(all\)" : ""\}\.`/.test(chatRoutes[2]));
 ok("a turn is saved under the signed-in user, not the body's", /saveAnnaTurn\(viewer\.id, /.test(route) && !/saveAnnaTurn\(req\.body/.test(route));
 ok("what is saved is the question and Anna's reply, nothing from the tools", /saveAnnaTurn\(viewer\.id, String\(req\.body\?\.chatId \|\| ""\), asked, \{ role: "assistant", content: answer, actions, usd \}\)/.test(route));
 
 console.log("\n4. the tool list is closed");
-const tools = annaTools(["mydesk", "expenses"]);
+const tools = annaTools(["mydesk", "expenses"], "Super Admin");
 ok("exactly the fourteen tools", JSON.stringify(tools.map(t => t.name)) === JSON.stringify(ANNA_TOOL_NAMES) && ANNA_TOOL_NAMES.length === 14
   && JSON.stringify(DRAFT_TOOLS) === '["draft_quotation","draft_task","draft_contract","draft_request"]');
 ok("every tool has a closed schema", tools.every(t => t.input_schema.additionalProperties === false));
@@ -74,7 +86,7 @@ ok("navigation and read tools are strict; only the drafts and the guide are not 
 const FORBIDDEN = /\b(approve|reject|pay|send|share|delete|publish|sign|receipt|match|deposit)\b/i;
 ok("no tool name or description names a tier-3 act", tools.every(t => !FORBIDDEN.test(t.name + " " + t.description)),
   tools.filter(t => FORBIDDEN.test(t.name + " " + t.description)).map(t => t.name).join(","));
-ok("an unknown tool name is refused and logged", /if \(!ANNA_TOOL_NAMES\.includes\(c\.name\)\)[\s\S]{0,120}"No such tool\."[\s\S]{0,120}"Anna Refused"/.test(route));
+ok("an unknown tool name is refused and logged", /if \(!ANNA_TOOL_NAMES\.includes\(c\.name\) \|\| !offered\.has\(c\.name\)\)[\s\S]{0,120}"No such tool\."[\s\S]{0,120}"Anna Refused"/.test(route));
 ok("open_door offers only the viewer's doors", JSON.stringify(tools[0].input_schema.properties.door.enum) === '["mydesk","expenses"]');
 
 console.log("\n5. the route writes audit lines and its own chat, nothing else");
@@ -83,7 +95,7 @@ ok("no write in the route", !WRITE.test(route), route.match(WRITE)?.[0]);
 const saver = server.slice(server.indexOf("async function saveAnnaTurn("), server.indexOf("\n}\n", server.indexOf("async function saveAnnaTurn(")));
 ok("the only other write is saveAnnaTurn, and it writes chats only",
   saver.length > 200 && [...saver.matchAll(/prisma\.(\w+)\.(create|update|updateMany|upsert|delete|deleteMany)\b/g)].every(m => m[1] === "annaChat")
-  && [...route.matchAll(/await (\w+)\(/g)].map(m => m[1]).filter(f => !["createAuditLog", "loadState", "import", "policyCorpus", "askJson"].includes(f)).every(f => f === "saveAnnaTurn"));
+  && [...route.matchAll(/await (\w+)\(/g)].map(m => m[1]).filter(f => !["createAuditLog", "loadState", "import", "policyCorpus", "askJson", "annaUsedToday"].includes(f)).every(f => f === "saveAnnaTurn"));
 ok("no write in src/anna.ts", !WRITE.test(annaSrc) && !/from "node:fs"|from "fs"|fetch\(/.test(annaSrc));
 ok("it is a read-only POST for the push filter", /READ_ONLY_POSTS = new Set\(\[[^\]]*"\/api\/anna\/turn"/.test(server));
 
@@ -114,7 +126,7 @@ const state: any = {
   bankTransactions: [{ id: "b1", description: "LB62000000001234 transfer", date: "2026-09-01", type: "Debit" }],
   auditLogs: [{ id: "a1", details: "NOTE-INSIDE" }],
 };
-const ctx: AnnaCtx = { state, doors: ["mydesk", "expenses"], today: "2026-09-16",
+const ctx: AnnaCtx = { state, doors: ["mydesk", "expenses"], today: "2026-09-16", role: "Super Admin",
   desk: [{ id: "x", kind: "expenses" as any, recordId: "e1", door: "expenses", title: "VCH-1 — Printing", verb: "Approve", status: "Submitted", when: "2026-09-02", urgency: "overdue", group: "mine", seats: [], record: state.expenses[0] }] };
 const calls: [string, any][] = [
   ["my_desk", { filter: "all" }],
@@ -142,8 +154,8 @@ ok("list_records never returns more than the cap", ANNA_LIMITS.rows === 25 && /M
 console.log("\n8. no sealed sources, no tier-3 paths");
 ok("src/anna.ts imports nothing from sources", !/sources/.test(annaSrc.split("\n").filter(l => l.startsWith("import")).join("\n")));
 ok("the route never touches a source file", !/sourceFile|\/api\/sources|SealedDoc/i.test(route));
-ok("the only route paths in src/anna.ts are the confirm routes",
-  [...annaSrc.matchAll(/"(\/api\/[^"]+)"/g)].every(m => (CONFIRM_ROUTES as readonly string[]).includes(m[1])));
+ok("the only route paths in src/anna.ts are the confirm routes and the gates the drafts are offered by",
+  [...annaSrc.matchAll(/"(\/api\/[^"]+)"/g)].every(m => (CONFIRM_ROUTES as readonly string[]).includes(m[1]) || Object.values(DRAFT_ROUTE).includes(m[1])));
 
 console.log("\n9. the loop is bounded");
 ok("limits: 6 calls, 30 s, 16k tokens", ANNA_LIMITS.calls === 6 && ANNA_LIMITS.ms === 30_000 && ANNA_LIMITS.maxTokens === 16_000);
@@ -190,7 +202,7 @@ ok("a navigation action can only open a door or a record",
   /const run = \(a: NavAction\) => a\.type === "open_door" \? onOpenDoor\(a\.door\) : onOpenRecord\(a\.kind, a\.id\);/.test(chat)
   && /type NavAction = \{ type: "open_door"; door: string \} \| \{ type: "open_record"; kind: string; id: string \};/.test(desk));
 ok("the tab shows only when the server says so", /anna=\{!!state\.anna\?\.enabled\}/.test(read("../src/App.tsx")));
-ok("the name is Anna in both languages (D7)", !/"Anna":/.test(read("../src/i18n.ts")) && /\{m === "anna" \? "Anna" : t\("Help"\)\}/.test(desk));
+ok("the name is Anna in both languages (D7)", !/"Anna":/.test(read("../src/i18n.ts")) && /<p className="text-xs font-bold">\{"Anna"\}<\/p>/.test(desk));
 
 console.log("\nV. voice: one clip in, words out, nothing kept but the chat");
 const listen = (() => { const a = server.indexOf('app.post("/api/anna/listen"'); return a < 0 ? "" : server.slice(a, server.indexOf("\n});\n", a)); })();
@@ -198,7 +210,7 @@ const voiceSrc = read("../src/annaVoice.ts");
 ok("the listen route exists and checks the owner first", /^[^\n]*\n  const me = annaOwner\(req\);\n  if \(!me\) return res\.status\(403\)/.test(listen));
 ok("without the key it says so and does nothing", /if \(!annaVoiceReady\(\)\) return res\.status\(503\)/.test(listen)
   && /const annaVoiceReady = \(\) => !!process\.env\.DEEPGRAM_API_KEY;/.test(server)
-  && /anna: \{ enabled: [^}]*, voice: annaVoiceReady\(\) \}/.test(server));
+  && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), spend \};/.test(server));
 ok("Deepgram Nova-3 with the training opt-out, and nothing else is called", /model=nova-3&language=\$\{DEEPGRAM_LANG\[lang\]\}&smart_format=true&mip_opt_out=true/.test(listen)
   && (listen.match(/fetch\(/g) || []).length === 1 && !/gemini|anthropic|askJson/i.test(listen));
 ok("English is en (multi heard Spanish), Arabic is Lebanese (multi has no Arabic)", /const DEEPGRAM_LANG = \{ en: "en", ar: "ar-LB" \} as const;/.test(server)
@@ -237,7 +249,7 @@ ok("the page does not scroll while she is dragged on a phone", /style=\{anna \? 
 console.log("\nD. her waveform tells her state, and the chat outlives a closed panel");
 ok("five states, from what she is actually doing", /const mood: AnnaMood = voice === "listening" \? "listening" : busy \|\| voice === "sending" \? "thinking" : opening \? "opening" : speaking \? "speaking" : "idle";/.test(chat));
 ok("the waveform is on the floating button and in the header", /\{anna \? <AnnaWave mood=\{mood\.mood\} level=\{mood\.level\} t=\{t\} \/>/.test(launcher)
-  && /\{mode === "anna" && <AnnaWave mood=\{mood\.mood\} level=\{mood\.level\} t=\{t\} \/>\}/.test(desk));
+  && /<AnnaWave mood=\{mood\.mood\} level=\{mood\.level\} t=\{t\} \/>\s*<p className="text-xs font-bold">\{"Anna"\}<\/p>/.test(desk));
 ok("the bars stand still with reduced motion", /motion-reduce:animate-none/.test(desk) && /@keyframes anna-wave/.test(read("../src/index.css")));
 ok("it says its state to a screen reader", /role="img" aria-label=\{t\(MOOD_LABEL\[mood\]\)\}/.test(desk));
 ok("speaking is reported by the voice itself", /u\.onstart = \(\) => onSpeaking\(true\);\s*u\.onend = u\.onerror = \(\) => onSpeaking\(false\);/.test(voiceSrc) && /speak\(text, on => \{ setSpeaking\(on\); if \(!on\) next\(\); \}\);/.test(chat));
@@ -249,7 +261,7 @@ const NOTHING_OK = /const NOTHING_MS = 8000;/.test(read("../src/annaVoice.ts"));
 const BYE_RE = new RegExp(...(() => { const m = read("../src/HelpDesk.tsx").match(/const BYE = \/(.+)\/(\w*);/)!; return [m[1], m[2]] as [string, string]; })());
 console.log("\nT. greeting and talk mode (Saad's first real use, 16 Sep)");
 const sys = annaSystem("Super Admin", "", "2026-09-16");
-ok("small talk gets a short answer with no tool", /Greetings, thanks and small talk get one short, warm sentence back, in his language, with no tool call\./.test(sys));
+ok("small talk gets a short answer with no tool", /Greetings, thanks and small talk get one short, warm sentence back, in their language, with no tool call\./.test(sys));
 ok("a reply made of text alone is returned (a greeting is never empty)", /if \(text\) said\.push\(text\);/.test(route) && /answer = \[\.\.\.said, answer\]\.filter\(Boolean\)\.join\("\\n\\n"\)/.test(route));
 ok("she greets by name when opened, from the page, for free", /const greeting = \(lang: string, name: string\) => \{/.test(desk)
   && /`Hi\$\{first \? ` \$\{first\}` : ""\}, how can I help\?`/.test(desk) && /أهلاً/.test(desk)
@@ -281,7 +293,7 @@ for (const [id, { door }] of Object.entries(ANNA_TARGETS)) {
 const marked = markup.filter(({ f }) => !f.endsWith("AnnaGuide.tsx"))
   .flatMap(({ text }) => [...text.matchAll(/data-anna-target=(?:"([^"]+)"|\{[^}]*?"([\w-]+\.[\w.-]+)")/g)].map(m => m[1] || m[2]));
 ok("every marker on a screen is on the list", marked.length === Object.keys(ANNA_TARGETS).length && marked.every(m => m in ANNA_TARGETS), marked.join(" "));
-const deskOnly = annaTools(["mydesk"]).find(t => t.name === "guide")!;
+const deskOnly = annaTools(["mydesk"], "Digital Officer").find(t => t.name === "guide")!;
 ok("the guide offers only parts of the viewer's own doors", /mydesk\.waiting/.test(deskOnly.description) && !/production\.|expenses\./.test(deskOnly.description)
   && JSON.stringify(deskOnly.input_schema.properties.door.enum) === '["mydesk"]');
 const gctx: AnnaCtx = { ...ctx, doors: ["mydesk", "production"] };
@@ -300,7 +312,54 @@ ok("its ring lets every click through to the page", /data-anna-ring\s+className=
 ok("it looks up only marked parts", (guideSrc.match(/querySelector/g) || []).length === 1 && /document\.querySelector\(`\[data-anna-target="\$\{CSS\.escape\(step\.target\)\}"\]`\)/.test(guideSrc));
 ok("a walkthrough starts only when he taps Show me", /onClick=\{\(\) => onGuide\(\{ door: a\.door, steps: a\.steps \}\)\}/.test(chat)
   && (desk.match(/startGuide\b/g) || []).length === 2 && (desk.match(/onGuide\(/g) || []).length === 1);
-ok("the route tells Anna he starts it himself", /a\.type === "guide" \? "A Show me button is offered with your answer; he starts the walkthrough himself\."/.test(route));
+ok("the route tells Anna the user starts it", /a\.type === "guide" \? "A Show me button is offered with your answer; they start the walkthrough themselves\."/.test(route));
+
+console.log("\nX. Anna for everyone: per seat, capped, private (plan §10)");
+const names = (role: string, doors = ["mydesk"]) => annaTools(doors, role).map(t => t.name);
+ok("drafts follow the route each confirms into (ROUTE_SEATS)", JSON.stringify(DRAFT_ROUTE) === '{"draft_quotation":"/api/quotations/save","draft_task":"/api/compliance/save","draft_contract":"/api/contracts/generate","draft_request":"/api/requests/save"}'
+  && /\.filter\(t => !DRAFT_ROUTE\[t\.name\] \|\| mayCall\(DRAFT_ROUTE\[t\.name\], role\)\)/.test(annaSrc));
+const dig = names("Digital Officer"), fin = names("Finance Officer"), ed = names("Super Admin");
+ok("a Digital Officer gets only the feature request among the drafts", dig.filter(n => n.startsWith("draft_")).join() === "draft_request", dig.join());
+ok("a Finance Officer gets the quotation but not the director's task", fin.includes("draft_quotation") && !fin.includes("draft_task"), fin.join());
+ok("the Executive Director gets all four", ["draft_quotation", "draft_task", "draft_contract", "draft_request"].every(n => ed.includes(n)));
+ok("everyone keeps navigation, reading, the help answer and the guide", ["Digital Officer", "Finance Officer", "Project Officer"].every(r =>
+  ["open_door", "open_record", "guide", "my_desk", "search", "get_record", "list_records", "totals", "help_answer", "who_can"].every(n => names(r).includes(n))));
+const totalsKinds = (role: string) => JSON.stringify(annaTools(["mydesk"], role).find(t => t.name === "totals")!.input_schema.properties.kind.enum);
+ok("pay totals are offered only to payroll viewers", totalsKinds("Digital Officer") === '["voucher","quotation","project"]' && /staff_costs/.test(totalsKinds("Finance Officer")));
+ok("and refused to anyone else even if asked", "error" in (readTool("totals", { kind: "staff_costs", groupBy: "none" }, { ...ctx, role: "Project Officer" }) as any));
+ok("a tool the seat was not offered is refused", /const offered = new Set\(tools\.map\(t => t\.name\)\);/.test(route) && /const tools = annaTools\(doors, role\);/.test(route));
+ok("Anna talks to the person, by name, in their seat", /talking with Maya Haddad, signed in as Finance Officer/.test(annaSystem("Finance Officer", "", "2026-09-16", "Maya Haddad"))
+  && !/Executive Director/.test(annaSystem("Finance Officer", "", "2026-09-16", "Maya Haddad")) && /annaSystem\(role, [^;]*, today, viewer\.name\)/.test(route));
+ok("daily caps: 25 for staff, 200 for the director (D10-4), voice three times that", annaDailyCap("Finance Officer") === 25 && annaDailyCap("Super Admin") === 200 && ANNA_CLIP_FACTOR === 3);
+ok("the cap is checked before any model call, on the real role, from the person's own audit lines",
+  /if \(await annaUsedToday\(viewer\.id, "Anna Turn"\) >= annaDailyCap\(viewer\.role\)\) \{\s*return res\.status\(429\)/.test(route)
+  && /prisma\.auditLog\.count\(\{ where: \{ userId, action, timestamp: \{ gte: midnight\.toISOString\(\) \} \} \}\)/.test(server)
+  && route.indexOf("annaUsedToday") < route.indexOf("messages.create"));
+ok("voice has its own cap", /if \(await annaUsedToday\(me\.id, "Anna Heard"\) >= annaDailyCap\(me\.role\) \* ANNA_CLIP_FACTOR\)/.test(listen));
+ok("the spend goes to the master account only, by the real role", /const spend = on && viewer\?\.role === "Super Admin" \? await monthSpend\(\)/.test(server)
+  && /annaSpend=\{state\.anna\?\.spend \|\| null\}/.test(read("../src/App.tsx")) && /\{spend && \(/.test(chat));
+ok("spend is summed from priced audit lines, voice apart, with the limit from settings", /details: \{ contains: "≈ \$" \}/.test(server)
+  && /if \(r\.action === "Anna Heard"\) voiceUSD \+= usd; else modelsUSD \+= usd;/.test(server) && /Number\(process\.env\.ANNA_MONTHLY_LIMIT_USD\) \|\| 50/.test(server));
+ok("past 80% it is a desk item for the master account", /state\.annaSpendAlerts = spend && spend\.modelsUSD >= 0\.8 \* spend\.limitUSD/.test(server)
+  && /\{ kind: "annaSpendAlerts", status: "Near limit", seat: MASTER, door: "help"/.test(read("../src/workflow.ts")));
+ok("no route reads another person's chats: every chat route is the owner's", (server.match(/app\.(get|post)\("\/api\/anna\/chats/g) || []).length === 3
+  && chatQueries.every(q => /userId: me\.id\b|\{ id, userId,|userId \}|\{ id: chatId, userId \}|\{ id: row\.id, userId \}/.test(q) && !/userId: (req|String\(req)/.test(q)), chatQueries.join(" | "));
+ok("with Anna there is no second Help tab; 'Ask about this policy' lands in Anna", !/role="tablist"/.test(desk)
+  && /useEffect\(\(\) => \{ setMode\(anna \? "anna" : "help"\); \}, \[anna\]\);/.test(desk)
+  && /if \(anna\) \{ setMode\("anna"\); setPrefill\(\{ text: `\$\{openSignal\.context\} — `, nonce: openSignal\.nonce \}\); return; \}/.test(desk));
+const digGuide = annaTools(["mydesk", "production", "expenses"], "Digital Officer").find(t => t.name === "guide")!.description;
+ok("a walkthrough never points at a button the seat's screen does not draw", !/mydesk\.new-task|production\.new-quotation|production\.register-client|expenses\.new-request/.test(digGuide)
+  && /mydesk\.waiting/.test(digGuide)
+  && "error" in (clientAction("guide", { door: "mydesk", steps: [{ target: "mydesk.new-task", text: "Press it." }] }, { ...ctx, doors: ["mydesk"], role: "Digital Officer" }) as any)
+  && (clientAction("guide", { door: "mydesk", steps: [{ target: "mydesk.new-task", text: "Press it." }] }, { ...ctx, doors: ["mydesk"], role: "Super Admin" }) as any).type === "guide");
+ok("the seat-limited parts use the screens' own lists", /"mydesk\.new-task": \{ door: "mydesk", what: "the New task button", seats: DIRECTORS \}/.test(annaSrc)
+  && /"production\.new-quotation": \{[^}]*seats: MANAGERS \}/.test(annaSrc) && /"expenses\.new-request": \{[^}]*seats: REQUESTERS \}/.test(annaSrc));
+ok("Anna is told what the seat cannot create (probe: Haiku sent a Digital Officer to a button they lack)",
+  /This seat cannot create quotations, desk tasks, contracts\./.test(annaSystem("Digital Officer", "", "2026-09-16", "R"))
+  && /This seat cannot create desk tasks\./.test(annaSystem("Finance Officer", "", "2026-09-16", "M"))
+  && !/This seat cannot create/.test(annaSystem("Super Admin", "", "2026-09-16")));
+ok("an English 'hi' gets English (probe: Haiku answered Arabic)", /English when they wrote English \(Latin letters, even a single "hi"\)/.test(annaSystem("Finance Officer", "", "2026-09-16", "M")));
+ok("the help answer still carries its door and the seat to ask", /out = \{ answer: reply\.answer, door: reply\.door, askSeat: reply\.askSeat \};/.test(route));
 
 console.log("\n6. drafts are cards; Saad's press writes, through the existing routes");
 ok("four confirm routes, exactly", JSON.stringify(CONFIRM_ROUTES) === '["/api/quotations/save","/api/compliance/save","/api/requests/save","form:contract"]');
@@ -338,8 +397,8 @@ ok("people are suggested the same way", JSON.stringify((draftTool("draft_task", 
 ok("the route turns suggestions into a choice for Saad", /else \{ out = a; if \(a\.suggest\?\.length\) actions\.push\(\{ type: "choice", options: a\.suggest \}\); \}/.test(route));
 ok("a tap sends his choice as his own next message, only on the latest answer",
   /onClick=\{\(\) => send\(`\$\{t\("I meant"\)\}: \$\{name\.slice\(0, 80\)\}`\)\} disabled=\{busy \|\| !!m\.past \|\| i !== msgs\.length - 1\}/.test(chat));
-ok("she answers in the language of his latest message, not of the name", /language of his latest message: English when he wrote English/.test(annaSystem("Super Admin", "", "2026-09-16")));
-ok("Anna is told to ask, never choose", /never choose for him or offer to register a new one/.test(annaSystem("Super Admin", "", "2026-09-16")));
+ok("she answers in the language of the latest message, not of the name", /language of their latest message: English when they wrote English/.test(annaSystem("Super Admin", "", "2026-09-16")));
+ok("Anna is told to ask, never choose", /never choose for them or offer to register a new one/.test(annaSystem("Super Admin", "", "2026-09-16")));
 const labelled = (path: string) => { const a = server.indexOf(`app.post("${path}"`); const b = server.indexOf("\n});\n", a); return a > 0 && /\$\{draftedBy\(req\)\}`/.test(server.slice(a, b)); };
 ok("the three save routes label an Anna save in their audit line", ["/api/quotations/save", "/api/compliance/save", "/api/requests/save"].every(labelled));
 ok("the label reads one header, nothing else", /const draftedBy = \(req: any\) => req\.get\?\.\("X-Drafted-By"\) === "anna" \? " \(drafted by Anna\)" : "";/.test(server));

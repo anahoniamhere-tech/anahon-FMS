@@ -24,7 +24,7 @@ const IFACE: Record<string, string> = {
   expenses: "Expense", procurements: "Procurement", timesheets: "Timesheet", contentItems: "ContentItem",
   projectActivities: "ProjectActivity", projects: "Project", opportunities: "Opportunity", quotations: "Quotation",
   complianceTasks: "ComplianceTask", subscriptions: "Subscription", tools: "Tool", networkContacts: "NetworkContact",
-  fixedAssets: "FixedAsset", cashTopUps: "CashTopUp", featureRequests: "FeatureRequest",
+  fixedAssets: "FixedAsset", cashTopUps: "CashTopUp", featureRequests: "FeatureRequest", annaSpendAlerts: "AnnaSpendAlert",
 };
 /** Brace-balanced body of `export interface Name { … }` — some status fields sit after a nested `{…}[]`. */
 const iface = (name: string) => {

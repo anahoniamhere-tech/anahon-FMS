@@ -984,6 +984,8 @@ export const AR: Record<string, string> = {
   "Anna is opening a screen": "Anna تفتح شاشة",
   "Show me": "أرِني",
   "Talk mode": "وضع المحادثة",
+  "Near limit": "قرب الحد",
+  "Raise the API limit, or lower the staff cap": "ارفع حد الإنفاق على المفتاح، أو خفّض حد الاستخدام للفريق",
   "Anna's walkthrough": "جولة مع Anna",
   "That part is not on your screen right now.": "هذا الجزء غير ظاهر على شاشتك الآن.",
   "Anna — tap to talk, drag to move": "Anna — اضغط للتحدث، واسحب للتحريك",

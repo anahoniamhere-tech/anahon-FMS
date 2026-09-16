@@ -55,7 +55,7 @@ import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } 
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, cutPoolFor, POOL_FIELD_KEYS, POOL_STATUSES, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy, poolAssessedAs } from "./src/personnelDocs.js";
 import { parseIcs } from "./src/ics.js";
-import { ANNA_MODEL, ANNA_USERS, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, DRAFT_TOOLS, REQUEST_URGENCIES, annaTools, annaSystem, clientAction, readTool, draftTool, cleanHistory, type ClientAction } from "./src/anna.js";
+import { ANNA_PRICE, ANNA_CLIP_FACTOR, parseRollout, annaModelFor, annaDailyCap, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, DRAFT_TOOLS, REQUEST_URGENCIES, annaTools, annaSystem, clientAction, readTool, draftTool, cleanHistory, type ClientAction } from "./src/anna.js";
 
 dotenv.config();
 
@@ -549,7 +549,21 @@ async function scopedProjectIds(dbUser: any): Promise<Set<string> | null> {
   return ids;
 }
 
+/** Every branch of the state, plus Anna's flags for this real person (Anna plan §10). */
 async function loadState(viewer?: any) {
+  const state: any = await loadStateFor(viewer);
+  const on = !!annaModelOf(viewer);
+  // The spend is the master account's alone (D10-5): the real role, not a seat worn.
+  const spend = on && viewer?.role === "Super Admin" ? await monthSpend().catch(() => null) : null;
+  state.anna = { enabled: on, voice: annaVoiceReady(), spend };
+  state.annaSpendAlerts = spend && spend.modelsUSD >= 0.8 * spend.limitUSD
+    ? [{ id: `anna-spend-${new Date().toISOString().slice(0, 7)}`, status: "Near limit",
+        title: `AI spend this month: $${spend.modelsUSD.toFixed(2)} of $${spend.limitUSD}` }]
+    : [];
+  return state;
+}
+
+async function loadStateFor(viewer?: any) {
   const [
     users,
     accounts,
@@ -940,8 +954,6 @@ async function loadState(viewer?: any) {
     fixedAssets,
     partnerAccounts,
     confidentialReview: viewer && ["Super Admin", "Finance Officer"].includes(viewer.role) ? confidentialReview : null,
-    // Anna's panel shows only for the real user on her list (src/anna.ts); the route checks again.
-    anna: { enabled: !!viewer && ANNA_USERS.includes(viewer.id), voice: annaVoiceReady() },
     // Passports, IDs and CVs are stripped here, not hidden in the browser: a personnel
     // document only reaches the people who hold the personnel file, or the person it is about.
     // The integrity register is the ED's alone (§7.1); its evidence must not ride along
@@ -1695,11 +1707,38 @@ async function saveAnnaTurn(userId: string, chatId: string, asked: string, reply
   return row.id;
 }
 
+/** Anna's model for this real person, or null when she is not theirs yet (ANNA_ROLLOUT, §10f). */
+const annaModelOf = (user: any) => (user?.active ? annaModelFor(parseRollout(process.env.ANNA_ROLLOUT), user.id) : null);
+
 /** The real signed-in person, if Anna is theirs. Chats belong to the person, not to a seat worn. */
 const annaOwner = (req: any) => {
   const me = req.dbUser;
-  return me?.active && ANNA_USERS.includes(me.id) ? me : null;
+  return annaModelOf(me) ? me : null;
 };
+
+/** How many times this person used Anna (or her ears) today, from their own audit lines. */
+async function annaUsedToday(userId: string, action: "Anna Turn" | "Anna Heard"): Promise<number> {
+  const midnight = new Date(); midnight.setHours(0, 0, 0, 0);   // TZ is Asia/Beirut in the container
+  return prisma.auditLog.count({ where: { userId, action, timestamp: { gte: midnight.toISOString() } } });
+}
+
+/** This month's model spend, from the "≈ $" every priced call writes into its audit line (§10d).
+ *  Deepgram is billed apart, so its lines are summed apart. Cached for a minute: loadState runs often. */
+export const ANNA_MONTHLY_LIMIT_USD = () => Number(process.env.ANNA_MONTHLY_LIMIT_USD) || 50;
+let spendCache: { at: number; value: { month: string; modelsUSD: number; voiceUSD: number; limitUSD: number } } | null = null;
+async function monthSpend() {
+  if (spendCache && Date.now() - spendCache.at < 60_000) return spendCache.value;
+  const start = new Date(); start.setDate(1); start.setHours(0, 0, 0, 0);
+  const rows = await prisma.auditLog.findMany({ where: { timestamp: { gte: start.toISOString() }, details: { contains: "≈ $" } }, select: { action: true, details: true } });
+  let modelsUSD = 0, voiceUSD = 0;
+  for (const r of rows) {
+    const usd = Number(r.details.match(/≈ \$([\d.]+)/)?.[1]) || 0;
+    if (r.action === "Anna Heard") voiceUSD += usd; else modelsUSD += usd;
+  }
+  const value = { month: start.toLocaleDateString("en-GB", { month: "long" }), modelsUSD: Math.round(modelsUSD * 100) / 100, voiceUSD: Math.round(voiceUSD * 100) / 100, limitUSD: ANNA_MONTHLY_LIMIT_USD() };
+  spendCache = { at: Date.now(), value };
+  return value;
+}
 
 /* ── Anna's ears (Front desk, 16 Sep 2026; drafts/voice-front-desk-plan.md, wake word parked).
  * One clip in, its words out: the audio lives in memory for the one Deepgram call and is dropped;
@@ -1716,6 +1755,9 @@ app.post("/api/anna/listen", async (req, res) => {
   const me = annaOwner(req);
   if (!me) return res.status(403).json({ error: "Anna is not switched on for this account." });
   if (!annaVoiceReady()) return res.status(503).json({ error: "Voice is not set up yet." });
+  if (await annaUsedToday(me.id, "Anna Heard") >= annaDailyCap(me.role) * ANNA_CLIP_FACTOR) {
+    return res.status(429).json({ error: "That is today's limit for talking to Anna. Typing still works until her turns run out." });
+  }
   const mimeType = String(req.body?.audio?.mimeType || "");
   if (!/^audio\/[\w.+-]+(;.*)?$/.test(mimeType)) return res.status(400).json({ error: "That is not a sound clip." });
   const audio = Buffer.from(String(req.body?.audio?.base64 || ""), "base64");
@@ -1773,9 +1815,13 @@ app.post("/api/anna/chats/delete", async (req, res) => {
 
 app.post("/api/anna/turn", async (req, res) => {
   const viewer = (req as any).dbUser;
-  if (!ANNA_USERS.includes(viewer.id)) {
+  const model = annaModelOf(viewer);
+  if (!model) {
     await createAuditLog(viewer.id, viewer.name, "Anna Refused", "Not on the Anna user list.");
     return res.status(403).json({ error: "Anna is not switched on for this account." });
+  }
+  if (await annaUsedToday(viewer.id, "Anna Turn") >= annaDailyCap(viewer.role)) {
+    return res.status(429).json({ error: "That is today's limit for Anna. The Help & Q&A page still answers the common questions." });
   }
   const key = anthropicKey();
   if (!key) return res.status(503).json({ error: "Anna needs the server's Anthropic key." });
@@ -1791,20 +1837,25 @@ app.post("/api/anna/turn", async (req, res) => {
     const state = await loadState(viewer);
     const today = localDate();
     const doors = doorsFor(role);
-    const ctx = { state, desk: deskItems({ id: viewer.id, email: viewer.email, role }, state as any, today), doors, today };
+    const ctx = { state, desk: deskItems({ id: viewer.id, email: viewer.email, role }, state as any, today), doors, today, role };
     const labels = new Map(NAV.flatMap(sec => sec.items.map(i => [i.navKey, i.label] as const)));
-    const system = annaSystem(role, doors.map(d => `${d} = ${labels.get(d) || d}`).join("\n"), today);
-    const tools = annaTools(doors);
+    const system = annaSystem(role, doors.map(d => `${d} = ${labels.get(d) || d}`).join("\n"), today, viewer.name);
+    const tools = annaTools(doors, role);
+    // Only what this seat was offered may run: a draft its seat cannot confirm is not a tool here.
+    const offered = new Set(tools.map(t => t.name));
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    const client = new Anthropic({ apiKey: key, timeout: 60_000, maxRetries: 1 });
+    // Haiku answers in a few seconds, but about one first call in four stalled near a minute in the
+    // probes (16 Sep): a short timeout and a retry beats waiting it out.
+    const client = new Anthropic({ apiKey: key, ...(model === "claude-haiku-4-5" ? { timeout: 20_000, maxRetries: 2 } : { timeout: 60_000, maxRetries: 1 }) });
     let answer = "";
     // What the model says beside a tool call is often the answer itself, so every call's text is kept.
     const said: string[] = [];
     while (usage.calls < ANNA_LIMITS.calls) {
       if (Date.now() - started > ANNA_LIMITS.ms) { answer = "I ran out of time on that one. Ask again, more narrowly."; break; }
       const msg: any = await client.messages.create({
-        model: ANNA_MODEL, max_tokens: ANNA_LIMITS.maxTokens,
-        thinking: { type: "adaptive" }, output_config: { effort: "medium" },
+        model, max_tokens: ANNA_LIMITS.maxTokens,
+        // Haiku 4.5 takes neither adaptive thinking nor effort (check-ai-models).
+        ...(model === "claude-haiku-4-5" ? {} : { thinking: { type: "adaptive" }, output_config: { effort: "medium" } }),
         system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
         tools, messages,
       } as any);
@@ -1824,30 +1875,31 @@ app.post("/api/anna/turn", async (req, res) => {
       const results: any[] = [];
       for (const c of calls) {
         let out: unknown;
-        if (!ANNA_TOOL_NAMES.includes(c.name)) {
+        if (!ANNA_TOOL_NAMES.includes(c.name) || !offered.has(c.name)) {
           out = { error: "No such tool." };
           await createAuditLog(viewer.id, viewer.name, "Anna Refused", `turn ${turn} · unknown tool`);
         } else if ((CLIENT_TOOLS as readonly string[]).includes(c.name)) {
           const a = clientAction(c.name, c.input, ctx);
           if ("type" in a) {
             actions.push(a);
-            out = { ok: a.type === "guide" ? "A Show me button is offered with your answer; he starts the walkthrough himself." : "The screen will open when you answer." };
+            out = { ok: a.type === "guide" ? "A Show me button is offered with your answer; they start the walkthrough themselves." : "The screen will open when you answer." };
           } else out = a;
           await createAuditLog(viewer.id, viewer.name, "Anna Navigate", `turn ${turn} · ${c.name}${c.input?.kind ? ` ${c.input.kind}` : ""}`);
         } else if ((DRAFT_TOOLS as readonly string[]).includes(c.name)) {
-          // A card for Saad, never a write: his Confirm or Save on the existing screen does that.
+          // A card for the user, never a write: their Confirm or Save on the existing screen does that.
           const a = draftTool(c.name, c.input, ctx);
           if ("type" in a) { actions.push(a); out = { ok: "A draft card is shown to the user. Nothing is saved until the user confirms it." }; }
           else { out = a; if (a.suggest?.length) actions.push({ type: "choice", options: a.suggest }); }
           await createAuditLog(viewer.id, viewer.name, "Anna Draft", `turn ${turn} · ${c.name}`);
-        } else if (c.name === "policy_answer") {
+        } else if (c.name === "help_answer") {
           const policies = await policyCorpus(isArabicText(String(c.input?.question || "")) ? "ar" : "en");
           const raw = await askJson(
             helpPromptParts(String(c.input?.question || "").slice(0, 2000),
               { role, ownRole: viewer.role, doors, rows: [], today }, policies.text),
             REPLY_SCHEMA, undefined, "low", "haiku", true);
-          out = { answer: parseReply(raw, doors).answer };
-          await createAuditLog(viewer.id, viewer.name, "Anna Read", `turn ${turn} · policy_answer${takeUsage()}`);
+          const reply = parseReply(raw, doors);
+          out = { answer: reply.answer, door: reply.door, askSeat: reply.askSeat };
+          await createAuditLog(viewer.id, viewer.name, "Anna Read", `turn ${turn} · help_answer${takeUsage()}`);
         } else {
           out = readTool(c.name, c.input, ctx);
           await createAuditLog(viewer.id, viewer.name, "Anna Read", `turn ${turn} · ${c.name}${c.input?.kind ? ` ${c.input.kind}` : ""}`);
@@ -1858,9 +1910,10 @@ app.post("/api/anna/turn", async (req, res) => {
     }
     answer = [...said, answer].filter(Boolean).join("\n\n")
       || (usage.calls >= ANNA_LIMITS.calls ? "That took more steps than I am allowed. Ask again, more narrowly." : "");
-    // Sonnet 5: $2/M in, $10/M out; the 1-hour cache writes at 2x and reads at a tenth.
-    const usd = Math.round((usage.input * 2 + usage.written * 4 + usage.cached * 0.2 + usage.output * 10) / 10) / 100_000;
-    await createAuditLog(viewer.id, viewer.name, "Anna Turn", `turn ${turn} · ${usage.calls} call${usage.calls === 1 ? "" : "s"} · ${ANNA_MODEL} ≈ $${usd.toFixed(4)}`);
+    // Per million tokens (ANNA_PRICE); the 1-hour cache writes at 2x input and reads at a tenth.
+    const [pin, pout] = ANNA_PRICE[model];
+    const usd = Math.round((usage.input * pin + usage.written * pin * 2 + usage.cached * pin * 0.1 + usage.output * pout) / 10) / 100_000;
+    await createAuditLog(viewer.id, viewer.name, "Anna Turn", `turn ${turn} · ${usage.calls} call${usage.calls === 1 ? "" : "s"} · ${model} ≈ $${usd.toFixed(4)}`);
     // Kept only if saving works; a failed save still returns the answer.
     const chatId = await saveAnnaTurn(viewer.id, String(req.body?.chatId || ""), asked, { role: "assistant", content: answer, actions, usd })
       .catch(async () => { await createAuditLog(viewer.id, viewer.name, "Anna Failed", `turn ${turn} · not saved`); return ""; });

@@ -122,9 +122,14 @@ const KIND_LABEL: Record<string, string> = {
   vendor: "Supplier", document: "Document", task: "Task", engagement: "Event",
 };
 
-function AnnaChat({ t, lang, userName, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
+type AnnaSpend = { month: string; modelsUSD: number; voiceUSD: number; limitUSD: number };
+
+function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   t: (s: string) => string;
   userName: string;
+  spend: AnnaSpend | null;
+  /** "Ask about this policy": the chapter, put in the box for the user to finish. */
+  prefill: { text: string; nonce: number } | null;
   /** The panel is showing. The chat stays mounted while it is closed, so an answer on its way still lands. */
   open: boolean;
   /** Bumped by the floating button's mic: start listening once per bump. */
@@ -166,6 +171,7 @@ function AnnaChat({ t, lang, userName, open, voiceReady, listenSignal, onMood, o
   const sendRef = useRef<(s: string) => void>(() => {});
   const turnId = useRef(0);   // bumped whenever a pending "listen after speaking" must not fire
   useEffect(() => { talkRef.current = talk; }, [talk]);
+  useEffect(() => { if (prefill) { setList(null); setQ(prev => prev || prefill.text); } }, [prefill?.nonce]);
   const stopTalk = () => { setTalk(false); talkRef.current = false; turnId.current++; };
   /** Speak, then (in talk mode) listen again. Without device voices she just listens. */
   const sayThenListen = (text: string, listen: boolean) => {
@@ -456,6 +462,11 @@ function AnnaChat({ t, lang, userName, open, voiceReady, listenSignal, onMood, o
           {voice === "listening" ? t("Listening… tap to stop") : voice === "sending" ? t("Writing down what you said…") : typeof voice === "object" ? voice.note : ""}
         </span>
       </div>
+      {spend && (
+        <p dir="ltr" data-anna-spend className={`px-2 pt-1 text-[10px] ${spend.modelsUSD >= 0.8 * spend.limitUSD ? "font-bold text-amber-700" : "text-slate-400"}`}>
+          {spend.month} so far: ${spend.modelsUSD.toFixed(2)} of ${spend.limitUSD} · voice ${spend.voiceUSD.toFixed(2)}
+        </p>
+      )}
       <div className="flex items-end gap-2 p-2">
         <button
           onClick={showList} disabled={busy}
@@ -511,7 +522,7 @@ function AnnaChat({ t, lang, userName, open, voiceReady, listenSignal, onMood, o
 }
 
 export default function HelpDesk({
-  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, userName = "", onOpenRecord = () => {}, onEditDraft = () => {},
+  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, userName = "", annaSpend = null, onOpenRecord = () => {}, onEditDraft = () => {},
 }: {
   t: (s: string) => string;
   lang: string;
@@ -528,6 +539,8 @@ export default function HelpDesk({
   annaVoice?: boolean;
   /** For Anna's greeting. */
   userName?: string;
+  /** This month's AI spend — the server sends it to the master account only. */
+  annaSpend?: AnnaSpend | null;
   onOpenRecord?: (kind: string, id: string) => void;
   onEditDraft?: (kind: string, data: Record<string, any>) => void;
 }) {
@@ -580,10 +593,13 @@ export default function HelpDesk({
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { if (open && mode === "help") inputRef.current?.focus(); }, [open, mode]);
-  useEffect(() => { if (!anna) setMode("help"); }, [anna]);
+  // Anna is the help desk for everyone who has her (plan §10): no second tab.
+  useEffect(() => { setMode(anna ? "anna" : "help"); }, [anna]);
+  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
   useEffect(() => {
     if (!openSignal) return;
     setOpen(true);
+    if (anna) { setMode("anna"); setPrefill({ text: `${openSignal.context} — `, nonce: openSignal.nonce }); return; }
     setMode("help");
     setQ(prev => prev || `${openSignal.context} — `);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -712,15 +728,8 @@ export default function HelpDesk({
       <div className="flex items-center justify-between gap-2 bg-[#6D1A1A] ps-3 pe-1.5 py-1.5 text-white">
         {anna ? (
           <div className="flex items-center gap-2">
-          {mode === "anna" && <AnnaWave mood={mood.mood} level={mood.level} t={t} />}
-          <div role="tablist" className="flex items-center gap-1">
-            {(["anna", "help"] as const).map(m => (
-              <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
-                className={`min-h-[36px] rounded-lg px-3 text-xs font-bold transition-colors ${mode === m ? "bg-white text-[#6D1A1A]" : "text-white/80 hover:bg-white/15"}`}>
-                {m === "anna" ? "Anna" : t("Help")}
-              </button>
-            ))}
-          </div>
+            <AnnaWave mood={mood.mood} level={mood.level} t={t} />
+            <p className="text-xs font-bold">{"Anna"}</p>
           </div>
         ) : (
           <p className="flex items-center gap-2 text-xs font-bold">
@@ -734,7 +743,7 @@ export default function HelpDesk({
 
       {anna && (
         <div hidden={mode !== "anna"} className="flex min-h-0 flex-1 flex-col">
-          <AnnaChat t={t} lang={lang} userName={userName} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
+          <AnnaChat t={t} lang={lang} userName={userName} spend={annaSpend} prefill={prefill} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
             doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
         </div>
       )}

@@ -1481,6 +1481,7 @@ export default function App() {
               anna={!!state.anna?.enabled}
               userName={currentUser?.name || ""}
               annaVoice={!!state.anna?.voice}
+              annaSpend={state.anna?.spend || null}
               onEditDraft={(kind, data) => {
                 // A contract is only ever a filled form: Saad reviews it and presses Generate (D4).
                 if (kind === "contract") {

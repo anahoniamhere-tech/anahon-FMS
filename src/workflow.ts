@@ -120,6 +120,8 @@ export const RULES: Rule[] = [
   // ComplianceTask — Pending, Done. Given to someone, it is theirs; otherwise the master account's own list.
   { kind: "complianceTasks", status: "Pending", seat: MASTER, person: "assigneeUserId", when: "dueDate", door: "mydesk", verb: "Settle" },
   { kind: "complianceTasks", status: "Done",    seat: null, door: "mydesk", verb: "" },
+  // AI spend past 80% of the monthly limit (Anna plan §10d); the server sends it to the master account only.
+  { kind: "annaSpendAlerts", status: "Near limit", seat: MASTER, door: "help", verb: "Raise the API limit, or lower the staff cap" },
   // A feature request waits on the master account until it is triaged (Anna plan §3).
   { kind: "featureRequests", status: "New",      seat: MASTER, door: "help", verb: "Triage the request" },
   { kind: "featureRequests", status: "Triaged",  seat: null, door: "help", verb: "" },
@@ -175,6 +177,7 @@ export const TITLES: Partial<Record<Kind, (r: any, s: State) => string>> = {
   quotations:        r => `${r.quoteNo} · ${r.title}`,
   complianceTasks:   r => r.title,
   featureRequests:   r => r.title,
+  annaSpendAlerts:   r => r.title,
   subscriptions:     r => r.name,
   tools:             r => r.name,
   networkContacts:   r => r.name,
