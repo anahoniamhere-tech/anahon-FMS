@@ -301,7 +301,10 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   // it is the intro (0)". Reset whenever another policy opens.
   const [openSecs, setOpenSecs] = useState<Record<string, boolean>>({});
   const [currentSec, setCurrentSec] = useState<string | null>(null);
-  const [jumpTo, setJumpTo] = useState<string | null>(null);
+  const [jumpTo, setJumpTo] = useState<{ id: string; sec: string } | null>(null);
+  // After a jump the jumped-to section is "current" until the reader scrolls: near the end
+  // of a mostly-folded policy the page is too short to bring its heading up to the bar.
+  const pinned = useRef<{ sec: string; top: number } | null>(null);
   const [find, setFind] = useState("");
   const [findOpen, setFindOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
@@ -427,11 +430,13 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   // open), or under the top of the content column on desktop — inside the "current" line.
   useEffect(() => {
     if (!jumpTo) return;
-    const el = document.getElementById(jumpTo);
+    const el = document.getElementById(jumpTo.id);
     const main = el?.closest("main");
     if (el && main) {
       const top = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top);
       main.scrollTop += el.getBoundingClientRect().top - top - 8;
+      pinned.current = { sec: jumpTo.sec, top: main.scrollTop };
+      setCurrentSec(jumpTo.sec);
     }
     setJumpTo(null);
   }, [jumpTo]);
@@ -446,6 +451,8 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     const measure = () => {
       const main = articleRef.current?.closest("main");
       if (!main) return;
+      if (pinned.current && Math.abs(main.scrollTop - pinned.current.top) < 2) { setCurrentSec(pinned.current.sec); return; }
+      pinned.current = null;
       const limit = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top) + 24;
       let cur: string | null = null;
       for (const s of sections) {
@@ -457,6 +464,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
       setCurrentSec(cur);
     };
     document.addEventListener("scroll", measure, { capture: true, passive: true });
+    pinned.current = null;
     measure();
     return () => document.removeEventListener("scroll", measure, { capture: true });
   }, [sections, find]);
@@ -480,7 +488,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     const jump = (id: string, parent: string) => {
       setOpenSecs(o => ({ ...o, [parent]: true }));
       setSectionsOpen(false);
-      setJumpTo(id);
+      setJumpTo({ id, sec: parent });
     };
 
     // Progress counts numbered sections by position; the intro (0) reads as "Introduction".
@@ -521,7 +529,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
           onKeyDown={e => {
             if (e.key === "Escape") setFind("");
             // Enter: go to the first section that mentions it (the phone keyboard closes too).
-            if (e.key === "Enter" && hits[0] && finding) { e.currentTarget.blur(); setSectionsOpen(false); setJumpTo(hits[0].id); }
+            if (e.key === "Enter" && hits[0] && finding) { e.currentTarget.blur(); setSectionsOpen(false); setJumpTo({ id: hits[0].id, sec: hits[0].id }); }
           }}
           placeholder={t("Search this policy…")} aria-label={t("Search this policy…")}
           className="h-11 w-full rounded-lg border border-slate-300 bg-white ps-9 pe-11 text-sm outline-none focus:border-[#6D1A1A] [&::-webkit-search-cancel-button]:hidden" />
