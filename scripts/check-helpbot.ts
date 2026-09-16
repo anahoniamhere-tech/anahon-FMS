@@ -100,7 +100,13 @@ ok("and the prompt is unchanged when there is not", !/## The policies — AnaHon
   helpPrompt("q", { role: "Program Director", ownRole: "Program Director", doors: doorsFor("Program Director"), rows: [], today: "2026-09-06" })));
 const srv = read("../server.ts");
 ok("it is extracted whole — no chunking, no keyword pre-selection",
-  /findMany\(\{ where: \{ category: "Handbook" \}/.test(srv) && !/chunk|embedding|similarity/i.test(srv.split("policyCorpus")[1]?.slice(0, 2000) || ""));
+  /const category = lang === "ar" \? "Handbook \(Arabic\)" : "Handbook";\s*const rows = await prisma\.appDoc\.findMany\(\{ where: \{ category \}/.test(srv) && !/chunk|embedding|similarity/i.test(srv.split("policyCorpus")[1]?.slice(0, 2000) || ""));
+// 16 Sep 2026: the Arabic twins are a corpus of their own, read only for a question in Arabic,
+// and never mixed into the English one (that would double every prompt).
+const helpRoute = srv.slice(srv.indexOf('app.post("/api/help/ask"'), srv.indexOf("\n});\n", srv.indexOf('app.post("/api/help/ask"')));
+ok("an Arabic question reads the Arabic twins, anything else the English", /await policyCorpus\(isArabicText\(question\) \? "ar" : "en"\)/.test(helpRoute));
+ok("each language keeps its own cache", /policyCache\[lang\] = \{ key, text/.test(srv));
+ok("the Arabic corpus says the English governs", /const AR_POLICY_NOTE = "These are the official Arabic translations of the handbooks\. The English text governs/.test(srv));
 ok("extracted in process, never through the route", /await documentText\(r\.id\)/.test(srv)
   && !/fetch\([^)]*docx-text/.test(srv));
 ok("cached on every Handbook row's own content hash, so re-filing or retiring any of them invalidates it",

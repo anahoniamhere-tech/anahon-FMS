@@ -1565,12 +1565,18 @@ app.post("/api/reminders/plan", async (req, res) => {
  * re-filing or retiring any of them invalidates the cache; a container restart also
  * clears it, so a rebuild never reads an amendment from before it existed.
  */
-let policyCache: { key: string; text: string; chars: number; docs: number } | null = null;
+const policyCache: Record<string, { key: string; text: string; chars: number; docs: number }> = {};
+/** An Arabic question is answered from the Arabic twins (16 Sep 2026): the same handbooks,
+ *  officially translated, with the same section numbers. The English text still governs. */
+const AR_POLICY_NOTE = "These are the official Arabic translations of the handbooks. The English text governs where the two differ; section numbers are identical.";
+const isArabicText = (t: string) => /[\u0600-\u06FF]/.test(t);
 
-async function policyCorpus(): Promise<{ text: string; chars: number; docs: number }> {
-  const rows = await prisma.appDoc.findMany({ where: { category: "Handbook" }, orderBy: { filename: "asc" } });
+async function policyCorpus(lang: "en" | "ar" = "en"): Promise<{ text: string; chars: number; docs: number }> {
+  const category = lang === "ar" ? "Handbook (Arabic)" : "Handbook";
+  const rows = await prisma.appDoc.findMany({ where: { category }, orderBy: { filename: "asc" } });
   const key = rows.map(r => `${r.id}:${r.contentHash}:${r.base64}`).join("|");
-  if (policyCache && policyCache.key === key) return policyCache;
+  const cached = policyCache[lang];
+  if (cached && cached.key === key) return cached;
 
   const started = Date.now();
   const live = rows.filter(r => !isSupersededPointer(r.base64));
@@ -1587,10 +1593,10 @@ async function policyCorpus(): Promise<{ text: string; chars: number; docs: numb
     }
   }
 
-  const text = parts.join("\n\n");
-  policyCache = { key, text, chars: text.length, docs: parts.length };
-  console.log(`[policies] ${parts.length}/${live.length} live document${live.length === 1 ? "" : "s"} (${rows.length - live.length} superseded, excluded), ${text.length} characters, in ${Date.now() - started} ms`);
-  return policyCache;
+  const text = (lang === "ar" && parts.length ? AR_POLICY_NOTE + "\n\n" : "") + parts.join("\n\n");
+  policyCache[lang] = { key, text, chars: text.length, docs: parts.length };
+  console.log(`[policies ${lang}] ${parts.length}/${live.length} live document${live.length === 1 ? "" : "s"} (${rows.length - live.length} superseded, excluded), ${text.length} characters, in ${Date.now() - started} ms`);
+  return policyCache[lang];
 }
 
 /**
@@ -1639,7 +1645,7 @@ app.post("/api/help/ask", async (req, res) => {
     // The paid key on Haiku since 16 Sep 2026 (Saad, D5): the free tier's daily cap ran out
     // at the desk. The handbooks are the cached prefix, so a question costs about half a cent.
     // Gemini remains only as the fallback when Claude fails; safeRows() still sends no record.
-    const policies = await policyCorpus();
+    const policies = await policyCorpus(isArabicText(question) ? "ar" : "en");
     const raw = await askJson(
       helpPromptParts(question, { role, ownRole: viewer.role, doors, rows, today: localDate() }, policies.text),
       REPLY_SCHEMA, undefined, "low", "haiku"
