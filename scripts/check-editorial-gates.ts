@@ -4,6 +4,7 @@
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { CONTENT_CHECKS, CONTENT_STATUSES, CONTENT_LABELS, publishBlockers, socialPostBlockers, socialRendition, CAPTION_KIND, labelWord, labelNeedsMarking } from "../src/editorialGates";
+import * as gatesAll from "../src/editorialGates";
 import { RULES } from "../src/workflow";
 import { editorialStations, PUBLISHABLE_STATUS, livePositions, stationStanding, MAP_KIND } from "../src/editorialMap";
 
@@ -215,8 +216,28 @@ assert.match(publishBlockers(labelled("Commercial"))[0], /who paid for it/,
 assert.deepStrictEqual(publishBlockers(labelled("Commercial", "Paid by the Municipality")), [],
   "commercial content with its disclosure publishes");
 assert.deepStrictEqual(publishBlockers(labelled("Commercial", "   ")).length, 1, "a blank disclosure is no disclosure");
-assert.match(publishBlockers({ ...good, contentLabel: "Sponsored" })[0], /not a content label/,
-  "the label word is not the label — only the three types are accepted");
+// P3 §3 as amended 16 Sep 2026: three KINDS, and the piece carries one of the policy's own WORDS.
+// contentLabel stores the word; the kind is derived, and every rule groups on the kind.
+const g = gatesAll as any;
+assert.ok(typeof g.labelKind === "function" && Array.isArray(g.LABEL_WORDS), "the gate exports the P3 words and labelKind()");
+assert.deepStrictEqual(g.LABEL_WORDS.map(([w]: string[]) => w),
+  ["News", "Sponsored", "Advertisement", "Paid Content", "Opinion", "Editorial", "Commentary"], "the seven words P3 §3 names, in its order");
+for (const [w, k] of [["News", "News"], ["Sponsored", "Commercial"], ["Advertisement", "Commercial"], ["Paid Content", "Commercial"],
+  ["Opinion", "Opinion"], ["Editorial", "Opinion"], ["Commentary", "Opinion"], ["Commercial", "Commercial"], ["", ""], ["Analysis", ""]])
+  assert.strictEqual(g.labelKind(w), k, `${w || "(blank)"} is ${k || "no kind"}`);
+for (const w of ["Sponsored", "Advertisement", "Paid Content"]) {
+  assert.match(publishBlockers(labelled(w))[0], /who paid for it/, `${w} is commercial and must disclose the relationship`);
+  assert.deepStrictEqual(publishBlockers(labelled(w, "Paid by the Municipality")), [], `${w} with its disclosure publishes`);
+}
+for (const w of ["Editorial", "Commentary"]) assert.deepStrictEqual(publishBlockers(labelled(w)), [], `${w} is opinion and publishes`);
+assert.match(publishBlockers({ ...good, contentLabel: "Analysis" })[0], /not a content label/,
+  "a word P3 does not name is refused, not guessed");
+assert.strictEqual(labelWord("Advertisement"), "Advertisement", "the specific word is what the piece carries");
+assert.strictEqual(labelWord("Commentary"), "Commentary");
+assert.ok(labelNeedsMarking("Paid Content") && labelNeedsMarking("Editorial"), "every non-news word is marked");
+assert.strictEqual(socialRendition({ title: "T", drafts: [d(CAPTION_KIND, "c")], contentLabel: "Advertisement" }).text, "Advertisement: c");
+const srvLabels = readFileSync(new URL("../server.ts", import.meta.url), "utf8");
+assert.ok(/isContentLabel\(contentLabel\)/.test(srvLabels), "the save route accepts exactly what the gate accepts");
 
 // The mark rides in the caption: on a social account there is no design or placement to carry it.
 assert.strictEqual(labelWord("Commercial"), "Sponsored");

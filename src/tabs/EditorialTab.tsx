@@ -3,7 +3,7 @@ import { ic } from "../nav";
 import { Newspaper, ShieldAlert, CheckCircle2, Ban, Bot, Calendar, Clapperboard, Drama, Library, Lightbulb, Link as LinkIcon, Scale } from "lucide-react";
 import { ContentItem } from "../types";
 import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "../constants";
-import { CONTENT_LABELS } from "../editorialGates";
+import { CONTENT_LABELS, LABEL_WORDS, labelKind } from "../editorialGates";
 import { SharedProps } from "./shared";
 import Info from "../Info";
 import { CONTENT_EDITORS, CREW, ALL_ROLES } from "../roles";
@@ -28,6 +28,13 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 const EDITOR_ROLES = CONTENT_EDITORS;
+
+/** P3's label words in Arabic — the same words the website prints («خبر · News»), kept apart from the
+ *  shared dictionary because "Editorial" there means the department, not an editorial piece. */
+const LABEL_AR: Record<string, string> = {
+  "News": "خبر", "Sponsored": "محتوى مموَّل", "Advertisement": "إعلان", "Paid Content": "محتوى مدفوع",
+  "Opinion": "رأي", "Editorial": "افتتاحية", "Commentary": "تعليق",
+};
 
 /**
  * Draft text with its `[FILL: …]` markers drawn as chips rather than left as plain text
@@ -966,13 +973,20 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                   <span className="block text-slate-600 font-bold mb-1">{t("Content label")}</span>
                   <select value={form.contentLabel || ""} onChange={e => setForm({ ...form, contentLabel: e.target.value })} className="finance-input w-full">
                     <option value="">— {t("choose")} —</option>
-                    {CONTENT_LABELS.map(([k]) => <option key={k} value={k}>{t(k)}</option>)}
+                    {/* P3 §3 (amended 16 Sep 2026): the piece carries one of the policy's words; the
+                        kind it belongs to decides the rules. A legacy "Commercial" still shows. */}
+                    {CONTENT_LABELS.map(([kind]) => (
+                      <optgroup key={kind} label={t(kind)}>
+                        {LABEL_WORDS.filter(([, k]) => k === kind).map(([w]) => <option key={w} value={w}>{lang === "ar" ? LABEL_AR[w] : w}</option>)}
+                        {kind === "Commercial" && form.contentLabel === "Commercial" && <option value="Commercial">{lang === "ar" ? LABEL_AR.Sponsored : "Sponsored"}</option>}
+                      </optgroup>
+                    ))}
                   </select>
                   <span className="block text-[10px] text-slate-400 mt-0.5" dir="auto">
-                    {CONTENT_LABELS.find(([k]) => k === form.contentLabel)?.[2] || t("Policy P3 requires every piece to be labelled.")}
+                    {CONTENT_LABELS.find(([k]) => k === labelKind(form.contentLabel || ""))?.[2] || t("Policy P3 requires every piece to be labelled.")}
                   </span>
                 </div>
-                {form.contentLabel === "Commercial" && (
+                {labelKind(form.contentLabel || "") === "Commercial" && (
                   <div className="md:col-span-2">
                     <span className="block text-slate-600 font-bold mb-1">{t("Who paid for it")}</span>
                     <input value={form.sponsorDisclosure || ""} onChange={e => setForm({ ...form, sponsorDisclosure: e.target.value })}

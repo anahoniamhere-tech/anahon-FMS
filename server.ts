@@ -13,7 +13,7 @@ import { evidenceOf, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATIO
 import { teamMemberFlag } from "./src/supplierDocs.js";
 import { CONFIDENTIAL_PURPOSE, nextSourceCode, maySealedRead, SEALED_REFUSAL, confidentialRaiseBlocker, SANCTIONS_RESULTS, SEALED_DOC_KINDS, hasSealedReceipt, reviewDue, type SealedDoc } from "./src/sources.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
-import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory } from "./src/editorialGates.js";
+import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory, isContentLabel, LABEL_WORDS } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { itemOpenFacts } from "./src/fillMarkers.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
@@ -5218,8 +5218,8 @@ app.post("/api/content/save", async (req, res) => {
     if (!title) return res.status(400).json({ error: "Give the content item a title." });
     const block = await contentManageBlock(req, stream || "");
     if (block) return res.status(403).json({ error: block });
-    if (contentLabel && !CONTENT_LABELS.some(([k]) => k === contentLabel)) {
-      return res.status(400).json({ error: `"${contentLabel}" is not a content label Policy P3 defines (News, Commercial, Opinion).` });
+    if (contentLabel && !isContentLabel(contentLabel)) {
+      return res.status(400).json({ error: `"${contentLabel}" is not a content label Policy P3 defines (${LABEL_WORDS.map(([w]) => w).join(", ")}).` });
     }
     if (contentType && !CONTENT_TYPES.includes(contentType)) {
       return res.status(400).json({ error: `Content type must be one of: ${CONTENT_TYPES.join(", ")} (Policy P3).` });

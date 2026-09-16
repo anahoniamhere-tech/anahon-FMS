@@ -71,11 +71,25 @@ export const CONTENT_LABELS: [key: string, word: string, policySentence: string]
   ["Commercial", "Sponsored", "Clearly identify all commercial content with labels such as \"Sponsored\", \"Advertisement\" or \"Paid Content\", and maintain transparency about the commercial relationship (Policy P3 — Content Types)"],
   ["Opinion", "Opinion", "Clearly label all opinion content with headings such as \"Opinion\", \"Editorial\" or \"Commentary\" (Policy P3 — Content Types)"],
 ];
+/**
+ * The words a piece may carry (P3 §3, amended 16 Sep 2026), each with its kind. `contentLabel` stores the
+ * WORD; every rule groups on the kind. The bare kind keys from before the amendment stay valid:
+ * "News" and "Opinion" are words too, and a legacy "Commercial" reads as "Sponsored".
+ */
+export const LABEL_WORDS: [word: string, kind: string][] = [
+  ["News", "News"],
+  ["Sponsored", "Commercial"], ["Advertisement", "Commercial"], ["Paid Content", "Commercial"],
+  ["Opinion", "Opinion"], ["Editorial", "Opinion"], ["Commentary", "Opinion"],
+];
+/** The P3 kind of a stored label — "News", "Commercial", "Opinion" — or "" when it is none of them. */
+export const labelKind = (contentLabel: string): string =>
+  contentLabel === "Commercial" ? "Commercial" : LABEL_WORDS.find(([w]) => w === contentLabel)?.[1] || "";
+export const isContentLabel = (contentLabel: string) => !!labelKind(String(contentLabel || ""));
 /** The label word a published piece carries in front of its text; "" for an unlabelled piece. */
 export const labelWord = (contentLabel: string) =>
-  CONTENT_LABELS.find(([k]) => k === contentLabel)?.[1] || "";
-/** News is what the audience assumes; the other two must be told apart from it on the piece itself. */
-export const labelNeedsMarking = (contentLabel: string) => contentLabel === "Commercial" || contentLabel === "Opinion";
+  contentLabel === "Commercial" ? "Sponsored" : labelKind(contentLabel) ? contentLabel : "";
+/** News is what the audience assumes; the other two kinds must be told apart from it on the piece itself. */
+export const labelNeedsMarking = (contentLabel: string) => ["Commercial", "Opinion"].includes(labelKind(contentLabel));
 
 /** A production draft on a piece: the renditions the fact-checker verifies (schema draftsJson). */
 export type ContentDraft = { label: string; kind: string; text: string; date: string; by: string };
@@ -165,8 +179,8 @@ export function publishBlockers(c: ContentGateFields): string[] {
   // Policy P3 requires every piece to be labelled News / Commercial / Opinion, and a commercial
   // piece to disclose the relationship behind it. An unlabelled piece cannot be published.
   if (!c.contentLabel) blockers.push("No content label — say whether this is News, Commercial or Opinion (Policy P3: each content type must be clearly labelled).");
-  else if (!CONTENT_LABELS.some(([k]) => k === c.contentLabel)) blockers.push(`"${c.contentLabel}" is not a content label Policy P3 defines (News, Commercial, Opinion).`);
-  else if (c.contentLabel === "Commercial" && !String(c.sponsorDisclosure || "").trim())
+  else if (!isContentLabel(c.contentLabel)) blockers.push(`"${c.contentLabel}" is not a content label Policy P3 defines (${LABEL_WORDS.map(([w]) => w).join(", ")}).`);
+  else if (labelKind(c.contentLabel) === "Commercial" && !String(c.sponsorDisclosure || "").trim())
     blockers.push("Commercial content must say who paid for it or what the relationship is (Policy P3: maintain transparency about any commercial relationships or sponsorships).");
   if (c.legalFlag && !c.legalReviewedBy)
     blockers.push("Flagged for legal implications but no legal review recorded (Policy P3).");
