@@ -246,7 +246,8 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
                     {ic(Clock, "h-3 w-3")} {due}
                   </span>
                 )}
-                <p className={isWarningLine(it.text) ? "font-semibold text-amber-900" : undefined}>{marked(it.text, find)}</p>
+                {/* With the deadline already in its chip, the sentence is not marked a second time. */}
+                <p className={isWarningLine(it.text) ? "font-semibold text-amber-900" : undefined}>{marked(it.text, find, !due)}</p>
                 {it.subs.length > 0 && (
                   <ul className="mt-1 list-[circle] space-y-1 ps-5">
                     {it.subs.map((sub, k) => <li key={k}>{marked(sub, find)}</li>)}
