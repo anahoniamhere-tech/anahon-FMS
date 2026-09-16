@@ -522,17 +522,19 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     const backLabel = t("Back to Policies & handbooks");
     const clearLabel = t("Clear search");
 
+    // Empty, the box follows the page (an Arabic placeholder reads right-to-left); once typed,
+    // dir="auto" follows the words. Equal padding either side, so the icons fit both ways.
     const findBox = (autoFocus: boolean) => (
       <div className="relative">
         <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-slate-400">{ic(Search, "h-4 w-4")}</span>
-        <input value={find} onChange={e => setFind(e.target.value)} autoFocus={autoFocus} dir="auto" type="search"
+        <input value={find} onChange={e => setFind(e.target.value)} autoFocus={autoFocus} dir={find ? "auto" : undefined} type="search"
           onKeyDown={e => {
             if (e.key === "Escape") setFind("");
             // Enter: go to the first section that mentions it (the phone keyboard closes too).
             if (e.key === "Enter" && hits[0] && finding) { e.currentTarget.blur(); setSectionsOpen(false); setJumpTo({ id: hits[0].id, sec: hits[0].id }); }
           }}
           placeholder={t("Search this policy…")} aria-label={t("Search this policy…")}
-          className="h-11 w-full rounded-lg border border-slate-300 bg-white ps-9 pe-11 text-sm outline-none focus:border-[#6D1A1A] [&::-webkit-search-cancel-button]:hidden" />
+          className="h-11 w-full rounded-lg border border-slate-300 bg-white px-11 text-sm outline-none focus:border-[#6D1A1A] [&::-webkit-search-cancel-button]:hidden" />
         {find && (
           <button onClick={() => setFind("")} aria-label={clearLabel} title={clearLabel}
             className="absolute inset-y-0 end-0 flex w-11 items-center justify-center text-slate-400 hover:text-slate-700">
