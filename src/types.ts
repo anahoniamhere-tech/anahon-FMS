@@ -532,6 +532,8 @@ export interface AppDoc {
   mimeType: string;
   sizeStr: string;
   base64: string;
+  /** Sent with app state (where base64 is blanked): the real pointer lies under Superseded/. */
+  superseded?: boolean;
   // Free-form in practice — the DB holds 28 distinct values ("Handbook", "Digitized Invoice", …).
   category: string;
   linkedRecordType: string;

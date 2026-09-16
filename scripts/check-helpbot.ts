@@ -7,6 +7,7 @@
 // from a record stuffed with things that must not travel and greps for every one.
 // Run: npx tsx scripts/check-helpbot.ts
 import { readFileSync } from "node:fs";
+import { isSupersededDoc } from "../src/helpBot.js";
 import {
   corpus, helpPrompt, safeRows, parseReply, doorsFor, RULES_FOR_THE_BOT,
   isSupersededPointer, policyHeading,
@@ -193,6 +194,17 @@ ok("the widget opens the door instead of describing it", /onOpenDoor\(turn\.repl
 const bare = [...bot.matchAll(/(?<![=-])>\s*([^<>{}]*[A-Za-z]{2,}[^<>{}]*?)\s*</g)].map(m => m[1].trim())
   .filter(x => !/[;=()]/.test(x) && !/^[·.:,/\s-]*$/.test(x));
 ok("no bare English text nodes in the widget", bare.length === 0, bare.slice(0, 6).join(" | "));
+
+console.log("\nZ. a superseded file is recognised in the browser, where the pointer is blanked (16 Sep 2026)");
+// /api/state ships base64 as "" — so isSupersededPointer on a state document is always false and
+// every old edition looked live: the Policies door opened a 12 Sep file for P3, P4 and P10.
+const serverSrc = readFileSync(new URL("../server.ts", import.meta.url), "utf8");
+const strips = [...serverSrc.matchAll(/base64: d\.base64\.startsWith\("link:\/\/"\) \? d\.base64 : ""/g)];
+const flagged = strips.filter(m => /superseded: isSupersededPointer\(d\.base64\)/.test(serverSrc.slice(m.index!, m.index! + 400)));
+ok("every place app state blanks a pointer also sends the real superseded flag", strips.length > 0 && flagged.length === strips.length, `${flagged.length}/${strips.length}`);
+ok("a state document flagged superseded is superseded, whatever its blank pointer says", isSupersededDoc({ base64: "", superseded: true }) === true);
+ok("a state document flagged live is live", isSupersededDoc({ base64: "", superseded: false }) === false);
+ok("a server row with a real pointer still answers from the pointer", isSupersededDoc({ base64: "file://GENERAL/Handbooks/Superseded/x.docx" }) === true && isSupersededDoc({ base64: "file://GENERAL/Handbooks/x.docx" }) === false);
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

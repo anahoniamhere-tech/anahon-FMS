@@ -760,7 +760,7 @@ async function loadState(viewer?: any) {
     v, employees, poolFieldsOf,
   ).map(d => ({
     id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
-    base64: d.base64.startsWith("link://") ? d.base64 : "", category: d.category,
+    base64: d.base64.startsWith("link://") ? d.base64 : "", superseded: isSupersededPointer(d.base64), category: d.category,
     linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
     created_at: d.created_at, contentHash: d.contentHash, note: d.note,
   }));
@@ -800,7 +800,7 @@ async function loadState(viewer?: any) {
       fixedAssets: heldByViewer, partnerAccounts: [],
       documents: filterPersonnelDocs(documents, viewer, employees).filter(d => d.partyId && mineIds.has(d.partyId)).map(d => ({
         id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
-        base64: d.base64.startsWith("link://") ? d.base64 : "", category: d.category,
+        base64: d.base64.startsWith("link://") ? d.base64 : "", superseded: isSupersededPointer(d.base64), category: d.category,
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
@@ -835,7 +835,7 @@ async function loadState(viewer?: any) {
       partnerAccounts: [],
       documents: filterPersonnelDocs(documents, viewer, employees).filter(d => DOMAIN.has(String(d.linkedRecordType || "")) || (d.partyId && myIds.has(d.partyId))).map(d => ({
         id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
-        base64: d.base64.startsWith("link://") ? d.base64 : "", category: d.category,
+        base64: d.base64.startsWith("link://") ? d.base64 : "", superseded: isSupersededPointer(d.base64), category: d.category,
         linkedRecordType: d.linkedRecordType, linkedRecordId: d.linkedRecordId, partyId: d.partyId,
         created_at: d.created_at, contentHash: d.contentHash, note: d.note
       })),
@@ -881,6 +881,7 @@ async function loadState(viewer?: any) {
         .map(d => ({
           id: d.id, refNo: d.refNo, filename: d.filename, mimeType: d.mimeType, sizeStr: d.sizeStr,
           base64: d.base64.startsWith("link://") ? d.base64 : "",
+          superseded: isSupersededPointer(d.base64),
           category: d.category, linkedRecordType: d.linkedRecordType,
           linkedRecordId: d.linkedRecordId, partyId: d.partyId, created_at: d.created_at,
           contentHash: d.contentHash, note: d.note
@@ -937,6 +938,9 @@ async function loadState(viewer?: any) {
       // on demand from /api/document/content/:id. Keeps page loads instant.
       // Link entries carry no payload, so their pointer travels as-is.
       base64: d.base64.startsWith("link://") ? d.base64 : "",
+      // The pointer is blanked above, so the browser cannot tell a superseded file from a live
+      // one by looking at it; this flag is computed from the real pointer (16 Sep 2026).
+      superseded: isSupersededPointer(d.base64),
       category: d.category,
       linkedRecordType: d.linkedRecordType,
       linkedRecordId: d.linkedRecordId,

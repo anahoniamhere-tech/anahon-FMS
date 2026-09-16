@@ -118,6 +118,13 @@ Reply as JSON only: {"answer": "...", "door": "navKey or null", "askSeat": "role
 
 /** True for a document's own pointer once it has been moved to Superseded — it no longer governs. */
 export const isSupersededPointer = (pointer: string): boolean => pointer.includes("/Superseded/");
+/**
+ * The same question asked of a document as the browser receives it: app state blanks the
+ * pointer, so read the server's `superseded` flag, and fall back to the pointer only where one
+ * is present (server-side rows). Never call isSupersededPointer on a state document.
+ */
+export const isSupersededDoc = (d: { base64?: string; superseded?: boolean }): boolean =>
+  typeof d.superseded === "boolean" ? d.superseded : isSupersededPointer(d.base64 || "");
 
 /** A document's heading in the prompt, from its filename. */
 export const policyHeading = (filename: string): string =>
