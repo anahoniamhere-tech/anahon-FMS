@@ -165,7 +165,10 @@ export function annaTools(doors: string[]) {
         urgency: { type: "string", enum: [...REQUEST_URGENCIES] },
       }, ["title", "need", "urgency"]) },
   ];
-  return tools.map(t => ({ ...t, strict: true }));
+  // Strict schemas on all thirteen are refused by the API ("Schema is too complex", measured
+  // 16 Sep 2026), so the four drafts are not strict: draftTool checks every field itself, and a
+  // draft still writes nothing. The navigation and read tools stay strict.
+  return tools.map(t => ({ ...t, strict: !(DRAFT_TOOLS as readonly string[]).includes(t.name) }));
 }
 
 export function annaSystem(role: string, doorList: string, today: string): string {
@@ -335,7 +338,7 @@ export function draftTool(name: string, input: any, ctx: AnnaCtx): { type: "prop
           validUntil: ymd(input?.validUntil), notes: String(input?.notes || ""), status: "Draft" },
         lines: [`Quotation for ${client.name}: ${String(input.title).trim()}`,
           ...items.map((it: any) => `${it.qty} × ${it.service || it.description} — ${currency} ${it.unitPrice}`),
-          `Total ${currency} ${total} · ${issuedAs === "icontent" ? "iContent Studio" : "AnaHon"} letterhead · saved as Draft`],
+          `Total ${currency} ${total} · ${issuedAs === "icontent" ? "iContent Studio" : "AnaHon"} letterhead · a Draft when you confirm`],
       });
     }
     case "draft_task": {

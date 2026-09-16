@@ -54,7 +54,9 @@ console.log("\n4. the tool list is closed");
 const tools = annaTools(["mydesk", "expenses"]);
 ok("exactly the thirteen tools", JSON.stringify(tools.map(t => t.name)) === JSON.stringify(ANNA_TOOL_NAMES) && ANNA_TOOL_NAMES.length === 13
   && JSON.stringify(DRAFT_TOOLS) === '["draft_quotation","draft_task","draft_contract","draft_request"]');
-ok("every tool is strict with a closed schema", tools.every(t => t.strict && t.input_schema.additionalProperties === false));
+ok("every tool has a closed schema", tools.every(t => t.input_schema.additionalProperties === false));
+ok("navigation and read tools are strict; only the drafts are not (the API's complexity limit)",
+  tools.every(t => t.strict === !(DRAFT_TOOLS as readonly string[]).includes(t.name)));
 const FORBIDDEN = /\b(approve|reject|pay|send|share|delete|publish|sign|receipt|match|deposit)\b/i;
 ok("no tool name or description names a tier-3 act", tools.every(t => !FORBIDDEN.test(t.name + " " + t.description)),
   tools.filter(t => FORBIDDEN.test(t.name + " " + t.description)).map(t => t.name).join(","));
