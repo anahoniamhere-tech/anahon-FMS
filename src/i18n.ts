@@ -993,6 +993,8 @@ export const AR: Record<string, string> = {
   "More": "المزيد",
   "Voice language": "لغة الصوت",
   "End the talk": "إنهاء المحادثة",
+  "Registered as a client": "تم تسجيله كعميل",
+  "Carry on with the quotation.": "كمّل بعرض السعر.",
   "Near limit": "قرب الحد",
   "Raise the API limit, or lower the staff cap": "ارفع حد الإنفاق على المفتاح، أو خفّض حد الاستخدام للفريق",
   "Anna's walkthrough": "جولة مع Anna",

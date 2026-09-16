@@ -77,8 +77,8 @@ ok("what is saved is the question and Anna's reply, nothing from the tools", /sa
 
 console.log("\n4. the tool list is closed");
 const tools = annaTools(["mydesk", "expenses"], "Super Admin");
-ok("exactly the fourteen tools", JSON.stringify(tools.map(t => t.name)) === JSON.stringify(ANNA_TOOL_NAMES) && ANNA_TOOL_NAMES.length === 14
-  && JSON.stringify(DRAFT_TOOLS) === '["draft_quotation","draft_task","draft_contract","draft_request"]');
+ok("exactly the fifteen tools", JSON.stringify(tools.map(t => t.name)) === JSON.stringify(ANNA_TOOL_NAMES) && ANNA_TOOL_NAMES.length === 15
+  && JSON.stringify(DRAFT_TOOLS) === '["draft_quotation","draft_client","draft_task","draft_contract","draft_request"]');
 ok("every tool has a closed schema", tools.every(t => t.input_schema.additionalProperties === false));
 ok("navigation and read tools are strict; only the drafts and the guide are not (the API's complexity limit)",
   JSON.stringify(LOOSE_TOOLS) === JSON.stringify([...DRAFT_TOOLS, "guide"]) &&
@@ -193,7 +193,7 @@ ok("a card from a saved chat has no buttons", /\{m\.past \? \(\s*<p[^>]*>\{t\("F
 ok("deleting asks first", (chat.match(/window\.confirm\(/g) || []).length === 1 && /if \(!window\.confirm\([^;]*\)\) return;\s*try \{\s*const r = await fetch\("\/api\/anna\/chats\/delete"/.test(chat));
 ok("the confirm route is checked against the closed list first, and a contract never posts",
   /if \(!\(CONFIRM_ROUTES as readonly string\[\]\)\.includes\(p\.confirmRoute\) \|\| p\.confirmRoute === "form:contract"\) return;\s*setCards/.test(chat));
-ok("a confirmed quotation is always a Draft", /const body = p\.kind === "quotation" \? \{ \.\.\.p\.data, status: "Draft" \} : p\.data;/.test(chat));
+ok("a confirmed quotation is always a Draft, and a client card never carries an id", /const body = p\.kind === "quotation" \? \{ \.\.\.p\.data, status: "Draft" \} : p\.kind === "client" \? \{ \.\.\.p\.data, id: undefined \} : p\.data;/.test(chat));
 ok("only navigation runs on arrival; cards and name choices wait for a tap", /const navs = actions\.filter\(a => a\.type === "open_door" \|\| a\.type === "open_record"\) as NavAction\[\];\s*navs\.forEach\(run\);/.test(chat)
   && !/actions\.forEach\(/.test(chat));
 ok("only plain text turns are sent", /messages: history\.map\(m => \(\{ role: m\.role, content: m\.content \}\)\)/.test(chat));
@@ -342,7 +342,7 @@ ok("the route tells Anna the user starts it", /a\.type === "guide" \? "A Show me
 
 console.log("\nX. Anna for everyone: per seat, capped, private (plan §10)");
 const names = (role: string, doors = ["mydesk"]) => annaTools(doors, role).map(t => t.name);
-ok("drafts follow the route each confirms into (ROUTE_SEATS)", JSON.stringify(DRAFT_ROUTE) === '{"draft_quotation":"/api/quotations/save","draft_task":"/api/compliance/save","draft_contract":"/api/contracts/generate","draft_request":"/api/requests/save"}'
+ok("drafts follow the route each confirms into (ROUTE_SEATS)", JSON.stringify(DRAFT_ROUTE) === '{"draft_quotation":"/api/quotations/save","draft_client":"/api/clients/save","draft_task":"/api/compliance/save","draft_contract":"/api/contracts/generate","draft_request":"/api/requests/save"}'
   && /\.filter\(t => !DRAFT_ROUTE\[t\.name\] \|\| mayCall\(DRAFT_ROUTE\[t\.name\], role\)\)/.test(annaSrc));
 const dig = names("Digital Officer"), fin = names("Finance Officer"), ed = names("Super Admin");
 ok("a Digital Officer gets only the feature request among the drafts", dig.filter(n => n.startsWith("draft_")).join() === "draft_request", dig.join());
@@ -381,14 +381,50 @@ ok("a walkthrough never points at a button the seat's screen does not draw", !/m
 ok("the seat-limited parts use the screens' own lists", /"mydesk\.new-task": \{ door: "mydesk", what: "the New task button", seats: DIRECTORS \}/.test(annaSrc)
   && /"production\.new-quotation": \{[^}]*seats: MANAGERS \}/.test(annaSrc) && /"expenses\.new-request": \{[^}]*seats: REQUESTERS \}/.test(annaSrc));
 ok("Anna is told what the seat cannot create (probe: Haiku sent a Digital Officer to a button they lack)",
-  /This seat cannot create quotations, desk tasks, contracts\./.test(annaSystem("Digital Officer", "", "2026-09-16", "R"))
+  /This seat cannot create quotations, clients, desk tasks, contracts\./.test(annaSystem("Digital Officer", "", "2026-09-16", "R"))
   && /This seat cannot create desk tasks\./.test(annaSystem("Finance Officer", "", "2026-09-16", "M"))
   && !/This seat cannot create/.test(annaSystem("Super Admin", "", "2026-09-16")));
 ok("an English 'hi' gets English (probe: Haiku answered Arabic)", /English when they wrote English \(Latin letters, even a single "hi"\)/.test(annaSystem("Finance Officer", "", "2026-09-16", "M")));
 ok("the help answer still carries its door and the seat to ask", /out = \{ answer: reply\.answer, door: reply\.door, askSeat: reply\.askSeat \};/.test(route));
 
+console.log("\nW. a name is looked up everywhere before 'unknown' (Saad, 17 Sep: 'Zena', 'Eamon')");
+const wState: any = { ...state,
+  clients: [{ id: "cli-1", name: "Zeina Hamoud", active: true }, { id: "cli-2", name: "Maroun Asmar", active: true }],
+  vendors: [{ id: "v2", name: "Aiman Khoury", active: true, phone: "+961 3 000", contact: "aiman@example.com" }],
+  networkContacts: [{ id: "n1", name: "Ayman Haddad", nameAr: "أيمن حداد", org: "Radio X", email: "ayman@example.com", phone: "+961 1 000" }],
+  users: [{ id: "u-1", name: "Saad Matar", active: true }] };
+const wctx: AnnaCtx = { ...ctx, state: wState, doors: ["production"] };
+const wSearch: any = readTool("search", { query: "Zena" }, wctx);
+ok("search for 'Zena' offers Zeina Hamoud from Clients, marked as spelled differently",
+  JSON.stringify(wSearch.people) === '[{"name":"Zeina Hamoud","in":"Clients","close":true}]');
+ok("a person outside Clients carries the reference draft_client copies from", (readTool("search", { query: "Eamon" }, wctx) as any).people?.some((p: any) => p.name === "Ayman Haddad" && p.from === "contact:n1"));
+ok("close-sounding names from a lookup become tap buttons too", /const close = \(\(out as any\)\?\.people \|\| \[\]\)\.filter\(\(p: any\) => p\.close\)\.slice\(0, 3\)\.map\(\(p: any\) => p\.name\);\s*if \(close\.length\) actions\.push\(\{ type: "choice", options: close \}\);/.test(route));
+ok("so does a name filter on the client list", JSON.stringify((readTool("list_records", { kind: "client", text: "Zena" }, wctx) as any).people?.[0]) === '{"name":"Zeina Hamoud","in":"Clients","close":true}');
+ok("Zeinah and زينة are Zeina too", ["Zeinah", "زينة"].every(q => (readTool("search", { query: q }, wctx) as any).people?.[0]?.name === "Zeina Hamoud"));
+const wq = (c: string): any => draftTool("draft_quotation", { client: c, title: "x", items: [{ service: "a", unitPrice: 1, qty: 1 }] }, wctx);
+ok("'Eamon' (voice for Ayman) finds Ayman and Aiman outside Clients, offers them, and makes no card",
+  !wq("Eamon").proposal && ["Ayman Haddad", "Aiman Khoury"].every(n => wq("Eamon").suggest?.includes(n)) && /not a registered client[\s\S]*draft_client/.test(wq("Eamon").error));
+ok("أيمن finds Ayman by his Arabic name", (readTool("search", { query: "أيمن" }, wctx) as any).people?.[0]?.name === "Ayman Haddad");
+const arOnly: AnnaCtx = { ...wctx, state: { ...wState, networkContacts: [{ id: "n9", name: "A. Khalil", nameAr: "أيمن خليل" }] } };
+ok("an Arabic spelling that only sounds like the Arabic name still finds the person (ايمان for أيمن)",
+  ((readTool("search", { query: "ايمان" }, arOnly) as any).people || []).some((p: any) => p.name === "A. Khalil"));
+const wc: any = draftTool("draft_client", { name: "Ayman Haddad", from: "contact:n1" }, wctx);
+ok("draft_client copies the contact's details into a card and saves nothing", wc.proposal?.kind === "client" && wc.proposal.confirmRoute === "/api/clients/save"
+  && wc.proposal.data.email === "ayman@example.com" && wc.proposal.data.phone === "+961 1 000" && !("id" in wc.proposal.data));
+ok("the card's lines never show the details", !/ayman@|\+961/.test(wc.proposal.lines.join(" ")));
+ok("the details never reach the model, and never stay in the saved chat",
+  /if \("type" in a\) \{ actions\.push\(a\); out = \{ ok: "A draft card is shown to the user\./.test(route)
+  && /data: Object\.fromEntries\(Object\.entries\(a\.proposal\.data\)\.filter\(\(\[k\]\) => !\["email", "phone", "contact", "taxId"\]\.includes\(k\)\)\)/.test(server)
+  && /const turn: AnnaSaved\[\] = \[\{ role: "user", content: asked \}, \{ \.\.\.reply, actions: kept \}\];/.test(server));
+ok("an existing client is not registered twice", "error" in draftTool("draft_client", { name: "zeina hamoud" }, wctx));
+ok("details are copied only from a person outside Clients, by the id the lookup gave", "error" in draftTool("draft_client", { name: "X", from: "client:cli-1" }, wctx)
+  && "error" in draftTool("draft_client", { name: "X", from: "contact:nope" }, wctx));
+ok("only seats that may register clients get the card", names("Finance Officer").includes("draft_client") && !names("Digital Officer").includes("draft_client"));
+ok("after a client card is confirmed, Anna carries on with the quotation", /if \(p\.kind === "client"\) void sendRef\.current\(/.test(chat));
+ok("Anna is told a name may be misheard and never to conclude 'unknown' from one lookup", /Never say someone is unknown from one exact lookup/.test(annaSystem("Super Admin", "", "2026-09-17")));
+
 console.log("\n6. drafts are cards; Saad's press writes, through the existing routes");
-ok("four confirm routes, exactly", JSON.stringify(CONFIRM_ROUTES) === '["/api/quotations/save","/api/compliance/save","/api/requests/save","form:contract"]');
+ok("five confirm routes, exactly", JSON.stringify(CONFIRM_ROUTES) === '["/api/quotations/save","/api/clients/save","/api/compliance/save","/api/requests/save","form:contract"]');
 const st2: any = { ...state,
   users: [...state.users, { id: "u-7", name: "Rana Haddad", active: true }, { id: "u-8", name: "Rana Old", active: false }],
   employees: [{ id: "emp-1", name: "Rana Haddad", active: true }],
@@ -398,7 +434,7 @@ const dq: any = draftTool("draft_quotation", { client: "maroun", title: "Reel", 
   items: [{ service: "Edit", description: "30s reel", output: "MP4", unitPrice: 150, qty: 2 }] }, c2);
 ok("a quotation card names a registered client and is a Draft", dq.proposal?.data.clientId === "c1" && dq.proposal.data.status === "Draft"
   && dq.proposal.confirmRoute === "/api/quotations/save" && dq.proposal.lines.some((l: string) => l.includes("USD 300")));
-ok("an unregistered client is refused, with where to register", /registered on the Clients & quotations screen/.test((draftTool("draft_quotation", { client: "Nobody", title: "x", items: [{ service: "a", unitPrice: 1, qty: 1 }] }, c2) as any).error || ""));
+ok("an unknown client is refused, and a new client is offered as a card", /Offer draft_client to register a new client/.test((draftTool("draft_quotation", { client: "Nobody", title: "x", items: [{ service: "a", unitPrice: 1, qty: 1 }] }, c2) as any).error || ""));
 const dt: any = draftTool("draft_task", { title: "Call SKF", dueDate: "2026-09-20", category: "Donor", assignee: "rana" }, c2);
 ok("a task card resolves an active person only", dt.proposal?.data.assigneeUserId === "u-7" && dt.proposal.confirmRoute === "/api/compliance/save");
 ok("an unclear name is asked back, never guessed", "error" in draftTool("draft_task", { title: "x", dueDate: "2026-09-20", assignee: "r" }, { ...c2, state: { ...st2, users: [{ id: "a", name: "Rana", active: true }, { id: "b", name: "Rami", active: true }] } }));
@@ -418,7 +454,7 @@ for (const said of ["Maroon", "مارون", "Maron", "Marun Asmar"])
 ok("a suggestion never offers to register a new client", !/registered on the Clients/.test(quote("Maroon").error));
 ok("the exact name, a first name or an accent-free spelling still makes the card",
   ["maroun asmar", "Maroun", "asmar", "Marôun"].every(n => quote(n).proposal?.data.clientId === "c1"));
-ok("a name like nothing is refused, with where to register", !quote("Bob").suggest && /registered on the Clients/.test(quote("Bob").error));
+ok("a name like nothing is refused, and registering is offered", !quote("Bob").suggest && /Offer draft_client to register a new client/.test(quote("Bob").error));
 ok("people are suggested the same way", JSON.stringify((draftTool("draft_task", { title: "x", dueDate: "2026-09-20", assignee: "Rana Hadad" }, c2) as any).suggest) === '["Rana Haddad"]');
 ok("the route turns suggestions into a choice for Saad", /else \{ out = a; if \(a\.suggest\?\.length\) actions\.push\(\{ type: "choice", options: a\.suggest \}\); \}/.test(route));
 ok("a tap sends his choice as his own next message, only on the latest answer",
@@ -426,7 +462,7 @@ ok("a tap sends his choice as his own next message, only on the latest answer",
 ok("she answers in the language of the latest message, not of the name", /language of their latest message: English when they wrote English/.test(annaSystem("Super Admin", "", "2026-09-16")));
 ok("Anna is told to ask, never choose", /never choose for them or offer to register a new one/.test(annaSystem("Super Admin", "", "2026-09-16")));
 const labelled = (path: string) => { const a = server.indexOf(`app.post("${path}"`); const b = server.indexOf("\n});\n", a); return a > 0 && /\$\{draftedBy\(req\)\}`/.test(server.slice(a, b)); };
-ok("the three save routes label an Anna save in their audit line", ["/api/quotations/save", "/api/compliance/save", "/api/requests/save"].every(labelled));
+ok("the four save routes label an Anna save in their audit line", ["/api/quotations/save", "/api/clients/save", "/api/compliance/save", "/api/requests/save"].every(labelled));
 ok("the label reads one header, nothing else", /const draftedBy = \(req: any\) => req\.get\?\.\("X-Drafted-By"\) === "anna" \? " \(drafted by Anna\)" : "";/.test(server));
 ok("an Edit-then-Save sends the label only for a new record",
   /fromAnna && !quoteForm\.id \? \{ "X-Drafted-By": "anna" \}/.test(read("../src/tabs/ProductionTab.tsx"))

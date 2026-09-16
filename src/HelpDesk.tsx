@@ -96,7 +96,7 @@ type NavAction = { type: "open_door"; door: string } | { type: "open_record"; ki
 type AnnaAction = NavAction | { type: "proposal"; proposal: Proposal } | { type: "choice"; options: string[] } | ({ type: "guide" } & Guide);
 type CardState = "open" | "saving" | "saved" | "gone" | { error: string };
 /** Where a saved draft lives, for the button after Confirm. */
-const DRAFT_DOOR: Record<string, string> = { quotation: "production", task: "mydesk", request: "help" };
+const DRAFT_DOOR: Record<string, string> = { quotation: "production", client: "production", task: "mydesk", request: "help" };
 type AnnaMsg = { role: "user" | "assistant"; content: string; actions?: AnnaAction[]; usd?: number; error?: boolean; past?: boolean; local?: boolean };
 type ChatRow = { id: string; title: string; updatedAt: string };
 /** The open chat survives closing the panel (the component unmounts), not a reload. */
@@ -292,13 +292,16 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
     if (!(CONFIRM_ROUTES as readonly string[]).includes(p.confirmRoute) || p.confirmRoute === "form:contract") return;
     setCards(c => ({ ...c, [key]: "saving" }));
     try {
-      const body = p.kind === "quotation" ? { ...p.data, status: "Draft" } : p.data;
+      // A quotation is always a Draft; a client card only ever creates — an id would overwrite someone.
+      const body = p.kind === "quotation" ? { ...p.data, status: "Draft" } : p.kind === "client" ? { ...p.data, id: undefined } : p.data;
       const r = await fetch(p.confirmRoute, {
         method: "POST", headers: { "Content-Type": "application/json", "X-Drafted-By": "anna" }, body: JSON.stringify(body),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || t("Could not save."));
       setCards(c => ({ ...c, [key]: "saved" }));
+      // Registering a client was a step towards a quotation: Anna carries on, on his press.
+      if (p.kind === "client") void sendRef.current(`${t("Registered as a client")}: ${String(p.data.name || "")}. ${t("Carry on with the quotation.")}`);
     } catch (e: any) {
       setCards(c => ({ ...c, [key]: { error: e.message } }));
     }
@@ -423,7 +426,7 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
                           {st === "saving" ? t("Saving…") : t("Confirm")}
                         </button>
                       )}
-                      {p.kind !== "request" && (
+                      {p.kind !== "request" && p.kind !== "client" && (
                         <button onClick={() => onEditDraft(p.kind, p.data)}
                           className="min-h-[36px] rounded-lg border border-[#6D1A1A] px-3 text-[11px] font-bold text-[#6D1A1A] transition-colors hover:bg-[#6D1A1A]/5">
                           {p.kind === "contract" ? t("Open the form") : t("Edit")}

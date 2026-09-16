@@ -1695,7 +1695,10 @@ const ANNA_CHAT_MAX = 200;   // messages per saved chat; the oldest go first
 async function saveAnnaTurn(userId: string, chatId: string, asked: string, reply: AnnaSaved): Promise<string> {
   const now = new Date().toISOString();
   const row = chatId ? await prisma.annaChat.findFirst({ where: { id: chatId, userId } }) : null;
-  const turn: AnnaSaved[] = [{ role: "user", content: asked }, reply];
+  // A card's contact details (a client being registered) are for the form, not the stored chat.
+  const kept = (reply.actions || []).map(a => a.type !== "proposal" ? a
+    : { ...a, proposal: { ...a.proposal, data: Object.fromEntries(Object.entries(a.proposal.data).filter(([k]) => !["email", "phone", "contact", "taxId"].includes(k))) } });
+  const turn: AnnaSaved[] = [{ role: "user", content: asked }, { ...reply, actions: kept }];
   if (!row) {
     const id = `anna-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
     await prisma.annaChat.create({ data: { id, userId, title: asked.replace(/\s+/g, " ").trim().slice(0, 80), messages: JSON.stringify(turn), createdAt: now, updatedAt: now } });
@@ -1918,6 +1921,9 @@ app.post("/api/anna/turn", async (req, res) => {
           await createAuditLog(viewer.id, viewer.name, "Anna Read", `turn ${turn} · help_answer${takeUsage()}`);
         } else {
           out = readTool(c.name, c.input, ctx);
+          // Names that only sound like what was asked become tap buttons too (plan: max 3).
+          const close = ((out as any)?.people || []).filter((p: any) => p.close).slice(0, 3).map((p: any) => p.name);
+          if (close.length) actions.push({ type: "choice", options: close });
           await createAuditLog(viewer.id, viewer.name, "Anna Read", `turn ${turn} · ${c.name}${c.input?.kind ? ` ${c.input.kind}` : ""}`);
         }
         results.push({ type: "tool_result", tool_use_id: c.id, content: JSON.stringify(out) });
@@ -8440,7 +8446,7 @@ app.post("/api/clients/save", async (req, res) => {
       user?.id,
       user?.name,
       existing ? "Client Updated" : "Client Registered",
-      `${existing ? "Updated" : "Registered"} production client: ${client.name}${client.taxId ? ` (tax ID ${client.taxId})` : ""}.`
+      `${existing ? "Updated" : "Registered"} production client: ${client.name}${client.taxId ? ` (tax ID ${client.taxId})` : ""}.${draftedBy(req)}`
     );
     res.json({ success: true, client });
   } catch (err: any) {
