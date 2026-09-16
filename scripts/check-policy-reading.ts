@@ -7,7 +7,7 @@
 // "At a glance" lines where the rule order decides the answer. A new rule that shifts any of
 // these fails here before a reader sees a wrong icon.
 // Run: npx tsx scripts/check-policy-reading.ts
-import { topicOf, isWarningLine, markPieces } from "../src/policyReading.js";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding } from "../src/policyReading.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -143,6 +143,19 @@ for (const [s, want] of cases) {
   ok(`marks in "${s.slice(0, 40)}…"`, same(got, want), JSON.stringify(got));
   ok(`  …and the pieces join back to the text`, markPieces(s).map(p => p.text).join("") === s);
 }
+
+// Search inside a policy: case-blind, every hit, a hit inside an amount splits it, the
+// text survives, and regex characters typed by a reader are just characters.
+const pieces = (s: string, q: string) => markPieces(s, q).map(p => `${p.mark || "-"}:${p.text}`);
+ok("search marks every hit, case-blind",
+  same(pieces("Cash is cash; CASH counts.", "cash"), ["find:Cash", "-: is ", "find:cash", "-:; ", "find:CASH", "-: counts."]),
+  JSON.stringify(pieces("Cash is cash; CASH counts.", "cash")));
+ok("a hit inside an amount splits the amount",
+  same(pieces("up to USD 1,000 only", "1,000"), ["-:up to ", "fact:USD ", "find:1,000", "-: only"]),
+  JSON.stringify(pieces("up to USD 1,000 only", "1,000")));
+ok("regex characters are plain text", same(pieces("a (b) c.*", "(b)"), ["-:a ", "find:(b)", "-: c.*"]) && !mentions("abc", ".*"));
+ok("one letter does not search", !isFinding(" a ") && isFinding("ab") && markPieces("banana", "a").every(p => p.mark !== "find"));
+ok("search pieces join back to the text", markPieces("Every concern is recorded; concern again.", "concern").map(p => p.text).join("") === "Every concern is recorded; concern again.");
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nall policy reading rules hold");

@@ -59,15 +59,39 @@ const MARK = new RegExp(
   "gi",
 );
 
-/** The text cut into plain and marked pieces, in order; joining them gives the text back. */
-export const markPieces = (text: string) => {
-  const out: { text: string; mark: boolean }[] = [];
+export type Piece = { text: string; mark: false | "fact" | "find" };
+
+/** Shortest search that filters and highlights; one letter would match nearly everything. */
+export const MIN_FIND = 2;
+const findKey = (find: string) => find.trim().toLowerCase();
+export const isFinding = (find: string) => findKey(find).length >= MIN_FIND;
+export const mentions = (text: string, find: string) => text.toLowerCase().includes(findKey(find));
+
+// Plain indexOf, never a RegExp built from what the reader typed. toLowerCase keeps length
+// for the English (and caseless Arabic) text these documents hold.
+const splitFind = (p: Piece, q: string): Piece[] => {
+  const out: Piece[] = [];
+  const low = p.text.toLowerCase();
+  let at = 0;
+  for (let i = low.indexOf(q); i !== -1; i = low.indexOf(q, at)) {
+    if (i > at) out.push({ text: p.text.slice(at, i), mark: p.mark });
+    out.push({ text: p.text.slice(i, i + q.length), mark: "find" });
+    at = i + q.length;
+  }
+  if (at < p.text.length) out.push({ text: p.text.slice(at), mark: p.mark });
+  return out;
+};
+
+/** The text cut into plain, "fact" (amount/deadline) and "find" (the reader's search) pieces,
+ *  in order; joining them gives the text back. A search hit inside a fact wins that stretch. */
+export const markPieces = (text: string, find = ""): Piece[] => {
+  const out: Piece[] = [];
   let at = 0;
   for (const m of text.matchAll(MARK)) {
     if (m.index! > at) out.push({ text: text.slice(at, m.index), mark: false });
-    out.push({ text: m[0], mark: true });
+    out.push({ text: m[0], mark: "fact" });
     at = m.index! + m[0].length;
   }
   if (at < text.length) out.push({ text: text.slice(at), mark: false });
-  return out;
+  return isFinding(find) ? out.flatMap(p => splitFind(p, findKey(find))) : out;
 };

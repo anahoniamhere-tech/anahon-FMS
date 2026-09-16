@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BookOpen, Search, ChevronDown, ChevronRight, History as HistoryIcon, MessageCircleQuestion, ArrowRight, AlertTriangle,
   Bot, MessageSquareWarning, PenLine, UserSearch, Gift, Scale, ShieldCheck, Lock, Database, GraduationCap, BadgeCheck,
-  Plane, Clock, BarChart3, Archive, Package, Users, Wallet, Newspaper, ClipboardCheck, Info, type LucideIcon,
+  Plane, Clock, BarChart3, Archive, Package, Users, Wallet, Newspaper, ClipboardCheck, Info, X, type LucideIcon,
 } from "lucide-react";
 import { SharedProps } from "./shared";
 import { withTicket } from "../docTicket";
@@ -10,10 +10,10 @@ import { isSupersededDoc, policyHeading } from "../helpBot";
 import { NAV, ic } from "../nav";
 import {
   parseHandbooksIndex, findIndexFaults, chapterAnchors, chapterSlice, missingChapterText,
-  historyChapterOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
+  historyChaptersOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
-import { topicOf, isWarningLine, markPieces, type Topic } from "../policyReading";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, type Topic } from "../policyReading";
 
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
@@ -167,10 +167,11 @@ const TOPIC_ICON: Record<Topic, LucideIcon> = {
   general: BookOpen,
 };
 
-/** Amounts and deadlines picked out inside the sentence, the rest untouched. */
-const marked = (text: string) =>
-  markPieces(text).map((p, k) => p.mark
-    ? <mark key={k} className="rounded bg-amber-100 px-1 font-semibold text-slate-900">{p.text}</mark>
+/** Amounts and deadlines picked out inside the sentence, and the reader's search on top. */
+const marked = (text: string, find: string) =>
+  markPieces(text, find).map((p, k) =>
+    p.mark === "find" ? <mark key={k} className="rounded bg-yellow-300 px-0.5 text-slate-900 ring-1 ring-yellow-500">{p.text}</mark>
+    : p.mark ? <mark key={k} className="rounded bg-amber-100 px-1 font-semibold text-slate-900">{p.text}</mark>
     : p.text);
 
 type ListItem = { text: string; subs: string[] };
@@ -179,7 +180,7 @@ type ListItem = { text: string; subs: string[] };
  *  <ul>/<ol> (with any "◦" sub-points nested under their bullet), "At a glance" becomes a
  *  grid of cards with an icon each, any other label becomes a callout with its list, and a
  *  line starting "Must / Never / Do not / Only" gets a quiet warning style. */
-function renderBody(blocks: BodyBlock[], accentText: string) {
+function renderBody(blocks: BodyBlock[], accentText: string, find: string) {
   const nodes: ReactNode[] = [];
   let i = 0;
   const readList = () => {
@@ -201,10 +202,10 @@ function renderBody(blocks: BodyBlock[], accentText: string) {
       <Tag key={key} dir="auto" className={`space-y-1.5 ps-5 text-[13px] leading-relaxed ${kind === "numbered" ? "list-decimal" : "list-disc"} ${className}`}>
         {items.map((it, j) => (
           <li key={j} className={isWarningLine(it.text) ? "font-semibold text-amber-900 marker:text-amber-600" : undefined}>
-            {marked(it.text)}
+            {marked(it.text, find)}
             {it.subs.length > 0 && (
               <ul className="mt-1 list-[circle] space-y-1 ps-5 font-normal text-slate-800">
-                {it.subs.map((sub, k) => <li key={k}>{marked(sub)}</li>)}
+                {it.subs.map((sub, k) => <li key={k}>{marked(sub, find)}</li>)}
               </ul>
             )}
           </li>
@@ -223,12 +224,12 @@ function renderBody(blocks: BodyBlock[], accentText: string) {
         // column would leave each sentence about twenty characters a line.
         nodes.push(
           <div key={`glance-${i}`} dir="auto" className="my-5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{marked(label, find)}</p>
             <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {items.map((it, j) => (
                 <li key={j} className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-[13px] leading-relaxed text-slate-800">
                   {ic(TOPIC_ICON[topicOf(it.text)], `mt-0.5 h-5 w-5 ${accentText}`)}
-                  <span>{marked(it.text)}</span>
+                  <span>{marked(it.text, find)}</span>
                 </li>
               ))}
             </ul>
@@ -238,7 +239,7 @@ function renderBody(blocks: BodyBlock[], accentText: string) {
       }
       nodes.push(
         <div key={`label-${i}`} dir="auto" className="my-4 rounded-xl border border-amber-100 bg-amber-50/60 p-4">
-          <p className="text-[13px] font-bold text-amber-900">{label}</p>
+          <p className="text-[13px] font-bold text-amber-900">{marked(label, find)}</p>
           {items.length > 0 && list(kind, items, "mt-2 text-amber-950")}
         </div>
       );
@@ -253,7 +254,7 @@ function renderBody(blocks: BodyBlock[], accentText: string) {
       const intro = isIntroNum(b.num);
       nodes.push(
         <h3 key={i} id={b.id} className={`mt-5 text-[15px] font-bold text-slate-800 first:mt-0 ${JUMP_MARGIN}`}>
-          {intro ? b.title : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{b.num}</span>{b.title}</span>}
+          {intro ? marked(b.title, find) : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{b.num}</span>{marked(b.title, find)}</span>}
         </h3>
       );
       i++; continue;
@@ -262,7 +263,7 @@ function renderBody(blocks: BodyBlock[], accentText: string) {
       const warn = isWarningLine(b.text);
       nodes.push(
         <p key={i} dir="auto" className={`mt-3 text-[13px] leading-relaxed first:mt-0 ${warn ? "border-s-2 border-amber-500 ps-3 font-semibold text-amber-900" : "text-slate-800"}`}>
-          {marked(b.text)}
+          {marked(b.text, find)}
         </p>
       );
     }
@@ -285,8 +286,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   const historyByChapter = useMemo(() => {
     const map: Record<string, AppDoc[]> = {};
     for (const d of supersededDocs) {
-      const no = historyChapterOf(d);
-      if (no) (map[no] ||= []).push(d);
+      for (const no of historyChaptersOf(d)) (map[no] ||= []).push(d);
     }
     return map;
   }, [supersededDocs]);
@@ -305,6 +305,8 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   const [openSecs, setOpenSecs] = useState<Record<string, boolean>>({});
   const [currentSec, setCurrentSec] = useState<string | null>(null);
   const [jumpTo, setJumpTo] = useState<string | null>(null);
+  const [find, setFind] = useState("");
+  const [findOpen, setFindOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLDivElement>(null);
 
@@ -332,6 +334,8 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     setSectionsOpen(false);
     setOpenSecs({});
     setCurrentSec(null);
+    setFind("");
+    setFindOpen(false);
     setSelected({ doc, no, title, chapters });
     await fetchText(doc);
   };
@@ -377,10 +381,10 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
           {c.no}
         </span>
         <div className="min-w-0 flex-1">
-          <p dir="auto" className="text-lg font-bold leading-snug text-slate-900 rtl:text-right">{c.title}</p>
+          <p dir="auto" className="text-lg font-bold leading-snug text-slate-900 [text-align:match-parent]">{c.title}</p>
           {/* dir="auto": the Index is English, so on the Arabic screen the sentence keeps its
-              own order (the clamp's "…" at its end) while staying right-aligned. */}
-          {summary && <p dir="auto" className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-slate-600 rtl:text-right">{summary}</p>}
+              own order (the clamp's "…" at its end); match-parent keeps it aligned with the card. */}
+          {summary && <p dir="auto" className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-slate-600 [text-align:match-parent]">{summary}</p>}
           <p className="mt-3 text-[11px] text-slate-400">{heading}</p>
         </div>
       </button>
@@ -414,6 +418,11 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   const selectedIsMissing = selected ? missingChapterText(selected.chapters, selectedAnchors).some(c => c.no === selected.no) : false;
   const selectedBody = selected && !selectedIsMissing ? chapterSlice(selectedText, selected.no, selectedAnchors) : "";
   const { lead, sections, toc } = useMemo(() => parseBody(selectedBody), [selectedBody]);
+  // Each section's searchable text (title, subheadings, every line), built once per policy.
+  const hay = useMemo(() => {
+    const text = (bs: BodyBlock[]) => bs.map(b => (b.kind === "h3" ? b.title : b.text)).join("\n");
+    return { lead: text(lead), sections: Object.fromEntries(sections.map(s => [s.id, `${s.title}\n${text(s.blocks)}`])) };
+  }, [lead, sections]);
 
   // A TOC jump may target a section that is still collapsed: open it first, then scroll
   // once React has rendered it.
@@ -437,7 +446,8 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
       let cur = sections[0].id;
       for (const s of sections) {
         const el = document.getElementById(s.id);
-        if (!el || el.getBoundingClientRect().top > limit) break;
+        if (!el) continue;
+        if (el.getBoundingClientRect().top > limit) break;
         cur = s.id;
       }
       setCurrentSec(cur);
@@ -455,7 +465,13 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     const selectedHeading = parsed?.handbooks.find(h => h.chapters.some(c => c.no === selected.no))?.heading;
     const accent = accentFor(selectedHeading || "", !selectedHeading);
 
-    const isOpen = (s: Section) => openSecs[s.id] ?? isIntroNum(s.num);
+    // Search: sections that mention the words open and the rest step aside; clearing the box
+    // brings back the reader's own open/closed choices untouched.
+    const finding = isFinding(find);
+    const hits = finding ? sections.filter(s => mentions(hay.sections[s.id], find)) : sections;
+    const hitIds = new Set(hits.map(s => s.id));
+    const leadHit = !finding || mentions(hay.lead, find);
+    const isOpen = (s: Section) => finding || (openSecs[s.id] ?? isIntroNum(s.num));
     const setAll = (open: boolean) => setOpenSecs(Object.fromEntries(sections.map(s => [s.id, open])));
     const jump = (id: string, parent: string) => {
       setOpenSecs(o => ({ ...o, [parent]: true }));
@@ -475,23 +491,49 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     // dir="ltr": a bare "N." immediately followed by a Latin-word title inverts under RTL —
     // measured live ("0.2" trading places with "What moved out") — so num and title are
     // isolated as one run. Section 0 has no number left to invert.
-    const numTitle = (num: string, title: string, numClass: string) =>
+    const numTitle = (num: string, title: ReactNode, numClass: string) =>
       isIntroNum(num) ? title : <span dir="ltr"><span className={`me-2 font-mono ${numClass}`}>{num}{num.includes(".") ? "" : "."}</span>{title}</span>;
 
     const tocList = (subsections: boolean) => (
       <nav className="space-y-0.5">
-        {toc.filter(s => subsections || s.level === 2).map(s => (
+        {toc.filter(s => (subsections || s.level === 2) && hitIds.has(s.parent)).map(s => (
           <button key={s.id} onClick={() => jump(s.id, s.parent)}
             className={`block min-h-11 w-full rounded-md px-2 py-2 text-start text-[13px] md:min-h-0 md:py-1.5 ${
               s.level === 3 ? "ps-5 text-slate-500 hover:bg-slate-50" :
               s.id === currentSec ? "bg-slate-100 font-semibold text-slate-900" : "font-semibold text-slate-700 hover:bg-slate-50"}`}>
-            {numTitle(s.num, s.title, "text-slate-400")}
+            {numTitle(s.num, marked(s.title, find), "text-slate-400")}
           </button>
         ))}
       </nav>
     );
 
     const backLabel = t("Back to Policies & handbooks");
+    const clearLabel = t("Clear search");
+
+    const findBox = (autoFocus: boolean) => (
+      <div className="relative">
+        <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-slate-400">{ic(Search, "h-4 w-4")}</span>
+        <input value={find} onChange={e => setFind(e.target.value)} autoFocus={autoFocus} dir="auto" type="search"
+          onKeyDown={e => { if (e.key === "Escape") setFind(""); }}
+          placeholder={t("Search this policy…")} aria-label={t("Search this policy…")}
+          className="h-11 w-full rounded-lg border border-slate-300 bg-white ps-9 pe-11 text-sm outline-none focus:border-[#6D1A1A] [&::-webkit-search-cancel-button]:hidden" />
+        {find && (
+          <button onClick={() => setFind("")} aria-label={clearLabel} title={clearLabel}
+            className="absolute inset-y-0 end-0 flex w-11 items-center justify-center text-slate-400 hover:text-slate-700">
+            {ic(X, "h-4 w-4")}
+          </button>
+        )}
+      </div>
+    );
+    const findSummary = finding && (
+      <p role="status" className={`text-[12px] font-semibold ${hits.length || (!sections.length && leadHit) ? "text-slate-500" : "text-amber-800"}`}>
+        {sections.length
+          ? (hits.length
+            ? t("{n} of {m} sections mention this").replace("{n}", String(hits.length)).replace("{m}", String(sections.length))
+            : t("Nothing in this policy mentions this."))
+          : (leadHit ? "" : t("Nothing in this policy mentions this."))}
+      </p>
+    );
 
     return (
       <div className="space-y-5">
@@ -516,7 +558,13 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
             ) : (
               <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800">{selected.title}</span>
             )}
+            <button onClick={() => { setFindOpen(o => !o); setSectionsOpen(false); }} aria-expanded={findOpen}
+              aria-label={t("Search this policy…")} title={t("Search this policy…")}
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-slate-100 ${findOpen || finding ? "text-[#6D1A1A]" : "text-slate-600"}`}>
+              {ic(Search, "h-5 w-5")}
+            </button>
           </div>
+          {findOpen && <div className="space-y-1 pb-2">{findBox(true)}{findSummary}</div>}
           {sections.length > 0 && (
             <div className="-mx-2 h-1 bg-slate-100" role="progressbar" aria-valuenow={progressPct} aria-valuemin={0} aria-valuemax={100} aria-label={progressLabel}>
               <div className={`h-full transition-[width] duration-300 ${accent.badge}`} style={{ width: `${progressPct}%` }} />
@@ -558,6 +606,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
             sticky bar above. Each numbered section is an accordion — the lead (approval
             line, "At a glance") and the intro (0) start open, the rules start folded so
             a reader sees the whole policy's shape before its detail. */}
+        {sections.length === 0 && !isMissing && <div className="hidden max-w-sm space-y-1 md:block">{findBox(false)}{findSummary}</div>}
         <div ref={articleRef} className={sections.length > 0 ? "md:grid md:grid-cols-[1fr_15rem] md:items-start md:gap-8" : ""}>
           <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 md:p-6">
             {busyDoc === selected.doc.id ? (
@@ -573,14 +622,14 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
               // the text's first letter, not dir="auto" — that skips children carrying their
               // own dir and resolved on the Arabic "Expand all" label instead (measured).
               <div dir={/^[^A-Za-z]*[؀-ۿ]/.test(selectedBody) ? "rtl" : "ltr"} className="mx-auto max-w-[70ch]">
-                {renderBody(lead, accent.text)}
-                {sections.length > 0 && (
+                {leadHit && renderBody(lead, accent.text, find)}
+                {sections.length > 0 && !finding && (
                   <div className="mt-4 flex justify-end gap-1 border-b border-slate-100 pb-1">
                     <button onClick={() => setAll(true)} className="min-h-11 rounded-lg px-3 text-[12px] font-semibold text-slate-600 hover:bg-slate-100">{t("Expand all")}</button>
                     <button onClick={() => setAll(false)} className="min-h-11 rounded-lg px-3 text-[12px] font-semibold text-slate-600 hover:bg-slate-100">{t("Collapse all")}</button>
                   </div>
                 )}
-                {sections.map(s => {
+                {hits.map(s => {
                   const open = isOpen(s);
                   return (
                     <section key={s.id} className="border-b border-slate-100 last:border-0">
@@ -590,12 +639,12 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                           className="flex min-h-11 w-full items-center gap-3 py-3 text-start hover:bg-slate-50/60">
                           {isIntroNum(s.num) ? ic(Info, "h-5 w-5 text-slate-400") : ic(TOPIC_ICON[topicOf(s.title)], `h-5 w-5 ${accent.text}`)}
                           <span className={`min-w-0 flex-1 text-lg font-bold leading-snug ${isIntroNum(s.num) ? "text-slate-800" : accent.text}`}>
-                            {numTitle(s.num, s.title, "text-base text-slate-400")}
+                            {numTitle(s.num, marked(s.title, find), "text-base text-slate-400")}
                           </span>
                           <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
                         </button>
                       </h2>
-                      {open && <div id={`${s.id}-body`} className="pb-5">{renderBody(s.blocks, accent.text)}</div>}
+                      {open && <div id={`${s.id}-body`} className="pb-5">{renderBody(s.blocks, accent.text, find)}</div>}
                     </section>
                   );
                 })}
@@ -604,6 +653,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
           </div>
           {sections.length > 0 && (
             <div className="sticky top-4 mt-6 hidden max-h-[75vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 md:mt-0 md:block">
+              <div className="mb-3 space-y-1">{findBox(false)}{findSummary}</div>
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Sections")}</p>
               {tocList(true)}
             </div>
