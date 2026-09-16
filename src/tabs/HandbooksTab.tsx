@@ -377,8 +377,10 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
           {c.no}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-lg font-bold leading-snug text-slate-900">{c.title}</p>
-          {summary && <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-slate-600">{summary}</p>}
+          <p dir="auto" className="text-lg font-bold leading-snug text-slate-900 rtl:text-right">{c.title}</p>
+          {/* dir="auto": the Index is English, so on the Arabic screen the sentence keeps its
+              own order (the clamp's "…" at its end) while staying right-aligned. */}
+          {summary && <p dir="auto" className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-slate-600 rtl:text-right">{summary}</p>}
           <p className="mt-3 text-[11px] text-slate-400">{heading}</p>
         </div>
       </button>
