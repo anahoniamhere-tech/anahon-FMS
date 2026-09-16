@@ -720,12 +720,17 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
       const limit = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top) + 24;
       let cur: string | null = null;
       let crossed: { id: string; past: number } | null = null;
+      // The finest heading crossed (4.4.1 over 4.4 over 4): the two texts differ in paragraph
+      // height, so the nearest shared anchor is what keeps the reader on the same words.
+      for (const h of articleRef.current?.querySelectorAll<HTMLElement>("h2[id], h3[id], h4[id]") ?? []) {
+        const top = h.getBoundingClientRect().top;
+        if (top > limit) break;
+        crossed = { id: h.id, past: limit - top };
+      }
       for (const s of sections) {
         const el = document.getElementById(s.id);
         if (!el) continue;
-        const top = el.getBoundingClientRect().top;
-        if (top <= limit) crossed = { id: s.id, past: limit - top };
-        if (cur && top > limit) break;
+        if (cur && el.getBoundingClientRect().top > limit) break;
         cur = s.id;
       }
       // Only while the language is settled: the restore above reads this after the swap.
