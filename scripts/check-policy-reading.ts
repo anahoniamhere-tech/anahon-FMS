@@ -7,7 +7,7 @@
 // "At a glance" lines where the rule order decides the answer. A new rule that shifts any of
 // these fails here before a reader sees a wrong icon.
 // Run: npx tsx scripts/check-policy-reading.ts
-import { topicOf, isWarningLine, markPieces, mentions, isFinding } from "../src/policyReading.js";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample } from "../src/policyReading.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -156,6 +156,14 @@ ok("a hit inside an amount splits the amount",
 ok("regex characters are plain text", same(pieces("a (b) c.*", "(b)"), ["-:a ", "find:(b)", "-: c.*"]) && !mentions("abc", ".*"));
 ok("one letter does not search", !isFinding(" a ") && isFinding("ab") && markPieces("banana", "a").every(p => p.mark !== "find"));
 ok("search pieces join back to the text", markPieces("Every concern is recorded; concern again.", "concern").map(p => p.text).join("") === "Every concern is recorded; concern again.");
+
+// Example strips: the real P1 §2.1 sentence splits at "Examples:"; a lower-case aside does not.
+const P1_21 = "A conflict exists when a personal interest — family, friendship, money, a second job, a political or business tie — could affect, or look as if it affects, a decision you take for AnaHon. Examples: engaging a relative, buying from a company a friend owns, assessing a proposal from an organisation you are linked to.";
+const ex = splitExample(P1_21);
+ok("P1 §2.1 splits at \"Examples:\"", !!ex && ex.before.endsWith("for AnaHon.") && ex.example.startsWith("Examples: engaging"), JSON.stringify(ex));
+ok("a line that IS an example is all example", splitExample("Example: a gift of flowers.")?.before === "");
+ok("a lower-case \"for example\" mid-sentence stays put", splitExample("Costs, for example, travel, are coded.") === null);
+ok("\"Counterexamples:\" is not a marker", splitExample("See the counterexamples: none.") === null);
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nall policy reading rules hold");

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BookOpen, Search, ChevronDown, ChevronRight, History as HistoryIcon, MessageCircleQuestion, ArrowRight, AlertTriangle,
   Bot, MessageSquareWarning, PenLine, UserSearch, Gift, Scale, ShieldCheck, Lock, Database, GraduationCap, BadgeCheck,
-  Plane, Clock, BarChart3, Archive, Package, Users, Wallet, Newspaper, ClipboardCheck, Info, X, type LucideIcon,
+  Plane, Clock, BarChart3, Archive, Package, Users, Wallet, Newspaper, ClipboardCheck, Info, X, Lightbulb, type LucideIcon,
 } from "lucide-react";
 import { SharedProps } from "./shared";
 import { withTicket } from "../docTicket";
@@ -13,7 +13,7 @@ import {
   historyChaptersOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, type Topic } from "../policyReading";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, type Topic } from "../policyReading";
 
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
@@ -177,7 +177,34 @@ type ListItem = { text: string; subs: string[] };
  *  <ul>/<ol> (with any "◦" sub-points nested under their bullet), "At a glance" becomes a
  *  grid of cards with an icon each, any other label becomes a callout with its list, and a
  *  line starting "Must / Never / Do not / Only" gets a quiet warning style. */
+/** Subsections (2.1, 2.2 …) become cards: the heading row carries the subsection's own icon,
+ *  and everything up to the next subsection sits inside. Text before the first subsection
+ *  stays plain above them. */
 function renderBody(blocks: BodyBlock[], accentText: string, find: string) {
+  const firstSub = blocks.findIndex(b => b.kind === "h3");
+  if (firstSub === -1) return renderFlat(blocks, accentText, find);
+  const nodes: ReactNode[] = [...renderFlat(blocks.slice(0, firstSub), accentText, find)];
+  for (let i = firstSub; i < blocks.length;) {
+    const h = blocks[i] as Extract<BodyBlock, { kind: "h3" }>;
+    let end = i + 1;
+    while (end < blocks.length && blocks[end].kind !== "h3") end++;
+    const intro = isIntroNum(h.num);
+    nodes.push(
+      <div key={h.id} className="mt-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 first:mt-0 md:p-4">
+        <h3 id={h.id} className="flex items-start gap-2.5 text-[15px] font-bold leading-snug text-slate-800">
+          {ic(TOPIC_ICON[topicOf(h.title)], `mt-0.5 h-4 w-4 ${accentText}`)}
+          {intro ? <span>{marked(h.title, find)}</span>
+            : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{h.num}</span>{marked(h.title, find)}</span>}
+        </h3>
+        {end > i + 1 && <div className="mt-2">{renderFlat(blocks.slice(i + 1, end), accentText, find)}</div>}
+      </div>
+    );
+    i = end;
+  }
+  return nodes;
+}
+
+function renderFlat(blocks: BodyBlock[], accentText: string, find: string) {
   const nodes: ReactNode[] = [];
   let i = 0;
   const readList = () => {
@@ -247,21 +274,23 @@ function renderBody(blocks: BodyBlock[], accentText: string, find: string) {
       nodes.push(list(kind, items, "my-3 text-slate-800", `list-${i}`));
       continue;
     }
-    if (b.kind === "h3") {
-      const intro = isIntroNum(b.num);
-      nodes.push(
-        <h3 key={i} id={b.id} className="mt-5 text-[15px] font-bold text-slate-800 first:mt-0">
-          {intro ? marked(b.title, find) : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{b.num}</span>{marked(b.title, find)}</span>}
-        </h3>
-      );
-      i++; continue;
-    }
     if (b.kind === "p") {
       const warn = isWarningLine(b.text);
+      const ex = warn ? null : splitExample(b.text);
       nodes.push(
-        <p key={i} dir="auto" className={`mt-3 text-[13px] leading-relaxed first:mt-0 ${warn ? "border-s-2 border-amber-500 ps-3 font-semibold text-amber-900" : "text-slate-800"}`}>
-          {marked(b.text, find)}
-        </p>
+        <div key={i} dir="auto" className="mt-3 first:mt-0">
+          {(!ex || ex.before) && (
+            <p className={`text-[13px] leading-relaxed ${warn ? "border-s-2 border-amber-500 ps-3 font-semibold text-amber-900" : "text-slate-800"}`}>
+              {marked(ex ? ex.before : b.text, find)}
+            </p>
+          )}
+          {ex && (
+            <p className={`flex gap-2 rounded-lg border-s-4 border-slate-300 bg-slate-100/80 px-3 py-2 text-[13px] leading-relaxed text-slate-700 ${ex.before ? "mt-2" : ""}`}>
+              {ic(Lightbulb, "mt-0.5 h-4 w-4 text-slate-500")}
+              <span>{marked(ex.example, find)}</span>
+            </p>
+          )}
+        </div>
       );
     }
     i++;
@@ -633,7 +662,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
             a reader sees the whole policy's shape before its detail. */}
         {sections.length === 0 && !isMissing && <div className="hidden max-w-sm space-y-1 md:block">{findBox(false)}{findSummary}</div>}
         <div ref={articleRef} className={sections.length > 0 ? "md:grid md:grid-cols-[1fr_15rem] md:items-start md:gap-8" : ""}>
-          <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-5 md:p-6">
+          <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 md:p-6">
             {busyDoc === selected.doc.id ? (
               <p className="text-sm text-slate-500">{t("Reading the handbook…")}</p>
             ) : isMissing ? (

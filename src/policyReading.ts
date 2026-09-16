@@ -95,3 +95,13 @@ export const markPieces = (text: string, find = ""): Piece[] => {
   if (at < text.length) out.push({ text: text.slice(at), mark: false });
   return isFinding(find) ? out.flatMap(p => splitFind(p, findKey(find))) : out;
 };
+
+/** "… a decision you take. Examples: engaging a relative, …" → the sentence before, and the
+ *  example from its marker on. Only a capitalised marker at a sentence start ("Examples:",
+ *  "Example:", "For example,") — a lower-case "for example" mid-sentence stays in place. */
+export const splitExample = (text: string): { before: string; example: string } | null => {
+  const m = /(^|[.;:!?]\s+)(Examples?:|For example,)/.exec(text);
+  if (!m) return null;
+  const at = m.index + m[1].length;
+  return { before: text.slice(0, at).trimEnd(), example: text.slice(at) };
+};
