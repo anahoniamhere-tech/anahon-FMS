@@ -107,17 +107,19 @@ const fetchPiece = (text: string) =>
   fetch("/api/anna/say", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) })
     .then(r => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))));
 
-/** Reads an answer aloud: Layla/Ava first, the phone's voice for anything they cannot say.
- *  `useServer` false (or no unlocked player) means the phone's voice only. */
-export function speak(text: string, onSpeaking: (on: boolean) => void = () => {}, useServer = true) {
+/** Reads an answer aloud: Ava (and Layla, if switched on) first, the phone's voice for anything they
+ *  cannot say. `useServer` false (or no unlocked player) means the phone's voice only. Arabic is
+ *  never spoken while `arabic` is false — no voice at all rather than a bad one (Saad, 16 Sep).
+ *  Returns false when nothing was left to say. */
+export function speak(text: string, onSpeaking: (on: boolean) => void = () => {}, useServer = true, arabic = false): boolean {
   hush();
   const my = ++gen;
-  const pieces = voicePieces(text);
-  if (!pieces.length) return;
+  const pieces = voicePieces(text).filter(p => arabic || !/[\u0600-\u06FF]/.test(p));
+  if (!pieces.length) return false;
   current = onSpeaking;
   onSpeaking(true);
   const finish = () => { if (my === gen) { current = null; onSpeaking(false); } };
-  if (!useServer || !player) { deviceSpeak(pieces.join(" "), finish); return; }
+  if (!useServer || !player) { deviceSpeak(pieces.join(" "), finish); return true; }
   // All pieces are fetched at once, and played in order as they are ready.
   const audio = pieces.map(p => fetchPiece(p).catch(() => null));
   void (async () => {
@@ -142,6 +144,7 @@ export function speak(text: string, onSpeaking: (on: boolean) => void = () => {}
     }
     finish();
   })();
+  return true;
 }
 
 export const hush = () => {

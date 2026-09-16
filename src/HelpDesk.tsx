@@ -121,11 +121,13 @@ const KIND_LABEL: Record<string, string> = {
 
 type AnnaSpend = { month: string; modelsUSD: number; voiceUSD: number; limitUSD: number; speechChars?: number; speechLimit?: number };
 
-function AnnaChat({ t, lang, userName, speechReady, spend, prefill, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
+function AnnaChat({ t, lang, userName, speechReady, arabicVoice, spend, prefill, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   t: (s: string) => string;
   userName: string;
   /** Layla/Ava are set up on the server (state.anna.speech); otherwise the phone's own voice. */
   speechReady: boolean;
+  /** Arabic answers spoken too (off: Saad found the Lebanese voices poor). */
+  arabicVoice: boolean;
   spend: AnnaSpend | null;
   /** "Ask about this policy": the chapter, shown as a chip above the box and sent with the question. */
   prefill: { text: string; nonce: number } | null;
@@ -179,7 +181,11 @@ function AnnaChat({ t, lang, userName, speechReady, spend, prefill, open, voiceR
     const id = ++turnId.current;
     const next = () => { if (listen && id === turnId.current && talkRef.current) micRef.current(); };
     if (typeof speechSynthesis === "undefined") return next();
-    speak(text, on => { setSpeaking(on); if (!on) next(); }, speechReady);
+    // An Arabic answer is shown, not spoken (no good Arabic voice yet); she says so once and keeps listening.
+    if (!speak(text, on => { setSpeaking(on); if (!on) next(); }, speechReady, arabicVoice)) {
+      if (/[\u0600-\u06FF]/.test(text)) setVoice({ note: t("Arabic answers are shown as text — no Arabic voice yet.") });
+      next();
+    }
   };
   const greet = (listen: boolean) => {
     const line = greeting(lang, userName);
@@ -545,7 +551,7 @@ function AnnaChat({ t, lang, userName, speechReady, spend, prefill, open, voiceR
 }
 
 export default function HelpDesk({
-  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, annaSpeech = false, userName = "", annaSpend = null, onOpenRecord = () => {}, onEditDraft = () => {},
+  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, annaSpeech = false, annaArabicVoice = false, userName = "", annaSpend = null, onOpenRecord = () => {}, onEditDraft = () => {},
 }: {
   t: (s: string) => string;
   lang: string;
@@ -564,6 +570,8 @@ export default function HelpDesk({
   userName?: string;
   /** Whether the server has Anna's natural voice (state.anna.speech). */
   annaSpeech?: boolean;
+  /** Whether Arabic answers are spoken (state.anna.arabicVoice). Off by default. */
+  annaArabicVoice?: boolean;
   /** This month's AI spend — the server sends it to the master account only. */
   annaSpend?: AnnaSpend | null;
   onOpenRecord?: (kind: string, id: string) => void;
@@ -768,7 +776,7 @@ export default function HelpDesk({
 
       {anna && (
         <div hidden={mode !== "anna"} className="flex min-h-0 flex-1 flex-col">
-          <AnnaChat t={t} lang={lang} userName={userName} speechReady={annaSpeech} spend={annaSpend} prefill={prefill} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
+          <AnnaChat t={t} lang={lang} userName={userName} speechReady={annaSpeech} arabicVoice={annaArabicVoice} spend={annaSpend} prefill={prefill} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
             doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
         </div>
       )}

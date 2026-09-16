@@ -555,7 +555,7 @@ async function loadState(viewer?: any) {
   const on = !!annaModelOf(viewer);
   // The spend is the master account's alone (D10-5): the real role, not a seat worn.
   const spend = on && viewer?.role === "Super Admin" ? await monthSpend().catch(() => null) : null;
-  state.anna = { enabled: on, voice: annaVoiceReady(), speech: annaSpeechReady(), spend };
+  state.anna = { enabled: on, voice: annaVoiceReady(), speech: annaSpeechReady(), arabicVoice: annaArabicVoice(), spend };
   state.annaSpendAlerts = spend && (spend.modelsUSD >= 0.8 * spend.limitUSD || spend.speechChars >= 0.8 * spend.speechLimit)
     ? [{ id: `anna-spend-${new Date().toISOString().slice(0, 7)}`, status: "Near limit",
         title: spend.modelsUSD >= 0.8 * spend.limitUSD ? `AI spend this month: $${spend.modelsUSD.toFixed(2)} of $${spend.limitUSD}`
@@ -1753,6 +1753,9 @@ async function monthSpend() {
 const AZURE_FREE_CHARS = 500_000;
 const ANNA_VOICES = { ar: "ar-LB-LaylaNeural", en: "en-US-AvaMultilingualNeural" } as const;
 const annaSpeechReady = () => !!(process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION);
+/** Saad, 16 Sep 2026: both Lebanese voices sound "very bad" — spoken replies are English only. Layla
+ *  stays wired but off; ANNA_ARABIC_VOICE=on in the NAS .env would bring her back. */
+const annaArabicVoice = () => process.env.ANNA_ARABIC_VOICE === "on";
 
 app.post("/api/anna/say", async (req, res) => {
   const me = annaOwner(req);
@@ -1764,6 +1767,7 @@ app.post("/api/anna/say", async (req, res) => {
   const spend = await monthSpend();
   if (spend.speechChars + text.length > AZURE_FREE_CHARS) return res.status(429).json({ error: "This month's free voice is used up." });
   const lang: "ar" | "en" = /[\u0600-\u06FF]/.test(text) ? "ar" : "en";
+  if (lang === "ar" && !annaArabicVoice()) return res.status(409).json({ error: "Arabic voice is off." });
   const esc = text.replace(/[<&>]/g, c => ({ "<": "&lt;", "&": "&amp;", ">": "&gt;" })[c]!);
   try {
     const r = await fetch(`https://${process.env.AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`, {

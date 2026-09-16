@@ -40,7 +40,7 @@ ok("the route checks it first",
 ok("a refusal is a 403 with an audit line", /"Anna Refused", "Not on the Anna user list\."\);\s*return res\.status\(403\)/.test(route));
 ok("the panel flag reads the real person, on every branch of the state",
   /async function loadState\(viewer\?: any\) \{\s*const state: any = await loadStateFor\(viewer\);\s*const on = !!annaModelOf\(viewer\);/.test(server)
-  && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), speech: annaSpeechReady\(\), spend \};/.test(server) && (server.match(/anna: \{ enabled/g) || []).length === 0);
+  && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), speech: annaSpeechReady\(\), arabicVoice: annaArabicVoice\(\), spend \};/.test(server) && (server.match(/anna: \{ enabled/g) || []).length === 0);
 ok("each person's model is the one the turn uses", /model, max_tokens: ANNA_LIMITS\.maxTokens,/.test(route) && !/ANNA_MODEL\b/.test(server));
 ok("Haiku runs without thinking or effort", /\.\.\.\(model === "claude-haiku-4-5" \? \{\} : \{ thinking: \{ type: "adaptive" \}, output_config: \{ effort: "medium" \} \}\),/.test(route));
 ok("the route is gated", /"\/api\/anna\/turn": ANY/.test(read("../src/gates.ts")));
@@ -210,7 +210,7 @@ const voiceSrc = read("../src/annaVoice.ts");
 ok("the listen route exists and checks the owner first", /^[^\n]*\n  const me = annaOwner\(req\);\n  if \(!me\) return res\.status\(403\)/.test(listen));
 ok("without the key it says so and does nothing", /if \(!annaVoiceReady\(\)\) return res\.status\(503\)/.test(listen)
   && /const annaVoiceReady = \(\) => !!process\.env\.DEEPGRAM_API_KEY;/.test(server)
-  && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), speech: annaSpeechReady\(\), spend \};/.test(server));
+  && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), speech: annaSpeechReady\(\), arabicVoice: annaArabicVoice\(\), spend \};/.test(server));
 ok("Deepgram Nova-3 with the training opt-out, and nothing else is called", /model=nova-3&language=\$\{DEEPGRAM_LANG\[l\]\}&smart_format=true&mip_opt_out=true/.test(listen)
   && (listen.match(/fetch\(/g) || []).length === 1 && !/gemini|anthropic|askJson/i.test(listen));
 ok("English is en (multi heard Spanish), Arabic is Lebanese (multi has no Arabic)", /const DEEPGRAM_LANG = \{ en: "en", ar: "ar-LB" \} as const;/.test(server)
@@ -266,7 +266,7 @@ ok("the bars stand still with reduced motion", /motion-reduce:animate-none/.test
 ok("it says its state to a screen reader", /role="img" aria-label=\{t\(MOOD_LABEL\[mood\]\)\}/.test(desk));
 ok("speaking is reported by the voice itself", /current = onSpeaking;\s*onSpeaking\(true\);\s*const finish = \(\) => \{ if \(my === gen\) \{ current = null; onSpeaking\(false\); \} \};/.test(voiceSrc)
   && /const told = current; current = null; told\?\.\(false\);/.test(voiceSrc) && /u\.onend = u\.onerror = \(\) => done\(\);/.test(voiceSrc)
-  && /speak\(text, on => \{ setSpeaking\(on\); if \(!on\) next\(\); \}, speechReady\);/.test(chat));
+  && /if \(!speak\(text, on => \{ setSpeaking\(on\); if \(!on\) next\(\); \}, speechReady, arabicVoice\)\) \{/.test(chat));
 ok("the chat stays mounted but hidden when the panel closes, so an answer on its way still lands",
   /<div\s+ref=\{boxRef\}\s+hidden=\{!open\}/.test(desk) && /<div hidden=\{mode !== "anna"\} className="flex min-h-0 flex-1 flex-col">\s*<AnnaChat /.test(desk));
 ok("closing still stops a recording, her voice and the talk", /useEffect\(\(\) => \{\s*if \(!open\) \{ stopTalk\(\); recRef\.current\?\.cancel\(\); hush\(\); return; \}/.test(chat) && /open=\{open && mode === "anna"\}/.test(desk));
@@ -326,6 +326,19 @@ ok("pieces are fetched together and played in order; hush stops them all", /cons
   && /export const hush = \(\) => \{\s*gen\+\+;[\s\S]{0,260}player\.pause\(\);[\s\S]{0,40}stopPiece\?\.\(\);/.test(voiceSrc));
 const pcs = (await import("../src/annaVoice.js")).voicePieces("**Hi Saad!** One quotation is still Sent. ≈ $0.012 Another short one. " + "x".repeat(500));
 ok("pieces are plain, the first starts alone, none is over the limit", pcs[0] === "Hi Saad!" && pcs.every(p => p.length <= 400 && !/\*\*|≈ \$/.test(p)), JSON.stringify(pcs.map(p => p.length)));
+ok("Arabic voice is off unless switched on in the server settings (Saad: the Lebanese voices are poor)",
+  /const annaArabicVoice = \(\) => process\.env\.ANNA_ARABIC_VOICE === "on";/.test(server)
+  && /if \(lang === "ar" && !annaArabicVoice\(\)\) return res\.status\(409\)/.test(say) && say.indexOf("annaArabicVoice") < say.indexOf("fetch("));
+const { speak: speakFn } = await import("../src/annaVoice.js");
+ok("the phone never speaks an Arabic answer either; English still speaks", (() => {
+  const said: string[] = []; (globalThis as any).speechSynthesis = { speak: (u: any) => said.push(u.text), cancel() {} };
+  (globalThis as any).SpeechSynthesisUtterance = class { text: string; constructor(t: string) { this.text = t; } };
+  const ar = speakFn("مكتبك فاضي اليوم.", () => {}, false, false);
+  const mixed = speakFn("One quotation is Sent. مكتبك فاضي.", () => {}, false, false);
+  return ar === false && mixed === true && said.join("|") === "One quotation is Sent.";
+})());
+ok("an Arabic answer in a talk: shown, said once in the status line, and she keeps listening",
+  /setVoice\(\{ note: t\("Arabic answers are shown as text — no Arabic voice yet\."\) \}\);\s*\}?\s*next\(\);/.test(chat));
 ok("the player is unlocked by the tap that starts a talk (iOS)", /if \(listen\) unlockVoice\(\);/.test(desk) && /unlockVoice\(\); setTalk\(true\)/.test(chat));
 
 console.log("\nE. guided walkthroughs: Anna points, Saad presses");

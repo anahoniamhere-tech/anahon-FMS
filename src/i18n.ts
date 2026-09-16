@@ -995,6 +995,7 @@ export const AR: Record<string, string> = {
   "End the talk": "إنهاء المحادثة",
   "Registered as a client": "تم تسجيله كعميل",
   "Carry on with the quotation.": "كمّل بعرض السعر.",
+  "Arabic answers are shown as text — no Arabic voice yet.": "الأجوبة بالعربي بتظهر كنص — ما في صوت عربي بعد.",
   "Near limit": "قرب الحد",
   "Raise the API limit, or lower the staff cap": "ارفع حد الإنفاق على المفتاح، أو خفّض حد الاستخدام للفريق",
   "Anna's walkthrough": "جولة مع Anna",
