@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Mic, Square, Play, RotateCcw, Check, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
-import { VOICE_RATE, VOICE_MAX_S, takeQuality } from "./annaVoiceBank";
+import { VOICE_RATE, VOICE_MAX_S, VOICE_TARGET_MIN, takeQuality } from "./annaVoiceBank";
 
 /* Saad's own voice, one sentence at a time (drafts/anna-learns-arabic-plan.md §C). Raw audio, no
    echo cancellation or noise suppression (they change a voice), resampled to 22.05 kHz mono and
@@ -30,7 +30,8 @@ function toWav(samples: Float32Array): Uint8Array {
 }
 const b64 = (u: Uint8Array) => { let s = ""; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000)); return btoa(s); };
 
-export default function AnnaRecorder({ onClose }: { onClose: () => void }) {
+export default function AnnaRecorder({ onClose, t, lang }: { onClose: () => void; t: (s: string) => string; lang: string }) {
+  const ar = lang === "ar";
   const [bank, setBank] = useState<Bank | null>(null);
   const [err, setErr] = useState("");
   const [sid, setSid] = useState(1);
@@ -39,7 +40,14 @@ export default function AnnaRecorder({ onClose }: { onClose: () => void }) {
   const [take, setTake] = useState<{ wav: Uint8Array; url: string; q: ReturnType<typeof takeQuality> } | null>(null);
   const stopRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => { call("/api/anna/voicebank").then(setBank).catch(e => setErr(e.message)); }, []);
+  useEffect(() => {
+    call("/api/anna/voicebank").then((b: Bank) => {
+      // Open on the first session that still has lines to record.
+      const next = b.sessions.find(x => x.done.length < x.lines.length);
+      if (next) setSid(next.id);
+      setBank(b);
+    }).catch(e => setErr(e.message));
+  }, []);
   useEffect(() => () => { stopRef.current?.(); }, []);
   const sess = bank?.sessions.find(s => s.id === sid);
   useEffect(() => {   // open each session at its first line not yet recorded
@@ -82,7 +90,7 @@ export default function AnnaRecorder({ onClose }: { onClose: () => void }) {
         setTake({ wav, url: URL.createObjectURL(new Blob([wav], { type: "audio/wav" })), q: takeQuality(samples) });
         setRec("review");
       };
-    } catch { setErr("The microphone is not allowed. Allow it for this app, then try again."); setRec("idle"); }
+    } catch { setErr(t("The microphone is not allowed. Allow it for this app, then try again.")); setRec("idle"); }
   };
 
   const save = async () => {
@@ -97,75 +105,87 @@ export default function AnnaRecorder({ onClose }: { onClose: () => void }) {
   };
 
   const remove = async (all: boolean) => {
-    if (!window.confirm(all ? "Delete ALL of your voice recordings and the consent note? This cannot be undone." : "Delete this recording?")) return;
+    if (!window.confirm(all ? t("Delete ALL of your voice recordings and the consent note? This cannot be undone.") : t("Delete this recording?"))) return;
     try { setBank(await call("/api/anna/voicebank/delete", all ? { all: true } : { session: sid, line })); } catch (e: any) { setErr(e.message); }
   };
 
   const done = !!sess?.done.includes(line);
   // On the page itself, not inside Anna's panel: the panel's layer would put the "missing" pill on top.
   return createPortal(
-    <div role="dialog" aria-modal="true" aria-label="Record my voice" data-anna-voicebank className="fixed inset-0 z-[100] flex flex-col bg-white">
+    <div role="dialog" aria-modal="true" aria-label={t("Record my voice for Anna")} data-anna-voicebank dir={ar ? "rtl" : "ltr"} className="fixed inset-0 z-[100] flex flex-col bg-white">
       <div className="flex items-center justify-between gap-2 bg-[#6D1A1A] px-3 py-2 text-white">
-        <p className="text-sm font-bold">Record my voice for Anna</p>
-        <button onClick={() => { stopRef.current?.(); onClose(); }} aria-label="Close" className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-white/15"><X className="h-5 w-5" /></button>
+        <p className="text-sm font-bold">{t("Record my voice for Anna")}</p>
+        <button onClick={() => { stopRef.current?.(); onClose(); }} aria-label={t("Close")} className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-white/15"><X className="h-5 w-5" /></button>
       </div>
-      {!bank ? <p className="p-4 text-sm text-slate-600">{err || "Loading…"}</p> : !bank.consent ? (
+      {!bank ? <p className="p-4 text-sm text-slate-600">{err || t("Loading…")}</p> : !bank.consent ? (
         <div className="mx-auto max-w-md space-y-4 p-5">
-          <p className="text-[15px] leading-relaxed text-slate-800">{bank.consentText}</p>
+          {/* The stored consent is the English text, word for word; an Arabic reading is shown beside it. */}
+          {ar && <p className="text-[15px] leading-relaxed text-slate-800">{t(bank.consentText)}</p>}
+          <p dir="ltr" className={`leading-relaxed text-slate-800 ${ar ? "text-[12px] text-slate-500" : "text-[15px]"}`}>{bank.consentText}</p>
           <button onClick={() => call("/api/anna/voicebank/consent", { text: bank.consentText }).then(setBank).catch(e => setErr(e.message))}
-            className="min-h-[48px] w-full rounded-xl bg-[#6D1A1A] text-sm font-bold text-white">I agree</button>
+            className="min-h-[48px] w-full rounded-xl bg-[#6D1A1A] text-sm font-bold text-white">{t("I agree")}</button>
           {err && <p className="text-sm text-red-700">{err}</p>}
         </div>
       ) : sess && (
         <div className="mx-auto flex w-full max-w-lg flex-1 flex-col gap-4 overflow-y-auto p-4">
-          <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-600">
+          {/* Progress towards the minutes the first voice training needs. Numbers sit in their own
+              isolates so an Arabic page cannot reorder "4.3 of ~60". */}
+          <div>
+            <div className="flex items-baseline justify-between text-[12px] text-slate-600">
+              <span>{t("Recorded")}: <bdi dir="ltr">{bank.minutes.toFixed(1)}</bdi> {t("of about")} <bdi dir="ltr">{VOICE_TARGET_MIN}</bdi> {t("min")}</span>
+              <span><bdi dir="ltr">{Math.min(100, Math.round(100 * bank.minutes / VOICE_TARGET_MIN))}%</bdi></span>
+            </div>
+            <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className="h-full rounded-full bg-emerald-600" style={{ width: `${Math.min(100, 100 * bank.minutes / VOICE_TARGET_MIN)}%` }} />
+            </div>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-1 text-[12px] text-slate-600">
             {bank.sessions.map(s => (
               <button key={s.id} onClick={() => { clearTake(); setSid(s.id); }}
-                className={`min-h-[36px] rounded-lg px-3 font-bold ${s.id === sid ? "bg-[#6D1A1A] text-white" : "border border-slate-300"}`}>
-                {s.id}. {s.title} · {s.done.length}/{s.lines.length}
+                className={`min-h-[36px] shrink-0 rounded-lg px-3 font-bold ${s.id === sid ? "bg-[#6D1A1A] text-white" : "border border-slate-300"}`}>
+                <bdi dir="ltr">{s.id}</bdi> · {t(s.title)} · <bdi dir="ltr">{s.done.length}/{s.lines.length}</bdi>
               </button>
             ))}
-            <span className="ms-auto">{bank.minutes.toFixed(1)} min recorded</span>
           </div>
           <div className="flex items-center justify-between text-[12px] text-slate-500">
-            <button onClick={() => { clearTake(); setLine(l => Math.max(0, l - 1)); }} disabled={line === 0 || rec === "recording"} aria-label="Previous line"
-              className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-slate-100 disabled:opacity-30"><ChevronLeft className="h-5 w-5" /></button>
-            <span>Line {line + 1} of {sess.lines.length}{done ? " · recorded ✓" : ""}</span>
-            <button onClick={() => { clearTake(); setLine(l => Math.min(sess.lines.length - 1, l + 1)); }} disabled={line === sess.lines.length - 1 || rec === "recording"} aria-label="Next line"
-              className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-slate-100 disabled:opacity-30"><ChevronRight className="h-5 w-5" /></button>
+            <button onClick={() => { clearTake(); setLine(l => Math.max(0, l - 1)); }} disabled={line === 0 || rec === "recording"} aria-label={t("Previous line")}
+              className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-slate-100 disabled:opacity-30"><ChevronLeft className="h-5 w-5 rtl:rotate-180" /></button>
+            <span>{t("Line")} <bdi dir="ltr">{line + 1} / {sess.lines.length}</bdi>{done ? ` · ${t("recorded")} ✓` : ""}</span>
+            <button onClick={() => { clearTake(); setLine(l => Math.min(sess.lines.length - 1, l + 1)); }} disabled={line === sess.lines.length - 1 || rec === "recording"} aria-label={t("Next line")}
+              className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-slate-100 disabled:opacity-30"><ChevronRight className="h-5 w-5 rtl:rotate-180" /></button>
           </div>
-          <p dir="rtl" className="rounded-2xl bg-slate-50 px-4 py-8 text-center text-[26px] leading-[1.7] text-slate-900">{sess.lines[line]}</p>
+          <p dir="rtl" className={`rounded-2xl bg-slate-50 px-4 py-8 text-center leading-[1.7] text-slate-900 ${sess.lines[line].length > 80 ? "text-[20px]" : "text-[26px]"}`}>{sess.lines[line]}</p>
           <p className="text-center text-[12px] text-slate-500">
-            {rec === "recording" ? "Recording… read the sentence naturally, then tap stop." : "Tap the mic, wait a breath, read the sentence, tap stop. A quiet room is best."}
+            {rec === "recording" ? t("Recording… read it naturally, then tap stop.") : t("Tap the mic, wait a breath, read, then tap stop. A quiet room is best.")}
           </p>
           <div className="flex items-center justify-center gap-3">
             {rec === "recording" ? (
-              <button onClick={() => stopRef.current?.()} aria-label="Stop" className="flex h-16 w-16 items-center justify-center rounded-full bg-[#4A1010] text-white shadow-lg"><Square className="h-6 w-6 fill-current" /></button>
+              <button onClick={() => stopRef.current?.()} aria-label={t("Stop")} className="flex h-16 w-16 items-center justify-center rounded-full bg-[#4A1010] text-white shadow-lg"><Square className="h-6 w-6 fill-current" /></button>
             ) : (
-              <button onClick={start} disabled={rec === "saving"} aria-label={take ? "Record again" : "Record"}
+              <button onClick={start} disabled={rec === "saving"} aria-label={take ? t("Record again") : t("Record")}
                 className="flex h-16 w-16 items-center justify-center rounded-full bg-[#6D1A1A] text-white shadow-lg disabled:opacity-40">
                 {take ? <RotateCcw className="h-6 w-6" /> : <Mic className="h-7 w-7" />}
               </button>
             )}
             {take && rec !== "recording" && (<>
-              <button onClick={() => void new Audio(take.url).play()} aria-label="Listen" className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-300"><Play className="h-5 w-5" /></button>
-              <button onClick={save} disabled={!take.q.ok || rec === "saving"} aria-label="Save and next"
+              <button onClick={() => void new Audio(take.url).play()} aria-label={t("Listen")} className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-300"><Play className="h-5 w-5" /></button>
+              <button onClick={save} disabled={!take.q.ok || rec === "saving"} aria-label={t("Save and next")}
                 className="flex h-12 min-w-[7rem] items-center justify-center gap-1.5 rounded-full bg-emerald-700 px-4 text-sm font-bold text-white disabled:opacity-40">
-                <Check className="h-5 w-5" /> {rec === "saving" ? "Saving…" : "Save"}
+                <Check className="h-5 w-5" /> {rec === "saving" ? t("Saving…") : t("Save")}
               </button>
             </>)}
           </div>
           {take && (
             <div role="status" className="space-y-1 text-center text-[12px]">
-              {take.q.block.map(m => <p key={m} className="font-bold text-red-700">{m}</p>)}
-              {take.q.warn.map(m => <p key={m} className="text-amber-700">{m}</p>)}
-              {take.q.ok && !take.q.warn.length && <p className="text-emerald-700">Sounds good.</p>}
+              {take.q.block.map(m => <p key={m} className="font-bold text-red-700">{t(m)}</p>)}
+              {take.q.warn.map(m => <p key={m} className="text-amber-700">{t(m)}</p>)}
+              {take.q.ok && !take.q.warn.length && <p className="text-emerald-700">{t("Sounds good.")}</p>}
             </div>
           )}
           {err && <p className="text-center text-sm text-red-700">{err}</p>}
           <div className="mt-auto flex justify-between border-t border-slate-100 pt-3 text-[12px]">
-            <button onClick={() => remove(false)} disabled={!done} className="inline-flex min-h-[40px] items-center gap-1 text-slate-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /> Delete this line's recording</button>
-            <button onClick={() => remove(true)} className="min-h-[40px] font-bold text-red-700">Delete all recordings</button>
+            <button onClick={() => remove(false)} disabled={!done} className="inline-flex min-h-[40px] items-center gap-1 text-slate-500 disabled:opacity-30"><Trash2 className="h-4 w-4" /> {t("Delete this line's recording")}</button>
+            <button onClick={() => remove(true)} className="min-h-[40px] font-bold text-red-700">{t("Delete all recordings")}</button>
           </div>
         </div>
       )}

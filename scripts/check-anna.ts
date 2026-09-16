@@ -385,15 +385,28 @@ const mkWav = (secs: number, rate = 22050, ch = 1, bits = 16) => { const n = Mat
   t(0, "RIFF"); v.setUint32(4, 36 + n, true); t(8, "WAVE"); t(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, ch, true);
   v.setUint32(24, rate, true); v.setUint32(28, rate * ch * bits / 8, true); v.setUint16(32, ch * bits / 8, true); v.setUint16(34, bits, true); t(36, "data"); v.setUint32(40, n, true); return b; };
 ok("the WAV check takes the right format only", vbank.wavInfo(mkWav(3))?.seconds === 3 && !vbank.wavInfo(mkWav(3, 44100)) && !vbank.wavInfo(mkWav(3, 22050, 2))
-  && !vbank.wavInfo(mkWav(3, 22050, 1, 8)) && !vbank.wavInfo(mkWav(0.2)) && !vbank.wavInfo(mkWav(25)) && !vbank.wavInfo(new Uint8Array(10)));
+  && !vbank.wavInfo(mkWav(3, 22050, 1, 8)) && !vbank.wavInfo(mkWav(0.2)) && !vbank.wavInfo(mkWav(35)) && !vbank.wavInfo(new Uint8Array(10)));
 const tone = (amp: number, lead = 0) => Float32Array.from({ length: 22050 * 2 }, (_, i) => (i < 22050 * 0.25 ? lead : amp) * Math.sin(i / 8));
 ok("the quality check blocks clipping and whispering, warns on noise", !vbank.takeQuality(tone(1.2)).ok && !vbank.takeQuality(tone(0.01)).ok
   && vbank.takeQuality(tone(0.4)).ok && vbank.takeQuality(tone(0.4, 0.05)).warn.length > 0);
-ok("the script has two sessions of short, Arabic lines", vbank.VOICE_SESSIONS.length >= 2 && vbank.VOICE_SESSIONS.every(x => x.lines.length >= 50 && x.lines.every(l => /[\u0600-\u06FF]/.test(l) && l.length <= 80)));
+const s1 = vbank.VOICE_SESSIONS[0];
+ok("session 1 is frozen as recorded (files are named by line): 60 lines, same first and last", s1.id === 1 && s1.lines.length === 60
+  && s1.lines[0] === "أهلا وسهلا، كيفك اليوم؟" && s1.lines[59] === "يعطيك العافية، شغل ممتاز.");
+const words = (x: { lines: string[] }) => x.lines.reduce((n, l) => n + l.split(/\s+/).length, 0);
+ok("later sessions are Arabic passages under the 30-second cap, and the script reaches the ~60-minute target (71 words a recorded minute, measured)",
+  vbank.VOICE_SESSIONS.slice(1).every(x => x.lines.length >= 20 && x.lines.every(l => /[؀-ۿ]/.test(l) && l.length <= 200))
+  && vbank.VOICE_MAX_S === 30 && 4.3 + vbank.VOICE_SESSIONS.slice(1).reduce((m, x) => m + words(x) / 71, 0) >= vbank.VOICE_TARGET_MIN
+  && new Set(vbank.VOICE_SESSIONS.map(x => x.id)).size === vbank.VOICE_SESSIONS.length);
 const recSrc = read("../src/AnnaRecorder.tsx");
 ok("the recorder records raw (no echo cancelling, noise suppression or gain), keeps nothing in the browser, and saves only through its route",
   /echoCancellation: false, noiseSuppression: false, autoGainControl: false/.test(recSrc) && !/localStorage|sessionStorage|indexedDB/.test(recSrc)
   && [...recSrc.matchAll(/call\("([^"]+)"/g)].every(m => m[1].startsWith("/api/anna/voicebank")) && !/fetch\("(?!\s*path)/.test(recSrc.replace("fetch(path", "")));
+ok("the recorder speaks the app's language: every visible string goes through t, the page follows RTL, numbers are isolated",
+  /dir=\{ar \? "rtl" : "ltr"\}/.test(recSrc) && !/>\s*[A-Z][a-z]+[^<{]*</.test(recSrc.replace(/<p dir="ltr"[^>]*>\{bank\.consentText\}<\/p>/, ""))
+  && !/aria-label="[A-Z]/.test(recSrc) && (recSrc.match(/<bdi dir="ltr">/g) || []).length >= 4 && /t\(s\.title\)/.test(recSrc)
+  && /<AnnaRecorder t=\{t\} lang=\{lang\}/.test(desk)
+  && vbank.VOICE_SESSIONS.every(x => read("../src/i18n.ts").includes(`"${x.title}":`)));
+ok("progress shows minutes of the ~60-minute target", /\{t\("Recorded"\)\}: <bdi dir="ltr">\{bank\.minutes\.toFixed\(1\)\}<\/bdi> \{t\("of about"\)\} <bdi dir="ltr">\{VOICE_TARGET_MIN\}<\/bdi>/.test(recSrc));
 ok("a blocked take cannot be saved", /disabled=\{!take\.q\.ok \|\| rec === "saving"\}/.test(recSrc));
 ok("the menu offers it only to Saad", /annaVoiceBank=\{!!state\.anna\?\.enabled && currentUser\?\.role === "Super Admin"\}/.test(read("../src/App.tsx")) && /\{voiceBank && \(/.test(chat));
 

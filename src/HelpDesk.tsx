@@ -481,7 +481,7 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, voiceBank, spen
           </span>
         </div>
       )}
-      {recording && <AnnaRecorder onClose={() => setRecording(false)} />}
+      {recording && <AnnaRecorder t={t} lang={lang} onClose={() => setRecording(false)} />}
       <div className="relative flex items-end gap-2 border-t border-slate-200 p-2">
         <button onClick={() => setMenu(m => !m)} aria-label={t("More")} aria-expanded={menu} title={t("More")}
           className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100">
