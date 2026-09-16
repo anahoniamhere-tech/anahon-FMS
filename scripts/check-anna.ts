@@ -328,8 +328,8 @@ const totalsKinds = (role: string) => JSON.stringify(annaTools(["mydesk"], role)
 ok("pay totals are offered only to payroll viewers", totalsKinds("Digital Officer") === '["voucher","quotation","project"]' && /staff_costs/.test(totalsKinds("Finance Officer")));
 ok("and refused to anyone else even if asked", "error" in (readTool("totals", { kind: "staff_costs", groupBy: "none" }, { ...ctx, role: "Project Officer" }) as any));
 ok("a tool the seat was not offered is refused", /const offered = new Set\(tools\.map\(t => t\.name\)\);/.test(route) && /const tools = annaTools\(doors, role\);/.test(route));
-ok("Anna talks to the person, by name, in their seat", /talking with Maya Haddad, signed in as Finance Officer/.test(annaSystem("Finance Officer", "", "2026-09-16", "Maya Haddad"))
-  && !/Executive Director/.test(annaSystem("Finance Officer", "", "2026-09-16", "Maya Haddad")) && /annaSystem\(role, [^;]*, today, viewer\.name\)/.test(route));
+ok("Anna talks to the person, by name, in their seat", /talking with Test Person, signed in as Finance Officer/.test(annaSystem("Finance Officer", "", "2026-09-16", "Test Person"))
+  && !/Executive Director/.test(annaSystem("Finance Officer", "", "2026-09-16", "Test Person")) && /annaSystem\(role, [^;]*, today, viewer\.name\)/.test(route));
 ok("daily caps: 25 for staff, 200 for the director (D10-4), voice three times that", annaDailyCap("Finance Officer") === 25 && annaDailyCap("Super Admin") === 200 && ANNA_CLIP_FACTOR === 3);
 ok("the cap is checked before any model call, on the real role, from the person's own audit lines",
   /if \(await annaUsedToday\(viewer\.id, "Anna Turn"\) >= annaDailyCap\(viewer\.role\)\) \{\s*return res\.status\(429\)/.test(route)

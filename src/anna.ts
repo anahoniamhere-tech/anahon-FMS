@@ -1,6 +1,7 @@
 /**
- * Anna — the FMS's assistant and help desk, for every person on the rollout list
- * (drafts/anna-assistant-plan.md; §10 widened her from Saad to the team, 16 Sep 2026).
+ * Anna — Saad's universal assistant inside the FMS (drafts/anna-assistant-plan.md). She is Saad's
+ * alone (16 Sep 2026: §10's staff rollout was a misread and is not happening; staff keep the old
+ * help desk). The per-seat rules below stay because they are the right ones if that ever changes.
  *
  * This file is pure: the instructions, the tool definitions, the field whitelist and the read
  * tools, all over the state `loadState(viewer)` already builds for the screens. The route in
@@ -22,7 +23,8 @@ export const ANNA_MODELS = { sonnet: "claude-sonnet-5", haiku: "claude-haiku-4-5
 export const ANNA_PRICE: Record<string, [number, number]> = { "claude-sonnet-5": [2, 10], "claude-haiku-4-5": [1, 5] };
 export type AnnaTier = keyof typeof ANNA_MODELS;
 
-/** Who has Anna: ANNA_ROLLOUT in the NAS .env, e.g. "u-1:sonnet,u-7" or "*" (§10f). Always checked
+/** Who has Anna: ANNA_ROLLOUT in the NAS .env — "u-1:sonnet", Saad alone, by his decision (§10). The list form
+ *  ("u-1:sonnet,u-7" or "*") exists but is not to be used without Saad saying so. Always checked
  *  against the real signed-in person, never the worn seat. Unset means Saad alone. A named person
  *  without a tier gets Haiku; everyone reached only by "*" gets Haiku; Saad gets Sonnet unless the
  *  list says otherwise. */
