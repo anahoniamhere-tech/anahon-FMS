@@ -761,7 +761,7 @@ export interface DatabaseState {
   /** Feature requests: the viewer's own, or all for the master account. */
   featureRequests: FeatureRequest[];
   /** Whether Anna's panel is on for this viewer (src/anna.ts). */
-  anna?: { enabled: boolean };
+  anna?: { enabled: boolean; voice?: boolean };
   siteUrl?: string;            // the website's public address (from SITE_PUBLIC_URL) — header link
   users: { id: string; name: string; email: string; role: string; active: boolean; projectIdsJson?: string; streamScope?: string }[];
   accounts: Account[];

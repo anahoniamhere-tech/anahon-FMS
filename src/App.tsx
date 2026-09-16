@@ -1479,6 +1479,7 @@ export default function App() {
               onOpenDoor={(door, focus) => { handleNavClick(door); if (focus) setFocusId(focus); }}
               openSignal={helpAsk}
               anna={!!state.anna?.enabled}
+              annaVoice={!!state.anna?.voice}
               onEditDraft={(kind, data) => {
                 // A contract is only ever a filled form: Saad reviews it and presses Generate (D4).
                 if (kind === "contract") {

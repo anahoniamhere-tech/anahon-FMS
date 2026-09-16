@@ -30,7 +30,7 @@ ok("ANNA_USERS is exactly Saad (u-1)", ANNA_USERS.length === 1 && ANNA_USERS[0] 
 ok("the route checks the real signed-in user, first",
   /const viewer = \(req as any\)\.dbUser;\s*if \(!ANNA_USERS\.includes\(viewer\.id\)\)/.test(route));
 ok("a refusal is a 403 with an audit line", /"Anna Refused", "Not on the Anna user list\."\);\s*return res\.status\(403\)/.test(route));
-ok("the panel flag reads the real user too", /anna: \{ enabled: !!viewer && ANNA_USERS\.includes\(viewer\.id\) \}/.test(server));
+ok("the panel flag reads the real user too", /anna: \{ enabled: !!viewer && ANNA_USERS\.includes\(viewer\.id\)[,} ]/.test(server));
 ok("the route is gated", /"\/api\/anna\/turn": ANY/.test(read("../src/gates.ts")));
 
 console.log("\n2. paid only, never the free tier");
@@ -174,8 +174,8 @@ const chat = desk.slice(desk.indexOf("function AnnaChat("), desk.indexOf("export
 ok("the panel exists", chat.length > 500);
 ok("no browser storage for the chat", !/localStorage|sessionStorage|indexedDB/.test(chat));
 const fetches = [...chat.matchAll(/fetch\(([^,)]+)/g)].map(m => m[1]);
-ok("five calls: Anna's turn, a confirm route, and her own chat list, chat and delete",
-  JSON.stringify(fetches) === JSON.stringify(['"/api/anna/chats"', '`/api/anna/chats/${encodeURIComponent(id', '"/api/anna/chats/delete"', "p.confirmRoute", '"/api/anna/turn"']), fetches.join(" "));
+ok("six calls: her voice clip, Anna's turn, a confirm route, and her own chat list, chat and delete",
+  JSON.stringify(fetches) === JSON.stringify(['"/api/anna/listen"', '"/api/anna/chats"', '`/api/anna/chats/${encodeURIComponent(id', '"/api/anna/chats/delete"', "p.confirmRoute", '"/api/anna/turn"']), fetches.join(" "));
 ok("a card from a saved chat has no buttons", /\{m\.past \? \(\s*<p[^>]*>\{t\("From an earlier session/.test(chat) && /\(\{ \.\.\.m, past: true \}\)/.test(chat));
 ok("deleting asks first", (chat.match(/window\.confirm\(/g) || []).length === 1 && /if \(!window\.confirm\([^;]*\)\) return;\s*try \{\s*const r = await fetch\("\/api\/anna\/chats\/delete"/.test(chat));
 ok("the confirm route is checked against the closed list first, and a contract never posts",
@@ -189,6 +189,33 @@ ok("a navigation action can only open a door or a record",
   && /type NavAction = \{ type: "open_door"; door: string \} \| \{ type: "open_record"; kind: string; id: string \};/.test(desk));
 ok("the tab shows only when the server says so", /anna=\{!!state\.anna\?\.enabled\}/.test(read("../src/App.tsx")));
 ok("the name is Anna in both languages (D7)", !/"Anna":/.test(read("../src/i18n.ts")) && /\{m === "anna" \? "Anna" : t\("Help"\)\}/.test(desk));
+
+console.log("\nV. voice: one clip in, words out, nothing kept but the chat");
+const listen = (() => { const a = server.indexOf('app.post("/api/anna/listen"'); return a < 0 ? "" : server.slice(a, server.indexOf("\n});\n", a)); })();
+const voiceSrc = read("../src/annaVoice.ts");
+ok("the listen route exists and checks the owner first", /^[^\n]*\n  const me = annaOwner\(req\);\n  if \(!me\) return res\.status\(403\)/.test(listen));
+ok("without the key it says so and does nothing", /if \(!annaVoiceReady\(\)\) return res\.status\(503\)/.test(listen)
+  && /const annaVoiceReady = \(\) => !!process\.env\.DEEPGRAM_API_KEY;/.test(server)
+  && /anna: \{ enabled: [^}]*, voice: annaVoiceReady\(\) \}/.test(server));
+ok("Deepgram Nova-3 with the training opt-out, and nothing else is called", /model=nova-3&language=\$\{DEEPGRAM_LANG\[lang\]\}&smart_format=true&mip_opt_out=true/.test(listen)
+  && (listen.match(/fetch\(/g) || []).length === 1 && !/gemini|anthropic|askJson/i.test(listen));
+ok("English is multi, Arabic is Lebanese (multi has no Arabic)", /const DEEPGRAM_LANG = \{ en: "multi", ar: "ar-LB" \} as const;/.test(server)
+  && /const lang = req\.body\?\.lang === "ar" \? "ar" : "en";/.test(listen));
+ok("the clip is a sound file under the cap, held in memory only", /if \(audio\.length > ANNA_CLIP_MAX\) return res\.status\(413\)/.test(listen)
+  && /ANNA_CLIP_MAX = 1_000_000;/.test(server) && /\^audio\\\//.test(listen) && !WRITE.test(listen) && !/vault|writeFile|tmp/i.test(listen));
+const heard = [...listen.matchAll(/createAuditLog\(([^;]*)\);/g)].map(m => m[1]);
+ok("its audit lines hold the length and cost, never the words", heard.length === 2 && heard.every(a => !/words|transcript|\bd\b|body|err\.message/.test(a)), heard.join(" | "));
+ok("the error never quotes Deepgram", !/err\.message|err\?\.message|r\.text\(\)/.test(listen));
+ok("the words go back to the device, then travel as an ordinary turn", /res\.json\(\{ transcript: words \}\)/.test(listen) && /setVoice\("idle"\);\s*send\(words\);/.test(chat));
+ok("gated, and a read-only POST", /"\/api\/anna\/listen": ANY/.test(read("../src/gates.ts")) && /READ_ONLY_POSTS = new Set\(\[[^\]]*"\/api\/anna\/listen"/.test(server));
+const allSrc = ["../src/HelpDesk.tsx", "../src/annaVoice.ts", "../src/App.tsx"].map(read).join("\n");
+ok("never the browser's speech recognition (audio to Google)", !/SpeechRecognition/.test(allSrc));
+ok("the recorder calls nothing and keeps nothing", !/fetch\(|localStorage|sessionStorage|indexedDB/.test(voiceSrc));
+ok("the mic is released when a clip ends", /rec\.onstop = \(\) => \{[\s\S]{0,80}stream\.getTracks\(\)\.forEach\(t => t\.stop\(\)\)/.test(voiceSrc));
+ok("a clip with no speech is not sent", /if \(!heard && now - started > NOTHING_MS\) \{ cancelled = true; stop\(\); \}/.test(voiceSrc)
+  && /onDone\(cancelled \|\| !chunks\.length \? null :/.test(voiceSrc) && /if \(!clip\) \{ setVoice/.test(chat));
+ok("closing the panel cancels a recording", /useEffect\(\(\) => \(\) => \{ recRef\.current\?\.cancel\(\); hush\(\); \}, \[\]\);/.test(chat));
+ok("reading aloud is off until Saad turns it on, and uses the device's voices", /let readAloud = false;/.test(desk) && /new SpeechSynthesisUtterance\(/.test(voiceSrc));
 
 console.log("\n6. drafts are cards; Saad's press writes, through the existing routes");
 ok("four confirm routes, exactly", JSON.stringify(CONFIRM_ROUTES) === '["/api/quotations/save","/api/compliance/save","/api/requests/save","form:contract"]');

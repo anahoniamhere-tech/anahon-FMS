@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2 } from "lucide-react";
+import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, Volume2, VolumeX } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
+import { voiceSupported, record, clipBase64, speak, hush, type Recording } from "./annaVoice";
 
 /**
  * The floating question box, on every screen.
@@ -55,13 +56,21 @@ type AnnaMsg = { role: "user" | "assistant"; content: string; actions?: AnnaActi
 type ChatRow = { id: string; title: string; updatedAt: string };
 /** The open chat survives closing the panel (the component unmounts), not a reload. */
 let openChatId = "";
+/** On a phone the keyboard would cover the panel and the mic; focus the box only with a mouse. */
+const focusBox = (el: HTMLTextAreaElement | null) => { if (!window.matchMedia?.("(pointer: coarse)").matches) el?.focus(); };
+/** Voice choices last only as long as the page, like the open chat: no browser storage. */
+let voiceLangPick: "en" | "ar" | "" = "";
+let readAloud = false;
+type VoiceState = "idle" | "listening" | "sending" | { note: string };
 const KIND_LABEL: Record<string, string> = {
   voucher: "Voucher", quotation: "Quotation", project: "Project", client: "Client",
   vendor: "Supplier", document: "Document", task: "Task", engagement: "Event",
 };
 
-function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
+function AnnaChat({ t, lang, voiceReady, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   t: (s: string) => string;
+  lang: string;
+  voiceReady: boolean;
   doorLabel: (navKey: string) => string;
   onOpenDoor: (navKey: string, focus?: string) => void;
   onOpenRecord: (kind: string, id: string) => void;
@@ -74,10 +83,50 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   const [chatId, setChatId] = useState(openChatId);
   const [list, setList] = useState<ChatRow[] | null>(null);   // null = the conversation, not the list
   const [listErr, setListErr] = useState("");
+  const [voice, setVoice] = useState<VoiceState>("idle");
+  const [level, setLevel] = useState(0);
+  const [vLang, setVLang] = useState<"en" | "ar">(voiceLangPick || (lang === "ar" ? "ar" : "en"));
+  const [aloud, setAloud] = useState(readAloud);
+  const recRef = useRef<Recording | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { openChatId = chatId; }, [chatId]);
-  useEffect(() => { if (chatId) openChat(chatId); else inputRef.current?.focus(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => { voiceLangPick = vLang; }, [vLang]);
+  useEffect(() => { readAloud = aloud; if (!aloud) hush(); }, [aloud]);
+  // Closing the panel ends a recording (nothing is sent) and any speech.
+  useEffect(() => () => { recRef.current?.cancel(); hush(); }, []);
+
+  /** Tap: start. Tap again: stop and send. The clip also ends itself when Saad goes quiet. */
+  const mic = async () => {
+    if (voice === "listening") { recRef.current?.stop(); return; }
+    if (busy || voice === "sending") return;
+    if (!voiceReady) { setVoice({ note: t("Voice is not set up yet.") }); return; }
+    if (!voiceSupported()) { setVoice({ note: t("Voice needs the secure address of the app (https) on a recent browser.") }); return; }
+    hush();
+    try {
+      recRef.current = await record(setLevel, async clip => {
+        recRef.current = null;
+        if (!clip) { setVoice({ note: t("I didn't hear anything.") }); return; }
+        setVoice("sending");
+        try {
+          const r = await fetch("/api/anna/listen", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lang: vLang, audio: { mimeType: clip.type, base64: await clipBase64(clip) } }),
+          });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(d.error || t("I couldn't hear that. Try again."));
+          const words = String(d.transcript || "").trim();
+          if (!words) { setVoice({ note: t("I didn't catch that. Try again.") }); return; }
+          setVoice("idle");
+          send(words);
+        } catch (e: any) { setVoice({ note: e.message }); }
+      });
+      setVoice("listening");
+    } catch {
+      setVoice({ note: t("The microphone is not allowed. Allow it for this app, then try again.") });
+    }
+  };
+  useEffect(() => { if (chatId) openChat(chatId); else focusBox(inputRef.current); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
 
   const showList = async () => {
     setListErr("");
@@ -100,7 +149,7 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
       setChatId(""); setMsgs([]); setList(null);
     }
   };
-  const newChat = () => { setMsgs([]); setCards({}); setQ(""); setChatId(""); setList(null); inputRef.current?.focus(); };
+  const newChat = () => { setMsgs([]); setCards({}); setQ(""); setChatId(""); setList(null); focusBox(inputRef.current); };
   const remove = async (id: string | null) => {
     if (!window.confirm(id ? t("Delete this chat? This cannot be undone.") : t("Delete all your chats with Anna? This cannot be undone."))) return;
     try {
@@ -135,11 +184,11 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
     }
   };
 
-  const send = async () => {
-    const text = q.trim();
+  const send = async (spoken?: string) => {
+    const text = (spoken ?? q).trim();
     if (!text || busy) return;
     const history = [...msgs.filter(m => !m.error), { role: "user" as const, content: text }];
-    setQ("");
+    if (spoken === undefined) setQ("");
     setMsgs(prev => [...prev, { role: "user", content: text }]);
     setBusy(true);
     try {
@@ -151,6 +200,7 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
       if (!r.ok) throw new Error(d.error || t("Anna could not answer just now."));
       const actions: AnnaAction[] = Array.isArray(d.actions) ? d.actions : [];
       if (d.chatId) setChatId(d.chatId);
+      if (readAloud && d.answer) speak(String(d.answer));
       setMsgs(prev => [...prev, { role: "assistant", content: String(d.answer || ""), actions, usd: d.usage?.usd }]);
       actions.forEach(a => { if (a.type !== "proposal") run(a); });
     } catch (e: any) {
@@ -257,7 +307,24 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
         <div ref={endRef} />
       </div>
 
-      <div className="flex items-end gap-2 border-t border-slate-200 p-2">
+      <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-200 px-2 pt-1.5 text-[11px] text-slate-500">
+        <div role="radiogroup" aria-label={t("Speaking language")} className="flex overflow-hidden rounded-md border border-slate-300">
+          {(["en", "ar"] as const).map(l => (
+            <button key={l} role="radio" aria-checked={vLang === l} onClick={() => setVLang(l)} disabled={voice === "listening"}
+              className={`min-h-[28px] px-2 font-bold ${vLang === l ? "bg-[#6D1A1A] text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+              {l === "en" ? "EN" : "عربي"}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setAloud(a => !a)} aria-pressed={aloud}
+          className={`inline-flex min-h-[28px] items-center gap-1 rounded-md px-1.5 font-bold ${aloud ? "text-[#6D1A1A]" : "text-slate-500"} hover:bg-slate-100`}>
+          {aloud ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />} {t("Read answers aloud")}
+        </button>
+        <span role="status" className="min-w-0 flex-1 truncate text-end">
+          {voice === "listening" ? t("Listening… tap to stop") : voice === "sending" ? t("Writing down what you said…") : typeof voice === "object" ? voice.note : ""}
+        </span>
+      </div>
+      <div className="flex items-end gap-2 p-2">
         <button
           onClick={showList} disabled={busy}
           title={t("Past chats")} aria-label={t("Past chats")}
@@ -283,7 +350,23 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
           className="min-h-[44px] flex-1 resize-none rounded-lg border border-slate-300 px-2.5 py-2 text-[13px] outline-none transition-colors focus:border-[#6D1A1A]"
         />
         <button
-          onClick={send}
+          onClick={mic}
+          disabled={busy || voice === "sending"}
+          aria-label={voice === "listening" ? t("Stop and send") : t("Speak to Anna")}
+          aria-pressed={voice === "listening"}
+          className={`relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border transition-colors disabled:opacity-40 ${voice === "listening" ? "border-[#6D1A1A] bg-[#6D1A1A]/10 text-[#6D1A1A]" : "border-slate-300 text-slate-600 hover:bg-slate-100"} ${voiceReady ? "" : "opacity-60"}`}
+        >
+          {voice === "listening" ? (
+            <span aria-hidden className="flex h-5 items-center gap-[3px]">
+              {[0.6, 1, 0.8].map((k, i) => (
+                <span key={i} className="w-[3px] rounded-full bg-[#6D1A1A]" style={{ height: `${Math.max(3, Math.round(20 * Math.min(1, level * k * 1.6)))}px` }} />
+              ))}
+              <Square className="ms-1 h-2.5 w-2.5 fill-current" />
+            </span>
+          ) : <Mic className="h-4 w-4" />}
+        </button>
+        <button
+          onClick={() => send()}
           disabled={busy || !q.trim()}
           aria-label={t("Send")}
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#6D1A1A] text-white transition-colors hover:bg-[#4A1010] disabled:opacity-40"
@@ -296,7 +379,7 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
 }
 
 export default function HelpDesk({
-  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, onOpenRecord = () => {}, onEditDraft = () => {},
+  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, onOpenRecord = () => {}, onEditDraft = () => {},
 }: {
   t: (s: string) => string;
   lang: string;
@@ -309,6 +392,8 @@ export default function HelpDesk({
   openSignal?: { context: string; nonce: number } | null;
   /** Anna's tab, for the accounts on her list (state.anna.enabled). */
   anna?: boolean;
+  /** Whether the server has its speech key (state.anna.voice). */
+  annaVoice?: boolean;
   onOpenRecord?: (kind: string, id: string) => void;
   onEditDraft?: (kind: string, data: Record<string, any>) => void;
 }) {
@@ -417,7 +502,7 @@ export default function HelpDesk({
       </div>
 
       {mode === "anna" && anna ? (
-        <AnnaChat t={t} doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
+        <AnnaChat t={t} lang={lang} voiceReady={annaVoice} doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
       ) : (<>
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {!turns.length && (

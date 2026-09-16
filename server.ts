@@ -260,7 +260,7 @@ const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
  *  CONFIRM_ROUTES). It only labels the audit line; the person saving is still the signed-in user. */
 const draftedBy = (req: any) => req.get?.("X-Drafted-By") === "anna" ? " (drafted by Anna)" : "";
 
-const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/anna/turn", "/api/reminders/plan", "/api/push/unsubscribe"]);
+const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/anna/turn", "/api/anna/listen", "/api/reminders/plan", "/api/push/unsubscribe"]);
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path.startsWith("/api/") && !READ_ONLY_POSTS.has(req.path)) {
     res.on("finish", () => { if (res.statusCode < 400) schedulePush(); });
@@ -937,7 +937,7 @@ async function loadState(viewer?: any) {
     partnerAccounts,
     confidentialReview: viewer && ["Super Admin", "Finance Officer"].includes(viewer.role) ? confidentialReview : null,
     // Anna's panel shows only for the real user on her list (src/anna.ts); the route checks again.
-    anna: { enabled: !!viewer && ANNA_USERS.includes(viewer.id) },
+    anna: { enabled: !!viewer && ANNA_USERS.includes(viewer.id), voice: annaVoiceReady() },
     // Passports, IDs and CVs are stripped here, not hidden in the browser: a personnel
     // document only reaches the people who hold the personnel file, or the person it is about.
     // The integrity register is the ED's alone (§7.1); its evidence must not ride along
@@ -1690,6 +1690,46 @@ const annaOwner = (req: any) => {
   const me = req.dbUser;
   return me?.active && ANNA_USERS.includes(me.id) ? me : null;
 };
+
+/* ── Anna's ears (Front desk, 16 Sep 2026; drafts/voice-front-desk-plan.md, wake word parked).
+ * One clip in, its words out: the audio lives in memory for the one Deepgram call and is dropped;
+ * the words go back to the browser, which sends them as an ordinary turn — so the only copy is
+ * Saad's own chat row. The audit line holds the length and the cost, never the words. Deepgram
+ * with mip_opt_out, never the browser's Web Speech (audio to Google; broken in the home-screen app).
+ * Nova-3's `multi` does not cover Arabic, so the mic carries a language switch. */
+const DEEPGRAM_LANG = { en: "multi", ar: "ar-LB" } as const;
+const ANNA_CLIP_MAX = 1_000_000;   // bytes; the panel stops at 30 s, well under this
+const annaVoiceReady = () => !!process.env.DEEPGRAM_API_KEY;
+
+app.post("/api/anna/listen", async (req, res) => {
+  const me = annaOwner(req);
+  if (!me) return res.status(403).json({ error: "Anna is not switched on for this account." });
+  if (!annaVoiceReady()) return res.status(503).json({ error: "Voice is not set up yet." });
+  const mimeType = String(req.body?.audio?.mimeType || "");
+  if (!/^audio\/[\w.+-]+(;.*)?$/.test(mimeType)) return res.status(400).json({ error: "That is not a sound clip." });
+  const audio = Buffer.from(String(req.body?.audio?.base64 || ""), "base64");
+  if (!audio.length) return res.status(400).json({ error: "The clip was empty." });
+  if (audio.length > ANNA_CLIP_MAX) return res.status(413).json({ error: "That clip is too long. Keep it under 30 seconds." });
+  const lang = req.body?.lang === "ar" ? "ar" : "en";
+  try {
+    const url = `https://api.deepgram.com/v1/listen?model=nova-3&language=${DEEPGRAM_LANG[lang]}&smart_format=true&mip_opt_out=true`;
+    const r = await fetch(url, {
+      method: "POST", body: audio, signal: AbortSignal.timeout(15_000),
+      headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, "Content-Type": mimeType.split(";")[0] },
+    });
+    if (!r.ok) throw Object.assign(new Error("deepgram"), { status: r.status });
+    const d: any = await r.json();
+    const words = String(d?.results?.channels?.[0]?.alternatives?.[0]?.transcript || "").trim();
+    const secs = Number(d?.metadata?.duration) || 0;
+    // Nova-3 pre-recorded: $0.0052 a minute, billed by the second.
+    await createAuditLog(me.id, me.name, "Anna Heard", `${lang} · ${secs.toFixed(1)} s · ≈ $${(secs * 0.0052 / 60).toFixed(4)}`);
+    res.json({ transcript: words });
+  } catch (err: any) {
+    const status = Number(err?.status) || 0;
+    await createAuditLog(me.id, me.name, "Anna Failed", `listen · ${status || "error"}`);
+    res.status(502).json({ error: status === 401 || status === 403 ? "The voice key was refused. Ask Front desk to check it." : "I couldn't hear that. Try again." });
+  }
+});
 
 app.get("/api/anna/chats", async (req, res) => {
   const me = annaOwner(req);
