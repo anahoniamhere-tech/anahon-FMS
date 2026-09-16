@@ -261,7 +261,7 @@ const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
  *  CONFIRM_ROUTES). It only labels the audit line; the person saving is still the signed-in user. */
 const draftedBy = (req: any) => req.get?.("X-Drafted-By") === "anna" ? " (drafted by Anna)" : "";
 
-const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/anna/turn", "/api/anna/listen", "/api/reminders/plan", "/api/push/unsubscribe"]);
+const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/anna/turn", "/api/anna/listen", "/api/anna/say", "/api/reminders/plan", "/api/push/unsubscribe"]);
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path.startsWith("/api/") && !READ_ONLY_POSTS.has(req.path)) {
     res.on("finish", () => { if (res.statusCode < 400) schedulePush(); });
@@ -555,10 +555,11 @@ async function loadState(viewer?: any) {
   const on = !!annaModelOf(viewer);
   // The spend is the master account's alone (D10-5): the real role, not a seat worn.
   const spend = on && viewer?.role === "Super Admin" ? await monthSpend().catch(() => null) : null;
-  state.anna = { enabled: on, voice: annaVoiceReady(), spend };
-  state.annaSpendAlerts = spend && spend.modelsUSD >= 0.8 * spend.limitUSD
+  state.anna = { enabled: on, voice: annaVoiceReady(), speech: annaSpeechReady(), spend };
+  state.annaSpendAlerts = spend && (spend.modelsUSD >= 0.8 * spend.limitUSD || spend.speechChars >= 0.8 * spend.speechLimit)
     ? [{ id: `anna-spend-${new Date().toISOString().slice(0, 7)}`, status: "Near limit",
-        title: `AI spend this month: $${spend.modelsUSD.toFixed(2)} of $${spend.limitUSD}` }]
+        title: spend.modelsUSD >= 0.8 * spend.limitUSD ? `AI spend this month: $${spend.modelsUSD.toFixed(2)} of $${spend.limitUSD}`
+          : `Anna's free voice this month: ${Math.round(spend.speechChars / 1000)}k of ${spend.speechLimit / 1000}k characters` }]
     : [];
   return state;
 }
@@ -1728,20 +1729,64 @@ async function annaUsedToday(userId: string, action: "Anna Turn" | "Anna Heard")
 /** This month's model spend, from the "≈ $" every priced call writes into its audit line (§10d).
  *  Deepgram is billed apart, so its lines are summed apart. Cached for a minute: loadState runs often. */
 export const ANNA_MONTHLY_LIMIT_USD = () => Number(process.env.ANNA_MONTHLY_LIMIT_USD) || 50;
-let spendCache: { at: number; value: { month: string; modelsUSD: number; voiceUSD: number; limitUSD: number } } | null = null;
+let spendCache: { at: number; value: { month: string; modelsUSD: number; voiceUSD: number; limitUSD: number; speechChars: number; speechLimit: number } } | null = null;
 async function monthSpend() {
   if (spendCache && Date.now() - spendCache.at < 60_000) return spendCache.value;
   const start = new Date(); start.setDate(1); start.setHours(0, 0, 0, 0);
-  const rows = await prisma.auditLog.findMany({ where: { timestamp: { gte: start.toISOString() }, details: { contains: "≈ $" } }, select: { action: true, details: true } });
-  let modelsUSD = 0, voiceUSD = 0;
+  const rows = await prisma.auditLog.findMany({ where: { timestamp: { gte: start.toISOString() }, OR: [{ details: { contains: "≈ $" } }, { action: "Anna Spoke" }] }, select: { action: true, details: true } });
+  let modelsUSD = 0, voiceUSD = 0, speechChars = 0;
   for (const r of rows) {
+    if (r.action === "Anna Spoke") { speechChars += Number(r.details.match(/(\d+) chars/)?.[1]) || 0; continue; }
     const usd = Number(r.details.match(/≈ \$([\d.]+)/)?.[1]) || 0;
     if (r.action === "Anna Heard") voiceUSD += usd; else modelsUSD += usd;
   }
-  const value = { month: start.toLocaleDateString("en-GB", { month: "long" }), modelsUSD: Math.round(modelsUSD * 100) / 100, voiceUSD: Math.round(voiceUSD * 100) / 100, limitUSD: ANNA_MONTHLY_LIMIT_USD() };
+  const value = { month: start.toLocaleDateString("en-GB", { month: "long" }), modelsUSD: Math.round(modelsUSD * 100) / 100, voiceUSD: Math.round(voiceUSD * 100) / 100, limitUSD: ANNA_MONTHLY_LIMIT_USD(),
+    speechChars, speechLimit: AZURE_FREE_CHARS };
   spendCache = { at: Date.now(), value };
   return value;
 }
+
+/* ── Anna's voice (Saad, 16 Sep 2026: Layla, inside today's talk mode; plan §10). One sentence of her
+ * answer in, its audio out, streamed as it arrives. The key stays here; nothing is kept; the audit line
+ * holds the language and the character count, never the words. The Azure resource is the free tier
+ * (500k characters a month): past that we refuse, and the panel falls back to the phone's own voice. */
+const AZURE_FREE_CHARS = 500_000;
+const ANNA_VOICES = { ar: "ar-LB-LaylaNeural", en: "en-US-AvaMultilingualNeural" } as const;
+const annaSpeechReady = () => !!(process.env.AZURE_SPEECH_KEY && process.env.AZURE_SPEECH_REGION);
+
+app.post("/api/anna/say", async (req, res) => {
+  const me = annaOwner(req);
+  if (!me) return res.status(403).json({ error: "Anna is not switched on for this account." });
+  if (!annaSpeechReady()) return res.status(503).json({ error: "Anna's voice is not set up." });
+  const text = String(req.body?.text || "").replace(/\s+/g, " ").trim();
+  if (!text) return res.status(400).json({ error: "Nothing to say." });
+  if (text.length > 400) return res.status(413).json({ error: "Too long for one piece." });
+  const spend = await monthSpend();
+  if (spend.speechChars + text.length > AZURE_FREE_CHARS) return res.status(429).json({ error: "This month's free voice is used up." });
+  const lang: "ar" | "en" = /[\u0600-\u06FF]/.test(text) ? "ar" : "en";
+  const esc = text.replace(/[<&>]/g, c => ({ "<": "&lt;", "&": "&amp;", ">": "&gt;" })[c]!);
+  try {
+    const r = await fetch(`https://${process.env.AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1`, {
+      method: "POST", signal: AbortSignal.timeout(15_000),
+      headers: { "Ocp-Apim-Subscription-Key": String(process.env.AZURE_SPEECH_KEY), "Content-Type": "application/ssml+xml",
+        "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3", "User-Agent": "anahon-fms" },
+      body: `<speak version="1.0" xml:lang="${lang === "ar" ? "ar-LB" : "en-US"}"><voice name="${ANNA_VOICES[lang]}">${esc}</voice></speak>`,
+    });
+    if (!r.ok || !r.body) throw Object.assign(new Error("azure"), { status: r.status });
+    await createAuditLog(me.id, me.name, "Anna Spoke", `${lang} · ${text.length} chars · free tier`);
+    spendCache = null;
+    res.setHeader("Content-Type", "audio/mpeg");
+    res.setHeader("Cache-Control", "no-store");
+    const reader = r.body.getReader();
+    for (;;) { const { done, value } = await reader.read(); if (done) break; res.write(Buffer.from(value)); }
+    res.end();
+  } catch (err: any) {
+    const status = Number(err?.status) || 0;
+    await createAuditLog(me.id, me.name, "Anna Failed", `say · ${status || "error"}`);
+    if (!res.headersSent) res.status(502).json({ error: "Anna's voice is not available just now." });
+    else res.end();
+  }
+});
 
 /* ── Anna's ears (Front desk, 16 Sep 2026; drafts/voice-front-desk-plan.md, wake word parked).
  * One clip in, its words out: the audio lives in memory for the one Deepgram call and is dropped;

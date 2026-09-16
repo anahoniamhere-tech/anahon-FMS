@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerE
 import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, MoreHorizontal } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
 import AnnaGuide, { type Guide } from "./AnnaGuide";
-import { voiceSupported, record, clipBase64, speak, hush, type Recording } from "./annaVoice";
+import { voiceSupported, record, clipBase64, speak, hush, unlockVoice, type Recording } from "./annaVoice";
 
 /**
  * The floating question box, on every screen.
@@ -119,11 +119,13 @@ const KIND_LABEL: Record<string, string> = {
   vendor: "Supplier", document: "Document", task: "Task", engagement: "Event",
 };
 
-type AnnaSpend = { month: string; modelsUSD: number; voiceUSD: number; limitUSD: number };
+type AnnaSpend = { month: string; modelsUSD: number; voiceUSD: number; limitUSD: number; speechChars?: number; speechLimit?: number };
 
-function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
+function AnnaChat({ t, lang, userName, speechReady, spend, prefill, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   t: (s: string) => string;
   userName: string;
+  /** Layla/Ava are set up on the server (state.anna.speech); otherwise the phone's own voice. */
+  speechReady: boolean;
   spend: AnnaSpend | null;
   /** "Ask about this policy": the chapter, shown as a chip above the box and sent with the question. */
   prefill: { text: string; nonce: number } | null;
@@ -177,7 +179,7 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
     const id = ++turnId.current;
     const next = () => { if (listen && id === turnId.current && talkRef.current) micRef.current(); };
     if (typeof speechSynthesis === "undefined") return next();
-    speak(text, on => { setSpeaking(on); if (!on) next(); });
+    speak(text, on => { setSpeaking(on); if (!on) next(); }, speechReady);
   };
   const greet = (listen: boolean) => {
     const line = greeting(lang, userName);
@@ -209,7 +211,7 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
     if (voice === "listening") { recRef.current?.stop(); return; }
     if (byHand && talkRef.current) { endedByHand.current = true; stopTalk(); hush(); setVoice({ note: t("Talk ended.") }); return; }
     if (busy || voice === "sending") return;
-    if (byHand) { setTalk(true); talkRef.current = true; misses.current = 0; endedByHand.current = false; }
+    if (byHand) { unlockVoice(); setTalk(true); talkRef.current = true; misses.current = 0; endedByHand.current = false; }
     turnId.current++;
     if (!voiceReady) { setVoice({ note: t("Voice is not set up yet.") }); return; }
     if (!voiceSupported()) { setVoice({ note: t("Voice needs the secure address of the app (https) on a recent browser.") }); return; }
@@ -497,8 +499,9 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
               </div>
             </div>
             {spend && (
-              <p dir="ltr" data-anna-spend className={`border-t border-slate-100 px-2 pt-1.5 text-[11px] ${spend.modelsUSD >= 0.8 * spend.limitUSD ? "font-bold text-amber-700" : "text-slate-500"}`}>
-                {spend.month} so far: ${spend.modelsUSD.toFixed(2)} of ${spend.limitUSD} · voice ${spend.voiceUSD.toFixed(2)}
+              <p dir="ltr" data-anna-spend className={`border-t border-slate-100 px-2 pt-1.5 text-[11px] ${spend.modelsUSD >= 0.8 * spend.limitUSD || (spend.speechChars || 0) >= 0.8 * (spend.speechLimit || Infinity) ? "font-bold text-amber-700" : "text-slate-500"}`}>
+                {spend.month} so far: ${spend.modelsUSD.toFixed(2)} of ${spend.limitUSD} · listening ${spend.voiceUSD.toFixed(2)}
+                {typeof spend.speechChars === "number" && spend.speechLimit ? <> · voice {Math.round(spend.speechChars / 1000)}k of {Math.round(spend.speechLimit / 1000)}k free chars</> : null}
               </p>
             )}
           </div>
@@ -542,7 +545,7 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
 }
 
 export default function HelpDesk({
-  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, userName = "", annaSpend = null, onOpenRecord = () => {}, onEditDraft = () => {},
+  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, annaSpeech = false, userName = "", annaSpend = null, onOpenRecord = () => {}, onEditDraft = () => {},
 }: {
   t: (s: string) => string;
   lang: string;
@@ -559,6 +562,8 @@ export default function HelpDesk({
   annaVoice?: boolean;
   /** For Anna's greeting. */
   userName?: string;
+  /** Whether the server has Anna's natural voice (state.anna.speech). */
+  annaSpeech?: boolean;
   /** This month's AI spend — the server sends it to the master account only. */
   annaSpend?: AnnaSpend | null;
   onOpenRecord?: (kind: string, id: string) => void;
@@ -661,7 +666,7 @@ export default function HelpDesk({
   // z-[95] keeps it beside the "N missing" pill and under that drawer's backdrop
   // (z-[96]) — the column is `relative` with no z-index, so it is a containing block
   // but not a stacking context, and this still competes on z with the whole page.
-  const openPanel = (listen: boolean) => { setGuide(null); setMode("anna"); if (listen) setListenSignal(n => n + 1); setOpen(true); };
+  const openPanel = (listen: boolean) => { if (listen) unlockVoice(); setGuide(null); setMode("anna"); if (listen) setListenSignal(n => n + 1); setOpen(true); };
 
   let launcher: ReactNode = null;
   if (!open) {
@@ -763,7 +768,7 @@ export default function HelpDesk({
 
       {anna && (
         <div hidden={mode !== "anna"} className="flex min-h-0 flex-1 flex-col">
-          <AnnaChat t={t} lang={lang} userName={userName} spend={annaSpend} prefill={prefill} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
+          <AnnaChat t={t} lang={lang} userName={userName} speechReady={annaSpeech} spend={annaSpend} prefill={prefill} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
             doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
         </div>
       )}

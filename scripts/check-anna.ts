@@ -40,7 +40,7 @@ ok("the route checks it first",
 ok("a refusal is a 403 with an audit line", /"Anna Refused", "Not on the Anna user list\."\);\s*return res\.status\(403\)/.test(route));
 ok("the panel flag reads the real person, on every branch of the state",
   /async function loadState\(viewer\?: any\) \{\s*const state: any = await loadStateFor\(viewer\);\s*const on = !!annaModelOf\(viewer\);/.test(server)
-  && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), spend \};/.test(server) && (server.match(/anna: \{ enabled/g) || []).length === 0);
+  && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), speech: annaSpeechReady\(\), spend \};/.test(server) && (server.match(/anna: \{ enabled/g) || []).length === 0);
 ok("each person's model is the one the turn uses", /model, max_tokens: ANNA_LIMITS\.maxTokens,/.test(route) && !/ANNA_MODEL\b/.test(server));
 ok("Haiku runs without thinking or effort", /\.\.\.\(model === "claude-haiku-4-5" \? \{\} : \{ thinking: \{ type: "adaptive" \}, output_config: \{ effort: "medium" \} \}\),/.test(route));
 ok("the route is gated", /"\/api\/anna\/turn": ANY/.test(read("../src/gates.ts")));
@@ -210,7 +210,7 @@ const voiceSrc = read("../src/annaVoice.ts");
 ok("the listen route exists and checks the owner first", /^[^\n]*\n  const me = annaOwner\(req\);\n  if \(!me\) return res\.status\(403\)/.test(listen));
 ok("without the key it says so and does nothing", /if \(!annaVoiceReady\(\)\) return res\.status\(503\)/.test(listen)
   && /const annaVoiceReady = \(\) => !!process\.env\.DEEPGRAM_API_KEY;/.test(server)
-  && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), spend \};/.test(server));
+  && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), speech: annaSpeechReady\(\), spend \};/.test(server));
 ok("Deepgram Nova-3 with the training opt-out, and nothing else is called", /model=nova-3&language=\$\{DEEPGRAM_LANG\[l\]\}&smart_format=true&mip_opt_out=true/.test(listen)
   && (listen.match(/fetch\(/g) || []).length === 1 && !/gemini|anthropic|askJson/i.test(listen));
 ok("English is en (multi heard Spanish), Arabic is Lebanese (multi has no Arabic)", /const DEEPGRAM_LANG = \{ en: "en", ar: "ar-LB" \} as const;/.test(server)
@@ -234,7 +234,7 @@ ok("the words go back to the device, then travel as an ordinary turn", /res\.jso
 ok("gated, and a read-only POST", /"\/api\/anna\/listen": ANY/.test(read("../src/gates.ts")) && /READ_ONLY_POSTS = new Set\(\[[^\]]*"\/api\/anna\/listen"/.test(server));
 const allSrc = ["../src/HelpDesk.tsx", "../src/annaVoice.ts", "../src/App.tsx"].map(read).join("\n");
 ok("never the browser's speech recognition (audio to Google)", !/SpeechRecognition/.test(allSrc));
-ok("the recorder calls nothing and keeps nothing", !/fetch\(|localStorage|sessionStorage|indexedDB/.test(voiceSrc));
+ok("the voice module calls only Anna's voice route, and keeps nothing", [...voiceSrc.matchAll(/fetch\(([^,)]+)/g)].map(m => m[1]).join() === '"/api/anna/say"' && !/localStorage|sessionStorage|indexedDB/.test(voiceSrc));
 ok("the mic is released when a clip ends", /rec\.onstop = \(\) => \{[\s\S]{0,80}stream\.getTracks\(\)\.forEach\(t => t\.stop\(\)\)/.test(voiceSrc));
 ok("a clip with no speech is not sent", /if \(!heard && now - started > NOTHING_MS\) \{ cancelled = true; stop\(\); \}/.test(voiceSrc)
   && /onDone\(cancelled \|\| !chunks\.length \? null :/.test(voiceSrc) && /if \(!clip\) \{ stopTalk\(\); setVoice/.test(chat));
@@ -264,7 +264,9 @@ ok("the waveform is on the floating button and in the header", /\{anna \? <AnnaW
   && /<AnnaWave mood=\{mood\.mood\} level=\{mood\.level\} t=\{t\} \/>\s*<p className="text-xs font-bold">\{"Anna"\}<\/p>/.test(desk));
 ok("the bars stand still with reduced motion", /motion-reduce:animate-none/.test(desk) && /@keyframes anna-wave/.test(read("../src/index.css")));
 ok("it says its state to a screen reader", /role="img" aria-label=\{t\(MOOD_LABEL\[mood\]\)\}/.test(desk));
-ok("speaking is reported by the voice itself", /u\.onstart = \(\) => onSpeaking\(true\);\s*u\.onend = u\.onerror = \(\) => onSpeaking\(false\);/.test(voiceSrc) && /speak\(text, on => \{ setSpeaking\(on\); if \(!on\) next\(\); \}\);/.test(chat));
+ok("speaking is reported by the voice itself", /current = onSpeaking;\s*onSpeaking\(true\);\s*const finish = \(\) => \{ if \(my === gen\) \{ current = null; onSpeaking\(false\); \} \};/.test(voiceSrc)
+  && /const told = current; current = null; told\?\.\(false\);/.test(voiceSrc) && /u\.onend = u\.onerror = \(\) => done\(\);/.test(voiceSrc)
+  && /speak\(text, on => \{ setSpeaking\(on\); if \(!on\) next\(\); \}, speechReady\);/.test(chat));
 ok("the chat stays mounted but hidden when the panel closes, so an answer on its way still lands",
   /<div\s+ref=\{boxRef\}\s+hidden=\{!open\}/.test(desk) && /<div hidden=\{mode !== "anna"\} className="flex min-h-0 flex-1 flex-col">\s*<AnnaChat /.test(desk));
 ok("closing still stops a recording, her voice and the talk", /useEffect\(\(\) => \{\s*if \(!open\) \{ stopTalk\(\); recRef\.current\?\.cancel\(\); hush\(\); return; \}/.test(chat) && /open=\{open && mode === "anna"\}/.test(desk));
@@ -280,7 +282,7 @@ ok("she greets by name when opened, from the page, for free", /const greeting = 
   && /if \(!msgs\.length && listenSignal === listenHandled && !talkRef\.current\) greet\(false\);/.test(chat) && /userName=\{currentUser\?\.name \|\| ""\}/.test(read("../src/App.tsx")));
 ok("the greeting is shown only, and spoken only when voice is on", /setMsgs\(prev => \(prev\.length \? prev : \[\{ role: "assistant", content: line, local: true \}\]\)\);\s*if \(listen\) sayThenListen\(line, true\);/.test(chat));
 ok("one voice control: the mic starts a talk, sends while listening, and ends the talk", /if \(voice === "listening"\) \{ recRef\.current\?\.stop\(\); return; \}\s*if \(byHand && talkRef\.current\) \{ endedByHand\.current = true; stopTalk\(\); hush\(\);/.test(chat)
-  && /if \(byHand\) \{ setTalk\(true\); talkRef\.current = true; misses\.current = 0; endedByHand\.current = false; \}/.test(chat) && /onClick=\{\(\) => mic\(true\)\}/.test(chat)
+  && /if \(byHand\) \{ unlockVoice\(\); setTalk\(true\); talkRef\.current = true; misses\.current = 0; endedByHand\.current = false; \}/.test(chat) && /onClick=\{\(\) => mic\(true\)\}/.test(chat)
   && !/talkPick|Talk mode"\)\}/.test(desk));
 ok("in a talk every answer is spoken and she listens again when she stops", /if \(d\.answer && inTalk && !endedByHand\.current\) sayThenListen\(String\(d\.answer\), talkRef\.current\);/.test(chat)
   && /const next = \(\) => \{ if \(listen && id === turnId\.current && talkRef\.current\) micRef\.current\(\); \};/.test(chat));
@@ -303,6 +305,28 @@ ok("no truncated status: it wraps, on its own line", /role="status" className="b
 ok("'Ask about this policy' is a chip, not text in the box", /setAbout\(prefill\.text\.replace\(/.test(chat) && !/setQ\(prev => prev \|\| prefill/.test(chat)
   && /\{t\("About"\)\}: \{about\}/.test(chat) && /const text = about \? `\$\{about\}: \$\{typed\}` : typed;/.test(chat));
 ok("the mic is the big round button", /relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full/.test(chat));
+
+console.log("\nL. Layla's voice (Saad, 16 Sep: option 1, inside today's talk mode)");
+const say = (() => { const a = server.indexOf('app.post("/api/anna/say"'); return a < 0 ? "" : server.slice(a, server.indexOf("\n});\n", a)); })();
+ok("the voice route checks the owner first, and says so when it is not set up", /^[^\n]*\n  const me = annaOwner\(req\);\n  if \(!me\) return res\.status\(403\)/.test(say)
+  && /if \(!annaSpeechReady\(\)\) return res\.status\(503\)/.test(say) && /const annaSpeechReady = \(\) => !!\(process\.env\.AZURE_SPEECH_KEY && process\.env\.AZURE_SPEECH_REGION\);/.test(server));
+ok("Layla for Arabic, Ava for English, chosen by the text itself", /const ANNA_VOICES = \{ ar: "ar-LB-LaylaNeural", en: "en-US-AvaMultilingualNeural" \} as const;/.test(server)
+  && /const lang: "ar" \| "en" = \/\[\\u0600-\\u06FF\]\/\.test\(text\) \? "ar" : "en";/.test(say));
+ok("one piece is at most 400 characters, and the text is escaped into the voice markup", /if \(text\.length > 400\) return res\.status\(413\)/.test(say) && /const esc = text\.replace\(\/\[<&>\]\/g/.test(say) && /\$\{esc\}<\/voice>/.test(say));
+ok("the free 500k characters a month are never exceeded", /const AZURE_FREE_CHARS = 500_000;/.test(server)
+  && /if \(spend\.speechChars \+ text\.length > AZURE_FREE_CHARS\) return res\.status\(429\)/.test(say) && say.indexOf("AZURE_FREE_CHARS") < say.indexOf("fetch("));
+ok("its audit line is the language and the count, never the words", [...say.matchAll(/createAuditLog\(([^;]*)\);/g)].map(m => m[1]).every(a => !/\btext\b(?!\.length)|\besc\b|body/.test(a))
+  && /"Anna Spoke", `\$\{lang\} · \$\{text\.length\} chars · free tier`/.test(say));
+ok("the count feeds the spend line and its warning", /if \(r\.action === "Anna Spoke"\) \{ speechChars \+= Number\(r\.details\.match\(\/\(\\d\+\) chars\/\)/.test(server) && /free chars/.test(chat));
+ok("the audio is streamed back, nothing is written", /res\.setHeader\("Content-Type", "audio\/mpeg"\)/.test(say) && /res\.write\(Buffer\.from\(value\)\)/.test(say) && !WRITE.test(say) && !/writeFile|vault/.test(say));
+ok("gated, and a read-only POST", /"\/api\/anna\/say": ANY/.test(read("../src/gates.ts")) && /READ_ONLY_POSTS = new Set\(\[[^\]]*"\/api\/anna\/say"/.test(server));
+ok("the phone's voice takes over whatever Azure cannot say", /if \(!blob\) \{ deviceSpeak\(pieces\.slice\(i\)\.join\(" "\), finish\); return; \}/.test(voiceSrc)
+  && /if \(!ok\) \{ deviceSpeak\(pieces\.slice\(i\)\.join\(" "\), finish\); return; \}/.test(voiceSrc) && /if \(!useServer \|\| !player\) \{ deviceSpeak/.test(voiceSrc));
+ok("pieces are fetched together and played in order; hush stops them all", /const audio = pieces\.map\(p => fetchPiece\(p\)\.catch\(\(\) => null\)\);/.test(voiceSrc)
+  && /export const hush = \(\) => \{\s*gen\+\+;[\s\S]{0,260}player\.pause\(\);[\s\S]{0,40}stopPiece\?\.\(\);/.test(voiceSrc));
+const pcs = (await import("../src/annaVoice.js")).voicePieces("**Hi Saad!** One quotation is still Sent. ≈ $0.012 Another short one. " + "x".repeat(500));
+ok("pieces are plain, the first starts alone, none is over the limit", pcs[0] === "Hi Saad!" && pcs.every(p => p.length <= 400 && !/\*\*|≈ \$/.test(p)), JSON.stringify(pcs.map(p => p.length)));
+ok("the player is unlocked by the tap that starts a talk (iOS)", /if \(listen\) unlockVoice\(\);/.test(desk) && /unlockVoice\(\); setTalk\(true\)/.test(chat));
 
 console.log("\nE. guided walkthroughs: Anna points, Saad presses");
 const { readdirSync } = await import("node:fs");
@@ -366,7 +390,7 @@ ok("the spend goes to the master account only, by the real role", /const spend =
   && /annaSpend=\{state\.anna\?\.spend \|\| null\}/.test(read("../src/App.tsx")) && /\{spend && \(/.test(chat));
 ok("spend is summed from priced audit lines, voice apart, with the limit from settings", /details: \{ contains: "≈ \$" \}/.test(server)
   && /if \(r\.action === "Anna Heard"\) voiceUSD \+= usd; else modelsUSD \+= usd;/.test(server) && /Number\(process\.env\.ANNA_MONTHLY_LIMIT_USD\) \|\| 50/.test(server));
-ok("past 80% it is a desk item for the master account", /state\.annaSpendAlerts = spend && spend\.modelsUSD >= 0\.8 \* spend\.limitUSD/.test(server)
+ok("past 80% it is a desk item for the master account", /state\.annaSpendAlerts = spend && \(spend\.modelsUSD >= 0\.8 \* spend\.limitUSD \|\| spend\.speechChars >= 0\.8 \* spend\.speechLimit\)/.test(server)
   && /\{ kind: "annaSpendAlerts", status: "Near limit", seat: MASTER, door: "help"/.test(read("../src/workflow.ts")));
 ok("no route reads another person's chats: every chat route is the owner's", (server.match(/app\.(get|post)\("\/api\/anna\/chats/g) || []).length === 3
   && chatQueries.every(q => /userId: me\.id\b|\{ id, userId,|userId \}|\{ id: chatId, userId \}|\{ id: row\.id, userId \}/.test(q) && !/userId: (req|String\(req)/.test(q)), chatQueries.join(" | "));

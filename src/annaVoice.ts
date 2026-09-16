@@ -64,14 +64,91 @@ export const clipBase64 = (clip: Blob) => new Promise<string>((resolve, reject) 
   r.readAsDataURL(clip);
 });
 
-/** Reads an answer aloud with the device's own voices; nothing leaves the device. */
-export function speak(text: string, onSpeaking: (on: boolean) => void = () => {}) {
-  if (typeof speechSynthesis === "undefined") return;
+/* ── Anna's voice. Layla (Arabic) and Ava (English) come from /api/anna/say, one piece at a time,
+   played in order as each arrives; the phone's own voice speaks whatever Azure cannot (a failure, or
+   the month's free characters used up). iOS plays audio only from a tap, so one player is unlocked
+   when the mic is tapped and reused for every piece. */
+const SILENT = "data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICA";   // 50 ms of silence
+let player: HTMLAudioElement | null = null;
+let stopPiece: (() => void) | null = null;
+let gen = 0;
+let current: ((on: boolean) => void) | null = null;   // whoever is being told "speaking"
+/** Call from the tap that starts a talk: it makes later, programmatic playback allowed on iOS. */
+export function unlockVoice() {
+  if (typeof Audio === "undefined") return;
+  if (!player) player = new Audio();
+  player.src = SILENT;
+  void player.play().catch(() => {});
+}
+
+/** Plain speech: no markdown, no cost lines; cut into pieces the server accepts (≤ 400 characters). */
+export function voicePieces(text: string): string[] {
+  const plainText = text.replace(/\*\*|__|`|#+\s|≈ \$[\d.]+/g, "").replace(/\s+/g, " ").trim();
+  const sentences = plainText.split(/(?<=[.!?؟])\s+|(?<=\n)/).map(x => x.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const s of sentences.flatMap(x => x.length > 380 ? x.match(/[\s\S]{1,380}(\s|$)/g) || [x] : [x])) {
+    const last = out[out.length - 1];
+    // Short sentences travel together (fewer requests), except the first, which should start at once.
+    if (last && out.length > 1 && last.length + s.length < 200) out[out.length - 1] = `${last} ${s}`; else out.push(s.trim());
+  }
+  return out;
+}
+
+function deviceSpeak(text: string, done: () => void) {
+  if (typeof speechSynthesis === "undefined" || !text) return done();
   speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text.replace(/\*\*/g, ""));
-  u.lang = /[؀-ۿ]/.test(text) ? "ar" : "en";
-  u.onstart = () => onSpeaking(true);
-  u.onend = u.onerror = () => onSpeaking(false);
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = /[\u0600-\u06FF]/.test(text) ? "ar" : "en";
+  u.onend = u.onerror = () => done();
   speechSynthesis.speak(u);
 }
-export const hush = () => { if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel(); };
+
+const fetchPiece = (text: string) =>
+  fetch("/api/anna/say", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) })
+    .then(r => (r.ok ? r.blob() : Promise.reject(new Error(String(r.status)))));
+
+/** Reads an answer aloud: Layla/Ava first, the phone's voice for anything they cannot say.
+ *  `useServer` false (or no unlocked player) means the phone's voice only. */
+export function speak(text: string, onSpeaking: (on: boolean) => void = () => {}, useServer = true) {
+  hush();
+  const my = ++gen;
+  const pieces = voicePieces(text);
+  if (!pieces.length) return;
+  current = onSpeaking;
+  onSpeaking(true);
+  const finish = () => { if (my === gen) { current = null; onSpeaking(false); } };
+  if (!useServer || !player) { deviceSpeak(pieces.join(" "), finish); return; }
+  // All pieces are fetched at once, and played in order as they are ready.
+  const audio = pieces.map(p => fetchPiece(p).catch(() => null));
+  void (async () => {
+    for (let i = 0; i < pieces.length; i++) {
+      if (my !== gen) return;
+      const blob = await audio[i];
+      if (my !== gen) return;
+      if (!blob) { deviceSpeak(pieces.slice(i).join(" "), finish); return; }
+      const url = URL.createObjectURL(blob);
+      const ok = await new Promise<boolean>(resolve => {
+        const p = player!;
+        stopPiece = () => resolve(false);
+        p.onended = () => resolve(true);
+        p.onerror = () => resolve(false);
+        p.src = url;
+        p.play().catch(() => resolve(false));
+      });
+      URL.revokeObjectURL(url);
+      stopPiece = null;
+      if (my !== gen) return;
+      if (!ok) { deviceSpeak(pieces.slice(i).join(" "), finish); return; }
+    }
+    finish();
+  })();
+}
+
+export const hush = () => {
+  gen++;
+  // Whoever was told "speaking" hears that it stopped (the waveform must not stay on).
+  const told = current; current = null; told?.(false);
+  if (player) { player.onended = null; player.pause(); }
+  stopPiece?.(); stopPiece = null;
+  if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+};

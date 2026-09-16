@@ -768,7 +768,7 @@ export interface DatabaseState {
   /** Feature requests: the viewer's own, or all for the master account. */
   featureRequests: FeatureRequest[];
   /** Whether Anna is on for this viewer (ANNA_ROLLOUT), and — for the master account only — this month's spend. */
-  anna?: { enabled: boolean; voice?: boolean; spend?: { month: string; modelsUSD: number; voiceUSD: number; limitUSD: number } | null };
+  anna?: { enabled: boolean; voice?: boolean; speech?: boolean; spend?: { month: string; modelsUSD: number; voiceUSD: number; limitUSD: number; speechChars?: number; speechLimit?: number } | null };
   /** The master account's spend warning; empty for everyone else. */
   annaSpendAlerts: AnnaSpendAlert[];
   siteUrl?: string;            // the website's public address (from SITE_PUBLIC_URL) — header link
