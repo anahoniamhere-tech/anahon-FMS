@@ -133,18 +133,16 @@ const longDate = (iso: string, arabic: boolean) => {
 const isArabic = (t: (s: string) => string) => /[\u0600-\u06FF]/.test(t("Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change."));
 
 /**
- * The quotation message in its four shapes. No date → no validity clause; no link (every AnaHon
- * quotation, and an iContent one not yet published) → the sentence reads exactly as it did before
- * links existed, never with an empty slot.
+ * The quotation message: no date → no validity clause. A published link goes on its own last line
+ * with nothing after it — a full stop after ".pdf" is a different URL, and the VPS answers it with
+ * the password prompt. Bare even in Arabic: a line holding only a URL is left-to-right by itself,
+ * and an invisible direction mark touching it could be swallowed by WhatsApp's link detection.
  */
 const QUOTE_SENTENCE: Record<string, string> = {
-  "date-nolink": "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}. Tell me if anything should change.",
-  "nodate-nolink": "Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change.",
-  "date-link": "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}: {link}. Tell me if anything should change.",
-  "nodate-link": "Hello {name}, here is quotation {ref} for {amount}: {link}. Tell me if anything should change.",
+  date: "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}. Tell me if anything should change.",
+  nodate: "Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change.",
 };
-// The link is left bare, even in Arabic: an invisible direction mark touching a URL can be swallowed
-// into it by WhatsApp's link detection, and a URL is strongly left-to-right on its own.
+const withLink = (text: string, link?: string) => (link ? `${text}\n${link.trim()}` : text);
 
 const signed = (text: string, issuedAs?: string) => {
   const arabic = /[\u0600-\u06FF]/.test(text);
@@ -164,8 +162,8 @@ export const WA_TEMPLATES = {
     fill(t("Hello {name}, we have paid voucher {voucherNo}, {amount}, on {date}. Please confirm receipt. — AnaHon"), p),
   /** The quotation itself, delivered by this message. Projects & funding. No date → no validity clause. */
   "client-quotation": (t: (s: string) => string, p: { name: string; ref: string; amount: string; validUntil?: string; issuedAs?: string; link?: string }) =>
-    signed(fill(t(QUOTE_SENTENCE[`${p.validUntil ? "date" : "nodate"}-${p.link ? "link" : "nolink"}`]),
-      { ...p, validUntil: longDate(p.validUntil || "", isArabic(t)), link: p.link || "" } as any), p.issuedAs),
+    withLink(signed(fill(t(QUOTE_SENTENCE[p.validUntil ? "date" : "nodate"]),
+      { ...p, validUntil: longDate(p.validUntil || "", isArabic(t)) } as any), p.issuedAs), p.link),
   /** Money is still owed on it. Projects & funding. */
   "client-balance": (t: (s: string) => string, p: { name: string; amount: string; date: string; issuedAs?: string }) =>
     signed(fill(t("Hello {name}, a balance of {amount} is outstanding since {date}. Could you let us know when it will be settled?"), p as any), p.issuedAs),
