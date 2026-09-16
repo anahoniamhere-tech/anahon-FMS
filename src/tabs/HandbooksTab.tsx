@@ -1118,8 +1118,8 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
                 {history.map(d => (
                   <button key={d.id} onClick={() => openDoc(d)}
                     className="block w-full text-start rounded-lg p-2 hover:bg-slate-50">
-                    <p className="text-[12px] font-semibold text-slate-700">{policyHeading(d.filename)}</p>
-                    <p className="text-[11px] text-slate-500">{d.note}</p>
+                    <p dir="auto" className="text-[12px] font-semibold text-slate-700 [text-align:match-parent]">{policyHeading(d.filename)}</p>
+                    <p dir="auto" className="text-[11px] text-slate-500 [text-align:match-parent]">{d.note}</p>
                   </button>
                 ))}
               </div>
