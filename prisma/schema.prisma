@@ -494,6 +494,22 @@ model Quotation {
   discountLabel    String @default("")
 }
 
+// A quotation share link (src/quoteShare.ts). Token = the file name on the VPS; never reused.
+model QuoteShare {
+  token         String  @id
+  quotationId   String
+  url           String
+  createdAt     String
+  createdById   String
+  createdByName String
+  expiresAt     String
+  revokedAt     String?
+  revokeReason  String  @default("")
+  revokePending Boolean @default(false)
+
+  @@index([quotationId])
+}
+
 model OrgSettings {
   id                        String  @id @default("settings")
   profileName               String

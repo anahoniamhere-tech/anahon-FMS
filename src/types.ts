@@ -775,6 +775,10 @@ export interface DatabaseState {
   editorialMeetings: EditorialMeeting[];
   clients: Client[];
   quotations: Quotation[];
+  /** Client links ever issued for quotations (src/quoteShare.ts). */
+  quoteShares?: { token: string; quotationId: string; url: string; createdAt: string; createdByName: string; expiresAt: string; revokedAt: string | null; revokeReason: string; revokePending: boolean }[];
+  /** The server can push links (its key is configured). */
+  quoteLinksReady?: boolean;
   networkContacts: NetworkContact[];
   /** The freelancer pool. Sent whole to the personnel-file roles, as name + skills to managers,
    *  and as [] to everyone else — see poolViewFor in personnelDocs.ts. */

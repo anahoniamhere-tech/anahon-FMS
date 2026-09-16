@@ -149,7 +149,7 @@ export const WA_TEMPLATES = {
   "supplier-paid": (t: (s: string) => string, p: { name: string; voucherNo: string; amount: string; date: string }) =>
     fill(t("Hello {name}, we have paid voucher {voucherNo}, {amount}, on {date}. Please confirm receipt. — AnaHon"), p),
   /** The quotation itself, delivered by this message. Projects & funding. No date → no validity clause. */
-  "client-quotation": (t: (s: string) => string, p: { name: string; ref: string; amount: string; validUntil?: string; issuedAs?: string }) =>
+  "client-quotation": (t: (s: string) => string, p: { name: string; ref: string; amount: string; validUntil?: string; issuedAs?: string; link?: string }) =>
     signed(fill(t(p.validUntil
       ? "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}. Tell me if anything should change."
       : "Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change."),

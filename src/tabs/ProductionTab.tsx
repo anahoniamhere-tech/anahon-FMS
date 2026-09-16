@@ -10,6 +10,7 @@ import { withTicket } from "../docTicket";
 import { outstandingOn, paidOn } from "../quoteTranches";
 import { DEFAULT_NEW_QUOTE_ISSUER, QUOTE_ISSUERS, QUOTE_ISSUER_LABELS, quoteTotals, discountBlocker, DEFAULT_DISCOUNT_LABEL } from "../quoteTotals";
 import { RECEIPT_CATEGORY, receiptLog, receiptNoOf } from "../receipts";
+import { liveShare, SHAREABLE_STATUSES } from "../quoteShare";
 import ReceiveOffbankForm from "./ReceiveOffbankForm";
 
 export default function ProductionTab({ currentUser, formatIn, formatUSD, openDoc, refreshState, state, t, triggerToast }: SharedProps) {
@@ -58,8 +59,9 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...quoteForm, user: currentUser })
       });
-      if (!res.ok) throw new Error((await res.json()).error || "Failed to save quotation");
-      triggerToast(`Quotation ${quoteForm.id ? "updated" : "created"}: ${quoteForm.title}`);
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || "Failed to save quotation");
+      triggerToast(`Quotation ${quoteForm.id ? "updated" : "created"}: ${quoteForm.title}${out.linkNote ? ` — ${out.linkNote}` : ""}`);
       setQuoteForm(null);
       refreshState();
     } catch (err: any) {
@@ -164,8 +166,9 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...q, status, user: currentUser })
       });
-      if (!res.ok) throw new Error((await res.json()).error || "Failed to update quotation");
-      triggerToast(`${q.quoteNo} → ${status}`);
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || "Failed to update quotation");
+      triggerToast(`${q.quoteNo} → ${status}${out.linkNote ? ` — ${out.linkNote}` : ""}`);
       refreshState();
     } catch (err: any) {
       triggerToast(err.message, "error");
@@ -189,6 +192,42 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
       triggerToast(unlink
         ? channel ? `${q.quoteNo}: ${t("unlinked — the money stays recorded as received through")} ${channel.name}.` : `${q.quoteNo}: deposit removed.`
         : `${q.quoteNo}: deposit recorded against the quotation.`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  /** Publish the quotation PDF for the client (src/quoteShare.ts). A second press issues a new
+   *  link and retires the first — a token is never reused. */
+  const shareQuotation = async (q: Quotation) => {
+    try {
+      const res = await fetch("/api/quotations/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: q.id, user: currentUser })
+      });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || "The link was not created.");
+      try { await navigator.clipboard.writeText(out.share.url); } catch { /* the row shows it anyway */ }
+      triggerToast(`${q.quoteNo}: ${t("client link ready and copied")}.`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
+  const revokeQuoteLink = async (q: Quotation) => {
+    if (!window.confirm(`${t("Revoke the client link for")} ${q.quoteNo}? ${t("The client will no longer be able to open it.")}`)) return;
+    try {
+      const res = await fetch("/api/quotations/share/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: q.id, user: currentUser })
+      });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || "The link was not revoked.");
+      triggerToast(out.pending ? `${q.quoteNo}: ${t("link withdrawn; the server could not be reached, so deletion is pending and retried")}.` : `${q.quoteNo}: ${t("link revoked")}.`);
       refreshState();
     } catch (err: any) {
       triggerToast(err.message, "error");
@@ -681,7 +720,32 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                   — an offer still out is a quotation to chase, anything invoiced or
                                   part-paid is a balance, and the figure quoted is what is actually
                                   still owed. Both sentences already existed in shared.ts. */}
+                              {/* The client link (src/quoteShare.ts): iContent quotations only, never a Draft.
+                                  The PDF lives on icontent.studio until its validity date. */}
+                              {q.issuedAs === "icontent" && SHAREABLE_STATUSES.includes(q.status) && MANAGERS.includes(currentUser.role) && (() => {
+                                const live = liveShare(state.quoteShares || [], q.id, new Date());
+                                const pending = (state.quoteShares || []).some(r => r.quotationId === q.id && r.revokePending);
+                                return (
+                                  <span className="inline-flex items-center gap-1">
+                                    {live ? (
+                                      <>
+                                        <button type="button" onClick={() => navigator.clipboard.writeText(live.url).then(() => triggerToast(t("Client link copied.")), () => window.prompt(t("Client link"), live.url))}
+                                          title={`${live.url} — ${t("live until")} ${live.expiresAt.slice(0, 10)}`}
+                                          className="text-sky-700 hover:text-sky-900 p-1 text-[10px] font-bold rounded hover:bg-sky-50">🔗 {t("client link")}</button>
+                                        <button type="button" onClick={() => revokeQuoteLink(q)} title={t("Revoke the client link")} aria-label={`${t("Revoke the client link")} ${q.quoteNo}`}
+                                          className="text-slate-400 hover:text-red-600 p-1 text-[10px] rounded hover:bg-slate-100">✕</button>
+                                      </>
+                                    ) : (
+                                      <button type="button" onClick={() => shareQuotation(q)} disabled={!state.quoteLinksReady}
+                                        title={state.quoteLinksReady ? t("Publish this quotation's PDF so the client can open it from WhatsApp") : t("Quotation links are not set up on this server yet")}
+                                        className="text-slate-500 hover:text-sky-700 p-1 text-[10px] font-semibold rounded hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">🔗 {t("Get client link")}</button>
+                                    )}
+                                    {pending && <span className="text-[10px] font-bold text-amber-700" title={t("The server could not be reached when the link was revoked; deletion is retried every 10 minutes and the file expires on its own.")}>{t("revocation pending")}</span>}
+                                  </span>
+                                );
+                              })()}
                               {["Sent", "Accepted", "Invoiced"].includes(q.status) && (() => {
+                                const shared = liveShare(state.quoteShares || [], q.id, new Date());
                                 const paidSoFar = paidOn(q.paymentTxIds || [], state.bankTransactions);
                                 const stillOwed = outstandingOn(q.amount, paidSoFar);
                                 const first = (client?.name || "").split(/\s+/)[0];
@@ -694,7 +758,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                 // balance, and the figure is what the books still show owed.
                                 const stillAnOffer = q.status === "Sent" && paidSoFar === 0;
                                 const text = stillAnOffer
-                                  ? WA_TEMPLATES["client-quotation"](t, { name: first, ref: q.quoteNo, amount: money(q.amount), validUntil: q.validUntil || "", issuedAs: q.issuedAs })
+                                  ? WA_TEMPLATES["client-quotation"](t, { name: first, ref: q.quoteNo, amount: money(q.amount), validUntil: q.validUntil || "", issuedAs: q.issuedAs, link: shared?.url || "" })
                                   : WA_TEMPLATES["client-balance"](t, { name: first, amount: money(stillOwed), date: q.date, issuedAs: q.issuedAs });
                                 const link = client ? waLink(client.phone || "", text) : null;
                                 return link ? (

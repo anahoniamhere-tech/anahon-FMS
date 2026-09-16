@@ -132,6 +132,8 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/quotations/save": MANAGERS,
   "/api/quotations/delete": MANAGERS,
   "/api/quotations/generate-doc": MANAGERS,
+  "/api/quotations/share": MANAGERS,                  // a client link on the VPS (QUOTATION-LINKS.md)
+  "/api/quotations/share/revoke": MANAGERS,
   "/api/quotations/issue-receipt": FINANCE,
   "/api/quotations/link-payment": FINANCE,
 

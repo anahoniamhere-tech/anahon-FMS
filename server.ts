@@ -47,6 +47,7 @@ import { isFloat as isFloatAccount } from "./src/pettyCash.js";
 import { pairFxLegs, isFxReversal, FX_PATTERN } from "./src/fxPairs.js";
 import { CONSULTANT_REVIEW_CATEGORY, isMonth, monthBounds, packExcludes, reconcileMarkBlocker, legsOf, trialBalance, openItems, paymentDate, lateRecords, safeName, type Recorded } from "./src/consultantPack.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
+import { shareBlocker, shareExpiry, shareUrl, remotePath, printedChange, SHAREABLE_STATUSES } from "./src/quoteShare.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
@@ -984,6 +985,9 @@ async function loadState(viewer?: any) {
       // The deposits that settled it, in linking order. Amounts stay on the bank lines.
       paymentTxIds: JSON.parse(q.paymentTxIdsJson || "[]")
     })),
+    // Client links ever issued (src/quoteShare.ts). This branch is FULL_VIEW only, like the quotations.
+    quoteShares: await prisma.quoteShare.findMany({ orderBy: { createdAt: "desc" } }),
+    quoteLinksReady: !!quoteLinkSsh(),
     // Networking register — people met at trainings and events. No financial data.
     networkContacts,
     // The freelancer pool. Personnel-file roles get the whole row; managers get name and skills
@@ -3544,7 +3548,7 @@ const STRATEGY_DOC_IDS = [
   // The governing text since the 12 Sep compilation (Saad, 15 Sep 2026). The four per-policy files
   // this list used to name (007, 008, 018, 019) are under Handbooks/Superseded and no longer govern.
   "doc-hb-compiled-anahon-strategy-007",                    // ANH-DOC-00652 · Strategy 007
-  "doc-hb-compiled-anahon-programmes-and-funding-handbook"  // ANH-DOC-00651 · Parts One–Four = 018, 019, 011, 008
+  "doc-hb-compiled-anahon-programmes-and-funding-handbook"  // ANH-DOC-00651 · edition 3: chapters P8 Fundraising and Grants (old 018+019) and P9 Programme Quality (old 011+008)
 ];
 
 let strategyCache: { key: string; text: string; chars: number; docs: number } | null = null;
@@ -8365,13 +8369,33 @@ app.post("/api/quotations/save", async (req, res) => {
       }
       quote = await prisma.quotation.create({ data: { id: `qt-${Date.now()}`, quoteNo: no, ...data } });
     }
+    // A client link follows what the client reads: a changed quotation gets a new link and the
+    // old one dies; a quotation that is no longer an open offer loses its link.
+    let linkNote = "";
+    if (existing && await prisma.quoteShare.count({ where: { quotationId: quote.id, revokedAt: null } })) {
+      const blocked = shareBlocker(quote, new Date());
+      const changed = printedChange(existing, quote);
+      if (blocked) {
+        await revokeShares(quote.id, `no longer shareable: ${blocked}`, (req as any).dbUser);
+        linkNote = " Its client link was revoked.";
+      } else if (changed.length) {
+        try {
+          await issueShare(quote, (req as any).dbUser, `quotation changed (${changed.join(", ")})`);
+          linkNote = " A new client link was issued and the old one revoked — send the client the new link.";
+        } catch (e: any) {
+          // Never leave the old price live behind a link the client already holds.
+          await revokeShares(quote.id, `quotation changed and the new link failed: ${e.message}`, (req as any).dbUser);
+          linkNote = ` The old client link was revoked; a new one could not be created (${e.message}).`;
+        }
+      }
+    }
     await createAuditLog(
       user?.id,
       user?.name,
       existing ? "Quotation Updated" : "Quotation Created",
       `${existing ? `Updated (was ${existing.status})` : "Created"} ${quote.quoteNo} for ${client.name}: "${quote.title}" — ${quote.currency} ${quote.amount}${quote.discountAmount ? ` (package ${sums.packageValue}, ${quote.discountLabel || "discount"} −${quote.discountAmount})` : ""}, status ${quote.status}, issued as ${quote.issuedAs}.`
     );
-    res.json({ success: true, quotation: quote });
+    res.json({ success: true, quotation: quote, linkNote: linkNote.trim() });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -8426,6 +8450,137 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
   }
 });
 
+/** The client-facing PDF bytes. One renderer for the door's download and the share link, so the two can never differ. */
+async function quotationPdf(quote: any, client: any, preparer: { name: string; role: string }): Promise<Buffer> {
+  return htmlToPdf(quotationHtml({
+    quoteNo: quote.quoteNo,
+    date: quote.date,
+    validUntil: quote.validUntil,
+    preparedBy: `${preparer.name} — ${preparer.role === "Super Admin" ? "Executive Director" : preparer.role}`,
+    clientName: client.name,
+    clientContact: client.contact,
+    clientPhone: client.phone,
+    clientTaxId: client.taxId,
+    currency: quote.currency,
+    total: quote.amount,
+    items: JSON.parse(quote.itemsJson || "[]"),
+    terms: JSON.parse(quote.termsJson || "{}"),
+    notes: quote.notes,
+    issuedAs: quote.issuedAs, discountAmount: quote.discountAmount, discountLabel: quote.discountLabel, title: quote.title
+  }));
+}
+
+// ---- Quotation share links (src/quoteShare.ts; VPS contract in QUOTATION-LINKS.md) ----------
+// Push only: the FMS writes /srv/quotations/<token>.pdf on the VPS with its mtime set to the
+// expiry, and deletes it to revoke. Nothing about the FMS becomes reachable. With the key, the
+// pinned host key or the host unset, no link is issued — there is no fallback.
+function quoteLinkSsh(): { host: string; ssh: string[] } | null {
+  const key = process.env.QUOTE_LINK_SSH_KEY, known = process.env.QUOTE_LINK_KNOWN_HOSTS, host = process.env.QUOTE_LINK_HOST;
+  if (!key || !known || !host) return null;
+  return { host, ssh: ["-i", key, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", `UserKnownHostsFile=${known}`, "-o", "ConnectTimeout=15"] };
+}
+const QUOTE_LINK_UNSET = "Quotation links are not set up on this server yet (the push key is missing). Send the PDF instead.";
+
+async function run(cmd: string, args: string[]): Promise<void> {
+  const { execFile } = await import("child_process");
+  await new Promise<void>((resolve, reject) =>
+    execFile(cmd, args, { timeout: 60_000 }, (err, _out, stderr) => err ? reject(new Error(`${cmd}: ${String(stderr || err.message).trim().slice(0, 300)}`)) : resolve()));
+}
+
+async function pushSharePdf(token: string, pdf: Buffer, expiresAt: Date): Promise<void> {
+  const cfg = quoteLinkSsh();
+  if (!cfg) throw new Error(QUOTE_LINK_UNSET);
+  const local = path.join(os.tmpdir(), `qshare-${token}.pdf`);
+  try {
+    fs.writeFileSync(local, pdf, { mode: 0o600 });
+    // The mtime IS the expiry on the VPS: its cron deletes any file whose mtime has passed.
+    fs.utimesSync(local, expiresAt, expiresAt);
+    // -a keeps the mtime (a plain scp would land it already expired); -e carries the pinned host key.
+    await run("rsync", ["-a", "--chmod=F640", "-e", ["ssh", ...cfg.ssh].join(" "), local, `${cfg.host}:${remotePath(token)}`]);
+  } finally {
+    fs.rmSync(local, { force: true });
+  }
+}
+
+async function deleteSharePdf(token: string): Promise<void> {
+  const cfg = quoteLinkSsh();
+  if (!cfg) throw new Error(QUOTE_LINK_UNSET);
+  await run("ssh", [...cfg.ssh, cfg.host, "rm", "-f", remotePath(token)]);
+}
+
+/** Stop offering every live link of a quotation; delete on the VPS, or leave it pending for the retry sweep. */
+async function revokeShares(quotationId: string, reason: string, who: { id?: string; name?: string } | null): Promise<{ revoked: number; pending: number }> {
+  const rows = await prisma.quoteShare.findMany({ where: { quotationId, revokedAt: null } });
+  let pending = 0;
+  for (const r of rows) {
+    let ok = true;
+    try { await deleteSharePdf(r.token); } catch { ok = false; pending++; }
+    await prisma.quoteShare.update({ where: { token: r.token }, data: { revokedAt: new Date().toISOString(), revokeReason: reason, revokePending: !ok } });
+    await createAuditLog(who?.id, who?.name || "System", "Quotation Link Revoked",
+      `Link ${r.token.slice(0, 8)}… for quotation ${quotationId}: ${reason}.${ok ? "" : " The VPS could not be reached — revocation pending; retried every 10 minutes, and the file expires on its own at " + r.expiresAt + "."}`);
+  }
+  return { revoked: rows.length, pending };
+}
+
+/** Issue a fresh link (never a reused token) and retire any earlier one. */
+async function issueShare(quote: any, who: { id: string; name: string; role: string }, reason: string) {
+  const client = await prisma.client.findUnique({ where: { id: quote.clientId } });
+  if (!client) throw new Error("Quotation's client no longer exists.");
+  const now = new Date();
+  const expiresAt = shareExpiry(quote.validUntil, now);
+  const token = crypto.randomBytes(16).toString("hex");
+  const pdf = await quotationPdf(quote, client, who);
+  await pushSharePdf(token, pdf, expiresAt);
+  // Retire the old link only once the new one exists, so a failed push leaves the client's link alone.
+  await revokeShares(quote.id, `replaced by a new link (${reason})`, who);
+  const row = await prisma.quoteShare.create({ data: {
+    token, quotationId: quote.id, url: shareUrl(token), createdAt: now.toISOString(),
+    createdById: who.id, createdByName: who.name, expiresAt: expiresAt.toISOString(),
+  } });
+  await createAuditLog(who.id, who.name, "Quotation Link Issued",
+    `Link ${token.slice(0, 8)}… for ${quote.quoteNo} (${client.name}, ${quote.currency} ${quote.amount}), ${reason}; live until ${row.expiresAt}.`);
+  return row;
+}
+
+async function retryPendingRevokes() {
+  if (!quoteLinkSsh()) return;
+  for (const r of await prisma.quoteShare.findMany({ where: { revokePending: true } })) {
+    try {
+      await deleteSharePdf(r.token);
+      await prisma.quoteShare.update({ where: { token: r.token }, data: { revokePending: false } });
+      await createAuditLog(undefined, "System", "Quotation Link Revoked", `Pending revocation of link ${r.token.slice(0, 8)}… completed on the VPS.`);
+    } catch { /* still unreachable; next sweep */ }
+  }
+}
+setInterval(() => { retryPendingRevokes().catch(() => {}); }, 10 * 60 * 1000).unref();
+
+app.post("/api/quotations/share", async (req, res) => {
+  try {
+    const who = (req as any).dbUser;
+    const quote = await prisma.quotation.findUnique({ where: { id: req.body.id } });
+    if (!quote) return res.status(404).json({ error: "Quotation not found." });
+    const blocked = shareBlocker(quote, new Date());
+    if (blocked) return res.status(400).json({ error: blocked });
+    if (!quoteLinkSsh()) return res.status(503).json({ error: QUOTE_LINK_UNSET });
+    const share = await issueShare(quote, who, "issued from the quotation");
+    res.json({ success: true, share });
+  } catch (err: any) {
+    res.status(502).json({ error: `The link was not created: ${err.message}` });
+  }
+});
+
+app.post("/api/quotations/share/revoke", async (req, res) => {
+  try {
+    const who = (req as any).dbUser;
+    const quote = await prisma.quotation.findUnique({ where: { id: req.body.id } });
+    if (!quote) return res.status(404).json({ error: "Quotation not found." });
+    const out = await revokeShares(quote.id, "revoked from the quotation", who);
+    res.json({ success: true, ...out });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // The client-facing PDF. Rendered from the same quotationHtml the vault copy uses, so the
 // paper the client signs and the paper on file can never diverge. Reuses htmlToPdf (the
 // report pipeline) rather than introducing a second PDF path.
@@ -8446,24 +8601,7 @@ app.get("/api/quotations/:id/pdf", async (req, res) => {
     const client = await prisma.client.findUnique({ where: { id: quote.clientId } });
     if (!client) return res.status(400).json({ error: "Quotation's client no longer exists." });
 
-    const html = quotationHtml({
-      quoteNo: quote.quoteNo,
-      date: quote.date,
-      validUntil: quote.validUntil,
-      preparedBy: `${viewer.name} — ${viewer.role === "Super Admin" ? "Executive Director" : viewer.role}`,
-      clientName: client.name,
-      clientContact: client.contact,
-      clientPhone: client.phone,
-      clientTaxId: client.taxId,
-      currency: quote.currency,
-      total: quote.amount,
-      items: JSON.parse(quote.itemsJson || "[]"),
-      terms: JSON.parse(quote.termsJson || "{}"),
-      notes: quote.notes,
-      issuedAs: quote.issuedAs, discountAmount: quote.discountAmount, discountLabel: quote.discountLabel, title: quote.title
-    });
-
-    const pdf = await htmlToPdf(html);
+    const pdf = await quotationPdf(quote, client, viewer);
     // The file the client receives is named for the issuer too.
     const name = `${quote.issuedAs === "icontent" ? "iContent" : "AnaHon"}_Quotation_${quote.quoteNo.replace("/", "-")}_${client.name.replace(/\s+/g, "")}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
@@ -8564,6 +8702,8 @@ async function settleQuotation(id: string, current: string, amount: number, tran
   const paid = paidOn(tranches, txs);
   const status = tranchedStatus(current, amount, paid);
   await prisma.quotation.update({ where: { id }, data: { paymentTxIdsJson: JSON.stringify(tranches), status } });
+  // Settled in full: the offer is closed, so its client link goes too.
+  if (status !== current && !SHAREABLE_STATUSES.includes(status)) await revokeShares(id, `quotation is now ${status}`, null);
   return { paid, status };
 }
 
@@ -8629,6 +8769,7 @@ app.post("/api/quotations/delete", async (req, res) => {
     const { id, user } = req.body;
     const quote = await prisma.quotation.findUnique({ where: { id } });
     if (!quote) return res.status(404).json({ error: "Quotation not found." });
+    await revokeShares(id, "quotation deleted", (req as any).dbUser);
     await prisma.quotation.delete({ where: { id } });
     await createAuditLog(user?.id, user?.name, "Quotation Deleted", `Deleted quotation ${quote.quoteNo}: "${quote.title}" (${quote.currency} ${quote.amount}, status ${quote.status}).`);
     res.json({ success: true });
