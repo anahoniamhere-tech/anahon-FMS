@@ -181,7 +181,7 @@ ok("deleting asks first", (chat.match(/window\.confirm\(/g) || []).length === 1 
 ok("the confirm route is checked against the closed list first, and a contract never posts",
   /if \(!\(CONFIRM_ROUTES as readonly string\[\]\)\.includes\(p\.confirmRoute\) \|\| p\.confirmRoute === "form:contract"\) return;\s*setCards/.test(chat));
 ok("a confirmed quotation is always a Draft", /const body = p\.kind === "quotation" \? \{ \.\.\.p\.data, status: "Draft" \} : p\.data;/.test(chat));
-ok("a card is never run on arrival", /actions\.forEach\(a => \{ if \(a\.type !== "proposal"\) run\(a\); \}\);/.test(chat));
+ok("only navigation runs on arrival; cards and name choices wait for a tap", /actions\.forEach\(a => \{ if \(a\.type === "open_door" \|\| a\.type === "open_record"\) run\(a\); \}\);/.test(chat));
 ok("only plain text turns are sent", /messages: history\.map\(m => \(\{ role: m\.role, content: m\.content \}\)\)/.test(chat));
 ok("a failed turn is never sent back", /msgs\.filter\(m => !m\.error\)/.test(chat));
 ok("a navigation action can only open a door or a record",
@@ -238,7 +238,23 @@ ok("a blocked provider gets no contract card", "error" in draftTool("draft_contr
 ok("an end before the start is refused", "error" in draftTool("draft_contract", { counterparty: "Omar Films", project: "SKF", startDate: "2026-12-01", endDate: "2026-10-01", monthlyFee: 1, contractTotal: 1, role: "x" }, c2));
 const dr: any = draftTool("draft_request", { title: "Bulk upload", need: "upload 20 receipts at once", door: "banking", urgency: "high" }, c2);
 ok("a request card drops a door the user lacks", dr.proposal?.data.door === "" && dr.proposal.confirmRoute === "/api/requests/save");
-ok("the route shows a card and saves nothing", /draftTool\(c\.name, c\.input, ctx\)[\s\S]{0,200}actions\.push\(a\)[\s\S]{0,200}"Anna Draft", `turn \$\{turn\} · \$\{c\.name\}`/.test(route));
+ok("the route shows a card and saves nothing", /draftTool\(c\.name, c\.input, ctx\)[\s\S]{0,200}actions\.push\(a\)[\s\S]{0,300}"Anna Draft", `turn \$\{turn\} · \$\{c\.name\}`/.test(route));
+
+console.log("\nN. a close name is suggested, never picked (\"Maroon\" → Maroun Asmar, Front desk 16 Sep)");
+const nctx: AnnaCtx = { ...ctx, state: { ...st2, clients: [{ id: "c1", name: "Maroun Asmar" }, { id: "c9", name: "Rami Khoury" }] } };
+const quote = (client: string): any => draftTool("draft_quotation", { client, title: "Reel", items: [{ service: "Edit", unitPrice: 1, qty: 1 }] }, nctx);
+for (const said of ["Maroon", "مارون", "Maron", "Marun Asmar"])
+  ok(`"${said}" makes no card and suggests Maroun Asmar`, !quote(said).proposal && JSON.stringify(quote(said).suggest) === '["Maroun Asmar"]', JSON.stringify(quote(said)));
+ok("a suggestion never offers to register a new client", !/registered on the Clients/.test(quote("Maroon").error));
+ok("the exact name, a first name or an accent-free spelling still makes the card",
+  ["maroun asmar", "Maroun", "asmar", "Marôun"].every(n => quote(n).proposal?.data.clientId === "c1"));
+ok("a name like nothing is refused, with where to register", !quote("Bob").suggest && /registered on the Clients/.test(quote("Bob").error));
+ok("people are suggested the same way", JSON.stringify((draftTool("draft_task", { title: "x", dueDate: "2026-09-20", assignee: "Rana Hadad" }, c2) as any).suggest) === '["Rana Haddad"]');
+ok("the route turns suggestions into a choice for Saad", /else \{ out = a; if \(a\.suggest\?\.length\) actions\.push\(\{ type: "choice", options: a\.suggest \}\); \}/.test(route));
+ok("a tap sends his choice as his own next message, only on the latest answer",
+  /onClick=\{\(\) => send\(`\$\{t\("I meant"\)\}: \$\{name\.slice\(0, 80\)\}`\)\} disabled=\{busy \|\| !!m\.past \|\| i !== msgs\.length - 1\}/.test(chat));
+ok("she answers in the language of his latest message, not of the name", /language of his latest message: English when he wrote English/.test(annaSystem("Super Admin", "", "2026-09-16")));
+ok("Anna is told to ask, never choose", /never choose for him or offer to register a new one/.test(annaSystem("Super Admin", "", "2026-09-16")));
 const labelled = (path: string) => { const a = server.indexOf(`app.post("${path}"`); const b = server.indexOf("\n});\n", a); return a > 0 && /\$\{draftedBy\(req\)\}`/.test(server.slice(a, b)); };
 ok("the three save routes label an Anna save in their audit line", ["/api/quotations/save", "/api/compliance/save", "/api/requests/save"].every(labelled));
 ok("the label reads one header, nothing else", /const draftedBy = \(req: any\) => req\.get\?\.\("X-Drafted-By"\) === "anna" \? " \(drafted by Anna\)" : "";/.test(server));

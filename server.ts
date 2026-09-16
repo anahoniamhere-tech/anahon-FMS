@@ -1823,7 +1823,8 @@ app.post("/api/anna/turn", async (req, res) => {
         } else if ((DRAFT_TOOLS as readonly string[]).includes(c.name)) {
           // A card for Saad, never a write: his Confirm or Save on the existing screen does that.
           const a = draftTool(c.name, c.input, ctx);
-          if ("type" in a) { actions.push(a); out = { ok: "A draft card is shown to the user. Nothing is saved until the user confirms it." }; } else out = a;
+          if ("type" in a) { actions.push(a); out = { ok: "A draft card is shown to the user. Nothing is saved until the user confirms it." }; }
+          else { out = a; if (a.suggest?.length) actions.push({ type: "choice", options: a.suggest }); }
           await createAuditLog(viewer.id, viewer.name, "Anna Draft", `turn ${turn} · ${c.name}`);
         } else if (c.name === "policy_answer") {
           const policies = await policyCorpus();

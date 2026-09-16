@@ -971,6 +971,7 @@ export const AR: Record<string, string> = {
   "The microphone is not allowed. Allow it for this app, then try again.": "الميكروفون غير مسموح. اسمح به لهذا التطبيق ثم حاول مجددًا.",
   "Stop and send": "إيقاف وإرسال",
   "Speak to Anna": "تحدّث إلى Anna",
+  "I meant": "قصدت",
   "From an earlier session — ask Anna again to act on it.": "من جلسة سابقة — اطلب من Anna مجددًا لتنفيذها.",
   "Ask Anna…": "اسأل Anna…",
   "Anna is looking…": "Anna تبحث…",

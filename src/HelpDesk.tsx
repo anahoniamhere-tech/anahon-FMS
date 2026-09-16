@@ -48,7 +48,7 @@ function rich(text: string, onOpenDoor: (navKey: string, focus?: string) => void
    their cards: a card's buttons belong to the turn that made it, so an old draft cannot be
    confirmed twice. Actions are navigation only — a door or a record — and run once on arrival. */
 type NavAction = { type: "open_door"; door: string } | { type: "open_record"; kind: string; id: string };
-type AnnaAction = NavAction | { type: "proposal"; proposal: Proposal };
+type AnnaAction = NavAction | { type: "proposal"; proposal: Proposal } | { type: "choice"; options: string[] };
 type CardState = "open" | "saving" | "saved" | "gone" | { error: string };
 /** Where a saved draft lives, for the button after Confirm. */
 const DRAFT_DOOR: Record<string, string> = { quotation: "production", task: "mydesk", request: "help" };
@@ -202,7 +202,7 @@ function AnnaChat({ t, lang, voiceReady, doorLabel, onOpenDoor, onOpenRecord, on
       if (d.chatId) setChatId(d.chatId);
       if (readAloud && d.answer) speak(String(d.answer));
       setMsgs(prev => [...prev, { role: "assistant", content: String(d.answer || ""), actions, usd: d.usage?.usd }]);
-      actions.forEach(a => { if (a.type !== "proposal") run(a); });
+      actions.forEach(a => { if (a.type === "open_door" || a.type === "open_record") run(a); });
     } catch (e: any) {
       // A failed turn is shown but never sent back as history; the question stays so it can be retried.
       setMsgs(prev => [...prev.slice(0, -1), { ...prev[prev.length - 1], error: true }, { role: "assistant", content: e.message, error: true }]);
@@ -258,7 +258,17 @@ function AnnaChat({ t, lang, voiceReady, doorLabel, onOpenDoor, onOpenRecord, on
         ) : (
           <div key={i} className="w-fit max-w-[95%] space-y-1.5 rounded-2xl bg-slate-100 px-3 py-2">
             <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-800">{rich(m.content, onOpenDoor)}</p>
-            {(m.actions || []).map((a, k) => a.type === "proposal" ? (() => {
+            {(m.actions || []).map((a, k) => a.type === "choice" ? (
+              // A close spelling is never picked for Saad: he taps the one he meant, which is sent as his reply.
+              <div key={k} className="flex flex-wrap gap-1.5">
+                {a.options.map(name => (
+                  <button key={name} onClick={() => send(`${t("I meant")}: ${name.slice(0, 80)}`)} disabled={busy || !!m.past || i !== msgs.length - 1}
+                    className="min-h-[36px] rounded-lg border border-[#6D1A1A] px-3 text-[11px] font-bold text-[#6D1A1A] transition-colors hover:bg-[#6D1A1A]/5 disabled:opacity-40">
+                    {name}
+                  </button>
+                ))}
+              </div>
+            ) : a.type === "proposal" ? (() => {
               const key = `${i}:${k}`, st = cards[key] || "open", p = a.proposal;
               if (st === "gone") return <p key={k} className="text-[11px] text-slate-400">{t("Discarded")}</p>;
               return (
