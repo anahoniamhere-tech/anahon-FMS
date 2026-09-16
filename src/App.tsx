@@ -1495,11 +1495,12 @@ export default function App() {
         <button
           onClick={() => setGapsOpen(true)}
           title="Documents missing against posted spend"
+          data-float="gaps"
           className="fixed bottom-5 end-5 z-[95] flex items-center gap-1.5 px-3 py-2.5 sm:gap-2 sm:px-4 sm:py-3 rounded-full shadow-lg
                      bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-colors"
         >
-          <span className="text-base leading-none">📄</span>
-          <span>{evidenceGaps.total} missing</span>
+          <span data-float-label className="text-base leading-none">📄</span>
+          <span>{evidenceGaps.total}<span data-float-label> missing</span></span>
         </button>
       )}
 

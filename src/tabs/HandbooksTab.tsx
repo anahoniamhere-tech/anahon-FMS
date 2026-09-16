@@ -424,6 +424,13 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     return { lead: text(lead), sections: Object.fromEntries(sections.map(s => [s.id, `${s.title}\n${text(s.blocks)}`])) };
   }, [lead, sections]);
 
+  // While a policy is open, index.css tucks the floating help bubble and gaps pill away on a phone.
+  useEffect(() => {
+    if (!selected) return;
+    document.body.dataset.reading = "policy";
+    return () => { delete document.body.dataset.reading; };
+  }, [selected]);
+
   // A TOC jump may target a section that is still collapsed: open it first, then scroll
   // once React has rendered it.
   // Lands 8px under the phone bar's real bottom edge (its height changes with the search row

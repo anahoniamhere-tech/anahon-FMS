@@ -228,6 +228,7 @@ export default function HelpDesk({
     return (
       <button
         onClick={() => setOpen(true)}
+        data-float="help"
         title={t("Ask for help")}
         aria-label={t("Ask for help")}
         className="absolute bottom-5 start-5 md:start-8 z-[95] flex h-12 w-12 items-center justify-center rounded-full bg-[#6D1A1A] text-white shadow-lg shadow-[#6D1A1A]/25 transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-[#4A1010] hover:shadow-xl hover:shadow-[#6D1A1A]/30"
