@@ -162,7 +162,7 @@ function renderBody(blocks: BodyBlock[]) {
       const { kind, items } = i < blocks.length && (blocks[i].kind === "bullet" || blocks[i].kind === "numbered") ? readList() : { kind: "bullet" as const, items: [] };
       const Tag = kind === "numbered" ? "ol" : "ul";
       nodes.push(
-        <div key={`label-${i}`} className="my-4 rounded-xl border border-amber-100 bg-amber-50/60 p-4">
+        <div key={`label-${i}`} dir="auto" className="my-4 rounded-xl border border-amber-100 bg-amber-50/60 p-4">
           <p className="text-[13px] font-bold text-amber-900">{label}</p>
           {items.length > 0 && (
             <Tag className={`mt-2 space-y-1.5 ps-5 text-[13px] leading-relaxed text-amber-950 ${kind === "numbered" ? "list-decimal" : "list-disc"}`}>
@@ -177,7 +177,7 @@ function renderBody(blocks: BodyBlock[]) {
       const { kind, items } = readList();
       const Tag = kind === "numbered" ? "ol" : "ul";
       nodes.push(
-        <Tag key={`list-${i}`} className={`my-3 space-y-1.5 ps-5 text-[13px] leading-relaxed text-slate-800 ${kind === "numbered" ? "list-decimal" : "list-disc"}`}>
+        <Tag key={`list-${i}`} dir="auto" className={`my-3 space-y-1.5 ps-5 text-[13px] leading-relaxed text-slate-800 ${kind === "numbered" ? "list-decimal" : "list-disc"}`}>
           {items.map((it, j) => <li key={j}>{it}</li>)}
         </Tag>
       );
@@ -192,7 +192,7 @@ function renderBody(blocks: BodyBlock[]) {
       );
       i++; continue;
     }
-    if (b.kind === "p") nodes.push(<p key={i} className="mt-3 text-[13px] leading-relaxed text-slate-800 first:mt-0">{b.text}</p>);
+    if (b.kind === "p") nodes.push(<p key={i} dir="auto" className="mt-3 text-[13px] leading-relaxed text-slate-800 first:mt-0">{b.text}</p>);
     i++;
   }
   return nodes;
@@ -404,9 +404,9 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     const numTitle = (num: string, title: string, numClass: string) =>
       isIntroNum(num) ? title : <span dir="ltr"><span className={`me-2 font-mono ${numClass}`}>{num}{num.includes(".") ? "" : "."}</span>{title}</span>;
 
-    const tocList = () => (
+    const tocList = (subsections: boolean) => (
       <nav className="space-y-0.5">
-        {toc.map(s => (
+        {toc.filter(s => subsections || s.level === 2).map(s => (
           <button key={s.id} onClick={() => jump(s.id, s.parent)}
             className={`block min-h-11 w-full rounded-md px-2 py-2 text-start text-[13px] md:min-h-0 md:py-1.5 ${
               s.level === 3 ? "ps-5 text-slate-500 hover:bg-slate-50" :
@@ -424,7 +424,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
         {/* Phone: one sticky bar keeps "back", the section list and the reader's place
             within reach however far down a long policy they are. Bleeds over <main>'s
             p-4 so it spans the screen. */}
-        <div ref={barRef} className="sticky -top-4 z-20 -mx-4 -mt-4 border-b border-slate-200 bg-white/95 px-2 backdrop-blur md:hidden">
+        <div ref={barRef} className="sticky -top-4 z-20 -mx-4 -mt-4 border-b border-slate-200 bg-white px-2 md:hidden">
           <div className="flex items-center gap-1">
             <button onClick={() => setSelected(null)} aria-label={backLabel} title={backLabel}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100">
@@ -448,7 +448,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
               <div className={`h-full transition-[width] duration-300 ${accent.badge}`} style={{ width: `${progressPct}%` }} />
             </div>
           )}
-          {sectionsOpen && <div className="max-h-[60vh] overflow-y-auto py-2">{tocList()}</div>}
+          {sectionsOpen && <div className="max-h-[60vh] overflow-y-auto py-2">{tocList(false)}</div>}
         </div>
 
         <button onClick={() => setSelected(null)}
@@ -526,7 +526,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
           {sections.length > 0 && (
             <div className="sticky top-4 mt-6 hidden max-h-[75vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 md:mt-0 md:block">
               <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Sections")}</p>
-              {tocList()}
+              {tocList(true)}
             </div>
           )}
         </div>
