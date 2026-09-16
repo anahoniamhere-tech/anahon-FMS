@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { SharedProps } from "./shared";
 import { withTicket } from "../docTicket";
-import { isSupersededPointer, policyHeading } from "../helpBot";
+import { isSupersededDoc, policyHeading } from "../helpBot";
 import { NAV, ic } from "../nav";
 import {
   parseHandbooksIndex, findIndexFaults, chapterAnchors, chapterSlice, missingChapterText,
@@ -18,25 +18,26 @@ import { topicOf, isWarningLine, markPieces, type Topic } from "../policyReading
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
 
-/** Which live document carries a handbook's text — matched on the Index's own heading
- *  word, not a policy number, so this stays an identity lookup and not a filename guess
- *  at chapter data. */
-const findHandbookDoc = (heading: string, live: AppDoc[]) => {
-  const keyword = heading.split(/[\s,]+/)[0].toLowerCase();
-  return live.find(d => d.filename.toLowerCase().includes(keyword));
+/** The governing file behind each Index heading (and each standalone policy, by number),
+ *  by document id. Not a filename keyword: every old policy file and "Edition N" copy sits in
+ *  the Handbook category too, and the first keyword match opened the old 002 file for P3/P4
+ *  and the old StrategicPlan file for P10 (found 16 Sep 2026). A heading missing here opens
+ *  nothing rather than a guess. */
+const GOVERNING_DOC: Record<string, string> = {
+  "Team Handbook": "doc-hb-compiled-anahon-team-handbook",
+  "Editorial Standards Handbook": "doc-hb-compiled-anahon-editorial-standards-handbook",
+  "Finance and Controls Handbook": "doc-hb-compiled-anahon-finance-and-controls-handbook",
+  "Programmes and Funding Handbook": "doc-hb-compiled-anahon-programmes-and-funding-handbook",
+  "Strategy": "doc-hb-compiled-anahon-strategy-007",
+  P11: "doc-hb-anahon-information-data-010",
 };
+const INDEX_DOC = "doc-hb-compiled-anahon-policies-index";
+const findHandbookDoc = (key: string, live: AppDoc[]) => live.find(d => d.id === GOVERNING_DOC[key]);
 
-/** "formerly 020; accounts, procurement, ..." — the Index always states the old number
- *  first. Whatever follows becomes the one-line summary; a chapter with nothing past
- *  "formerly NNN" shows no summary line rather than an invented one (measured live —
- *  none of the 11 currently lack one, but the Index is edited by hand and could again).
- *  Presentation only: reads c.note exactly as the Index wrote it, the parser and the
- *  document text are untouched. */
-const FORMERLY = /^formerly\s+(\d{3})\b[;,.]?\s*(.*)$/i;
-const splitNote = (note: string) => {
-  const m = FORMERLY.exec(note);
-  return m ? { former: m[1], summary: m[2] } : { former: null as string | null, summary: note };
-};
+/** A card's one-line summary from the Index note. P1–P11 are the only numbers readers see
+ *  (Saad, 16 Sep 2026), so an old "formerly 020; " lead is dropped if a note still has one;
+ *  a note that is just the summary passes through unchanged. */
+const noteSummary = (note: string) => note.replace(/^formerly\s+\d{3}\b[;,.]?\s*/i, "");
 
 /** One accent per handbook group, on the card badge and the group heading — Saad asked
  *  for handbooks to read apart at a glance. Picked from Tailwind's own untouched hues:
@@ -274,11 +275,11 @@ type Selected = { doc: AppDoc; no: string; title: string; chapters: Chapter[] };
 
 export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, focusId, setFocusId }: SharedProps) {
   const liveDocs = useMemo(
-    () => state.documents.filter(d => d.category === "Handbook" && !isSupersededPointer(d.base64)),
+    () => state.documents.filter(d => d.category === "Handbook" && !isSupersededDoc(d)),
     [state.documents]
   );
   const supersededDocs = useMemo(
-    () => state.documents.filter(d => d.category === "Handbook" && isSupersededPointer(d.base64)),
+    () => state.documents.filter(d => d.category === "Handbook" && isSupersededDoc(d)),
     [state.documents]
   );
   const historyByChapter = useMemo(() => {
@@ -290,7 +291,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     return map;
   }, [supersededDocs]);
 
-  const indexDoc = liveDocs.find(d => /index/i.test(d.filename));
+  const indexDoc = liveDocs.find(d => d.id === INDEX_DOC);
 
   const [parsed, setParsed] = useState<ParsedIndex | null>(null);
   const [docText, setDocText] = useState<Record<string, string>>({});
@@ -349,7 +350,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
       if (doc) openChapter(doc, hb.chapters, c.no, c.title);
     } else {
       const c = parsed.standalone.find(c => c.no === no);
-      const doc = c && findHandbookDoc(c.title, liveDocs);
+      const doc = c && findHandbookDoc(c.no, liveDocs);
       if (c && doc) openChapter(doc, parsed.standalone, c.no, c.title);
     }
     setFocusId(null);
@@ -364,7 +365,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
    *  more instances of it when key on the button itself, which has always type-checked
    *  cleanly here, does the same job. */
   const policyCard = (key: string, c: Chapter, heading: string, accent: { badge: string; text: string }, disabled: boolean, onOpen: () => void) => {
-    const { former, summary } = splitNote(c.note);
+    const summary = noteSummary(c.note);
     return (
       <button
         key={key}
@@ -378,10 +379,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
         <div className="min-w-0 flex-1">
           <p className="text-lg font-bold leading-snug text-slate-900">{c.title}</p>
           {summary && <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-slate-600">{summary}</p>}
-          <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
-            <span>{heading}</span>
-            {former && <span>· {t("formerly")} {former}</span>}
-          </div>
+          <p className="mt-3 text-[11px] text-slate-400">{heading}</p>
         </div>
       </button>
     );
@@ -397,7 +395,9 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
       { heading: t("Standing on its own"), chapters: parsed.standalone, standalone: true },
     ];
     return groups.flatMap(g => g.chapters
-      .filter(c => c.no.includes(q) || c.title.toLowerCase().includes(q) || c.note.toLowerCase().includes(q))
+      // An old three-digit number still finds its policy (policyNo maps "005" → P4), without
+      // the old number ever being shown.
+      .filter(c => c.no.toLowerCase().includes(q) || policyNo(q) === c.no || c.title.toLowerCase().includes(q) || noteSummary(c.note).toLowerCase().includes(q))
       .map(c => ({ ...c, heading: g.heading, standalone: g.standalone })));
   }, [parsed, query, t]);
 
@@ -563,7 +563,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
             ) : isMissing ? (
               <div className="flex gap-2 rounded-lg bg-amber-50 p-3 text-[13px] text-amber-900">
                 {ic(AlertTriangle, "h-4 w-4 shrink-0 mt-0.5")}
-                <p>{t("The Index lists this chapter here, but the handbook's own text does not carry it yet.")}{chapterMeta?.note ? ` ${chapterMeta.note}.` : ""}</p>
+                <p>{t("The Index lists this chapter here, but the handbook's own text does not carry it yet.")}{chapterMeta?.note ? ` ${noteSummary(chapterMeta.note)}.` : ""}</p>
               </div>
             ) : (
               // The handbooks are written in English, so on the Arabic screen the document
@@ -661,7 +661,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
           {searchHits.length > 0 && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {searchHits.map(c => {
-                const doc = c.standalone ? findHandbookDoc(c.title, liveDocs) : findHandbookDoc(c.heading, liveDocs);
+                const doc = findHandbookDoc(c.standalone ? c.no : c.heading, liveDocs);
                 const chapters = c.standalone ? parsed!.standalone : parsed!.handbooks.find(h => h.heading === c.heading)!.chapters;
                 return (
                   policyCard(`${c.heading}-${c.no}`, c, c.heading, accentFor(c.heading, c.standalone), !doc,
@@ -700,7 +700,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
               </h3>
               <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {parsed.standalone.map(c => {
-                  const doc = findHandbookDoc(c.title, liveDocs);
+                  const doc = findHandbookDoc(c.no, liveDocs);
                   return (
                     policyCard(c.no, c, t("Standing on its own"), STANDALONE_ACCENT, !doc,
                       () => { if (doc) openChapter(doc, parsed.standalone, c.no, c.title); })
