@@ -155,9 +155,6 @@ function parseBody(body: string) {
   return { lead, sections, toc };
 }
 
-/** A jumped-to heading lands just under the phone bar (64px < bar bottom + 24, so it counts as current). */
-const JUMP_MARGIN = "scroll-mt-16 md:scroll-mt-4";
-
 /** One icon per topic key from policyReading.ts; "general" is the neutral fallback. */
 const TOPIC_ICON: Record<Topic, LucideIcon> = {
   ai: Bot, concern: MessageSquareWarning, alert: AlertTriangle, correction: PenLine, diligence: UserSearch,
@@ -253,7 +250,7 @@ function renderBody(blocks: BodyBlock[], accentText: string, find: string) {
     if (b.kind === "h3") {
       const intro = isIntroNum(b.num);
       nodes.push(
-        <h3 key={i} id={b.id} className={`mt-5 text-[15px] font-bold text-slate-800 first:mt-0 ${JUMP_MARGIN}`}>
+        <h3 key={i} id={b.id} className="mt-5 text-[15px] font-bold text-slate-800 first:mt-0">
           {intro ? marked(b.title, find) : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{b.num}</span>{marked(b.title, find)}</span>}
         </h3>
       );
@@ -426,9 +423,16 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
 
   // A TOC jump may target a section that is still collapsed: open it first, then scroll
   // once React has rendered it.
+  // Lands 8px under the phone bar's real bottom edge (its height changes with the search row
+  // open), or under the top of the content column on desktop — inside the "current" line.
   useEffect(() => {
     if (!jumpTo) return;
-    document.getElementById(jumpTo)?.scrollIntoView({ block: "start" });
+    const el = document.getElementById(jumpTo);
+    const main = el?.closest("main");
+    if (el && main) {
+      const top = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top);
+      main.scrollTop += el.getBoundingClientRect().top - top - 8;
+    }
     setJumpTo(null);
   }, [jumpTo]);
 
@@ -637,7 +641,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                   const open = isOpen(s);
                   return (
                     <section key={s.id} className="border-b border-slate-100 last:border-0">
-                      <h2 id={s.id} className={JUMP_MARGIN}>
+                      <h2 id={s.id}>
                         <button onClick={() => setOpenSecs(o => ({ ...o, [s.id]: !open }))}
                           aria-expanded={open} aria-controls={`${s.id}-body`}
                           className="flex min-h-11 w-full items-center gap-3 py-3 text-start hover:bg-slate-50/60">
