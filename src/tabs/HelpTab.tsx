@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { SharedProps } from "./shared";
 import { HELP, HelpEntry } from "../help";
+import RequestsList from "./RequestsList";
 
 /**
  * Help & Q&A — every explanation in the system on one page, searchable.
@@ -13,7 +14,8 @@ const AREA_AR: Record<HelpEntry["area"], string> = {
   "Seats & approvals": "المقاعد والموافقات", Money: "المال", Buying: "المشتريات", Editorial: "التحرير", Website: "الموقع", People: "الأشخاص", Records: "السجلات",
 };
 
-export default function HelpTab({ lang, t }: SharedProps) {
+export default function HelpTab(props: SharedProps) {
+  const { lang, t } = props;
   const L = lang === "ar" ? "ar" : "en";
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
@@ -38,6 +40,8 @@ export default function HelpTab({ lang, t }: SharedProps) {
           className="mt-4 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm focus:border-red-500 focus:outline-none"
         />
       </div>
+
+      <RequestsList {...props} />
 
       {AREAS.map(area => {
         const rows = hits.filter(h => h.area === area);

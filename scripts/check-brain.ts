@@ -107,7 +107,8 @@ ok("it still asks for JSON as well, so a schemaless caller is unchanged",
   /responseMimeType: "application\/json"/.test(gemini));
 ok("and the fence-stripping salvage is still the last resort", /parseModelJson\(r\.text/.test(gemini));
 ok("no caller's schema was rewritten to suit one provider — askJson still takes one schema",
-  /async function askJson\(\s*\n?\s*prompt: string, schema: Record<string, any>/.test(server));
+  // The prompt may be a [cached prefix, rest] pair since D6 (16 Sep 2026); the schema is still one.
+  /async function askJson\((?:\s*\/\/[^\n]*)*\s*prompt: string \| \[string, string\], schema: Record<string, any>/.test(server));
 ok("the help desk's own provider choice is untouched",
   /\.\.\.\(prefer === "gemini" \? \{ thinkingConfig: \{ thinkingBudget: 0 \} \} : \{\}\)/.test(gemini));
 // The key that sends every call down this path in the first place.

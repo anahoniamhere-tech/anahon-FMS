@@ -740,7 +740,26 @@ export interface Tool {
   created_at: string;
 }
 
+/** Something someone needed the FMS to do (Anna plan §3). */
+export interface FeatureRequest {
+  id: string;
+  title: string;
+  need: string;
+  door: string;
+  example: string;
+  urgency: "low" | "normal" | "high";
+  status: "New" | "Triaged" | "Planned" | "Done" | "Declined";
+  room: string;
+  note: string;
+  createdBy: string;
+  createdName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DatabaseState {
+  /** Feature requests: the viewer's own, or all for the master account. */
+  featureRequests: FeatureRequest[];
   /** Whether Anna's panel is on for this viewer (src/anna.ts). */
   anna?: { enabled: boolean };
   siteUrl?: string;            // the website's public address (from SITE_PUBLIC_URL) — header link

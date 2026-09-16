@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw } from "lucide-react";
+import { CONFIRM_ROUTES, type Proposal } from "./anna";
 
 /**
  * The floating question box, on every screen.
@@ -44,19 +45,25 @@ function rich(text: string, onOpenDoor: (navKey: string, focus?: string) => void
 /* ── Anna (src/anna.ts). The conversation lives in this component and nowhere else: the
    server keeps nothing, and closing the panel keeps it only until New conversation or a
    reload. Actions are navigation only — a door or a record — and run once on arrival. */
-type AnnaAction = { type: "open_door"; door: string } | { type: "open_record"; kind: string; id: string };
+type NavAction = { type: "open_door"; door: string } | { type: "open_record"; kind: string; id: string };
+type AnnaAction = NavAction | { type: "proposal"; proposal: Proposal };
+type CardState = "open" | "saving" | "saved" | "gone" | { error: string };
+/** Where a saved draft lives, for the button after Confirm. */
+const DRAFT_DOOR: Record<string, string> = { quotation: "production", task: "mydesk", request: "help" };
 type AnnaMsg = { role: "user" | "assistant"; content: string; actions?: AnnaAction[]; usd?: number; error?: boolean };
 const KIND_LABEL: Record<string, string> = {
   voucher: "Voucher", quotation: "Quotation", project: "Project", client: "Client",
   vendor: "Supplier", document: "Document", task: "Task", engagement: "Event",
 };
 
-function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord }: {
+function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   t: (s: string) => string;
   doorLabel: (navKey: string) => string;
   onOpenDoor: (navKey: string, focus?: string) => void;
   onOpenRecord: (kind: string, id: string) => void;
+  onEditDraft: (kind: string, data: Record<string, any>) => void;
 }) {
+  const [cards, setCards] = useState<Record<string, CardState>>({});
   const [msgs, setMsgs] = useState<AnnaMsg[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -65,7 +72,25 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord }: {
   useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [msgs, busy]);
 
-  const run = (a: AnnaAction) => a.type === "open_door" ? onOpenDoor(a.door) : onOpenRecord(a.kind, a.id);
+  const run = (a: NavAction) => a.type === "open_door" ? onOpenDoor(a.door) : onOpenRecord(a.kind, a.id);
+
+  /** Confirm: the one place a card writes, through the existing route, as Saad. A quotation is
+   *  always a Draft; a contract card has no Confirm at all; any other route is refused here. */
+  const confirm = async (key: string, p: Proposal) => {
+    if (!(CONFIRM_ROUTES as readonly string[]).includes(p.confirmRoute) || p.confirmRoute === "form:contract") return;
+    setCards(c => ({ ...c, [key]: "saving" }));
+    try {
+      const body = p.kind === "quotation" ? { ...p.data, status: "Draft" } : p.data;
+      const r = await fetch(p.confirmRoute, {
+        method: "POST", headers: { "Content-Type": "application/json", "X-Drafted-By": "anna" }, body: JSON.stringify(body),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || t("Could not save."));
+      setCards(c => ({ ...c, [key]: "saved" }));
+    } catch (e: any) {
+      setCards(c => ({ ...c, [key]: { error: e.message } }));
+    }
+  };
 
   const send = async () => {
     const text = q.trim();
@@ -83,7 +108,7 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord }: {
       if (!r.ok) throw new Error(d.error || t("Anna could not answer just now."));
       const actions: AnnaAction[] = Array.isArray(d.actions) ? d.actions : [];
       setMsgs(prev => [...prev, { role: "assistant", content: String(d.answer || ""), actions, usd: d.usage?.usd }]);
-      actions.forEach(run);
+      actions.forEach(a => { if (a.type !== "proposal") run(a); });
     } catch (e: any) {
       // A failed turn is shown but never sent back as history; the question stays so it can be retried.
       setMsgs(prev => [...prev.slice(0, -1), { ...prev[prev.length - 1], error: true }, { role: "assistant", content: e.message, error: true }]);
@@ -107,7 +132,41 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord }: {
         ) : (
           <div key={i} className="w-fit max-w-[95%] space-y-1.5 rounded-2xl bg-slate-100 px-3 py-2">
             <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-800">{rich(m.content, onOpenDoor)}</p>
-            {(m.actions || []).map((a, k) => (
+            {(m.actions || []).map((a, k) => a.type === "proposal" ? (() => {
+              const key = `${i}:${k}`, st = cards[key] || "open", p = a.proposal;
+              if (st === "gone") return <p key={k} className="text-[11px] text-slate-400">{t("Discarded")}</p>;
+              return (
+                <div key={k} className="space-y-1.5 rounded-xl border border-[#E6D3CA] bg-white p-2.5">
+                  {p.lines.map((l, n) => <p key={n} className={`text-[12px] leading-snug ${n ? "text-slate-600" : "font-bold text-slate-900"}`}>{l}</p>)}
+                  {st === "saved" ? (
+                    <button onClick={() => onOpenDoor(DRAFT_DOOR[p.kind])}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-[11px] font-bold text-white">
+                      {t("Saved")} · {t("Open")} {doorLabel(DRAFT_DOOR[p.kind])} <ArrowRight className="h-3 w-3 rtl:rotate-180" />
+                    </button>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.confirmRoute !== "form:contract" && (
+                        <button onClick={() => confirm(key, p)} disabled={st === "saving"}
+                          className="min-h-[36px] rounded-lg bg-[#6D1A1A] px-3 text-[11px] font-bold text-white transition-colors hover:bg-[#4A1010] disabled:opacity-50">
+                          {st === "saving" ? t("Saving…") : t("Confirm")}
+                        </button>
+                      )}
+                      {p.kind !== "request" && (
+                        <button onClick={() => onEditDraft(p.kind, p.data)}
+                          className="min-h-[36px] rounded-lg border border-[#6D1A1A] px-3 text-[11px] font-bold text-[#6D1A1A] transition-colors hover:bg-[#6D1A1A]/5">
+                          {p.kind === "contract" ? t("Open the form") : t("Edit")}
+                        </button>
+                      )}
+                      <button onClick={() => setCards(c => ({ ...c, [key]: "gone" }))} disabled={st === "saving"}
+                        className="min-h-[36px] rounded-lg px-3 text-[11px] font-bold text-slate-500 transition-colors hover:bg-slate-100">
+                        {t("Discard")}
+                      </button>
+                    </div>
+                  )}
+                  {typeof st === "object" && <p className="text-[11px] text-red-700">{st.error}</p>}
+                </div>
+              );
+            })() : (
               <button key={k} onClick={() => run(a)}
                 className="me-1.5 inline-flex items-center gap-1.5 rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-[#4A1010]">
                 {t("Open")} {a.type === "open_door" ? doorLabel(a.door) : t(KIND_LABEL[a.kind] || a.kind)} <ArrowRight className="h-3 w-3 rtl:rotate-180" />
@@ -122,7 +181,7 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord }: {
 
       <div className="flex items-end gap-2 border-t border-slate-200 p-2">
         <button
-          onClick={() => { setMsgs([]); setQ(""); inputRef.current?.focus(); }}
+          onClick={() => { setMsgs([]); setCards({}); setQ(""); inputRef.current?.focus(); }}
           disabled={busy || !msgs.length}
           title={t("New conversation")} aria-label={t("New conversation")}
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
@@ -152,7 +211,7 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord }: {
 }
 
 export default function HelpDesk({
-  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, onOpenRecord = () => {},
+  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, onOpenRecord = () => {}, onEditDraft = () => {},
 }: {
   t: (s: string) => string;
   lang: string;
@@ -166,6 +225,7 @@ export default function HelpDesk({
   /** Anna's tab, for the accounts on her list (state.anna.enabled). */
   anna?: boolean;
   onOpenRecord?: (kind: string, id: string) => void;
+  onEditDraft?: (kind: string, data: Record<string, any>) => void;
 }) {
   const [open, setOpen] = useState(false);
   // Anna opens first for the people who have her; the help desk is one tap away. A policy
@@ -272,7 +332,7 @@ export default function HelpDesk({
       </div>
 
       {mode === "anna" && anna ? (
-        <AnnaChat t={t} doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} />
+        <AnnaChat t={t} doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
       ) : (<>
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {!turns.length && (

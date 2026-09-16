@@ -23,7 +23,7 @@ const NOTE_PREVIEW = 150;  // notes longer than this are worth a click
 
 export default function MyDeskTab({
   state, currentUser, t, lang, refreshState, triggerToast, handleNavClick, openDoc,
-  setDrawerExpenseId, setSelectedProjectId, setFocusId, formatUSD,
+  setDrawerExpenseId, setSelectedProjectId, setFocusId, formatUSD, annaDraft, setAnnaDraft,
 }: SharedProps) {
   const [busy, setBusy] = useState<string | null>(null);
   const [upCat, setUpCat] = useState<string>("CV");
@@ -45,6 +45,17 @@ export default function MyDeskTab({
   const [pickedDay, setPickedDay] = useState<string | null>(null);
   // The task being written or edited (directors only). null = the form is closed.
   const [taskForm, setTaskForm] = useState<null | { id?: string; title: string; category: string; dueDate: string; notes: string; assigneeUserId: string }>(null);
+  // Set while the open form came from an Anna card, so the audit line says so.
+  const [fromAnna, setFromAnna] = useState(false);
+  useEffect(() => {
+    if (annaDraft?.kind !== "task") return;
+    const d = annaDraft.data;
+    setTaskForm({ title: String(d.title || ""), category: String(d.category || "Governance"), dueDate: String(d.dueDate || ""),
+      notes: String(d.notes || ""), assigneeUserId: String(d.assigneeUserId || "") });
+    setFromAnna(true);
+    setAnnaDraft(null);
+  }, [annaDraft]);
+  useEffect(() => { if (!taskForm) setFromAnna(false); }, [taskForm]);
   // The private feed address, held only for as long as this screen is open: the server
   // never hands the same secret back, so a lost address is replaced, not looked up.
   const [feed, setFeed] = useState<null | { url: string; webcal: string; qr: string | null; rotated: boolean }>(null);
@@ -87,7 +98,7 @@ export default function MyDeskTab({
     setBusy("task");
     try {
       const r = await fetch("/api/compliance/save", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json", ...(fromAnna && !taskForm.id ? { "X-Drafted-By": "anna" } : {}) },
         body: JSON.stringify({ ...taskForm, user: currentUser }),
       });
       const d = await r.json();

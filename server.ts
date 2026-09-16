@@ -53,7 +53,7 @@ import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } 
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, cutPoolFor, POOL_FIELD_KEYS, POOL_STATUSES, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy, poolAssessedAs } from "./src/personnelDocs.js";
 import { parseIcs } from "./src/ics.js";
-import { ANNA_MODEL, ANNA_USERS, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, annaTools, annaSystem, clientAction, readTool, cleanHistory, type ClientAction } from "./src/anna.js";
+import { ANNA_MODEL, ANNA_USERS, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, DRAFT_TOOLS, REQUEST_URGENCIES, annaTools, annaSystem, clientAction, readTool, draftTool, cleanHistory, type ClientAction } from "./src/anna.js";
 
 dotenv.config();
 
@@ -255,6 +255,10 @@ const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
  * refused or failed request never buzzes anyone, and the debounce inside schedulePush
  * collapses the several writes one approval makes into a single pass.
  */
+/** " (drafted by Anna)" when the browser says a save came from an Anna card (src/anna.ts
+ *  CONFIRM_ROUTES). It only labels the audit line; the person saving is still the signed-in user. */
+const draftedBy = (req: any) => req.get?.("X-Drafted-By") === "anna" ? " (drafted by Anna)" : "";
+
 const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/anna/turn", "/api/reminders/plan", "/api/push/unsubscribe"]);
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path.startsWith("/api/") && !READ_ONLY_POSTS.has(req.path)) {
@@ -646,6 +650,9 @@ async function loadState(viewer?: any) {
     ({ id: a.id, tag: a.tag, name: a.name, status: a.status, holderId: a.holderId, heldFor: a.heldFor, outAt: a.outAt, dueBack: a.dueBack })) : [];
 
   const auditTotal = await prisma.auditLog.count();
+  // Feature requests: everyone sees their own, the master account sees all (Anna plan §3).
+  const featureRequests = viewer ? await prisma.featureRequest.findMany({
+    where: viewer.role === "Super Admin" ? {} : { createdBy: viewer.id }, orderBy: { createdAt: "desc" } }) : [];
 
   // Deserialize dynamic array list columns
   // Whether a voucher's cost ever involved choosing a supplier — answered HERE, once, for
@@ -772,6 +779,7 @@ async function loadState(viewer?: any) {
   // directory — no financial domain ever leaves the server for these roles.
   if (viewer && [...CONTENT_CREW_ROLES, "Chief Editor", "Production Manager", "Graphic Designer"].includes(viewer.role)) {
     return {
+      featureRequests,
       users, accounts: [], donors: [], projects: [], budgetLines: [], vendors: [],
       expenses: [], procurements: [], bankAccounts: [], bankTransactions: [],
       journalEntries: [],
@@ -795,6 +803,7 @@ async function loadState(viewer?: any) {
     const mine = employees.filter(e => e.userEmail && e.userEmail.toLowerCase() === String(viewer.email || "").toLowerCase());
     const mineIds = new Set(mine.map(e => e.id));
     return {
+      featureRequests,
       users, accounts: [], donors: [], projects: [], budgetLines: [], vendors: [],
       expenses: [], procurements: [], bankAccounts: [], bankTransactions: [], journalEntries: [],
       employees: mine, timesheets: formattedTimesheets.filter(t => mineIds.has(t.employeeId)),
@@ -824,6 +833,7 @@ async function loadState(viewer?: any) {
     const visibleIds = new Set(visibleProjects.map((p: any) => p.id));
     const DOMAIN = buys ? new Set(["Expense", "Project", "Website", "FixedAsset"]) : new Set(["Website"]);
     return {
+      featureRequests,
       users, accounts: [], donors: buys ? donors : [], projects: visibleProjects,
       budgetLines: budgetLines.filter((b: any) => visibleIds.has(b.projectId)),
       vendors: buys ? vendors : [],
@@ -867,6 +877,7 @@ async function loadState(viewer?: any) {
     const poStreams = new Set(visibleProjects.map(p => p.stream).filter(Boolean));
     if (viewer.streamScope) poStreams.add(viewer.streamScope);
     return {
+      featureRequests,
       users, accounts: [], donors,
       projects: visibleProjects,
       budgetLines: budgetLines.filter(b => myProjectIds.has(b.projectId)),
@@ -903,6 +914,7 @@ async function loadState(viewer?: any) {
   }
 
   return {
+    featureRequests,
     users,
     accounts,
     donors,
@@ -1711,6 +1723,11 @@ app.post("/api/anna/turn", async (req, res) => {
           const a = clientAction(c.name, c.input, ctx);
           if ("type" in a) { actions.push(a); out = { ok: "The screen will open when you answer." }; } else out = a;
           await createAuditLog(viewer.id, viewer.name, "Anna Navigate", `turn ${turn} · ${c.name}${c.input?.kind ? ` ${c.input.kind}` : ""}`);
+        } else if ((DRAFT_TOOLS as readonly string[]).includes(c.name)) {
+          // A card for Saad, never a write: his Confirm or Save on the existing screen does that.
+          const a = draftTool(c.name, c.input, ctx);
+          if ("type" in a) { actions.push(a); out = { ok: "A draft card is shown to the user. Nothing is saved until the user confirms it." }; } else out = a;
+          await createAuditLog(viewer.id, viewer.name, "Anna Draft", `turn ${turn} · ${c.name}`);
         } else if (c.name === "policy_answer") {
           const policies = await policyCorpus();
           const raw = await askJson(
@@ -8519,7 +8536,7 @@ app.post("/api/quotations/save", async (req, res) => {
       user?.id,
       user?.name,
       existing ? "Quotation Updated" : "Quotation Created",
-      `${existing ? `Updated (was ${existing.status})` : "Created"} ${quote.quoteNo} for ${client.name}: "${quote.title}" — ${quote.currency} ${quote.amount}${quote.discountAmount ? ` (package ${sums.packageValue}, ${quote.discountLabel || "discount"} −${quote.discountAmount})` : ""}, status ${quote.status}, issued as ${quote.issuedAs}.`
+      `${existing ? `Updated (was ${existing.status})` : "Created"} ${quote.quoteNo} for ${client.name}: "${quote.title}" — ${quote.currency} ${quote.amount}${quote.discountAmount ? ` (package ${sums.packageValue}, ${quote.discountLabel || "discount"} −${quote.discountAmount})` : ""}, status ${quote.status}, issued as ${quote.issuedAs}.${draftedBy(req)}`
     );
     res.json({ success: true, quotation: quote, linkNote: linkNote.trim() });
   } catch (err: any) {
@@ -11355,8 +11372,46 @@ app.post("/api/compliance/save", async (req, res) => {
 
     await createAuditLog(user?.id || "u-1", user?.name || "Director",
       existing ? "Task Changed" : "Task Added",
-      `"${task.title}" due ${task.dueDate}${holder ? `, given to ${holder.name}` : ", held by the director"}.`);
+      `"${task.title}" due ${task.dueDate}${holder ? `, given to ${holder.name}` : ", held by the director"}.${draftedBy(req)}`);
     res.json({ success: true, task });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/* ── Feature requests (Anna plan §3). Anyone files their own; only the Super Admin triages.
+ * The rooms read them with scripts/feature-requests.ts — nothing is pushed anywhere. */
+const REQUEST_STATUSES = ["New", "Triaged", "Planned", "Done", "Declined"];
+app.post("/api/requests/save", async (req, res) => {
+  try {
+    const { title, need, door, example, urgency, user } = req.body;
+    if (!String(title || "").trim() || !String(need || "").trim()) return res.status(400).json({ error: "A request needs a title and what you were trying to do." });
+    const now = new Date().toISOString();
+    const row = await prisma.featureRequest.create({ data: {
+      id: `req-${Date.now()}`, title: String(title).trim().slice(0, 200), need: String(need).slice(0, 2000),
+      door: String(door || "").slice(0, 40), example: String(example || "").slice(0, 2000),
+      urgency: (REQUEST_URGENCIES as readonly string[]).includes(urgency) ? urgency : "normal",
+      status: "New", createdBy: user.id, createdName: user.name || "", createdAt: now, updatedAt: now,
+    } });
+    await createAuditLog(user.id, user.name, "Request Filed", `"${row.title}" (${row.urgency}).${draftedBy(req)}`);
+    res.json({ success: true, request: row });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/requests/triage", async (req, res) => {
+  try {
+    const { id, status, room, note, user } = req.body;
+    if (user?.role !== "Super Admin") return res.status(403).json({ error: "Requests are triaged by the master account." });
+    if (!REQUEST_STATUSES.includes(status)) return res.status(400).json({ error: `Status must be one of: ${REQUEST_STATUSES.join(", ")}` });
+    const row = await prisma.featureRequest.findUnique({ where: { id: String(id || "") } });
+    if (!row) return res.status(404).json({ error: "No such request." });
+    const updated = await prisma.featureRequest.update({ where: { id: row.id }, data: {
+      status, room: String(room ?? row.room).slice(0, 80), note: String(note ?? row.note).slice(0, 2000), updatedAt: new Date().toISOString(),
+    } });
+    await createAuditLog(user.id, user.name, "Request Triaged", `"${row.title}": ${row.status} → ${status}${updated.room ? `, room ${updated.room}` : ""}.`);
+    res.json({ success: true, request: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

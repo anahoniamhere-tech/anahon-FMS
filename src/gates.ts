@@ -40,7 +40,9 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/document/upload": ANY,                  // my own papers; the personnel filter decides who reads them
   "/api/materials/link": NEWSROOM,
   "/api/help/ask": ANY,
-  "/api/anna/turn": ANY,                        // Anna; ANNA_USERS (src/anna.ts) is enforced in the route                         // asking the help desk a question; the answer is scoped to the asker
+  "/api/anna/turn": ANY,
+  "/api/requests/save": ANY,                    // filing one's own feature request (Anna plan §3)
+  "/api/requests/triage": ["Super Admin"],      // setting its status, room and note                        // Anna; ANNA_USERS (src/anna.ts) is enforced in the route                         // asking the help desk a question; the answer is scoped to the asker
   "/api/push/subscribe": ANY,                   // this device wants to be told when it is my turn
   "/api/push/unsubscribe": ANY,                 // and to stop; both act on the caller's own rows only
   "/api/compliance/complete": ANY,              // the route checks the task is mine

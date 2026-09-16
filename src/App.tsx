@@ -419,6 +419,8 @@ export default function App() {
   // Project Workspace states
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  // A draft from Anna that Saad chose to Edit: the owning screen opens its form with it (src/anna.ts).
+  const [annaDraft, setAnnaDraft] = useState<{ kind: "quotation" | "task"; data: Record<string, any> } | null>(null);
   // Tells the floating help desk to open pre-filled with a chapter's context — "Ask
   // about this policy" (Policies & Handbooks). The nonce lets the same context reopen
   // it twice in a row.
@@ -1183,7 +1185,7 @@ export default function App() {
     searchTerm, setSearchTerm, setDrawerExpenseId, handleVoucherDocUpload,
     globalQuery, setGlobalQuery, searchNav,
     selectedProjectId, setSelectedProjectId, workspaceRef,
-    focusId, setFocusId,
+    focusId, setFocusId, annaDraft, setAnnaDraft,
     openDoor: (door: string, focus?: string) => { if (focus) setFocusId(focus); setActiveTab(door); },
     askHelp: (context: string) => setHelpAsk({ context, nonce: Date.now() }),
   };
@@ -1477,6 +1479,19 @@ export default function App() {
               onOpenDoor={(door, focus) => { handleNavClick(door); if (focus) setFocusId(focus); }}
               openSignal={helpAsk}
               anna={!!state.anna?.enabled}
+              onEditDraft={(kind, data) => {
+                // A contract is only ever a filled form: Saad reviews it and presses Generate (D4).
+                if (kind === "contract") {
+                  setContractParty(data.party === "vendor" ? "vendor" : "employee");
+                  setContractFor(String(data.partyId));
+                  setContractForm({ projectId: data.projectId, kind: data.kind, startDate: data.startDate, endDate: data.endDate,
+                    loePct: "", monthlyFee: data.monthlyFee, contractTotal: data.contractTotal, role: data.role });
+                  handleNavClick(data.party === "vendor" ? "vendors" : "payroll");
+                } else if (kind === "quotation" || kind === "task") {
+                  setAnnaDraft({ kind, data });
+                  handleNavClick(kind === "quotation" ? "production" : "mydesk");
+                }
+              }}
               onOpenRecord={(kind, id) => {
                 // Where each kind opens; a kind with no record view opens its door (as My Desk does).
                 if (kind === "voucher") { handleNavClick("expenses"); setDrawerExpenseId(id); }

@@ -120,6 +120,12 @@ export const RULES: Rule[] = [
   // ComplianceTask — Pending, Done. Given to someone, it is theirs; otherwise the master account's own list.
   { kind: "complianceTasks", status: "Pending", seat: MASTER, person: "assigneeUserId", when: "dueDate", door: "mydesk", verb: "Settle" },
   { kind: "complianceTasks", status: "Done",    seat: null, door: "mydesk", verb: "" },
+  // A feature request waits on the master account until it is triaged (Anna plan §3).
+  { kind: "featureRequests", status: "New",      seat: MASTER, door: "help", verb: "Triage the request" },
+  { kind: "featureRequests", status: "Triaged",  seat: null, door: "help", verb: "" },
+  { kind: "featureRequests", status: "Planned",  seat: null, door: "help", verb: "" },
+  { kind: "featureRequests", status: "Done",     seat: null, door: "help", verb: "" },
+  { kind: "featureRequests", status: "Declined", seat: null, door: "help", verb: "" },
   // Subscription — Active, Paused, Cancelled. Surfaces a week before renewal (the Suppliers sheet's own alert window).
   { kind: "subscriptions", status: "Active",    seat: SUPPLIER_EDITORS, when: "nextRenewal", horizon: 7, door: "vendors", verb: "Confirm paid and roll" },
   { kind: "subscriptions", status: "Paused",    seat: null, door: "vendors", verb: "" },
@@ -168,6 +174,7 @@ export const TITLES: Partial<Record<Kind, (r: any, s: State) => string>> = {
   opportunities:     r => r.title,
   quotations:        r => `${r.quoteNo} · ${r.title}`,
   complianceTasks:   r => r.title,
+  featureRequests:   r => r.title,
   subscriptions:     r => r.name,
   tools:             r => r.name,
   networkContacts:   r => r.name,

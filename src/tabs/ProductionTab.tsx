@@ -1,4 +1,4 @@
-import { useState, FormEvent } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { ic } from "../nav";
 import { Trash2, Download, Banknote, Contact, FileText, Landmark, Paperclip, Pencil, Plus, Receipt, ScrollText } from "lucide-react";
 import { Client, Quotation, QuotationItem } from "../types";
@@ -13,11 +13,25 @@ import { RECEIPT_CATEGORY, receiptLog, receiptNoOf } from "../receipts";
 import { liveShare, shareUrl, SHAREABLE_STATUSES } from "../quoteShare";
 import ReceiveOffbankForm from "./ReceiveOffbankForm";
 
-export default function ProductionTab({ currentUser, formatIn, formatUSD, openDoc, refreshState, state, t, triggerToast }: SharedProps) {
+export default function ProductionTab({ currentUser, formatIn, formatUSD, openDoc, refreshState, state, t, triggerToast, annaDraft, setAnnaDraft }: SharedProps) {
   // Production stream: client / quotation being added-edited (null = form closed)
   const [clientForm, setClientForm] = useState<Partial<Client> | null>(null);
 
   const [quoteForm, setQuoteForm] = useState<Partial<Quotation> | null>(null);
+  // Set while the open form came from an Anna card, so the audit line says so.
+  const [fromAnna, setFromAnna] = useState(false);
+  useEffect(() => {
+    if (annaDraft?.kind !== "quotation") return;
+    const today = new Date().toISOString().slice(0, 10);
+    setQuoteForm({
+      issuedAs: DEFAULT_NEW_QUOTE_ISSUER, currency: "USD", date: today,
+      terms: { financial: FINANCIAL_TERMS[1], production: PRODUCTION_NOTE, technical: TECHNICAL_NOTE, extras: EXTRAS_DEFAULT },
+      ...annaDraft.data, validUntil: annaDraft.data.validUntil || defaultValidUntil(today), status: "Draft",
+    } as Partial<Quotation>);
+    setFromAnna(true);
+    setAnnaDraft(null);
+  }, [annaDraft]);
+  useEffect(() => { if (!quoteForm) setFromAnna(false); }, [quoteForm]);
 
   // Off-bank settlement (OMT / BOB / Whish / cash) being recorded for a quotation
   const [settleForm, setSettleForm] = useState<{ q: Quotation; amount: number } | null>(null);
@@ -56,7 +70,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
     try {
       const res = await fetch("/api/quotations/save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(fromAnna && !quoteForm.id ? { "X-Drafted-By": "anna" } : {}) },
         body: JSON.stringify({ ...quoteForm, user: currentUser })
       });
       const out = await res.json();

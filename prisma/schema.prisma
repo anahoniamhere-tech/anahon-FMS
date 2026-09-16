@@ -510,6 +510,27 @@ model QuoteShare {
   @@index([quotationId])
 }
 
+/// Something someone needed the FMS to do and it could not (Anna plan §3, 16 Sep 2026).
+/// The rooms read the New and Triaged rows with scripts/feature-requests.ts; nothing pushes.
+model FeatureRequest {
+  id          String  @id
+  title       String
+  need        String
+  door        String  @default("")
+  example     String  @default("")
+  urgency     String  @default("normal") // low | normal | high
+  status      String  @default("New")    // New | Triaged | Planned | Done | Declined
+  room        String  @default("")
+  note        String  @default("")
+  createdBy   String
+  createdName String  @default("")
+  createdAt   String
+  updatedAt   String
+
+  @@index([createdBy])
+  @@index([status])
+}
+
 model OrgSettings {
   id                        String  @id @default("settings")
   profileName               String

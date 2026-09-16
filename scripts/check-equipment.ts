@@ -720,8 +720,8 @@ ok("the free reader is still asked first — nothing falls through to a paid cal
   /extracted = await readLabel\("gemini"\);/.test(scan) && (scan.match(/readLabel\("gemini"\)/g) || []).length === 2);
 ok("a busy answer is waited out and asked again before anything is spent",
   /await new Promise\(r => setTimeout\(r, 1500\)\)/.test(scan));
-ok("and only then the paid one", /extracted = await readLabel\("claude"\);/.test(scan)
-  && scan.indexOf('readLabel("claude")') > scan.lastIndexOf('readLabel("gemini")'));
+ok("and only then the paid one (Haiku, D6)", /extracted = await readLabel\("haiku"\);/.test(scan)
+  && scan.indexOf('readLabel("haiku")') > scan.lastIndexOf('readLabel("gemini")'));
 ok("busy is 503/429 and its words — anything else is a real failure, not a queue",
   scan.includes("503") && scan.includes("429") && scan.includes("RESOURCE_EXHAUSTED")
   && scan.includes("UNAVAILABLE") && scan.includes("high demand"));

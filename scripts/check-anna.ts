@@ -7,8 +7,8 @@
 // Run: npx tsx scripts/check-anna.ts
 import { readFileSync } from "node:fs";
 import {
-  ANNA_MODEL, ANNA_USERS, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, READ_TOOLS, RECORD_KINDS,
-  annaTools, annaSystem, readTool, clientAction, cleanHistory, visibleRows, type AnnaCtx,
+  ANNA_MODEL, ANNA_USERS, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, READ_TOOLS, DRAFT_TOOLS, RECORD_KINDS, CONFIRM_ROUTES,
+  annaTools, annaSystem, readTool, draftTool, clientAction, cleanHistory, visibleRows, type AnnaCtx,
 } from "../src/anna.js";
 import { searchHits } from "../src/globalSearch.js";
 
@@ -52,7 +52,8 @@ ok("no chat table", !/model Anna|model Chat/i.test(read("../prisma/schema.prisma
 
 console.log("\n4. the tool list is closed");
 const tools = annaTools(["mydesk", "expenses"]);
-ok("exactly the nine tools", JSON.stringify(tools.map(t => t.name)) === JSON.stringify(ANNA_TOOL_NAMES) && ANNA_TOOL_NAMES.length === 9);
+ok("exactly the thirteen tools", JSON.stringify(tools.map(t => t.name)) === JSON.stringify(ANNA_TOOL_NAMES) && ANNA_TOOL_NAMES.length === 13
+  && JSON.stringify(DRAFT_TOOLS) === '["draft_quotation","draft_task","draft_contract","draft_request"]');
 ok("every tool is strict with a closed schema", tools.every(t => t.strict && t.input_schema.additionalProperties === false));
 const FORBIDDEN = /\b(approve|reject|pay|send|share|delete|publish|sign|receipt|match|deposit)\b/i;
 ok("no tool name or description names a tier-3 act", tools.every(t => !FORBIDDEN.test(t.name + " " + t.description)),
@@ -121,7 +122,8 @@ ok("list_records never returns more than the cap", ANNA_LIMITS.rows === 25 && /M
 console.log("\n8. no sealed sources, no tier-3 paths");
 ok("src/anna.ts imports nothing from sources", !/sources/.test(annaSrc.split("\n").filter(l => l.startsWith("import")).join("\n")));
 ok("the route never touches a source file", !/sourceFile|\/api\/sources|SealedDoc/i.test(route));
-ok("no route path at all in src/anna.ts", !/\/api\//.test(annaSrc));
+ok("the only route paths in src/anna.ts are the confirm routes",
+  [...annaSrc.matchAll(/"(\/api\/[^"]+)"/g)].every(m => (CONFIRM_ROUTES as readonly string[]).includes(m[1])));
 
 console.log("\n9. the loop is bounded");
 ok("limits: 6 calls, 30 s, 16k tokens", ANNA_LIMITS.calls === 6 && ANNA_LIMITS.ms === 30_000 && ANNA_LIMITS.maxTokens === 16_000);
@@ -152,14 +154,51 @@ const desk = read("../src/HelpDesk.tsx");
 const chat = desk.slice(desk.indexOf("function AnnaChat("), desk.indexOf("export default function HelpDesk("));
 ok("the panel exists", chat.length > 500);
 ok("no browser storage for the chat", !/localStorage|sessionStorage|indexedDB/.test(chat));
-ok("one endpoint, and it is Anna's", (chat.match(/fetch\(/g) || []).length === 1 && /fetch\("\/api\/anna\/turn"/.test(chat));
+ok("two calls: Anna's turn, and a confirm route", (chat.match(/fetch\(/g) || []).length === 2 && /fetch\("\/api\/anna\/turn"/.test(chat) && /fetch\(p\.confirmRoute,/.test(chat));
+ok("the confirm route is checked against the closed list first, and a contract never posts",
+  /if \(!\(CONFIRM_ROUTES as readonly string\[\]\)\.includes\(p\.confirmRoute\) \|\| p\.confirmRoute === "form:contract"\) return;\s*setCards/.test(chat));
+ok("a confirmed quotation is always a Draft", /const body = p\.kind === "quotation" \? \{ \.\.\.p\.data, status: "Draft" \} : p\.data;/.test(chat));
+ok("a card is never run on arrival", /actions\.forEach\(a => \{ if \(a\.type !== "proposal"\) run\(a\); \}\);/.test(chat));
 ok("only plain text turns are sent", /messages: history\.map\(m => \(\{ role: m\.role, content: m\.content \}\)\)/.test(chat));
 ok("a failed turn is never sent back", /msgs\.filter\(m => !m\.error\)/.test(chat));
-ok("an action can only open a door or a record",
-  /const run = \(a: AnnaAction\) => a\.type === "open_door" \? onOpenDoor\(a\.door\) : onOpenRecord\(a\.kind, a\.id\);/.test(chat)
-  && /type AnnaAction = \{ type: "open_door"; door: string \} \| \{ type: "open_record"; kind: string; id: string \};/.test(desk));
+ok("a navigation action can only open a door or a record",
+  /const run = \(a: NavAction\) => a\.type === "open_door" \? onOpenDoor\(a\.door\) : onOpenRecord\(a\.kind, a\.id\);/.test(chat)
+  && /type NavAction = \{ type: "open_door"; door: string \} \| \{ type: "open_record"; kind: string; id: string \};/.test(desk));
 ok("the tab shows only when the server says so", /anna=\{!!state\.anna\?\.enabled\}/.test(read("../src/App.tsx")));
 ok("the name is Anna in both languages (D7)", !/"Anna":/.test(read("../src/i18n.ts")) && /\{m === "anna" \? "Anna" : t\("Help"\)\}/.test(desk));
+
+console.log("\n6. drafts are cards; Saad's press writes, through the existing routes");
+ok("four confirm routes, exactly", JSON.stringify(CONFIRM_ROUTES) === '["/api/quotations/save","/api/compliance/save","/api/requests/save","form:contract"]');
+const st2: any = { ...state,
+  users: [...state.users, { id: "u-7", name: "Rana Haddad", active: true }, { id: "u-8", name: "Rana Old", active: false }],
+  employees: [{ id: "emp-1", name: "Rana Haddad", active: true }],
+  vendors: [...state.vendors, { id: "v2", name: "Omar Films", engageable: true, active: true }, { id: "v3", name: "Blocked Films", engageable: true, active: true, blocked: true }] };
+const c2: AnnaCtx = { ...ctx, state: st2 };
+const dq: any = draftTool("draft_quotation", { client: "maroun", title: "Reel", currency: "USD", issuedAs: "icontent",
+  items: [{ service: "Edit", description: "30s reel", output: "MP4", unitPrice: 150, qty: 2 }] }, c2);
+ok("a quotation card names a registered client and is a Draft", dq.proposal?.data.clientId === "c1" && dq.proposal.data.status === "Draft"
+  && dq.proposal.confirmRoute === "/api/quotations/save" && dq.proposal.lines.some((l: string) => l.includes("USD 300")));
+ok("an unregistered client is refused, with where to register", /registered on the Clients & quotations screen/.test((draftTool("draft_quotation", { client: "Nobody", title: "x", items: [{ service: "a", unitPrice: 1, qty: 1 }] }, c2) as any).error || ""));
+const dt: any = draftTool("draft_task", { title: "Call SKF", dueDate: "2026-09-20", category: "Donor", assignee: "rana" }, c2);
+ok("a task card resolves an active person only", dt.proposal?.data.assigneeUserId === "u-7" && dt.proposal.confirmRoute === "/api/compliance/save");
+ok("an unclear name is asked back, never guessed", "error" in draftTool("draft_task", { title: "x", dueDate: "2026-09-20", assignee: "r" }, { ...c2, state: { ...st2, users: [{ id: "a", name: "Rana", active: true }, { id: "b", name: "Rami", active: true }] } }));
+const dc: any = draftTool("draft_contract", { counterparty: "Omar Films", project: "skf", startDate: "2026-10-01", endDate: "2026-12-31", monthlyFee: 500, contractTotal: 1500, role: "Editor" }, c2);
+ok("a contract card only opens the form (D4)", dc.proposal?.confirmRoute === "form:contract" && dc.proposal.data.party === "vendor" && dc.proposal.data.kind === "Service");
+ok("a blocked provider gets no contract card", "error" in draftTool("draft_contract", { counterparty: "Blocked Films", project: "SKF", startDate: "2026-10-01", endDate: "2026-12-31", monthlyFee: 1, contractTotal: 1, role: "x" }, c2));
+ok("an end before the start is refused", "error" in draftTool("draft_contract", { counterparty: "Omar Films", project: "SKF", startDate: "2026-12-01", endDate: "2026-10-01", monthlyFee: 1, contractTotal: 1, role: "x" }, c2));
+const dr: any = draftTool("draft_request", { title: "Bulk upload", need: "upload 20 receipts at once", door: "banking", urgency: "high" }, c2);
+ok("a request card drops a door the user lacks", dr.proposal?.data.door === "" && dr.proposal.confirmRoute === "/api/requests/save");
+ok("the route shows a card and saves nothing", /draftTool\(c\.name, c\.input, ctx\)[\s\S]{0,200}actions\.push\(a\)[\s\S]{0,200}"Anna Draft", `turn \$\{turn\} · \$\{c\.name\}`/.test(route));
+const labelled = (path: string) => { const a = server.indexOf(`app.post("${path}"`); const b = server.indexOf("\n});\n", a); return a > 0 && /\$\{draftedBy\(req\)\}`/.test(server.slice(a, b)); };
+ok("the three save routes label an Anna save in their audit line", ["/api/quotations/save", "/api/compliance/save", "/api/requests/save"].every(labelled));
+ok("the label reads one header, nothing else", /const draftedBy = \(req: any\) => req\.get\?\.\("X-Drafted-By"\) === "anna" \? " \(drafted by Anna\)" : "";/.test(server));
+ok("an Edit-then-Save sends the label only for a new record",
+  /fromAnna && !quoteForm\.id \? \{ "X-Drafted-By": "anna" \}/.test(read("../src/tabs/ProductionTab.tsx"))
+  && /fromAnna && !taskForm\.id \? \{ "X-Drafted-By": "anna" \}/.test(read("../src/tabs/MyDeskTab.tsx")));
+const reqSave = server.slice(server.indexOf('app.post("/api/requests/save"'), server.indexOf('app.post("/api/requests/triage"'));
+ok("a filed request always starts New, under the signed-in user", /status: "New", createdBy: user\.id/.test(reqSave) && !/status\b[^:]*=\s*req\.body/.test(reqSave));
+ok("only the master account triages", /"\/api\/requests\/triage": \["Super Admin"\]/.test(read("../src/gates.ts"))
+  && /if \(user\?\.role !== "Super Admin"\) return res\.status\(403\)/.test(server.slice(server.indexOf('app.post("/api/requests/triage"'))));
 
 console.log(failed ? `\n${failed} FAILED` : "\nall ok");
 process.exit(failed ? 1 : 0);

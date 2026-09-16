@@ -67,6 +67,10 @@ export interface SharedProps {
   visibleProjects: any[];
   focusId: string | null;
   setFocusId: (id: string | null) => void;
+  /** A draft Anna prepared and Saad chose to Edit (src/anna.ts). The screen that owns the
+   *  form takes it once, opens the form filled in, and clears it. Saving is still his press. */
+  annaDraft: { kind: "quotation" | "task"; data: Record<string, any> } | null;
+  setAnnaDraft: (d: { kind: "quotation" | "task"; data: Record<string, any> } | null) => void;
   // Open another door, optionally on one record (Live editor → Editorial desk). The redirect
   // effect in App.tsx still refuses a door this role cannot open.
   openDoor: (door: string, focus?: string) => void;
