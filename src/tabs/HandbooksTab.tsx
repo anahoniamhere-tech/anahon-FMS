@@ -168,10 +168,10 @@ const TOPIC_ICON: Record<Topic, LucideIcon> = {
 };
 
 /** Amounts and deadlines picked out inside the sentence, and the reader's search on top. */
-const marked = (text: string, find: string) =>
+const marked = (text: string, find: string, facts = true) =>
   markPieces(text, find).map((p, k) =>
     p.mark === "find" ? <mark key={k} className="rounded bg-yellow-300 px-0.5 text-slate-900 ring-1 ring-yellow-500">{p.text}</mark>
-    : p.mark ? <mark key={k} className="rounded bg-amber-100 px-1 font-semibold text-slate-900">{p.text}</mark>
+    : p.mark && facts ? <mark key={k} className="rounded bg-amber-100 px-1 font-semibold text-slate-900">{p.text}</mark>
     : p.text);
 
 type ListItem = { text: string; subs: string[] };
@@ -443,11 +443,11 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
       const main = articleRef.current?.closest("main");
       if (!main) return;
       const limit = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top) + 24;
-      let cur = sections[0].id;
+      let cur: string | null = null;
       for (const s of sections) {
         const el = document.getElementById(s.id);
         if (!el) continue;
-        if (el.getBoundingClientRect().top > limit) break;
+        if (cur && el.getBoundingClientRect().top > limit) break;
         cur = s.id;
       }
       setCurrentSec(cur);
@@ -455,7 +455,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     document.addEventListener("scroll", measure, { capture: true, passive: true });
     measure();
     return () => document.removeEventListener("scroll", measure, { capture: true });
-  }, [sections]);
+  }, [sections, find]);
 
   if (selected) {
     const isMissing = selectedIsMissing;
@@ -501,7 +501,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
             className={`block min-h-11 w-full rounded-md px-2 py-2 text-start text-[13px] md:min-h-0 md:py-1.5 ${
               s.level === 3 ? "ps-5 text-slate-500 hover:bg-slate-50" :
               s.id === currentSec ? "bg-slate-100 font-semibold text-slate-900" : "font-semibold text-slate-700 hover:bg-slate-50"}`}>
-            {numTitle(s.num, marked(s.title, find), "text-slate-400")}
+            {numTitle(s.num, marked(s.title, find, false), "text-slate-400")}
           </button>
         ))}
       </nav>
@@ -514,7 +514,11 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
       <div className="relative">
         <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-slate-400">{ic(Search, "h-4 w-4")}</span>
         <input value={find} onChange={e => setFind(e.target.value)} autoFocus={autoFocus} dir="auto" type="search"
-          onKeyDown={e => { if (e.key === "Escape") setFind(""); }}
+          onKeyDown={e => {
+            if (e.key === "Escape") setFind("");
+            // Enter: go to the first section that mentions it (the phone keyboard closes too).
+            if (e.key === "Enter" && hits[0] && finding) { e.currentTarget.blur(); setSectionsOpen(false); setJumpTo(hits[0].id); }
+          }}
           placeholder={t("Search this policy…")} aria-label={t("Search this policy…")}
           className="h-11 w-full rounded-lg border border-slate-300 bg-white ps-9 pe-11 text-sm outline-none focus:border-[#6D1A1A] [&::-webkit-search-cancel-button]:hidden" />
         {find && (
