@@ -30,8 +30,13 @@ const raise = between('app.post("/api/expense/new"', "// Lock committed budget")
 const conf = raise.slice(raise.indexOf("if (confidential === true)"), raise.indexOf("const count = await prisma.expense.count()"));
 ok("the raise route is read (not a truncated slice)", raise.length > 4000 && conf.length > 500);
 ok("the voucher's title becomes the code name and its purpose a fixed sentence", /title = file!\.codeName;/.test(conf) && /purpose = CONFIDENTIAL_PURPOSE;/.test(conf) && CONFIDENTIAL_PURPOSE === "Confidential payment — Policy P11 §6");
-const load = between("async function loadState", "\n}\n");
+// Since the Anna rollout (a73201c) loadState is a thin wrapper that adds Anna's flags; the
+// state is built in loadStateFor, so that is the body read here — and the wrapper is held to the same rule.
+const load = between("async function loadStateFor", "\n}\n");
+const wrapper = between("async function loadState(", "async function loadStateFor");
 ok("loadState is read", load.length > 20000);
+ok("the loadState wrapper only adds Anna's flags and touches no sealed file",
+  wrapper.length > 100 && wrapper.length < 2000 && /await loadStateFor\(viewer\)/.test(wrapper) && !/sourceFile|realName|idDocument|sanctionsResult|SEALED/i.test(wrapper));
 ok("loadState reads the sealed files only for the receipt yes/no — never a name, contact or identity",
   /prisma\.sourceFile\.findMany\(\{ select: \{ id: true, docsJson: true \} \}\)/.test(load) && !/realName|idDocument|sanctionsResult/.test(load));
 ok("the review sent to the ED and FO is code names and totals", /confidentialReview: viewer && \["Super Admin", "Finance Officer"\]\.includes\(viewer\.role\) \? confidentialReview : null/.test(server));
