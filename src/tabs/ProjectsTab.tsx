@@ -1671,7 +1671,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
                       {projectWorkspaceTab === "money" && (
                         <div className="space-y-6">
-                        {/* ── How this project's money may arrive (Policy 020 §4.4.4, Saad 14 Sep 2026) ──
+                        {/* ── How this project's money may arrive (Policy P5 §4.4.4, Saad 14 Sep 2026) ──
                             AnaHon receives through every channel. Only a donor's agreement makes a project
                             "bank only", and narrowly: the donor's money arrives through the bank; cash may
                             still be spent on it. The rule names the agreement that imposes it. */}
@@ -2191,7 +2191,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                   {/* Section 3: Official Reconciliation Review Sign-Off (Section 2.5 compliance) */}
                                   <div className="border-t-2 border-slate-200 pt-6 space-y-4 break-inside-avoid">
                                     <p className="text-[10px] text-slate-500 text-center leading-relaxed">
-                                      Under **Sections 2.5 and 2.6 of AnaHon's Finance and Procurement Policy (Policy 020)**, this reconciliation report verifies that all project expenditures, personnel allocations, timesheets, and shared split costs have been matched with primary supporting documents and validated with actual bank statement disbursements.
+                                      Under **Sections 2.5 and 2.6 of AnaHon's Finance and Procurement Policy (Policy P5)**, this reconciliation report verifies that all project expenditures, personnel allocations, timesheets, and shared split costs have been matched with primary supporting documents and validated with actual bank statement disbursements.
                                     </p>
 
                                     {hasPersonnelLines && (

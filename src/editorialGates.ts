@@ -1,5 +1,5 @@
 /**
- * Editorial pipeline gates — Policies 002 (Editorial) & 005 (Fact-Checking) as code.
+ * Editorial pipeline gates — Policies P3 (Editorial) & 005 (Fact-Checking) as code.
  *
  * Pure module, no I/O: imported by server.ts (enforcement), EditorialTab.tsx
  * (disabled-button reasons) and scripts/check-editorial-gates.ts (asserts), so the
@@ -11,30 +11,30 @@ export const CONTENT_STATUSES = [
   "Assigned", "In Production", "Fact-Check", "Editorial Review", "Approved", "Published"
 ] as const;
 
-// Policy 002: "multiple types of content — infographics, reels, short documentaries,
+// Policy P3: "multiple types of content — infographics, reels, short documentaries,
 // interviews, posts…" plus podcasts and articles named under Responsibilities.
 export const CONTENT_TYPES: string[] = [
   "Infographic", "Reel", "Short Documentary", "Interview", "Post", "Podcast", "Article"
 ];
 
-// Policy 002: "our chain of channels — WhatsApp, Facebook, Instagram, YouTube, WEBSITE."
+// Policy P3: "our chain of channels — WhatsApp, Facebook, Instagram, YouTube, WEBSITE."
 export const CONTENT_CHANNELS: string[] = ["WhatsApp", "Facebook", "Instagram", "YouTube", "Website"];
 
-// Policy 002 content standards — each checkbox is a policy sentence, not a vibe.
+// Policy P3 content standards — each checkbox is a policy sentence, not a vibe.
 export const CONTENT_CHECKS: [key: string, label: string, policySentence: string][] = [
-  ["researched",         "Thoroughly researched",                      "All content must be thoroughly researched and fact-checked (Policy 002 — Accuracy)"],
-  ["balanced",           "Balanced and unbiased",                      "Content should present information in a balanced and unbiased manner (Policy 002 — Objectivity)"],
-  ["sourcesVerified",    "Credible sources, authenticity verified",    "Sources must be credible, and their authenticity verified (Policy 002 — Accuracy)"],
-  ["originalWork",       "No plagiarism, copyright respected",         "Avoid plagiarism and respect copyright laws (Policy 002 — Ethical Standards)"],
-  ["conflictsDisclosed", "Conflicts of interest disclosed",            "Any potential conflicts of interest must be disclosed (Policy 002 — Ethical Standards)"],
-  ["inclusive",          "Diverse voices, no discriminatory language", "Ensure representation of diverse voices; avoid discriminatory language (Policy 002 — Inclusivity)"],
-  ["solutionsFocused",   "Solutions focus, multiple perspectives",     "Focus on solution journalism with multiple approaches and perspectives (Policy 002 — Positive Journalism)"]
+  ["researched",         "Thoroughly researched",                      "All content must be thoroughly researched and fact-checked (Policy P3 — Accuracy)"],
+  ["balanced",           "Balanced and unbiased",                      "Content should present information in a balanced and unbiased manner (Policy P3 — Objectivity)"],
+  ["sourcesVerified",    "Credible sources, authenticity verified",    "Sources must be credible, and their authenticity verified (Policy P3 — Accuracy)"],
+  ["originalWork",       "No plagiarism, copyright respected",         "Avoid plagiarism and respect copyright laws (Policy P3 — Ethical Standards)"],
+  ["conflictsDisclosed", "Conflicts of interest disclosed",            "Any potential conflicts of interest must be disclosed (Policy P3 — Ethical Standards)"],
+  ["inclusive",          "Diverse voices, no discriminatory language", "Ensure representation of diverse voices; avoid discriminatory language (Policy P3 — Inclusivity)"],
+  ["solutionsFocused",   "Solutions focus, multiple perspectives",     "Focus on solution journalism with multiple approaches and perspectives (Policy P3 — Positive Journalism)"]
 ];
 
 /**
  * Why this post may not go to a social account; empty ⇒ it may.
  *
- * Policy 002 names AnaHon's own channels — "WhatsApp, Facebook, Instagram, YouTube, WEBSITE" —
+ * Policy P3 names AnaHon's own channels — "WhatsApp, Facebook, Instagram, YouTube, WEBSITE" —
  * and then requires that ALL content pass editorial review and carry the Production Manager AND
  * Programs Director approvals BEFORE publication. There is no channel exemption in it: a caption
  * on Instagram is published content exactly as an article on the website is.
@@ -46,14 +46,14 @@ export const CONTENT_CHECKS: [key: string, label: string, policySentence: string
  * (src/meta.ts initialState). It only refuses a post that no piece is answerable for.
  */
 export function socialPostBlockers(item: { status: string; retractedAt: string; rehearsal?: boolean } | null): string[] {
-  if (!item) return ["Every post carries a piece from the editorial register — Policy 002 covers Facebook and Instagram exactly as it covers the website, and all content is reviewed and approved before it is published. Create or pick the piece, and the post goes out when the piece is cleared."];
-  if (item.retractedAt) return ["That piece has been retracted — its posts were cancelled and it may not be promoted again (Policy 005)."];
+  if (!item) return ["Every post carries a piece from the editorial register — Policy P3 covers Facebook and Instagram exactly as it covers the website, and all content is reviewed and approved before it is published. Create or pick the piece, and the post goes out when the piece is cleared."];
+  if (item.retractedAt) return ["That piece has been retracted — its posts were cancelled and it may not be promoted again (Policy P4)."];
   if ((item as any).rehearsal) return ["That piece is a rehearsal — a walk-through of the chain, not a publication. Nothing from it goes to a social account."];
   return [];
 }
 
 /**
- * Policy 002 "Content Types" — the label the published piece must carry.
+ * Policy P3 "Content Types" — the label the published piece must carry.
  *
  * NOT the same as CONTENT_TYPES above, which is the format (Article, Reel, Podcast…). The policy
  * defines three kinds of content and requires each be distinguishable from the others:
@@ -67,9 +67,9 @@ export function socialPostBlockers(item: { status: string; retractedAt: string; 
  * marked as sponsored anywhere in the FMS.
  */
 export const CONTENT_LABELS: [key: string, word: string, policySentence: string][] = [
-  ["News", "News", "Clearly label all news articles, reports, and broadcasts as \"News\" (Policy 002 — Content Types)"],
-  ["Commercial", "Sponsored", "Clearly identify all commercial content with labels such as \"Sponsored\", \"Advertisement\" or \"Paid Content\", and maintain transparency about the commercial relationship (Policy 002 — Content Types)"],
-  ["Opinion", "Opinion", "Clearly label all opinion content with headings such as \"Opinion\", \"Editorial\" or \"Commentary\" (Policy 002 — Content Types)"],
+  ["News", "News", "Clearly label all news articles, reports, and broadcasts as \"News\" (Policy P3 — Content Types)"],
+  ["Commercial", "Sponsored", "Clearly identify all commercial content with labels such as \"Sponsored\", \"Advertisement\" or \"Paid Content\", and maintain transparency about the commercial relationship (Policy P3 — Content Types)"],
+  ["Opinion", "Opinion", "Clearly label all opinion content with headings such as \"Opinion\", \"Editorial\" or \"Commentary\" (Policy P3 — Content Types)"],
 ];
 /** The label word a published piece carries in front of its text; "" for an unlabelled piece. */
 export const labelWord = (contentLabel: string) =>
@@ -93,7 +93,7 @@ export type Rendition = {
 /**
  * What a piece says on a social account.
  *
- * Policy 002 treats a caption as published content, and the fact-checker verifies the piece's
+ * Policy P3 treats a caption as published content, and the fact-checker verifies the piece's
  * drafts — so the text that goes to Facebook or Instagram should be the Caption draft that was
  * written and checked with the piece, not something retyped in the composer afterwards. Until
  * 9 Sep 2026 the composer assembled title + brief and ignored the Caption entirely.
@@ -110,7 +110,7 @@ export function socialRendition(
   const body = caption
     ? String(caption.text).trim()
     : [item?.title, item?.brief].filter(Boolean).join("\n\n").trim();
-  // Policy 002: commercial and opinion content must be distinguishable from editorial content
+  // Policy P3: commercial and opinion content must be distinguishable from editorial content
   // "in terms of design, placement, and labeling". On a social account there is no design and no
   // placement — the caption is all there is — so the label goes in front of the words. News is
   // what an audience already assumes of a media platform and is not marked here.
@@ -145,38 +145,38 @@ export type ContentGateFields = {
 
 /**
  * Every reason this item may not be published; empty array ⇒ publishable.
- * Policy 002: "Content should be approved by the Production Manager and Programs
- * Director before being published" + legal review when flagged. Policy 005:
+ * Policy P3: "Content should be approved by the Production Manager and Programs
+ * Director before being published" + legal review when flagged. Policy P4:
  * fact-checked content approved before publication, by a named independent checker.
  */
 export function publishBlockers(c: ContentGateFields): string[] {
   const blockers: string[] = [];
   if (c.status !== "Approved") blockers.push(`Status is ${c.status} — only Approved content can be published.`);
-  if (!c.factCheckPassedAt) blockers.push("Fact-check has not passed (Policy 005: fact-checked before publication).");
-  if (!c.pmApprovedBy) blockers.push("Production Manager approval missing (Policy 002).");
-  if (!c.pdApprovedBy) blockers.push("Programs Director approval missing (Policy 002).");
+  if (!c.factCheckPassedAt) blockers.push("Fact-check has not passed (Policy P4: fact-checked before publication).");
+  if (!c.pmApprovedBy) blockers.push("Production Manager approval missing (Policy P3).");
+  if (!c.pdApprovedBy) blockers.push("Programs Director approval missing (Policy P3).");
   if (c.rehearsal) {
     // A rehearsal is one person in four seats, so "two different people" becomes "four different
     // seats" — and it is still refused when any two steps were taken in the same one.
     blockers.push(...rehearsalSeatsBlockers(c));
   } else if (c.pmApprovedBy && c.pdApprovedBy && c.pmApprovedBy === c.pdApprovedBy) {
-    blockers.push("Both approvals are by the same person — Policy 002 requires the Production Manager AND the Programs Director.");
+    blockers.push("Both approvals are by the same person — Policy P3 requires the Production Manager AND the Programs Director.");
   }
-  // Policy 002 requires every piece to be labelled News / Commercial / Opinion, and a commercial
+  // Policy P3 requires every piece to be labelled News / Commercial / Opinion, and a commercial
   // piece to disclose the relationship behind it. An unlabelled piece cannot be published.
-  if (!c.contentLabel) blockers.push("No content label — say whether this is News, Commercial or Opinion (Policy 002: each content type must be clearly labelled).");
-  else if (!CONTENT_LABELS.some(([k]) => k === c.contentLabel)) blockers.push(`"${c.contentLabel}" is not a content label Policy 002 defines (News, Commercial, Opinion).`);
+  if (!c.contentLabel) blockers.push("No content label — say whether this is News, Commercial or Opinion (Policy P3: each content type must be clearly labelled).");
+  else if (!CONTENT_LABELS.some(([k]) => k === c.contentLabel)) blockers.push(`"${c.contentLabel}" is not a content label Policy P3 defines (News, Commercial, Opinion).`);
   else if (c.contentLabel === "Commercial" && !String(c.sponsorDisclosure || "").trim())
-    blockers.push("Commercial content must say who paid for it or what the relationship is (Policy 002: maintain transparency about any commercial relationships or sponsorships).");
+    blockers.push("Commercial content must say who paid for it or what the relationship is (Policy P3: maintain transparency about any commercial relationships or sponsorships).");
   if (c.legalFlag && !c.legalReviewedBy)
-    blockers.push("Flagged for legal implications but no legal review recorded (Policy 002).");
+    blockers.push("Flagged for legal implications but no legal review recorded (Policy P3).");
   // The golden transparency rule: AI-assisted content publishes only with its label.
   if (c.aiAssisted && !c.aiDisclosed)
     blockers.push("AI was used on this item — confirm the AI-use watermark/disclaimer is on the published piece (transparency rule).");
   let checks: Record<string, boolean> = {};
   try { checks = JSON.parse(c.checksJson || "{}"); } catch { /* treated as unchecked */ }
   for (const [key, label] of CONTENT_CHECKS) {
-    if (!checks[key]) blockers.push(`Standard unmet: ${label} (Policy 002).`);
+    if (!checks[key]) blockers.push(`Standard unmet: ${label} (Policy P3).`);
   }
   return blockers;
 }
@@ -185,7 +185,7 @@ export function publishBlockers(c: ContentGateFields): string[] {
  * Saad is the only active holder of an editorial seat, so the real chain cannot run end to end:
  * separation compares PEOPLE (user ids) and "Act as…" changes only the seat, never the person.
  * That refusal is correct and stays — loosening it would let one login publish anything, which is
- * exactly what Policies 002 and 005 forbid.
+ * exactly what Policies P3 and P4 forbid.
  *
  * A rehearsal is a separate kind of item where each step must instead be taken in a different
  * SEAT. It walks every gate, and its "publish" never leaves the FMS. These rules apply ONLY when
@@ -197,7 +197,7 @@ type Seats = { assigneeAs?: string | null; factCheckerAs?: string | null; pmAppr
 
 /**
  * Why `seat` may not take `step` on a rehearsal; "" when it may.
- *   factcheck — naming the fact-checker seat: never the author's seat (Policy 005 impartiality)
+ *   factcheck — naming the fact-checker seat: never the author's seat (Policy P4 impartiality)
  *   pass      — only the seat named as fact-checker may pass it
  *   pm / pd   — an approval seat must differ from the author, the checker and the other approval
  */
@@ -205,7 +205,7 @@ export function rehearsalSeatClash(item: Seats, step: RehearsalStep, seat: strin
   const s = String(seat || "");
   if (!s) return "No seat — stand in a seat with Act as… first.";
   if (step === "factcheck") {
-    return s === item.assigneeAs ? `The ${s} seat authored this rehearsal — name a different seat as fact-checker (Policy 005: the checker is not the author).` : "";
+    return s === item.assigneeAs ? `The ${s} seat authored this rehearsal — name a different seat as fact-checker (Policy P4: the checker is not the author).` : "";
   }
   if (step === "pass") {
     return s !== item.factCheckerAs ? `Only the ${item.factCheckerAs || "named fact-checker"} seat can pass this — you are standing in ${s}.` : "";
@@ -213,7 +213,7 @@ export function rehearsalSeatClash(item: Seats, step: RehearsalStep, seat: strin
   const other = step === "pm" ? item.pdApprovedAs : item.pmApprovedAs;
   if (s === item.assigneeAs) return `The ${s} seat authored this rehearsal — approve it from a different seat (§4.3).`;
   if (s === item.factCheckerAs) return `The ${s} seat fact-checked this rehearsal — approve it from a different seat.`;
-  if (other && s === other) return `The ${s} seat already holds the other approval — Policy 002 needs two different approvers, so use a different seat.`;
+  if (other && s === other) return `The ${s} seat already holds the other approval — Policy P3 needs two different approvers, so use a different seat.`;
   return "";
 }
 
@@ -234,7 +234,7 @@ export function rehearsalSeatsBlockers(c: Seats): string[] {
 }
 
 /**
- * Source and editorial material — Policy 010. One rule, read by the newsroom and by the consultant's month
+ * Source and editorial material — Policy P11. One rule, read by the newsroom and by the consultant's month
  * pack (Books, 15 Sep 2026), so neither can leak a source's file the other protects. A document is source
  * material when it belongs to editorial work (a piece, its references, a meeting, the website) or its category
  * says it is raw material. The month pack also chooses its documents by whitelist; this is the second guard.

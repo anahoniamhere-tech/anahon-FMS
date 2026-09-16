@@ -14,7 +14,7 @@ import ChannelPanel, { TokenHealth } from "./ChannelPanel";
 import NetworkPanel from "./NetworkPanel";
 import { SITE_EDITORS } from "../roles";
 
-// Editorial pipeline (Policies 002 & 005). The tab renders the register and the
+// Editorial pipeline (Policies P3 & P4). The tab renders the register and the
 // buttons; every rule lives server-side — the same publishBlockers() the server
 // enforces produces the disabled-publish explanation here, so they cannot drift.
 
@@ -401,7 +401,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
     }
   };
 
-  // Policy 002 weekly editorial meeting: reviews last week's content, plans the
+  // Policy P3 weekly editorial meeting: reviews last week's content, plans the
   // coming week. Derived from the register — never stored.
   const today = new Date().toISOString().split("T")[0];
   const { pastWeek, comingWeek } = useMemo(() => {
@@ -491,13 +491,13 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
     (!libKind || m.kind === libKind) &&
     (!libSearch || `${m.label} ${m.description || ""} ${m.itemTitle || ""}`.toLowerCase().includes(libSearch.toLowerCase())));
 
-  // Meetings of the last 7 days (both kinds — Policy 002 defines the weekly editorial
+  // Meetings of the last 7 days (both kinds — Policy P3 defines the weekly editorial
   // AND the daily production meeting), plus older history. Rows come date-desc.
   const ago7 = new Date(Date.now() - 7 * 86400000).toISOString().split("T")[0];
   const allMtgs = state.editorialMeetings || [];
   const recentMtgs = allMtgs.filter(m => m.date >= ago7);
   const pastMtgs = allMtgs.filter(m => m.date < ago7).slice(0, 3);
-  // Policy 002 participants per meeting kind, preticked on a fresh attendance sheet.
+  // Policy P3 participants per meeting kind, preticked on a fresh attendance sheet.
   const policyAttendeesFor = (kind: string) => activeUsers
     .filter(u => (kind === "Daily Production"
       ? [...CREW, "Production Manager", "Project Officer", "Super Admin"]
@@ -511,7 +511,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
         <h2 className="text-xl font-bold flex items-center gap-2"><Newspaper className="h-5 w-5" /> {t("Newsroom")}</h2>
         <p className="text-xs text-slate-500">
           One chain for every channel — the website, Facebook and Instagram are outputs of the same piece.
-          Policies 002 & 005, enforced: named independent fact-checker, dual approval (Production Manager + Programs Director),
+          Policies P3 & P4, enforced: named independent fact-checker, dual approval (Production Manager + Programs Director),
           legal review when flagged, public dated corrections. The server refuses what the policy refuses.
         </p>
         <TokenHealth status={social.status} t={t} />
@@ -523,7 +523,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
         <EditorialMap state={state} currentUser={currentUser} t={t} rtl={rtl} />
       </div>
 
-      {/* Weekly editorial meeting — derived agenda + held-meeting record (Policy 002) */}
+      {/* Weekly editorial meeting — derived agenda + held-meeting record (Policy P3) */}
       <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
         <h3 className="text-sm font-bold text-slate-800 uppercase font-mono mb-3 flex items-center justify-between">
           <span className="inline-flex items-center gap-1.5">{ic(Calendar)}{t("Editorial Meetings")}</span>
@@ -617,7 +617,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
               <input type="date" value={mtgForm.date} onChange={e => setMtgForm({ ...mtgForm, date: e.target.value })} className="finance-input py-1" disabled={!!mtgForm.id} />
             </div>
             <div>
-              <span className="block font-bold text-slate-600 mb-1">{t("Attendance")} <span className="font-normal text-slate-400">(Policy 002: Programs Director, Production Manager, Project Officers)</span></span>
+              <span className="block font-bold text-slate-600 mb-1">{t("Attendance")} <span className="font-normal text-slate-400">(Policy P3: Programs Director, Production Manager, Project Officers)</span></span>
               <div className="flex flex-wrap gap-x-4 gap-y-1">
                 {activeUsers.map(u => (
                   <label key={u.id} className="flex items-center gap-1">
@@ -781,7 +781,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
               </p>
               {(chat.draft.suggestedSources || []).length > 0 && (
                 <div className="pt-1 border-t border-emerald-800/50">
-                  <p className="font-bold text-emerald-300 text-[10px] uppercase">{t("Suggested sources (verify per Policy 005)")}</p>
+                  <p className="font-bold text-emerald-300 text-[10px] uppercase">{t("Suggested sources (verify per Policy P4)")}</p>
                   {chat.draft.suggestedSources.map((s: any, i: number) => (
                     <p key={i} className="text-slate-300 text-[11px]">• <span className="font-bold">{s.name}</span> — {s.why}</p>
                   ))}
@@ -791,7 +791,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                 onClick={() => {
                   const sources = (chat.draft.suggestedSources || []) as { name: string; why: string }[];
                   const brief = chat.draft.brief + (sources.length
-                    ? `\n\nSUGGESTED SOURCES — verify per Policy 005:\n${sources.map(s => `- ${s.name} — ${s.why}`).join("\n")}`
+                    ? `\n\nSUGGESTED SOURCES — verify per Policy P4:\n${sources.map(s => `- ${s.name} — ${s.why}`).join("\n")}`
                     : "");
                   setForm({ title: chat.draft.title, contentType: chat.draft.contentType, stream: chat.draft.stream, channels: chat.draft.channels, assigneeUserId: "", dueDate: "", brief, legalFlag: chat.draft.legalFlag, materials: chat.draft.materials, aiAssisted: true });
                   setChat(null);
@@ -918,7 +918,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
         </div>
       )}
 
-      {/* New assignment — Policy 002: assignments come out of the daily production meeting */}
+      {/* New assignment — Policy P3: assignments come out of the daily production meeting */}
       {canManage && (
         <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
           {!form ? (
@@ -960,7 +960,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                     {CONTENT_TYPES.map(ct => <option key={ct} value={ct}>{ct}</option>)}
                   </select>
                 </div>
-                {/* Policy 002 "Content Types" — the label the published piece must carry. Distinct
+                {/* Policy P3 "Content Types" — the label the published piece must carry. Distinct
                     from Type above, which is the format. The publish gate refuses an empty one. */}
                 <div>
                   <span className="block text-slate-600 font-bold mb-1">{t("Content label")}</span>
@@ -969,7 +969,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                     {CONTENT_LABELS.map(([k]) => <option key={k} value={k}>{t(k)}</option>)}
                   </select>
                   <span className="block text-[10px] text-slate-400 mt-0.5" dir="auto">
-                    {CONTENT_LABELS.find(([k]) => k === form.contentLabel)?.[2] || t("Policy 002 requires every piece to be labelled.")}
+                    {CONTENT_LABELS.find(([k]) => k === form.contentLabel)?.[2] || t("Policy P3 requires every piece to be labelled.")}
                   </span>
                 </div>
                 {form.contentLabel === "Commercial" && (
@@ -1352,7 +1352,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                             <span className="flex flex-wrap gap-1.5">
                               <button onClick={() => { setStudio({ itemId: item.id, messages: [], busy: false, draft: null, provider: "" }); setStudioInput(""); }}
                                 className="bg-slate-900 hover:bg-slate-950 text-white rounded px-3 py-1.5">🎬 {t("Production Studio")}</button>
-                              {/* Policy 021 bridge: concept out, generated file dragged back onto this drawer. */}
+                              {/* Policy P3 bridge: concept out, generated file dragged back onto this drawer. */}
                               <button onClick={() => {
                                 navigator.clipboard?.writeText(`${item.title}\n\n${item.brief}`);
                                 triggerToast("Concept copied — paste it into Higgsfield, then drag the result back onto this item.");
@@ -1436,7 +1436,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       </div>
                     )}
 
-                    {/* Content standards — each checkbox is a policy sentence (Policy 002) */}
+                    {/* Content standards — each checkbox is a policy sentence (Policy P3) */}
                     <div>
                       <h5 className="font-bold text-slate-700 uppercase text-[10px] mb-1">{t("Content Standards")}</h5>
                       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -1466,7 +1466,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                             {facts.map((f, i) => <li key={i}>{f}</li>)}
                           </ul>
                           <p className="text-[9px] text-slate-500 mt-0.5">
-                            {t("The draft step has no web access, so the model marked these rather than inventing them. Research proposes; each becomes a source entry below only once a person confirms it (Policy 005).")}
+                            {t("The draft step has no web access, so the model marked these rather than inventing them. Research proposes; each becomes a source entry below only once a person confirms it (Policy P4).")}
                           </p>
 
                           {(isAssignee || isChecker || canManage) && ["In Production", "Fact-Check"].includes(item.status) && (
@@ -1510,7 +1510,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                                   ))}
                                 </div>
                               )}
-                              <p className="text-[9px] text-amber-700">{t("AI research — verify each source before logging it (Policy 005).")}</p>
+                              <p className="text-[9px] text-amber-700">{t("AI research — verify each source before logging it (Policy P4).")}</p>
                               <button onClick={() => setResearch(null)} className="text-slate-500 hover:text-slate-800 text-[10px]">✕ {t("Close")}</button>
                             </div>
                           )}
@@ -1518,7 +1518,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       );
                     })()}
 
-                    {/* Fact-check log (Policy 005: sources and verification steps) */}
+                    {/* Fact-check log (Policy P4: sources and verification steps) */}
                     <div>
                       <h5 className="font-bold text-slate-700 uppercase text-[10px] mb-1">
                         {t("Fact-Check Log")} {item.factCheckerUserId && <span className="normal-case font-normal">— {t("Fact-Checker")}: {nameOf(item.factCheckerUserId)}</span>}
@@ -1537,7 +1537,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       )}
                     </div>
 
-                    {/* Approvals (Policy 002: PM + PD, two distinct people) */}
+                    {/* Approvals (Policy P3: PM + PD, two distinct people) */}
                     <div>
                       <h5 className="font-bold text-slate-700 uppercase text-[10px] mb-1">{t("Approvals")}</h5>
                       <p className="font-mono text-[11px] text-slate-600">
@@ -1546,7 +1546,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       </p>
                     </div>
 
-                    {/* Legal attestation (Policy 002) */}
+                    {/* Legal attestation (Policy P3) */}
                     {item.legalFlag && (
                       <div>
                         <h5 className="font-bold text-red-700 uppercase text-[10px] mb-1"><span className="inline-flex items-center gap-1">{ic(Scale, "h-3 w-3")}Legal Review</span></h5>
@@ -1563,7 +1563,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       </div>
                     )}
 
-                    {/* Corrections (Policies 002 & 005: public, dated) */}
+                    {/* Corrections (Policies P3 & P4: public, dated) */}
                     {item.status === "Published" && (
                       <div>
                         <h5 className="font-bold text-slate-700 uppercase text-[10px] mb-1">{t("Corrections")}</h5>

@@ -1,5 +1,5 @@
 /**
- * Paying a protected source — Policy 010 §6 (approved by Saad, 15 Sep 2026).
+ * Paying a protected source — Policy P11 §6 (approved by Saad, 15 Sep 2026).
  *
  * A fixer, a contributor, an interviewee reimbursed for travel: their payment follows every finance
  * rule, and only who can see their name changes. So the identity never enters the voucher at all.
@@ -15,7 +15,7 @@
  * own route, so no document list, byte route, search or pack can ever carry them.
  */
 
-export const CONFIDENTIAL_PURPOSE = "Confidential payment — Policy 010 §6";
+export const CONFIDENTIAL_PURPOSE = "Confidential payment — Policy P11 §6";
 
 /** "Source S-2026-03": the highest issued in the year plus one. */
 export function nextSourceCode(year: string, existing: string[]): string {

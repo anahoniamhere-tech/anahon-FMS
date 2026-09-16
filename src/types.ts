@@ -35,7 +35,7 @@ export interface Project {
   status: "Active" | "Completed" | "Pending";
   /** Which of AnaHon's five programs this project belongs to ("" = unassigned). */
   stream?: string;
-  /** Policy 020 §4.4.4 — "any" channel, or "bank" only as the donor's agreement says. */
+  /** Policy P5 §4.4.4 — "any" channel, or "bank" only as the donor's agreement says. */
   channelRule?: "any" | "bank";
   channelRuleSource?: string;
 }
@@ -177,17 +177,17 @@ export interface Expense {
   comments: Comment[];
   allocations: ProjectAllocation[];
   hasAttachment: boolean;
-  /** The approved procurement authorising a purchase above the Policy 020 threshold. */
+  /** The approved procurement authorising a purchase above the Policy P5 threshold. */
   procurementId?: string;
   /** What kind of cost this is, in the books' own words (5100 salaries, 7100 rent, 6300
    *  equipment…). Named when the request is raised: the procurement rule needs it then.
    *  Blank on rows raised before this existed. */
   costAccountCode?: string;
   transactionDate?: string;
-  /** Policy 010 §6: a payment to a protected source — the title is the code name, no supplier. */
+  /** Policy P11 §6: a payment to a protected source — the title is the code name, no supplier. */
   confidential?: boolean;
   sourceId?: string;
-  /** Policy 020 §6.6, computed by the server for every seat. */
+  /** Policy P5 §6.6, computed by the server for every seat. */
   evidence?: "proof" | "reconstructed" | "declaration-unsigned" | "declaration-awaiting-director" | "missing";
   declaration?: { id: string; generatedDocId: string; signedDocId: string; preparedById: string; preparedAt: string; approvedById: string; approvedAs: string; approvedAt: string; madeOn: string } | null;
   /** Why this cost never involved choosing a supplier ("a salary under an employment
@@ -224,7 +224,7 @@ export interface BankAccount {
   id: string;
   name: string;
   /** "Petty Cash" is the float (the locked box) and nothing else; the BOB/OMT/Whish/cheque
-   *  channels are "Off-bank channel" (Policy 020 §4.4.4). */
+   *  channels are "Off-bank channel" (Policy P5 §4.4.4). */
   type: "Bank" | "Petty Cash" | "Off-bank channel" | "Cash in transit";
   currency: "USD" | "EUR" | "LBP";
   accountNo: string;
@@ -360,7 +360,7 @@ export interface FixedAsset {
   currentBookValue: number;
   depreciationMethod: "Straight Line" | "Double Declining";
   accumulatedDepreciation: number;
-  /** Policy 020 §9: where the value comes from ("" = not valued yet), fixed USD value and rate. */
+  /** Policy P5 §9: where the value comes from ("" = not valued yet), fixed USD value and rate. */
   costBasis?: "" | "voucher" | "receipt" | "estimate" | "gift";
   costBasisDocId?: string;
   costBasisNote?: string;
@@ -391,7 +391,7 @@ export interface FixedAsset {
   status?: "Registered" | "Received" | "Verified" | "Out" | "Awaiting disposal approval"
     | "Broken — thrown away" | "Sold" | "Given away" | "Lost" | "Stolen" | "Returned to its owner";
   /** What became of it: "" while in use, else one of END_KINDS (src/equipment.ts). A disposal
-   *  only takes effect once the second approval is on it — Resources and Assets Policy 017. */
+   *  only takes effect once the second approval is on it — Resources and Assets Policy P7. */
   endKind?: string;
   endAt?: string | null;
   endNote?: string;
@@ -444,7 +444,7 @@ export interface CashCount {
   journalEntryId?: string;
 }
 
-/** A top-up of the petty-cash float (Policy 020 §4.4.1). */
+/** A top-up of the petty-cash float (Policy P5 §4.4.1). */
 // Cash withdrawn from the bank for approved payment requests, held on 1127 until they are paid.
 export interface CashDraw {
   id: string;
@@ -617,7 +617,7 @@ export interface Account {
 }
 
 /**
- * One piece of content moving through the editorial pipeline (Policies 002 & 005).
+ * One piece of content moving through the editorial pipeline (Policies P3 & P4).
  * The enforcement fields — named fact-checker, dual approval slots, legal attestation,
  * checks — are what make "published" mean "policy-compliant".
  */
@@ -666,7 +666,7 @@ export interface ContentItem {
   created_at: string;
 }
 
-/** One held editorial meeting (Policy 002): attendance, direction, decisions. */
+/** One held editorial meeting (Policy P3): attendance, direction, decisions. */
 export interface EditorialMeeting {
   id: string;
   kind: "Weekly Editorial" | "Daily Production";
@@ -754,7 +754,7 @@ export interface DatabaseState {
   employees: Employee[];
   timesheets: Timesheet[];
   fixedAssets: FixedAsset[];
-  /** Policy 010 §6 — the quarterly review, sent to the ED and the Finance Officer only. */
+  /** Policy P11 §6 — the quarterly review, sent to the ED and the Finance Officer only. */
   confidentialReview?: { count: number; totalUSD: number; bySource: { codeName: string; count: number; totalUSD: number; lastDate: string }[]; lastReviewedOn: string; due: boolean } | null;
   partnerAccounts: PartnerAccount[];
   documents: AppDoc[];

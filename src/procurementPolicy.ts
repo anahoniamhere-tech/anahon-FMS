@@ -1,5 +1,5 @@
 /**
- * How much competition a purchase needs, and above which figure — Accounting Policy 020.
+ * How much competition a purchase needs, and above which figure — Accounting Policy P5.
  *
  * Saad raised the threshold on 12 Sep 2026: it was a flat USD 300 for everything, which put
  * a laptop cable and a month of studio hire through the same three-quotation comparison.

@@ -1,4 +1,4 @@
-// Money received or paid outside the bank, and cash awaiting vouchers — draft Policy 020 §4.4.4,
+// Money received or paid outside the bank, and cash awaiting vouchers — draft Policy P5 §4.4.4,
 // §4.4.5, §6.6; Saad's decisions of 14 Sep 2026.
 //
 // Pins what would quietly break the books: a channel receipt after the float opened must never land

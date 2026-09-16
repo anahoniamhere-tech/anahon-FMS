@@ -91,7 +91,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
   // A correction in progress. Its own copy of the form, seeded from the item: nothing is
   // written until it is submitted, and the item on the screen keeps saying what it says.
   const [edit, setEdit] = useState<{ id: string; f: typeof BLANK } | null>(null);
-  // Finance's value on an item and where it comes from (Policy 020 §9) — never the desk's.
+  // Finance's value on an item and where it comes from (Policy P5 §9) — never the desk's.
   const [valuing, setValuing] = useState<{ id: string; basis: string; cost: string; currency: string; rate: string; docId: string; note: string } | null>(null);
   const mayValue = FINANCE.includes(String(currentUser?.role));
   const handleValue = async (e: React.FormEvent) => {
@@ -286,7 +286,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
     refreshState();
   };
 
-  // What became of an item, and — for a disposal — the second signature Policy 017 asks for.
+  // What became of an item, and — for a disposal — the second signature Policy P7 asks for.
   const handleEnd = async (a: any) => {
     const kind = endKindOf(field("endKind"));
     const res = await fetch("/api/assets/end", {
@@ -412,7 +412,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 )}
               </div>
   
-              {/* Policy 020 §9 (15 Sep 2026): the desk books an item's share of a payment request, or
+              {/* Policy P5 §9 (15 Sep 2026): the desk books an item's share of a payment request, or
                   says it was a gift. Any other value is Finance's, entered with where it comes from —
                   and a correction never touches a value at all. */}
               {!correcting && v && (
@@ -780,13 +780,13 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                     {settled ? (
                       <p className="mt-0.5 text-slate-500">
                         {a.endConfirmedBy && a.endConfirmedBy !== a.endBy
-                          ? t("Approved by {name} — the two approvals Policy 017 asks for are complete.").replace("{name}", nameOf(a.endConfirmedBy))
+                          ? t("Approved by {name} — the two approvals Policy P7 asks for are complete.").replace("{name}", nameOf(a.endConfirmedBy))
                           : t("Recorded as an event — it needed one person, not two.")}
                         {" "}{t("It stays on the record with its history, and is out of the working register.")}
                       </p>
                     ) : (
                       <p className="mt-0.5 font-bold">
-                        ⚠ {t("Awaiting the second approval — Policy 017 needs the Executive Director and the Finance Officer, and they must be two people. Nothing has happened to the item yet.")}
+                        ⚠ {t("Awaiting the second approval — Policy P7 needs the Executive Director and the Finance Officer, and they must be two people. Nothing has happened to the item yet.")}
                       </p>
                     )}
                   </div>
@@ -836,7 +836,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 </p>
               )}
 
-              {/* How the item is accounted for (Policy 020 §9): computed on the server from its value,
+              {/* How the item is accounted for (Policy P5 §9): computed on the server from its value,
                   its basis and the USD figure fixed when it was valued. */}
               {(() => {
                 const acc = a.accounting || { state: "unvalued" };
@@ -1138,7 +1138,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                     </div>
                     {chosen && isDisposal(chosen.key) && (
                       <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] font-bold text-amber-900">
-                        ⚠ {t("This is a disposal. Policy 017 needs the Executive Director and the Finance Officer, and they must be two people — you are proposing it, and somebody else confirms before anything takes effect.")}
+                        ⚠ {t("This is a disposal. Policy P7 needs the Executive Director and the Finance Officer, and they must be two people — you are proposing it, and somebody else confirms before anything takes effect.")}
                       </p>
                     )}
                     {chosen && !isDisposal(chosen.key) && (
@@ -1161,7 +1161,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
                 return (
                   <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
                     <p className="text-xs font-bold text-amber-900">
-                      <CheckCheck className="inline h-3.5 w-3.5" /> {t("Your approval is the second one — Policy 017")}
+                      <CheckCheck className="inline h-3.5 w-3.5" /> {t("Your approval is the second one — Policy P7")}
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
                       <button type="button" onClick={() => handleEndDecision(a, false, "")} className={btn}><CheckCheck className="h-4 w-4" /> {t("Approve the disposal")}</button>
@@ -1177,7 +1177,7 @@ export default function AssetsTab({ currentUser, focusId, lang, openDoc, refresh
 
               {valuing?.id === a.id && (
                 <form onSubmit={handleValue} className="space-y-2 rounded-lg border border-sky-200 bg-sky-50 p-3">
-                  <h5 className="text-xs font-bold text-sky-900"><Receipt className="inline h-3.5 w-3.5" /> {t("Value this item — Policy 020 §9")}</h5>
+                  <h5 className="text-xs font-bold text-sky-900"><Receipt className="inline h-3.5 w-3.5" /> {t("Value this item — Policy P5 §9")}</h5>
                   <p className="text-[11px] text-sky-900">{t("Only with where the figure comes from. Every change is recorded with what it was and what it became; the physical confirmation is not affected.")}</p>
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-4">
                     <div className="md:col-span-4">

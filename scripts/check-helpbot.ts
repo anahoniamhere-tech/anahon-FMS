@@ -133,9 +133,9 @@ ok("every retired pointer observed on the NAS is caught",
   REAL_SUPERSEDED_POINTERS.every(isSupersededPointer), REAL_SUPERSEDED_POINTERS.filter(p => !isSupersededPointer(p)).join(", "));
 ok("every live pointer observed on the NAS is spared — a folder named Superseded is the only signal, never a filename shape",
   REAL_LIVE_POINTERS.every(p => !isSupersededPointer(p)), REAL_LIVE_POINTERS.filter(isSupersededPointer).join(", "));
-// Policy 010 stands alone, outside all five handbooks, and is not itself named "Superseded"
+// Policy P11 stands alone, outside all five handbooks, and is not itself named "Superseded"
 // anywhere in its own filename — the predicate must not be fooled by that.
-ok("Policy 010, filed on its own, is not mistaken for something retired",
+ok("Policy P11, filed on its own, is not mistaken for something retired",
   !isSupersededPointer("file://GENERAL/Handbooks/AnaHon_Information_Data_and_Source_Privacy_Policy_010.docx"));
 // A retired file that happens to sit in a project's own archive elsewhere must not read as
 // current just because "Superseded" is not the last folder in the path.

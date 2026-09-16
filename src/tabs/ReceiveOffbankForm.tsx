@@ -14,7 +14,7 @@ type Props = Pick<SharedProps, "state" | "currentUser" | "t" | "triggerToast" | 
 
 /**
  * Money received outside the bank — BOB Finance, OMT, Whish, a cheque, cash — recorded on the
- * channel's own account with its evidence (Policy 020 §4.4.4), through the one route every
+ * channel's own account with its evidence (Policy P5 §4.4.4), through the one route every
  * off-bank receipt uses. Used for a quotation's payment and for a project's further tranche.
  * For cash the evidence is the RC number of the receipt signed by both sides; until its signed
  * scan is filed the receipt is listed as missing it.

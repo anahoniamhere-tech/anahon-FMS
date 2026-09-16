@@ -25,7 +25,7 @@ const label = "block text-[10px] font-bold text-slate-600 uppercase mb-1";
 const field = "finance-input w-full text-xs min-h-[44px]";
 
 /**
- * Money received or paid outside the bank (Policy 020 §4.4.4) and cash awaiting vouchers (§4.4.5).
+ * Money received or paid outside the bank (Policy P5 §4.4.4) and cash awaiting vouchers (§4.4.5).
  * Money received through a channel is recorded with its evidence; it is then paid in at the bank,
  * or drawn into cash in transit against approved requests (the panel above). Never paid out directly.
  */
@@ -80,7 +80,7 @@ export default function OffBankPanel({ state, currentUser, t, triggerToast, refr
     <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-5">
       <div>
         <h3 className="text-md font-bold text-slate-900">{t("Money outside the bank")}</h3>
-        <p className="text-xs text-slate-500">{t("BOB Finance, OMT, Whish, cheques and cash — deposited at the bank or drawn for approved requests, never paid out directly.")} {t("Policy")} <span dir="ltr" className="whitespace-nowrap">020 §4.4.4</span></p>
+        <p className="text-xs text-slate-500">{t("BOB Finance, OMT, Whish, cheques and cash — deposited at the bank or drawn for approved requests, never paid out directly.")} {t("Policy")} <span dir="ltr" className="whitespace-nowrap">P5 §4.4.4</span></p>
       </div>
 
       <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -236,7 +236,7 @@ export default function OffBankPanel({ state, currentUser, t, triggerToast, refr
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
           <div className="min-w-0">
             <h4 className="text-sm font-bold text-slate-900">{t(CASH_AWAITING_VOUCHERS_NAME)}</h4>
-            <p className="text-[11px] text-slate-600">{t("Cash drawn or received before the float opened with no voucher yet. Not cash in the box, and never counted as such. It falls as past vouchers are recorded.")} {t("ledger")} <span dir="ltr">{HISTORICAL_CLEARING_LEDGER}</span> · {t("Policy")} <span dir="ltr" className="whitespace-nowrap">020 §4.4.5</span></p>
+            <p className="text-[11px] text-slate-600">{t("Cash drawn or received before the float opened with no voucher yet. Not cash in the box, and never counted as such. It falls as past vouchers are recorded.")} {t("ledger")} <span dir="ltr">{HISTORICAL_CLEARING_LEDGER}</span> · {t("Policy")} <span dir="ltr" className="whitespace-nowrap">P5 §4.4.5</span></p>
           </div>
           <span dir="ltr" className="text-2xl font-bold font-mono text-slate-900 whitespace-nowrap">{formatUSD(av.balanceUSD)}</span>
         </div>

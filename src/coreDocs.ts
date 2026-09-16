@@ -145,7 +145,7 @@ export function missingCoreDocs(
 
 /**
  * The agreement papers filed on a project, whose file is still on disk. What a project's
- * "bank only" rule may cite (Policy 020 §4.4.4): only the donor's agreement can impose it,
+ * "bank only" rule may cite (Policy P5 §4.4.4): only the donor's agreement can impose it,
  * so only an agreement can be named as its source — the picker and the server read this one list.
  */
 export function agreementDocs<T extends CoreDoc & { linkedRecordType?: string; linkedRecordId?: string }>(docs: T[], projectId: string): T[] {

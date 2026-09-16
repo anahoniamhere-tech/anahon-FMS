@@ -1,6 +1,6 @@
 // Is the integrity register still private, still append-only, still anonymous?
 //
-// Policy 001 §7 is a promise to whoever raises a concern. These checks exist so a later
+// Policy P1 §7 is a promise to whoever raises a concern. These checks exist so a later
 // edit cannot quietly break it: no update or delete route may ever appear, the register
 // must never enter loadState, only the ED may read it (and not while standing in as
 // another seat), and the §7.5 summary must never be able to carry a name.

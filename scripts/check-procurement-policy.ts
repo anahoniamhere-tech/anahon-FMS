@@ -62,7 +62,7 @@ ok("and they say what the old figure was, so an older voucher still makes sense"
   /The threshold was USD 300 until 12 September 2026/.test(help) && help.includes("كان الحدّ 300 دولار حتى 12 أيلول 2026"));
 
 console.log("\nD. the figures that did NOT move");
-// Updated 14 Sep 2026 (Books): Saad moved the petty-cash float to USD 1,000 in draft Policy 020
+// Updated 14 Sep 2026 (Books): Saad moved the petty-cash float to USD 1,000 in draft Policy P5
 // §4.4.1 — a separate decision from the procurement threshold, which is what this section guards.
 // The figure now lives in src/pettyCash.ts and the prompt reads it; it must still never be the
 // procurement number. Pinned in full by scripts/check-petty-cash.ts.
@@ -330,11 +330,11 @@ const bankBranch = act.slice(act.indexOf('} else if (action === "cashbook-pay") 
 ok("the bank branch asks by the account it pays from, once loaded",
   /if \(approverPaysCash\(account\.type !== "Bank"\)\) return res\.status\(403\)/.test(bankBranch));
 ok("past cash is always cash", /if \(approverPaysCash\(true\)\) return res\.status\(403\)/.test(pastPay));
-ok("the message names §4.3 and cash", /Policy 020 §4\.3: you approved \$\{exp\.voucherNo\} — a different officer must pay it in cash\./.test(act));
+ok("the message names §4.3 and cash", /Policy P5 §4\.3: you approved \$\{exp\.voucherNo\} — a different officer must pay it in cash\./.test(act));
 ok("the pay panel keeps the bank for the approver and hides cash",
   /!\(approvedByMe && b\.type !== "Bank"\)/.test(read("src/tabs/ExpensesTab.tsx")) && /pastCashOk = !approvedByMe/.test(read("src/tabs/ExpensesTab.tsx")));
 
-console.log("\nQ. a missing receipt: re-issued copy first, else a declaration signed AND approved (Policy 020 §6.6)");
+console.log("\nQ. a missing receipt: re-issued copy first, else a declaration signed AND approved (Policy P5 §6.6)");
 {
   const { evidenceOf, declarationApproveBlocker, isOwnDocument } = await import("../src/declarations.js");
   const doc = (category: string) => ({ category });

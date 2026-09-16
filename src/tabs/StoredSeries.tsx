@@ -11,7 +11,7 @@ import { periodTotals } from "../insights";
  * quoted to funders from there. Nothing here is fetched: the live pull never writes these rows and
  * these rows never overwrite the live pull.
  *
- * Aggregates only, no personal data (Policy 024, draft). Audience geography is a sentence in the
+ * Aggregates only, no personal data (Policy P11, draft). Audience geography is a sentence in the
  * note, because a proposal writer reads it and nobody sums it.
  *
  * A blank cell reads "—" and means the platform does not report that metric. It never reads 0:

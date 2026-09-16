@@ -13,10 +13,10 @@ import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight } from "lucide-rea
 type Reply = { answer: string; door: string | null; askSeat: string | null };
 type Turn = { q: string; reply?: Reply; error?: string };
 
-/** "Policy 020, Section 7.2" inside an answer, turned into a link that opens that
+/** "Policy P5, Section 7.2" inside an answer, turned into a link that opens that
  *  chapter on the Policies & Handbooks door — the citation rule in helpBot.ts made
  *  clickable, not a second source of truth about what a policy says. */
-const POLICY_CITE = /Policy\s+(\d{3})(?:,?\s*(?:Section|§)\s*[\d.]+)?/g;
+const POLICY_CITE = /Policy\s+(P\d{1,2}|\d{3})\b(?:,?\s*(?:Section|§)\s*[\d.]+)?/g;
 function citeLinks(text: string, onOpenDoor: (navKey: string, focus?: string) => void) {
   const parts: (string | ReactNode)[] = [];
   let last = 0, key = 0, m: RegExpExecArray | null;

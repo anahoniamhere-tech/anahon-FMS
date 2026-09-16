@@ -351,7 +351,7 @@ export default function PartnersTab({ currentUser, formatIn, formatUSD, refreshS
 
                     {/* The cash count moved to Bank & cash on 14 Sep 2026: it counts the petty-cash float
                         (ledger 1125), is made by someone other than the custodian, and no longer
-                        compares against the historical 1120 clearing (Policy 020 §4.4). */}
+                        compares against the historical 1120 clearing (Policy P5 §4.4). */}
 
                     {/* ⚡ Daily direct expense — the one form for day-to-day spending.
                         Posts the full chain in a single submit; nothing to approve later

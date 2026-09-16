@@ -25,7 +25,7 @@ ok(rehearsalSeatClash(seats, "pm", "Reporter"), "the author's seat may not appro
 ok(rehearsalSeatClash(seats, "pm", "Content Creator"), "the checker's seat may not approve");
 eq(rehearsalSeatClash(seats, "pm", "Production Manager"), "", "a fresh seat may approve");
 ok(rehearsalSeatClash({ ...seats, pmApprovedAs: "Production Manager" }, "pd", "Production Manager"),
-  "the seat holding one approval may not take the other — Policy 002's two approvers");
+  "the seat holding one approval may not take the other — Policy P3's two approvers");
 eq(rehearsalSeatClash({ ...seats, pmApprovedAs: "Production Manager" }, "pd", "Program Director"), "", "a second seat may");
 ok(rehearsalSeatClash(seats, "pm", ""), "no seat is refused, never waved through");
 

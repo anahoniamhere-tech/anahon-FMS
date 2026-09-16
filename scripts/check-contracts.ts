@@ -349,10 +349,10 @@ ok("the route uses it", /\$\{initialsFor\(partyKey, party\.name\)\}/.test(server
 ok("changing initials cannot disturb the parent lookup, which compares months",
   /r\.slice\(-7\) <= startMonth/.test(server) && !/slice\(0, *7\)[\s\S]{0,40}initials/i.test(server));
 
-// Policy 020, approved 15 Sep 2026, replaced the Accounting Policies Manual; the payment clause cites it in both languages.
+// Policy P5, approved 15 Sep 2026, replaced the Accounting Policies Manual; the payment clause cites it in both languages.
 { const d = doc({});
-  ok("the payment clause cites Policy 020 in English and Arabic, and the retired manual nowhere",
-    d.includes("AnaHon's Finance and Procurement Policy (Policy 020)") && d.includes("وفقاً لسياسة المالية والمشتريات لدى أنا هون")
+  ok("the payment clause cites Policy P5 in English and Arabic, and the retired manual nowhere",
+    d.includes("AnaHon's Finance and Procurement Policy (Policy P5)") && d.includes("وفقاً لسياسة المالية والمشتريات لدى أنا هون")
     && !/Accounting Policies Manual|السياسات المحاسبية/.test(d)); }
 // The Arabic label (.alt) sits on its own line wherever it is used — a title, a table cell, a signature block —
 // not only in a th. With the rule scoped to th, the payslip's and contract's Arabic ran straight into the English (15 Sep 2026).

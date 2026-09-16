@@ -320,7 +320,7 @@ ${noFixedValue
 
   const paymentAr = `<p>يُدفع ${account
       ? `${emp.paymentMethod === "Cash" ? "نقداً مسحوباً من" : "بتحويل مصرفي من"} <b>${ltr(esc(account.name))}</b> (${ltr(esc(account.accountNo))})`
-      : "من الحساب المسجّل في نظام الإدارة المالية"}، مقابل سند صرف معتمد و${isService ? "فاتورة مقدّم الخدمة للمخرجات المسلّمة" : "كشف دوام موقّع للشهر"}، وفقاً لسياسة المالية والمشتريات لدى أنا هون (السياسة ${ltr("020")}).${isService
+      : "من الحساب المسجّل في نظام الإدارة المالية"}، مقابل سند صرف معتمد و${isService ? "فاتورة مقدّم الخدمة للمخرجات المسلّمة" : "كشف دوام موقّع للشهر"}، وفقاً لسياسة المالية والمشتريات لدى أنا هون (السياسة ${ltr("P5")}).${isService
       ? (registered
         ? " مقدّم الخدمة مسجّل لدى وزارة المالية؛ ويُطبَّق الاقتطاع الضريبي حيث يوجبه القانون."
         : ` ولأن مقدّم الخدمة غير مسجّل لدى وزارة المالية، <b>تُقتطع ضريبة استقطاع بنسبة 7.5% من المنبع</b> من كل دفعة وتُحوَّل إلى وزارة المالية من قِبل أنا هون؛ ويتقاضى مقدّم الخدمة المبلغ الصافي.${noFixedValue
@@ -423,7 +423,7 @@ ${noFixedValue
       ? `${emp.paymentMethod === "Cash" ? "in cash withdrawn from" : "by bank transfer from"} <b>${esc(account.name)}</b> (${esc(account.accountNo)})`
       : "from the account recorded in the financial management system"}, against an approved payment voucher
 and ${isService ? "the provider's invoice for the delivered outputs" : "a signed timesheet for the month"}, in line with
-AnaHon's Finance and Procurement Policy (Policy 020).${isService
+AnaHon's Finance and Procurement Policy (Policy P5).${isService
       ? (registered
         ? " The provider is registered with the Ministry of Finance; withholding tax is applied where the law requires it."
         : ` Because the provider is not registered with the Ministry of Finance, <b>7.5% withholding tax is deducted at source</b> from each payment and remitted to the MoF by AnaHon; the provider receives the net amount.${noFixedValue
@@ -804,7 +804,7 @@ the Arabic prevails.</p>
 }
 
 /**
- * Missing-receipt declaration — Policy 020 §6.6 (15 Sep 2026). Filed in place of a lost receipt
+ * Missing-receipt declaration — Policy P5 §6.6 (15 Sep 2026). Filed in place of a lost receipt
  * only once the person paid has signed it and the Executive Director has approved it.
  *
  * The same rules as the contract and payslip: Arabic text first, then English; every figure and
@@ -819,7 +819,7 @@ export function declarationHtml(o: {
     `<tr><th scope="row">${esc(en)}<span class="alt">${esc(ar)}</span></th><td${cls ? ` class="${cls}"` : ""}>${v}</td></tr>`;
   return page(`Missing-receipt declaration ${o.voucherNo} · إقرار بفقدان إيصال`, `
 <h1>MISSING-RECEIPT DECLARATION — NOT A RECEIPT<span dir="rtl" lang="ar" style="display:block;font-size:14px;letter-spacing:0;margin-top:4px">إقرار بفقدان إيصال — ليس إيصالاً</span></h1>
-<h2>Policy 020 §6.6 · ${esc(o.voucherNo)}</h2>
+<h2>Policy P5 §6.6 · ${esc(o.voucherNo)}</h2>
 <table>
   <caption>Particulars <span dir="rtl" lang="ar">· البيانات</span></caption>
   <tbody>
@@ -848,9 +848,9 @@ export function declarationHtml(o: {
   <div>Person paid — ${esc(o.payeeName)}<br>Signature &amp; date<span dir="rtl" lang="ar" style="display:block">المستفيد — التوقيع والتاريخ</span></div>
   <div>Approved — Executive Director<br>Signature &amp; date<span dir="rtl" lang="ar" style="display:block">موافقة المدير التنفيذي — التوقيع والتاريخ</span></div>
 </div>
-<p class="note">Prepared by ${esc(o.preparedBy)} from voucher ${esc(o.voucherNo)}; the figures are the voucher's and are not re-entered by hand. A donor's own rule on declarations takes precedence (Policy 020 §0.4, §6.6).
+<p class="note">Prepared by ${esc(o.preparedBy)} from voucher ${esc(o.voucherNo)}; the figures are the voucher's and are not re-entered by hand. A donor's own rule on declarations takes precedence (Policy P5 §0.4, §6.6).
 <br><strong>This declaration is bilingual, and the Arabic text governs.</strong> Every figure appears once only, so the two texts cannot differ about what was paid; where their wording differs in meaning, the Arabic prevails.</p>
-<p class="note ar" lang="ar" dir="rtl">أعدّه ${ltr(esc(o.preparedBy))} من سند الصرف ${ltr(esc(o.voucherNo))}؛ والأرقام مأخوذة من السند وغير مُدخلة يدوياً. وتتقدّم قاعدة الجهة المانحة الخاصة بالإقرارات عند وجودها (السياسة ${ltr("020 §0.4")}، ${ltr("§6.6")}).
+<p class="note ar" lang="ar" dir="rtl">أعدّه ${ltr(esc(o.preparedBy))} من سند الصرف ${ltr(esc(o.voucherNo))}؛ والأرقام مأخوذة من السند وغير مُدخلة يدوياً. وتتقدّم قاعدة الجهة المانحة الخاصة بالإقرارات عند وجودها (السياسة ${ltr("P5 §0.4")}، ${ltr("§6.6")}).
 <br><strong>هذا الإقرار ثنائي اللغة، والنص العربي هو الملزم.</strong> يرد كل رقم مرة واحدة فقط، فلا يمكن أن يختلف النصّان في ما دُفع؛ وعند اختلاف الصياغة في المعنى يُعمل بالنص العربي.</p>`);
 }
 

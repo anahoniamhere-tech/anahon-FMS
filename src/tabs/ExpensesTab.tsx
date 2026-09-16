@@ -18,7 +18,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
   const [expenseTitle, setExpenseTitle] = useState("");
 
   const [expensePurpose, setExpensePurpose] = useState("");
-  // Policy 010 §6 — a payment to a protected source: no name, no supplier, no free text that could
+  // Policy P11 §6 — a payment to a protected source: no name, no supplier, no free text that could
   // carry one. The server gives it a code name; the Finance Officer fills the sealed file.
   const [confidential, setConfidential] = useState(false);
   const [sourceCode, setSourceCode] = useState("");
@@ -29,7 +29,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
 
   const [expenseBudgetLine, setExpenseBudgetLine] = useState("");
 
-  // Approved procurement authorising a purchase above the Policy 020 threshold (7.2).
+  // Approved procurement authorising a purchase above the Policy P5 threshold (7.2).
   const [expenseProcurement, setExpenseProcurement] = useState("");
 
   // What kind of cost this is, in the books' own words. Asked here and not left until
@@ -333,10 +333,10 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                 <p className="text-xs text-slate-500">Every item must be fully supported by digital quotes, conflict declaration checks, project mapping and mult-level signatures.</p>
               </div>
 
-              {/* Policy 010 §6 — the ED reviews confidential payments each quarter: code names and totals only. */}
+              {/* Policy P11 §6 — the ED reviews confidential payments each quarter: code names and totals only. */}
               {state.confidentialReview && state.confidentialReview.count > 0 && (
                 <div className={`p-4 rounded-xl border ${state.confidentialReview.due ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-white"}`}>
-                  <p className="text-xs font-bold text-slate-900">{t("Confidential payments — quarterly review (Policy 010 §6)")}</p>
+                  <p className="text-xs font-bold text-slate-900">{t("Confidential payments — quarterly review (Policy P11 §6)")}</p>
                   <p className="text-[11px] text-slate-600"><span dir="ltr">{state.confidentialReview.count} · {formatUSD(state.confidentialReview.totalUSD)}</span></p>
                   <p className="text-[11px] text-slate-600">{t("last reviewed")}: <span dir="ltr">{state.confidentialReview.lastReviewedOn || "—"}</span></p>
                   <ul className="mt-1 text-[11px] text-slate-700">
@@ -359,7 +359,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                     <div className="md:col-span-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                       <label className="flex min-h-[44px] items-center gap-2 text-xs font-bold text-slate-800">
                         <input type="checkbox" checked={confidential} onChange={e => setConfidential(e.target.checked)} className="h-4 w-4" />
-                        {t("Confidential — a payment to a protected source (Policy 010 §6)")}
+                        {t("Confidential — a payment to a protected source (Policy P11 §6)")}
                       </label>
                       {confidential && (<>
                         <p className="text-[11px] text-slate-600">{t("Do not type the person's name anywhere on this request. It gets a code name; the Finance Officer records who they are in the sealed file. Every finance rule still applies.")}</p>
@@ -1046,7 +1046,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                     )}
                                   </select>
                                   {approvedByMe && (
-                                    <span className="text-[11px] text-amber-800">{t("You approved this request — pay it by bank, or a different officer pays it in cash (Policy 020 §4.3).")}</span>
+                                    <span className="text-[11px] text-amber-800">{t("You approved this request — pay it by bank, or a different officer pays it in cash (Policy P5 §4.3).")}</span>
                                   )}
                                   {cashHeld && !approvedByMe && (
                                     <span className="text-[11px] text-amber-800">

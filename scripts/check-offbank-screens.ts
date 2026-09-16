@@ -1,5 +1,5 @@
 /**
- * The Projects & funding side of Policy 020 §4.4.4 (Saad, 14 Sep 2026): every channel receives,
+ * The Projects & funding side of Policy P5 §4.4.4 (Saad, 14 Sep 2026): every channel receives,
  * a project is "bank only" only when its agreement says so, and every receipt carries evidence.
  * Books owns the route and its refusals (check-offbank.ts); this pins the screens that call it.
  */

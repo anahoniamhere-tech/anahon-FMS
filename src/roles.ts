@@ -57,7 +57,7 @@ export const EQUIPMENT_VERIFIERS = ["Super Admin", "Finance Officer", "Auditor /
 /** Project timeline steps and core documents. */
 export const ACTIVITY_EDITORS = [...MANAGERS, "Project Officer", PLO];
 
-/** Editorial approval and publishing (Policy 002 seats plus the Chief Editor). */
+/** Editorial approval and publishing (Policy P3 seats plus the Chief Editor). */
 export const CONTENT_EDITORS = ["Production Manager", "Program Director", "Super Admin", "Chief Editor"];
 /** Editorial Review slots: a role fills its own slot; the Chief Editor and the master account may take either empty one. */
 export const PM_SLOT = CONTENT_EDITORS.filter(r => r !== "Program Director");   // Production Manager, Super Admin, Chief Editor
@@ -93,7 +93,7 @@ export const RESTRICTED = [...CREW, ...EDITORS, "Project Officer", PLO, DIGITAL,
  */
 export const FULL_VIEW = ALL_ROLES.filter(r => !RESTRICTED.includes(r));
 
-/** Policy 001 §7.5 — the anonymised integrity summary goes to the audit consultant and
+/** Policy P1 §7.5 — the anonymised integrity summary goes to the audit consultant and
  *  finance. NOT the register itself, which is the ED's alone (§7.1). */
 export const INTEGRITY_SUMMARY_READERS = ["Super Admin", "Finance Officer", AUDITOR];
 

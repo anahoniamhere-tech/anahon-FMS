@@ -59,7 +59,7 @@ export const officersFor = (projectId: string, s: State): string[] => {
 };
 const activityStandIns = (r: any, s: State) => officersFor(r.projectId, s);
 /**
- * Who approves a payment request (Policy 020 §5.3, Saad 14 Sep 2026): the Executive Director or
+ * Who approves a payment request (Policy P5 §5.3, Saad 14 Sep 2026): the Executive Director or
  * the Finance Officer — every active holder of a MANAGERS seat, by person. A plain `seat: MANAGERS`
  * would not do: the Super Admin reads a seat as "cover a vacancy", so with the Finance Officer seat
  * held Saad would lose approvals from his own desk. The requester is still excluded first (§4.3).
@@ -145,10 +145,10 @@ export const RULES: Rule[] = [
   // keeper who is holding it.
   { kind: "fixedAssets", status: "Out", seat: null, person: "holderId", when: "dueBack", horizon: 0, door: "mydesk", verb: "Bring the equipment back" },
   { kind: "fixedAssets", status: "Out", seat: SUPPLIER_EDITORS, exclude: ["holderId"], when: "dueBack", horizon: 0, door: "assets", verb: "Chase the return" },
-  // Policy 017: a disposal takes two signatures. The proposal sits on the OTHER seat's desk —
+  // Policy P7: a disposal takes two signatures. The proposal sits on the OTHER seat's desk —
   // exclude keeps it off the proposer's own, which is what stops one person doing both halves.
   { kind: "fixedAssets", status: "Awaiting disposal approval", seat: MANAGERS, exclude: ["endBy"], door: "assets", verb: "Approve or refuse the disposal" },
-  // CashTopUp — Policy 020 §4.4.1. The custodian raises it against the receipts; the Executive
+  // CashTopUp — Policy P5 §4.4.1. The custodian raises it against the receipts; the Executive
   // Director approves or queries it, never their own (the route refuses it by user id too).
   { kind: "cashTopUps", status: "Raised",   seat: DIRECTORS, exclude: ["raisedById"], door: "banking", verb: "Approve or query the top-up" },
   { kind: "cashTopUps", status: "Queried",  seat: null, person: "raisedById",         door: "banking", verb: "Answer the query on the top-up" },
@@ -318,7 +318,7 @@ export function missingPaperItems(me: Me, s: State): DeskItem[] {
 }
 
 /* ── Cash counts that are due ────────────────────────────────────────────────
- * Policy 020 §4.4.1/§4.4.3: the float is counted at least monthly by someone other than its
+ * Policy P5 §4.4.1/§4.4.3: the float is counted at least monthly by someone other than its
  * custodian, and at least once a quarter without notice by the Executive Director. No record
  * carries a status for "a count is owed", so — like the missing papers — this is a reading of
  * the counts that exist, dated from the last one. Nothing is due before the float opens (its
@@ -363,7 +363,7 @@ export function cashCountItems(me: Me, s: State, today = localToday()): DeskItem
 }
 
 /* ── Cash drawn for payment requests and not yet cleared ─────────────────────
- * Policy 020 §4.4.2: cash taken from the bank for approved requests sits in cash in transit
+ * Policy P5 §4.4.2: cash taken from the bank for approved requests sits in cash in transit
  * (1127) until those requests are paid out of it; a withdrawal still holding cash seven days on
  * goes to the Executive Director and Finance. A reminder, not an approval, so nobody is excluded.
  *
@@ -402,7 +402,7 @@ export function cashDrawItems(me: Me, s: State, today = localToday()): DeskItem[
 }
 
 /* ── Equipment with no value recorded ────────────────────────────────────────
- * Policy 020 §9 / 017: every registered item carries a value with its basis (receipt, estimate,
+ * Policy P5 §9 / 017: every registered item carries a value with its basis (receipt, estimate,
  * gift, or the voucher it was bought on). An item still in use with no basis is a standing gap on
  * Finance's desk — undated and marked standing, so it never buzzes a phone or reads as late: the
  * 13 items registered before values existed wait for the external consultant's opening values.
@@ -419,7 +419,7 @@ export function unvaluedAssetItems(me: Me, s: State): DeskItem[] {
 }
 
 /* ── Confidential payments due for review ────────────────────────────────────
- * Policy 010 §6: the ED reviews payments to protected sources each quarter. The server sends
+ * Policy P11 §6: the ED reviews payments to protected sources each quarter. The server sends
  * confidentialReview only to the ED and the Finance Officer, with `due` already worked out
  * (payments exist, none reviewed since the quarter began). One standing item, no names on it.
  */

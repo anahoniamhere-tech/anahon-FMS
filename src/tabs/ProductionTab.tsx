@@ -563,7 +563,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                   </form>
                 )}
 
-                {/* Money received outside the bank for this quotation (Policy 020 §4.4.4): the channel's own
+                {/* Money received outside the bank for this quotation (Policy P5 §4.4.4): the channel's own
                     account, with its evidence — the one route every off-bank receipt takes. */}
                 {settleForm && (
                   <ReceiveOffbankForm state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState}

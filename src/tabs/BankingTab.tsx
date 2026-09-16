@@ -57,7 +57,7 @@ export default function BankingTab({ bankFilterAcc, setBankFilterAcc, bankSearch
                 </div>
               </div>
 
-              {/* The petty-cash float: balance against its ceiling, top-ups and counts (Policy 020 §4.4). */}
+              {/* The petty-cash float: balance against its ceiling, top-ups and counts (Policy P5 §4.4). */}
               <PettyCashPanel state={state} currentUser={currentUser} t={t} triggerToast={triggerToast} refreshState={refreshState} formatUSD={formatUSD} />
 
               {/* Cash withdrawn for approved payment requests, until they are paid (1127). */}

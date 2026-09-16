@@ -1,8 +1,9 @@
 /**
  * The Policies Index, read as data.
  *
- * AnaHon's policies live in five documents (four handbooks + Strategy) plus Policy 010,
- * which stands on its own. The Index document is itself the single source for which
+ * AnaHon's policies live in five documents (four handbooks + Strategy) plus Policy P11,
+ * which stands on its own. Since 16 Sep 2026 they are numbered P1–P11; FORMER maps the old
+ * three-digit numbers (still printed on older contracts and files) to the new ones. The Index document is itself the single source for which
  * policy numbers exist and which handbook carries each one — this file parses its real
  * text, so the numbering here can never drift from what the Index says. Nothing here
  * decides whether a document still governs; that is `isSupersededPointer` (helpBot.ts),
@@ -19,7 +20,29 @@ export type ParsedIndex = {
 };
 
 const BULLET = /^•\s*/;
-const CHAPTER_LINE = /^(\d{3})\s+(.+)$/;
+const CHAPTER_LINE = /^(P\d{1,2})\s+(.+)$/;
+
+/** Old three-digit numbers → P-numbers (renumbered 16 Sep 2026), including policies merged away. */
+export const FORMER: Record<string, string> = {
+  "001": "P1", "013": "P1", "023": "P1",
+  "006": "P2", "004": "P2", "015": "P2", "016": "P2",
+  "002": "P3", "021": "P3", "022": "P3",
+  "005": "P4",
+  "020": "P5", "003": "P5",
+  "012": "P6", "009": "P6",
+  "017": "P7",
+  "018": "P8", "019": "P8",
+  "011": "P9", "008": "P9",
+  "007": "P10",
+  "010": "P11", "024": "P11",
+};
+
+/** "P5", "p5", "020" → "P5"; anything else is returned as written. */
+export const policyNo = (raw: string): string => {
+  const s = String(raw || "").trim();
+  if (/^p\d{1,2}$/i.test(s)) return s.toUpperCase();
+  return FORMER[s] ?? s;
+};
 
 const splitFirst = (s: string, sep: string): [string, string] => {
   const i = s.indexOf(sep);
@@ -78,11 +101,11 @@ export function findIndexFaults(parsed: ParsedIndex): string[] {
 
 /**
  * Where a handbook's own compiled text splits into chapters — "Part One — <Title>
- * (Policy 020)" and its variants ("Policy 022, absorbing 021", "absorbed from Policy
- * 003, …"). A single-chapter document (Strategy, Policy 010) carries no such heading;
+ * (Policy P5, formerly 020)". A single-chapter document (Strategy, Policy P11) carries no
+ * "Part" heading;
  * callers treat an empty anchor map as "the whole document is the one chapter."
  */
-const CHAPTER_HEADING = /^Part\s+\S+\s+—\s+.+\(.*?Policy\s+(\d{3}).*?\)\s*$/;
+const CHAPTER_HEADING = /^Part\s+\S+\s+—\s+.+\(.*?Policy\s+(P\d{1,2})\b.*?\)\s*$/;
 
 export function chapterAnchors(text: string): Record<string, number> {
   const anchors: Record<string, number> = {};
@@ -122,12 +145,12 @@ export function missingChapterText(chapters: Chapter[], anchors: Record<string, 
  * existing in nav.tsx.
  */
 export const POLICY_DOORS: Record<string, string[]> = {
-  "002": ["editorial"],
-  "005": ["editorial"],
-  "020": ["procurement", "expenses"],
-  "017": ["assets"],
-  "010": ["compliance"],
-  "006": ["payroll"],
+  "P3": ["editorial"],
+  "P4": ["editorial"],
+  "P5": ["procurement", "expenses"],
+  "P7": ["assets"],
+  "P11": ["compliance"],
+  "P2": ["payroll"],
 };
 
 export function checkPolicyDoors(existingNavKeys: readonly string[]): string[] {
@@ -139,13 +162,13 @@ export function checkPolicyDoors(existingNavKeys: readonly string[]): string[] {
 
 /**
  * Which chapter an old file belongs to, for the History list — read from its own note
- * first ("…Policy 010 is now…"), since that is the fact a person wrote down about it;
+ * first ("…Policy 010 is now…", mapped through FORMER), since that is the fact a person wrote down about it;
  * the trailing number in its filename is only a fallback for the few notes that don't
  * name one.
  */
 export function historyChapterOf(doc: { filename: string; note?: string | null }): string | null {
-  const fromNote = /Policy\s+(\d{3})/i.exec(doc.note || "");
-  if (fromNote) return fromNote[1];
+  const fromNote = /Policy\s+(P\d{1,2}|\d{3})\b/i.exec(doc.note || "");
+  if (fromNote) return policyNo(fromNote[1]);
   const fromName = /(\d{3})(?:[^\d]*)$/.exec(doc.filename.replace(/\.\w+$/, ""));
-  return fromName ? fromName[1] : null;
+  return fromName ? policyNo(fromName[1]) : null;
 }

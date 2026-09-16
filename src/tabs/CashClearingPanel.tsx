@@ -47,7 +47,7 @@ export default function CashClearingPanel({ state, currentUser, t, triggerToast,
   const isFinance = FINANCE.includes(currentUser.role);
   const box = (state.bankAccounts || []).find(a => a.type === FLOAT_TYPE);
   const isCustodian = !!box && currentUser.id === box.custodianUserId;
-  // Cash is drawn from the bank, or from money received outside it (Policy 020 §4.4.4).
+  // Cash is drawn from the bank, or from money received outside it (Policy P5 §4.4.4).
   const banks = (state.bankAccounts || []).filter(a => a.active && (a.type === "Bank" || isLiveChannel(a)));
   const open = data.draws.filter(d => !d.cleared);
   const done = data.draws.filter(d => d.cleared).slice(0, 5);

@@ -1,5 +1,5 @@
 /**
- * Petty cash — draft Policy 020 §4.4, decided by Saad on 14 Sep 2026.
+ * Petty cash — draft Policy P5 §4.4, decided by Saad on 14 Sep 2026.
  *
  * Before this there was no cash box in the system. Ledger 1120 "Petty Cash - USD" carried
  * USD 52,108.26 — not a float but a clearing account the ledger rebuild filled with three
@@ -64,8 +64,8 @@ export const isChannel = (a?: AccountLike | null) => !!a && a.type === CHANNEL_T
 /** Refuses anything that is not the float — the rule that a channel is never used as it. */
 export function floatBlocker(a?: AccountLike | null): string {
   if (!a) return "That cash box does not exist.";
-  if (isChannel(a)) return "Policy 020 §4.4.4: an off-bank channel records money received or paid through it — it is never the petty-cash float.";
-  if (!isFloat(a)) return "Policy 020 §4.4.1: only the petty-cash float can be counted or topped up.";
+  if (isChannel(a)) return "Policy P5 §4.4.4: an off-bank channel records money received or paid through it — it is never the petty-cash float.";
+  if (!isFloat(a)) return "Policy P5 §4.4.1: only the petty-cash float can be counted or topped up.";
   if (a.active === false) return "The petty-cash float is not active.";
   return "";
 }
@@ -75,7 +75,7 @@ export function ceilingBlocker(balanceUSD: number, amountUSD: number): string {
   if (!Number.isFinite(amountUSD) || amountUSD <= 0) return "A top-up must be for more than zero.";
   const after = r2(balanceUSD + amountUSD);
   if (after > FLOAT_CEILING_USD + EPS) {
-    return `Policy 020 §4.4.1: the float may not exceed ${FLOAT_CEILING_LABEL}. The box holds ${usdLabel(r2(balanceUSD))}, so this top-up of ${usdLabel(r2(amountUSD))} would take it to ${usdLabel(after)}.`;
+    return `Policy P5 §4.4.1: the float may not exceed ${FLOAT_CEILING_LABEL}. The box holds ${usdLabel(r2(balanceUSD))}, so this top-up of ${usdLabel(r2(amountUSD))} would take it to ${usdLabel(after)}.`;
   }
   return "";
 }
@@ -84,14 +84,14 @@ export function ceilingBlocker(balanceUSD: number, amountUSD: number): string {
  *  Officer seat cannot raise one and then approve it in their own. */
 export function raiseBlocker(userId: string, custodianUserId?: string | null): string {
   if (!custodianUserId) return "The petty-cash float has no custodian assigned.";
-  if (userId !== custodianUserId) return "Policy 020 §4.4.1: a top-up is raised by the custodian of the float, against the receipts they paid out.";
+  if (userId !== custodianUserId) return "Policy P5 §4.4.1: a top-up is raised by the custodian of the float, against the receipts they paid out.";
   return "";
 }
 
 /** §4.4.1 — the Executive Director approves, and never their own top-up. */
 export function approveBlocker(approver: { id: string; role: string }, raisedById: string): string {
-  if (!DIRECTOR_SEATS.includes(approver.role)) return "Policy 020 §4.4.1: the Executive Director approves a top-up.";
-  if (approver.id === raisedById) return "Policy 020 §4.4.1: a top-up cannot be approved by the person who raised it.";
+  if (!DIRECTOR_SEATS.includes(approver.role)) return "Policy P5 §4.4.1: the Executive Director approves a top-up.";
+  if (approver.id === raisedById) return "Policy P5 §4.4.1: a top-up cannot be approved by the person who raised it.";
   return "";
 }
 
@@ -101,10 +101,10 @@ export function countBlocker(c: {
   withoutNotice: boolean; custodianPresent: boolean;
 }): string {
   if (!c.custodianUserId) return "The petty-cash float has no custodian assigned.";
-  if (c.counterId === c.custodianUserId) return "Policy 020 §4.4.1: cash is counted by someone other than its custodian.";
-  if (!COUNTER_SEATS.includes(c.counterRole)) return "Policy 020 §4.4.1: a count is made by the Executive Director or the Procurement and Logistics Officer.";
-  if (c.withoutNotice && !DIRECTOR_SEATS.includes(c.counterRole)) return "Policy 020 §4.4.1: the count without notice is the Executive Director's.";
-  if (!c.custodianPresent) return "Policy 020 §4.4.1: the custodian is present when the cash is counted.";
+  if (c.counterId === c.custodianUserId) return "Policy P5 §4.4.1: cash is counted by someone other than its custodian.";
+  if (!COUNTER_SEATS.includes(c.counterRole)) return "Policy P5 §4.4.1: a count is made by the Executive Director or the Procurement and Logistics Officer.";
+  if (c.withoutNotice && !DIRECTOR_SEATS.includes(c.counterRole)) return "Policy P5 §4.4.1: the count without notice is the Executive Director's.";
+  if (!c.custodianPresent) return "Policy P5 §4.4.1: the custodian is present when the cash is counted.";
   return "";
 }
 
@@ -118,7 +118,7 @@ export function countDifference(expectedUSD: number, countedUSD: number) {
 export interface TopUpItem { txId: string; voucherNo: string; date: string; amountUSD: number; hasReceipt: boolean }
 export function itemsBlocker(items: TopUpItem[]): string {
   const missing = items.filter(i => !i.hasReceipt).map(i => i.voucherNo || i.txId);
-  if (missing.length) return `Policy 020 §4.4.1: the float is topped up only against receipts — ${missing.join(", ")} ${missing.length === 1 ? "has" : "have"} none on file.`;
+  if (missing.length) return `Policy P5 §4.4.1: the float is topped up only against receipts — ${missing.join(", ")} ${missing.length === 1 ? "has" : "have"} none on file.`;
   return "";
 }
 export const itemsTotal = (items: TopUpItem[]) => r2(items.reduce((s, i) => s + i.amountUSD, 0));
@@ -153,7 +153,7 @@ export function cashLedgerFor(date: string, openedOn: string | null | undefined,
 /** A float that has not had its opening count cannot be topped up, and nothing about it may be
  *  dated before it opened. */
 export function openingBlocker(openedOn: string | null | undefined, date?: string): string {
-  if (!openedOn) return "Policy 020 §4.4.1: the float opens with its first count — Saad and the Finance Officer count the box together, and whatever is there is the opening balance. Record that count first.";
+  if (!openedOn) return "Policy P5 §4.4.1: the float opens with its first count — Saad and the Finance Officer count the box together, and whatever is there is the opening balance. Record that count first.";
   if (date && date < openedOn) return `The float opened on ${openedOn}; nothing about it can be dated before that. A payment from before then belongs to cash awaiting vouchers (1120).`;
   return "";
 }
@@ -178,15 +178,15 @@ export function payoutBlocker(a: PayoutAccount | null | undefined, costAccount?:
   if (a.active === false) return `${a.name || "That account"} is not active — money cannot leave it.`;
   if (a.type === "Bank") return "";
   if (isTransit(a)) return transitBlocker(draw);
-  if (isChannel(a)) return "Policy 020 §4.4.4: an off-bank channel records money received or paid through it — it is never the petty-cash float.";
-  if (!isFloat(a)) return "Policy 020 §4.4.1: cash is paid out of the petty-cash float and nowhere else.";
+  if (isChannel(a)) return "Policy P5 §4.4.4: an off-bank channel records money received or paid through it — it is never the petty-cash float.";
+  if (!isFloat(a)) return "Policy P5 §4.4.1: cash is paid out of the petty-cash float and nowhere else.";
   // With a date: a payment dated before the float opened never came out of the box. Allowing it
   // would take money off the box's balance while payoutLedgerFor credits 1120 — the box and 1125
   // would part company, and the next count would show a shortage that is not there. (Books.)
   const notOpen = openingBlocker(a.openedOn, date);
   if (notOpen) return notOpen;
   if (costAccount && FEES_NEVER_FROM_FLOAT.includes(costAccount)) {
-    return "Policy 020 §4.4.1: fees to service providers, freelancers or consultants are never paid from the petty-cash float — pay them by bank transfer.";
+    return "Policy P5 §4.4.1: fees to service providers, freelancers or consultants are never paid from the petty-cash float — pay them by bank transfer.";
   }
   return "";
 }
@@ -206,7 +206,7 @@ export function cashApprovalBlocker(a: AccountLike, amountUSD: number, approverS
   if (a.type !== FLOAT_TYPE && !isTransit(a)) return "";
   if (amountUSD <= CASH_SINGLE_PAYMENT_USD + EPS) return "";
   if (approverSeat && DIRECTOR_SEATS.includes(approverSeat)) return "";
-  return `Policy 020 §4.4.2: a cash payment above ${CASH_SINGLE_PAYMENT_LABEL} needs the Executive Director's approval first — this request was approved by ${approverSeat || "an unrecorded seat"}.`;
+  return `Policy P5 §4.4.2: a cash payment above ${CASH_SINGLE_PAYMENT_LABEL} needs the Executive Director's approval first — this request was approved by ${approverSeat || "an unrecorded seat"}.`;
 }
 
 /* ---- Cash clearing: withdrawals for approved payment requests (Saad, 14 Sep 2026) ----------
@@ -252,7 +252,7 @@ export function drawBlocker(d: {
   if (!Number.isFinite(d.amountUSD) || d.amountUSD <= 0) return "A withdrawal must be for more than zero.";
   if (!d.links.length) return "A withdrawal is linked to the approved payment requests it pays — choose at least one.";
   const bad = d.links.filter(l => l.status !== "Approved" || l.paid);
-  if (bad.length) return `Policy 020 §4.4.2: cash is drawn only for approved requests not yet paid — ${bad.map(l => l.voucherNo).join(", ")} ${bad.length === 1 ? "is" : "are"} not.`;
+  if (bad.length) return `Policy P5 §4.4.2: cash is drawn only for approved requests not yet paid — ${bad.map(l => l.voucherNo).join(", ")} ${bad.length === 1 ? "is" : "are"} not.`;
   const twice = d.links.filter(l => l.alreadyDrawnIn);
   if (twice.length) return `Each request is paid from one withdrawal only — ${twice.map(l => `${l.voucherNo} (in ${l.alreadyDrawnIn})`).join(", ")}.`;
   const needed = r2(d.links.reduce((s, l) => s + l.netUSD, 0));
@@ -276,7 +276,7 @@ export function leftoverBlocker(remainingUSD: number, amountUSD: number, unpaidL
   return "";
 }
 
-/* ---- Money received or paid outside the bank (Policy 020 §4.4.4, §4.4.5 — Saad, 14 Sep 2026) ----
+/* ---- Money received or paid outside the bank (Policy P5 §4.4.4, §4.4.5 — Saad, 14 Sep 2026) ----
  * AnaHon receives and pays through BLOM, BOB Finance, OMT, Whish, cheques and cash. Each channel is
  * an account of its own, with a ledger account of its own. A currency is an added account row with
  * its own ledger code, never a code change: nothing below names a channel or a currency.
@@ -331,7 +331,7 @@ export type ChannelRule = typeof CHANNEL_RULES[number];
 export interface ProjectChannel { code?: string; channelRule?: string | null; channelRuleSource?: string | null }
 export function bankOnlyBlocker(p?: ProjectChannel | null): string {
   if (!p || p.channelRule !== "bank") return "";
-  return `Policy 020 §4.4.4: project ${p.code || ""} may use the bank only${p.channelRuleSource ? ` (its agreement, ${p.channelRuleSource})` : " under its agreement"} — money for it cannot be received or held outside the bank.`;
+  return `Policy P5 §4.4.4: project ${p.code || ""} may use the bank only${p.channelRuleSource ? ` (its agreement, ${p.channelRuleSource})` : " under its agreement"} — money for it cannot be received or held outside the bank.`;
 }
 
 /** Recording money received through a channel. Evidence is the channel's reference, or for cash
@@ -340,11 +340,11 @@ export function receiptBlocker(r: {
   account?: (AccountLike & { name?: string }) | null; date: string; today: string; amount: number;
   reference: string; purpose: string; quotationFound?: boolean; project?: ProjectChannel | null; projectFound?: boolean;
 }): string {
-  if (!r.account || !isLiveChannel(r.account)) return "Policy 020 §4.4.4: money received outside the bank is recorded on its channel's account — choose BOB Finance, OMT, Whish, a cheque or cash.";
+  if (!r.account || !isLiveChannel(r.account)) return "Policy P5 §4.4.4: money received outside the bank is recorded on its channel's account — choose BOB Finance, OMT, Whish, a cheque or cash.";
   if (r.account.active === false) return `${r.account.name || "That channel"} is not active.`;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(r.date) || r.date > r.today) return "Enter the true date the money was received — not a future date.";
   if (!Number.isFinite(r.amount) || r.amount <= 0) return "Enter an amount of more than zero.";
-  if (!String(r.reference || "").trim()) return "Policy 020 §4.4.4: evidence is required — the channel's reference or cheque number, or for cash the RC number of the receipt signed by both sides.";
+  if (!String(r.reference || "").trim()) return "Policy P5 §4.4.4: evidence is required — the channel's reference or cheque number, or for cash the RC number of the receipt signed by both sides.";
   if (!(RECEIPT_PURPOSES as readonly string[]).includes(r.purpose)) return "Say what the money is for: a quotation, a project, or other income.";
   if (r.purpose === "quotation" && !r.quotationFound) return "Choose the quotation this payment settles.";
   if (r.purpose === "project" && !r.projectFound) return "Choose the project this tranche funds.";

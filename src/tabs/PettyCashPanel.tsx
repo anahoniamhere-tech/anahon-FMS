@@ -162,7 +162,7 @@ export default function PettyCashPanel({ state, currentUser, t, triggerToast, re
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-md font-bold text-slate-900">{t("Petty cash float")}</h3>
-          <p className="text-xs text-slate-500">{t("Held by")} {nameOf(box.custodianUserId || "")} · {t("ledger")} <span dir="ltr">{FLOAT_LEDGER}</span> · {t("Policy")} <span dir="ltr" className="whitespace-nowrap">020 §4.4</span></p>
+          <p className="text-xs text-slate-500">{t("Held by")} {nameOf(box.custodianUserId || "")} · {t("ledger")} <span dir="ltr">{FLOAT_LEDGER}</span> · {t("Policy")} <span dir="ltr" className="whitespace-nowrap">P5 §4.4</span></p>
         </div>
         {REPORT_READERS.includes(currentUser.role) && (
           <button type="button" onClick={downloadSheet} disabled={busy} className="min-h-[44px] shrink-0 text-xs font-medium border border-slate-300 rounded-lg px-4 bg-white hover:bg-slate-50 disabled:opacity-50">

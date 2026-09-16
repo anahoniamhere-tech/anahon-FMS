@@ -49,7 +49,7 @@ export function resolveLocation(location: unknown, other: unknown): { ok: boolea
 /**
  * What kind of thing this is, and how many years it depreciates over — Finance's policy,
  * not a guess made at the receiving desk. One place, so a number changes once and every
- * item that reads it agrees. Policy 017 §9 states these same lives (12 Sep 2026).
+ * item that reads it agrees. Policy P7 §9 states these same lives (12 Sep 2026).
  *
  * "other" is the fallback for anything that does not fit, and it is also what an unknown
  * or missing kind resolves to — a save is never blocked for want of a category.
@@ -73,19 +73,19 @@ export const USEFUL_LIFE_BY_KIND: Record<EquipmentKind, number> = {
 };
 
 /**
- * Policy 020 §9 (edition 2, 15 Sep 2026): an item costing USD 500 or more and lasting more than a
+ * Policy P5 §9 (edition 2, 15 Sep 2026): an item costing USD 500 or more and lasting more than a
  * year is capitalised and depreciated straight-line over the lives above; anything cheaper is
  * expensed when bought — and registered all the same. The threshold decides how an item is
  * ACCOUNTED for, never whether it is looked after.
  */
 export const CAPITALISE_FROM_USD = 500;
 /** Depreciation starts on the first day of the month AFTER the purchase (Home & desk, 15 Sep 2026 —
- *  the rule the superseded 020 §9.4 stated; to be written into §9 at the next handbook edit). */
+ *  the rule the superseded P5 §9.4 stated; to be written into §9 at the next handbook edit). */
 export const DEPRECIATION_STARTS_MONTHS_AFTER_PURCHASE = 1;
 
 /**
  * Where a cost came from. Only Finance enters a cost without a payment request behind it, and
- * never without saying which of these it is (Policy 020 §9: the consultant's opening values).
+ * never without saying which of these it is (Policy P5 §9: the consultant's opening values).
  *   ""        not valued yet — NOT a gift, and never shown as one
  *   voucher   the payment request it was bought on
  *   receipt   a receipt or invoice in the vault (costBasisDocId)
@@ -364,7 +364,7 @@ export function endKindOf(key: string | null | undefined) {
 
 /**
  * A DISPOSAL is the organisation giving up something it owns — sold, given away, or thrown
- * away. Resources and Assets Policy 017 (approved 12 Sep 2026) needs two signatures for that:
+ * away. Resources and Assets Policy P7 (approved 12 Sep 2026) needs two signatures for that:
  * the Executive Director and the Finance Officer. One proposes, the other confirms.
  *
  * Lost, Stolen and Returned to its owner are not disposals. Nobody decided them; they are
@@ -375,7 +375,7 @@ export function isDisposal(key: string | null | undefined): boolean {
   return endKindOf(key)?.disposal === true;
 }
 
-/** The two signatures Policy 017 asks for. A person may hold one side, or both. */
+/** The two signatures Policy P7 asks for. A person may hold one side, or both. */
 export type DisposalSide = "director" | "finance";
 export function disposalSides(role: string | null | undefined): DisposalSide[] {
   const r = String(role || "");

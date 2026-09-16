@@ -19,7 +19,7 @@ const save = (blob: Blob, name: string) => {
 const btn = "min-h-[44px] text-xs font-medium border border-slate-300 rounded-lg px-3 bg-white hover:bg-slate-50 disabled:opacity-50";
 
 /**
- * The external consultant's reports and month pack (Policy 020 §12.1, §12.4, §13). He has no login: Finance
+ * The external consultant's reports and month pack (Policy P5 §12.1, §12.4, §13). He has no login: Finance
  * produces the files here and Saad shares a dated view-only copy on Drive. The Finance Officer prepares each
  * account's reconciliation (§4.3); the consultant's signed or commented copy is filed against it.
  */
@@ -80,7 +80,7 @@ export default function ConsultantPackPanel({ currentUser, t, triggerToast, form
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-md font-bold text-slate-900">{t("External consultant")}</h3>
-          <p className="text-xs text-slate-500">{t("Files for the consultant, shared by Saad as a view-only copy. Nothing is uploaded from here.")} {t("Policy")} <span dir="ltr" className="whitespace-nowrap">020 §12.1</span></p>
+          <p className="text-xs text-slate-500">{t("Files for the consultant, shared by Saad as a view-only copy. Nothing is uploaded from here.")} {t("Policy")} <span dir="ltr" className="whitespace-nowrap">P5 §12.1</span></p>
         </div>
         <div>
           <label htmlFor="cp-month" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Month")}</label>
@@ -161,7 +161,7 @@ export default function ConsultantPackPanel({ currentUser, t, triggerToast, form
               </li>
             ))}
           </ul>
-          {!data.mayMark && <p className="text-[11px] text-slate-600">{t("Only the Finance Officer prepares a reconciliation (Policy 020 §4.3).")}</p>}
+          {!data.mayMark && <p className="text-[11px] text-slate-600">{t("Only the Finance Officer prepares a reconciliation (Policy P5 §4.3).")}</p>}
         </div>
       )}
 

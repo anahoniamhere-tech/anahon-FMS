@@ -839,7 +839,7 @@ export default function MyDeskTab({
         })}
       </div>
 
-      {/* Policy 020 §4.4.1: the Procurement and Logistics Officer counts the petty cash but
+      {/* Policy P5 §4.4.1: the Procurement and Logistics Officer counts the petty cash but
           has no Bank & cash door and no bank data. The count is blind — the server supplies
           the expected figure — so the form needs nothing loaded and lives here. Directors
           count from Bank & cash, where the float itself is. */}

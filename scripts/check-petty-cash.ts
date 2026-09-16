@@ -1,4 +1,4 @@
-// The petty-cash float — draft Policy 020 §4.4, Saad's decisions of 14 Sep 2026.
+// The petty-cash float — draft Policy P5 §4.4, Saad's decisions of 14 Sep 2026.
 //
 // Pins the four rules a float lives or dies by: the ceiling, the custodian never counts their
 // own cash, nobody approves their own top-up, and an off-bank channel is never the float. Plus
@@ -40,7 +40,7 @@ console.log("\n1. the ceiling (§4.4.1), one number");
 ok("the float ceiling is USD 1,000", FLOAT_CEILING_USD === 1000 && FLOAT_CEILING_LABEL === "USD 1,000");
 ok("the single-payment rule stays USD 150, and lives in the same place", CASH_SINGLE_PAYMENT_USD === 150);
 ok("a top-up that would take the box above the ceiling is refused", ceilingBlocker(400, 700) !== "");
-ok("and the refusal names the policy section", /Policy 020 §4\.4\.1/.test(ceilingBlocker(400, 700)));
+ok("and the refusal names the policy section", /Policy P5 §4\.4\.1/.test(ceilingBlocker(400, 700)));
 ok("a top-up to exactly the ceiling is allowed", ceilingBlocker(400, 600) === "");
 ok("a half-cent float round-trip is not a breach", ceilingBlocker(400.001, 600) === "");
 ok("nothing, or less than nothing, is not a top-up", ceilingBlocker(0, 0) !== "" && ceilingBlocker(0, -5) !== "");

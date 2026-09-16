@@ -1,5 +1,5 @@
 /**
- * The external financial consultant's reports and month pack — Policy 020 §12.1, §12.4, §13 (edition 2).
+ * The external financial consultant's reports and month pack — Policy P5 §12.1, §12.4, §13 (edition 2).
  *
  * The consultant has no login. Finance produces the files here; Saad shares a dated, view-only copy on
  * Drive. Pure module: the server loads the books and these functions decide what the reports say and what
@@ -31,7 +31,7 @@ export function packExcludes(doc: { category?: string | null; linkedRecordType?:
 
 export function reconcileMarkBlocker(person: { role?: string | null } | null | undefined): string {
   if (person?.role === RECONCILER_SEAT) return "";
-  return "Policy 020 §4.3: the Finance Officer prepares every bank reconciliation. The Executive Director is the only signatory and never reconciles an account alone — standing in as another seat does not change who you are.";
+  return "Policy P5 §4.3: the Finance Officer prepares every bank reconciliation. The Executive Director is the only signatory and never reconciles an account alone — standing in as another seat does not change who you are.";
 }
 
 export interface Leg { entryId: string; date: string; recordedAt: string; journal: string; accountCode: string; debit: number; credit: number; projectId: string; referenceNo: string; description: string }

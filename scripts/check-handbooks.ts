@@ -10,7 +10,7 @@
 import { NAV_KEYS } from "../src/nav.js";
 import {
   parseHandbooksIndex, findIndexFaults, checkPolicyDoors, chapterAnchors, missingChapterText,
-  POLICY_DOORS,
+  POLICY_DOORS, FORMER, policyNo, historyChapterOf,
 } from "../src/handbooksIndex.js";
 
 let failed = 0;
@@ -18,79 +18,76 @@ const ok = (label: string, cond: boolean, detail = "") => {
   if (!cond) { failed++; console.error(`  FAIL  ${label}${detail ? " — " + detail : ""}`); } else console.log(`  ok    ${label}`);
 };
 
-// A frozen copy of the live Index's extracted text (revised 15 Sep 2026, when 003 merged into 020, 013 into 001, 020's Annex B into 010, 004/015/016 into 006, 009 into 012, 021/022 into 002, 019 into 018, and 008 into 011),
-// so the parser is proven against real wording, not an invented fixture.
+// A frozen copy of the live Index's extracted text (revised 16 Sep 2026, when the eleven policies were
+// renumbered P1–P11), so the parser is proven against real wording, not an invented fixture.
 const REAL_INDEX = `
 AnaHon Media Platform — Policies and Handbooks
-Index · 12 September 2026, revised 15 September 2026. AnaHon's policies live in five documents, not nineteen. Each policy is a numbered chapter inside the handbook that carries it. The handbooks are the policy; the separate files that used to hold each one are kept in Superseded as history and no longer govern.
-The numbers never change. The management system enforces some policies by number — the publication gate cites Policy 002, the independent fact-check cites Policy 005 — and the help desk answers from them.
-1. Editorial Standards Handbook
-•002 Editorial Standards — merged with 022 (and 021) and approved 15 Sep 2026: content standards and labels, the two approvals, independence, consent and safeguarding in stories, journalist safety, corrections, AI
-•005 Fact-Checking Policy
-2. Team Handbook
-•001 Code of Conduct and Integrity — merged with 013 and 020's anti-fraud annex and approved 15 Sep 2026: fraud, corruption, conflicts of interest, sanctions, safeguarding, and how concerns are raised
-•006 People — merged with 004, 015 and 016 and approved 15 Sep 2026: engaging service providers, fees and payment, rest, wellbeing, inclusion and performance
+Index · revised 16 September 2026. AnaHon's eleven policies live in five handbooks and one standalone document. Each policy is a numbered chapter inside the document that carries it. The separate files that used to hold each one are kept in Superseded as history and no longer govern.
+Since 16 September 2026, AnaHon's eleven policies are numbered P1 to P11, grouped by handbook in reading order. Each chapter shows its former number, and the Index lists them all, so older contracts, reports and files that cite a three-digit number can still be followed. The publication gate cites P3 and the independent fact-check cites P4.
+1. Team Handbook
+•P1 Code of Conduct and Integrity — formerly 001; merged with 013 and 020's anti-fraud annex, approved 15 Sep 2026: fraud, corruption, conflicts of interest, sanctions, safeguarding, and how concerns are raised
+•P2 People — formerly 006; merged with 004, 015 and 016, approved 15 Sep 2026: engaging service providers, fees and payment, rest, wellbeing, inclusion and performance
 Written for the declaration of 12 September 2026: AnaHon has no employees. Everyone on the team is a service provider on an annual contract stating the total fee and terms of reference, with subcontracts per project, and no payment where there is no project.
+2. Editorial Standards Handbook
+•P3 Editorial Standards — formerly 002; merged with 022 (and 021), approved 15 Sep 2026: content standards and labels, the two approvals, independence, consent and safeguarding in stories, journalist safety, corrections, AI
+•P4 Fact-Checking Policy — formerly 005
 3. Finance and Controls Handbook
-•020 Finance and Procurement Policy — merged with 003 and approved 15 Sep 2026: accounts, procurement, payments, petty cash, money received outside the bank, and financial records
-•012 Risk and Due Diligence — merged with 009 and approved 15 Sep 2026: checking suppliers, partners, donors and people; the quarterly risk register; legal checks before publication
-•017 Resources and Assets — written 12 Sep 2026; the file previously under that number was a duplicate of 016
+•P5 Finance and Procurement Policy — formerly 020; merged with 003, approved 15 Sep 2026: accounts, procurement, payments, petty cash, money received outside the bank, fixed assets and financial records
+•P6 Risk and Due Diligence — formerly 012; merged with 009, approved 15 Sep 2026: checking suppliers, partners, donors and people; the quarterly risk register; legal checks before publication
+•P7 Resources and Assets — formerly 017; written 12 Sep 2026, light edit 15 Sep 2026
 4. Programmes and Funding Handbook
-•018 Fundraising and Grants — merged with 019 and approved 15 Sep 2026: where income comes from, money AnaHon does not take, the go / no-go check, proposals, grant management, reporting and closure
-•011 Programme Quality — merged with 008 and approved 15 Sep 2026: community needs assessment, indicators with baselines and targets, reporting and learning
+•P8 Fundraising and Grants — formerly 018; merged with 019, approved 15 Sep 2026: where income comes from (paid services through iContent Studio), money AnaHon does not take, the go / no-go check, proposals, grants and reporting
+•P9 Programme Quality — formerly 011; merged with 008, approved 15 Sep 2026: community needs assessment, indicators with baselines and targets, reporting and learning
 5. Strategy
-•007 Strategic Plan — a plan, not a rule, and the document the four handbooks serve
+•P10 Strategic Plan — formerly 007; a plan, not a rule, and the document the handbooks serve
 Standing on its own
-•010 Information, Data and Source Privacy — merged with 020's data-protection annex and approved 15 Sep 2026: where information lives, access and two-step sign-in, source protection, confidential payments to protected sources, incidents. It cuts across all four handbooks and belongs to none.
+•P11 Information, Data and Source Privacy — formerly 010; merged with 020's data-protection annex, approved 15 Sep 2026: where information lives, access and two-step sign-in, source protection, confidential payments to protected sources, incidents. It cuts across all the handbooks and belongs to none.
 Numbers not in use
-014 was never issued. 021's file was lost in August 2026. On 15 September 2026, 003 was merged into 020, 013 into 001, 004, 015 and 016 into 006, 009 into 012, 021 and 022 into 002, 019 into 018, and 008 into 011. The second document numbered 018, the Centralized Knowledge Sharing Repository Policy, is replaced by 010.
+Former numbers, renumbered 16 September 2026: 001 → P1 · 006 → P2 · 002 → P3 · 005 → P4 · 020 → P5 · 012 → P6 · 017 → P7 · 018 → P8 · 011 → P9 · 007 → P10 · 010 → P11.
+Merged on 15 September 2026 and no longer used: 003 (into P5), 004, 015 and 016 (into P2), 008 (into P9), 009 (into P6), 013 (into P1), 019 (into P8), 021 and 022 (into P3). 014 was never issued; 021's file was lost in August 2026. Drafts 023 (Safeguarding) and 024 (Data Protection) were never adopted; their content is in P1, P3 and P11. The second document once numbered 018, the Centralized Knowledge Sharing Repository Policy, was replaced by P11.
 Still to settle
-•An independent whistleblowing recipient — 001 §6.3 leaves the name open. Until someone outside AnaHon is named, concerns about the Executive Director go to the donors' own channels.
-•Indicator baselines and targets (011 §2.2) — the Executive Director and the Finance Officer set them by 31 October 2026, from figures in the management system.
-•A start year for the Strategy (007).
-•An interim editorial approver — 002 §4.2 needs two different people to approve a piece. The Executive Director will name who holds the Production Manager approval until that seat is filled; until then no piece passes the approval step.
-•An external audit — required by 020 §12.1. A financial consultant is being engaged through the SKF project to prepare it; none has yet been completed.
+•An independent whistleblowing recipient — P1 §6.3 leaves the name open. Until someone outside AnaHon is named, concerns about the Executive Director go to the donors' own channels.
+•Indicator baselines and targets (P9 §2.2) — the Executive Director and the Finance Officer set them by 31 October 2026, from figures in the management system.
+•A start year for the Strategy (P10).
+•An interim editorial approver — P3 §4.2 needs two different people to approve a piece. The Executive Director will name who holds the Production Manager approval until that seat is filled; until then no piece passes the approval step.
+•An external audit — required by P5 §12.1. A financial consultant is being engaged through the SKF project to prepare it; none has yet been completed.
 `;
 
-console.log("\nA. the Index parses into the five handbooks, Policy 010, and nothing invented");
+console.log("\nA. the Index parses into the five handbooks, P11, and nothing invented");
 const parsed = parseHandbooksIndex(REAL_INDEX);
-ok("five handbooks", parsed.handbooks.length === 5, String(parsed.handbooks.length));
-ok("Editorial Standards carries 002 and 005 — 022 (with 021) is merged into 002",
-  parsed.handbooks[0].chapters.map(c => c.no).join(",") === "002,005");
-ok("002 is Editorial Standards", parsed.handbooks[0].chapters[0].title === "Editorial Standards");
-ok("Team carries 001 and 006 — 004, 015 and 016 are merged into 006",
-  parsed.handbooks[1].chapters.map(c => c.no).join(",") === "001,006");
-ok("006 is the People policy", parsed.handbooks[1].chapters[1].title === "People");
-ok("Finance and Controls carries 020, 012, 017 — 003 merged into 020, 013 into 001, 009 into 012",
-  parsed.handbooks[2].chapters.map(c => c.no).join(",") === "020,012,017");
-ok("012 is Risk and Due Diligence", parsed.handbooks[2].chapters[1].title === "Risk and Due Diligence");
-ok("020 is the Finance and Procurement Policy", parsed.handbooks[2].chapters[0].title === "Finance and Procurement Policy");
-ok("Programmes and Funding carries 018 and 011 — 019 merged into 018, 008 into 011",
-  parsed.handbooks[3].chapters.map(c => c.no).join(",") === "018,011");
-ok("011 is Programme Quality", parsed.handbooks[3].chapters[1].title === "Programme Quality");
-ok("Strategy carries only 007", parsed.handbooks[4].chapters.map(c => c.no).join(",") === "007");
-ok("Policy 010 stands alone, not folded into a handbook",
-  parsed.standalone.length === 1 && parsed.standalone[0].no === "010");
-ok("a trailing note survives the split, cleaned of its title", parsed.handbooks[0].chapters[0].note.startsWith("merged with 022"));
+const nos = (i: number) => parsed.handbooks[i].chapters.map(c => c.no).join(",");
+ok("five handbooks, Team first", parsed.handbooks.length === 5 && parsed.handbooks[0].heading === "Team Handbook", parsed.handbooks.map(h => h.heading).join(" | "));
+ok("Team carries P1 and P2", nos(0) === "P1,P2", nos(0));
+ok("Editorial Standards carries P3 and P4", nos(1) === "P3,P4", nos(1));
+ok("Finance and Controls carries P5, P6, P7", nos(2) === "P5,P6,P7", nos(2));
+ok("Programmes and Funding carries P8 and P9", nos(3) === "P8,P9", nos(3));
+ok("Strategy carries only P10", nos(4) === "P10", nos(4));
+ok("P11 stands alone, not folded into a handbook", parsed.standalone.length === 1 && parsed.standalone[0].no === "P11");
+ok("the eleven numbers run P1 to P11 with no gap",
+  [...parsed.handbooks.flatMap(h => h.chapters), ...parsed.standalone].map(c => c.no).join(",") === "P1,P2,P3,P4,P5,P6,P7,P8,P9,P10,P11");
+ok("titles survive the split", parsed.handbooks[0].chapters[0].title === "Code of Conduct and Integrity" && parsed.handbooks[2].chapters[0].title === "Finance and Procurement Policy");
+ok("each chapter note names its former number", parsed.handbooks.flatMap(h => h.chapters).every(c => /^formerly \d{3}/.test(c.note)), parsed.handbooks.flatMap(h => h.chapters).map(c => c.note.slice(0, 14)).join(" | "));
 ok("no fault on the real, correct Index", findIndexFaults(parsed).length === 0, findIndexFaults(parsed).join("; "));
+ok("an old number still finds its policy", policyNo("020") === "P5" && policyNo("010") === "P11" && policyNo("005") === "P4" && policyNo("013") === "P1" && policyNo("p7") === "P7");
+ok("and every current P-number has a former number", ["P1","P2","P3","P4","P5","P6","P7","P8","P9","P10","P11"].every(p => Object.values(FORMER).includes(p)));
 
 console.log("\nB. a genuine duplicate is caught, not waved through");
-const duped = parseHandbooksIndex(REAL_INDEX.replace("•006 People", "•002 People"));
+const duped = parseHandbooksIndex(REAL_INDEX.replace("•P2 People", "•P3 People"));
 const faults = findIndexFaults(duped);
-ok("a number reused across handbooks is reported", faults.length === 1 && /002/.test(faults[0]), faults.join("; "));
+ok("a number reused across handbooks is reported", faults.length === 1 && /P3/.test(faults[0]), faults.join("; "));
 
 console.log("\nC. a chapter the Index promises but the compiled text never wrote is caught");
-// Until 15 Sep 2026 this was Policy 013, listed under Finance with no compiled text. 013 is now
-// merged into 001, so the case is rebuilt from the real Finance headings with Part Four dropped:
-// the Index still promises 017, and the text no longer carries it.
-const FINANCE_WITHOUT_017 = `Part One — Finance and Procurement Policy (Policy 020)\nPart Two — Risk and Due Diligence (Policy 012)\n`;
-const missing = missingChapterText(parsed.handbooks[2].chapters, chapterAnchors(FINANCE_WITHOUT_017));
+// Built from the real Finance headings (edition 7, 16 Sep 2026) with Part Three dropped.
+const FINANCE_WITHOUT_P7 = `Part One — Finance and Procurement Policy (Policy P5, formerly 020)\nPart Two — Risk and Due Diligence (Policy P6, formerly 012)\n`;
+const missing = missingChapterText(parsed.handbooks[2].chapters, chapterAnchors(FINANCE_WITHOUT_P7));
 ok("a chapter the Index lists but the text lacks is flagged",
-  missing.length === 1 && missing[0].no === "017", missing.map(c => c.no).join(","));
+  missing.length === 1 && missing[0].no === "P7", missing.map(c => c.no).join(","));
 ok("and the real Finance headings flag nothing",
-  missingChapterText(parsed.handbooks[2].chapters, chapterAnchors(FINANCE_WITHOUT_017 + "Part Three — Resources and Assets Policy (Policy 017)\n")).length === 0);
+  missingChapterText(parsed.handbooks[2].chapters, chapterAnchors(FINANCE_WITHOUT_P7 + "Part Three — Resources and Assets Policy (Policy P7, formerly 017)\n")).length === 0);
 ok("a single-chapter document (no Part heading at all) is never flagged this way",
   missingChapterText(parsed.handbooks[4].chapters, chapterAnchors("just prose, no heading")).length === 0);
+ok("an old history note still lands on its new chapter",
+  historyChapterOf({ filename: "x.docx", note: "Superseded on 15 Sep 2026: the 12 Sep 2026 draft of Policy 010, replaced…" }) === "P11");
 
 console.log("\nD. the enforcement map names doors that still exist");
 ok(`every door POLICY_DOORS names is a real navKey (checked against nav.tsx's ${NAV_KEYS.length})`,

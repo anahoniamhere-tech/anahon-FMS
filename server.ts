@@ -101,22 +101,22 @@ const PO_ALLOWED_POSTS = new Set([
   "/api/materials/link",
   "/api/documents/meta",
   "/api/expense/scan-invoice",
-  // Policy 002: each Project Officer runs their programme's content operations.
+  // Policy P3: each Project Officer runs their programme's content operations.
   "/api/content/save",
   "/api/content/start",
   "/api/content/submit-factcheck",
   "/api/content/factcheck-log",
   "/api/content/factcheck-pass",
   "/api/content/return",
-  "/api/content/brainstorm", // POs develop their programme's content ideas (Policy 002)
+  "/api/content/brainstorm", // POs develop their programme's content ideas (Policy P3)
   "/api/content/produce",
   "/api/content/draft-save",
   "/api/content/draft-delete",
-  "/api/meetings/save",      // POs attend both meetings (Policy 002) and may record them
+  "/api/meetings/save",      // POs attend both meetings (Policy P3) and may record them
   "/api/meetings/extract-topics",
   "/api/meetings/transcribe"
 ]);
-// Content crew (Policy 002 production team: reporters, content creators, podcasters)
+// Content crew (Policy P3 production team: reporters, content creators, podcasters)
 // are content-only accounts: they act on the editorial pipeline and nothing else —
 // same containment idea as the Project Officer gate. loadState also gives these roles
 // no financial domain; this closes the write side.
@@ -146,7 +146,7 @@ const CREW_ALLOWED_POSTS = new Set([
 // approves, never pays, never touches the books.
 const PLO_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
-  "/api/cash/count",                              // counts the petty-cash float, never its custodian (Policy 020 §4.4.1)
+  "/api/cash/count",                              // counts the petty-cash float, never its custodian (Policy P5 §4.4.1)
   "/api/procurement/new", "/api/procurement/waiver-inline",
   "/api/vendors/new", "/api/vendors/payment-doc", "/api/vendors/phone", "/api/vendors/party-kind", "/api/vendors/link-login",
   "/api/expense/new", "/api/expense/scan-invoice",
@@ -206,7 +206,7 @@ const IDENTITY_REQUIRED_POSTS = new Set([
   "/api/journal-entry/adjustment",
   "/api/timesheets/approve",
   // Editorial pipeline: every action is a policy-enforcement step — its audit line
-  // must carry a real identity (Policies 002 & 005).
+  // must carry a real identity (Policies P3 & P4).
   "/api/content/save",
   "/api/content/start",
   "/api/content/submit-factcheck",
@@ -292,7 +292,7 @@ const OPEN_GETS = new Set(["/api/desk.ics", "/api/calendar.ics", "/api/document/
  * /api/document/pages/:id fires once when the viewer opens and stands for the whole file.
  */
 const READ_AUDIT: [RegExp, string][] = [
-  // Policy 001 §7.1 — every opening of the register is logged, including the list and the
+  // Policy P1 §7.1 — every opening of the register is logged, including the list and the
   // anonymised summary. The label names the register, never what a concern says.
   [/^\/api\/integrity\/list$/, "Integrity register (list)"],
   [/^\/api\/integrity\/entry\/[^/]+$/, "Integrity register entry"],
@@ -309,7 +309,7 @@ const READ_AUDIT: [RegExp, string][] = [
   [/^\/api\/document\/docx-text\/[^/]+$/, "Document, as text"],
   [/^\/api\/subscriptions\/detect$/, "Bank statement suggestions"],
   [/^\/api\/audit\/acting$/, "Seat-assumption log"],
-  // Policy 010 §6 — every opening of a sealed source file, and every refusal. The label names the
+  // Policy P11 §6 — every opening of a sealed source file, and every refusal. The label names the
   // file by its id, never the person.
   [/^\/api\/sources\/[^/]+$/, "Sealed source file"],
   [/^\/api\/sources\/[^/]+\/document\/[^/]+$/, "Sealed source file, a paper"],
@@ -626,7 +626,7 @@ async function loadState(viewer?: any) {
   // the reminder to bring it back has to reach a Project Officer on a shoot, who has no
   // Equipment door and would otherwise be sent nothing. Only what the desk needs, no money.
   const log = (j: any) => { try { return JSON.parse(j || "[]"); } catch { return []; } };
-  // How each item is accounted for today (Policy 020 §9) and the grant it was bought on — read
+  // How each item is accounted for today (Policy P5 §9) and the grant it was bought on — read
   // from its payment request, never typed on the item (15 Sep 2026).
   const assetDay = localDate();
   const grantOf = (expenseId: string) => {
@@ -666,10 +666,10 @@ async function loadState(viewer?: any) {
     for (const leg of JSON.parse(j.itemsJson || "[]")) list.push(leg);
     legsByVoucher.set(j.referenceNo, list);
   }
-  // Where each payment's evidence stands (Policy 020 §6.6) — one rule, here, for every seat. A
+  // Where each payment's evidence stands (Policy P5 §6.6) — one rule, here, for every seat. A
   // missing-receipt declaration counts only once signed by the person paid AND approved.
   const declarations = await prisma.missingReceiptDeclaration.findMany();
-  // Policy 010 §6: a confidential payment's receipt is signed in the real name and kept in the sealed
+  // Policy P11 §6: a confidential payment's receipt is signed in the real name and kept in the sealed
   // file. Read here only as a yes/no — nothing from the file leaves this function.
   const sealedDocs = new Map<string, SealedDoc[]>((await prisma.sourceFile.findMany({ select: { id: true, docsJson: true } }))
     .map(f => [f.id, (() => { try { return JSON.parse(f.docsJson || "[]"); } catch { return []; } })()]));
@@ -698,7 +698,7 @@ async function loadState(viewer?: any) {
     };
   });
 
-  // Policy 010 §6 — the ED's quarterly review of confidential payments: count and totals by code name,
+  // Policy P11 §6 — the ED's quarterly review of confidential payments: count and totals by code name,
   // nothing from any sealed file. Sent to the ED and the Finance Officer only (below).
   const confidentialReview = await (async () => {
     const rows = formattedExpenses.filter((e: any) => e.confidential);
@@ -766,7 +766,7 @@ async function loadState(viewer?: any) {
 
   let visibleProjects = fundedOnly(projects, bankTransactions);
 
-  // Content crew (Policy 002 production team) get the editorial register and the people
+  // Content crew (Policy P3 production team) get the editorial register and the people
   // directory — no financial domain ever leaves the server for these roles.
   if (viewer && [...CONTENT_CREW_ROLES, "Chief Editor", "Production Manager", "Graphic Designer"].includes(viewer.role)) {
     return {
@@ -889,11 +889,11 @@ async function loadState(viewer?: any) {
       projectActivities: projectActivities.filter(a => myProjectIds.has(a.projectId)),
       donorReportSubmissions: donorReportSubmissions.filter(d => myProjectIds.has(d.projectId)),
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [], poolCandidates: [],
-      // Policy 002: POs run their programme's content — plus anything they personally
+      // Policy P3: POs run their programme's content — plus anything they personally
       // author or fact-check in another programme.
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent.filter(c =>
         poStreams.has(c.stream) || c.assigneeUserId === viewer.id || c.factCheckerUserId === viewer.id),
-      editorialMeetings: formattedMeetings, // POs attend both meetings (Policy 002)
+      editorialMeetings: formattedMeetings, // POs attend both meetings (Policy P3)
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
     };
@@ -962,7 +962,7 @@ async function loadState(viewer?: any) {
       proposal: JSON.parse(o.proposalJson || "{}"),
       samples: (() => { try { return JSON.parse(o.samplesJson || "[]"); } catch { return []; } })()
     })),
-    // Physical counts of the petty-cash float (Policy 020 §4.4.3), and its top-ups (§4.4.1).
+    // Physical counts of the petty-cash float (Policy P5 §4.4.3), and its top-ups (§4.4.1).
     cashCounts,
     cashTopUps: await prisma.cashTopUp.findMany({ orderBy: { raisedAt: "desc" } }),
     cashDraws: await prisma.cashDraw.findMany({ orderBy: { date: "desc" } }),
@@ -971,7 +971,7 @@ async function loadState(viewer?: any) {
     // Project timelines: dated, assignable steps per project.
     projectActivities,
     donorReportSubmissions,
-    // Editorial pipeline (Policies 002 & 005) — content register with enforcement fields.
+    // Editorial pipeline (Policies P3 & P4) — content register with enforcement fields.
     siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent,
     editorialMeetings: formattedMeetings,
     // Production stream — clients pay us; a quotation is never income until
@@ -1232,7 +1232,7 @@ app.post("/api/pool/assess", async (req, res) => {
 
 /* Removing someone from the pool entirely. It touches both fields, so the Executive Director
  * only. Personal data about a person we have no contract with has to be removable when they ask
- * (Policy 010). Their CVs are NOT deleted — documents are never destroyed from here — they lose
+ * (Policy P11). Their CVs are NOT deleted — documents are never destroyed from here — they lose
  * their link and fall back to the rule for an unlinked personnel paper: file holders only. */
 app.post("/api/pool/delete", async (req, res) => {
   try {
@@ -1528,7 +1528,7 @@ app.post("/api/reminders/plan", async (req, res) => {
  * `vault/GENERAL/Handbooks/Superseded/` and the compiled documents became the only
  * governing text — so the first fix now had it backwards: it would have read the retired
  * copies and skipped the ones actually in force. There is no more split to make. Every
- * live document (the four handbooks, the index, the Strategy, and Policy 010 standing on
+ * live document (the four handbooks, the index, the Strategy, and Policy P11 standing on
  * its own) is ingested whole, in one loop, filtered only by whether its own pointer says
  * it has been superseded — `isSupersededPointer`, read from the record, never guessed
  * from a filename, so a later reorganisation stays correct as long as retired copies keep
@@ -2274,7 +2274,7 @@ app.post("/api/mail/settle", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------------
-// The integrity register — Policy 001 §7 (whistleblowing).
+// The integrity register — Policy P1 §7 (whistleblowing).
 //
 // Three properties, each enforced here rather than trusted:
 //
@@ -2296,7 +2296,7 @@ const INTEGRITY_KINDS = ["acknowledged", "referred-outside", "review", "investig
 // may still make are referring it outside and noting a fact.
 const INTEGRITY_KINDS_WHEN_IT_TOUCHES_ED = ["referred-outside", "note"];
 
-/* ── Policy 010 §6: sealed source files ──────────────────────────────────────────────────────────
+/* ── Policy P11 §6: sealed source files ──────────────────────────────────────────────────────────
  * Opened only by the ED (as themselves) and the Finance Officer. The GETs are in READ_AUDIT, so every
  * opening and every refusal is a line; the writes log what changed by field name, never the value —
  * the audit log is read by more seats than the file is. None of it enters loadState.
@@ -2381,7 +2381,7 @@ app.post("/api/sources/review", async (req, res) => {
   const me = (req as any).dbUser;
   if (!me || me.role !== "Super Admin" || String(req.get("X-Acting-As") || "").trim()) return res.status(403).json({ error: "The quarterly review of confidential payments is the Executive Director's, as themselves." });
   const n = await prisma.expense.count({ where: { confidential: true } });
-  await createAuditLog(me.id, me.name, "Confidential Payments Reviewed", `${me.name} reviewed the ${n} confidential payment(s) on record (Policy 010 §6).`);
+  await createAuditLog(me.id, me.name, "Confidential Payments Reviewed", `${me.name} reviewed the ${n} confidential payment(s) on record (Policy P11 §6).`);
   res.json({ success: true });
 });
 
@@ -2505,7 +2505,7 @@ app.get("/api/integrity/summary", async (req, res) => {
     total: entries.length, byCategory, open, closed,
     daysToClose: durations.length ? { shortest: Math.min(...durations), longest: Math.max(...durations),
       average: Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) } : null,
-    note: "Counts and durations only — Policy 001 §7.5 requires this summary to carry no names.",
+    note: "Counts and durations only — Policy P1 §7.5 requires this summary to carry no names.",
   });
 });
 
@@ -3174,7 +3174,7 @@ app.post("/api/projects/new", async (req, res) => {
     if (fundingTx.projectId) {
       return res.status(400).json({ error: "That deposit is already linked to another project." });
     }
-    // A first donor tranche can arrive outside the bank, before its project exists (Policy 020 §4.4.4):
+    // A first donor tranche can arrive outside the bank, before its project exists (Policy P5 §4.4.4):
     // recorded on a live channel as "other income", with its evidence. Anything else on a channel —
     // a historical account, a quotation's payment, a line with no evidence — is not founding proof.
     const fundingAccountRow = await prisma.bankAccount.findUnique({ where: { id: fundingTx.bankAccountId } });
@@ -3208,7 +3208,7 @@ app.post("/api/projects/new", async (req, res) => {
 
     // The receipt was booked as other income (4900) before the project existed. Move it to the
     // project's income by a correcting entry on the receipt's true date — the original entry is never
-    // edited (Policy 020 §2.5). The rebuild keeps je-rc-* entries, so a re-run reproduces it.
+    // edited (Policy P5 §2.5). The rebuild keeps je-rc-* entries, so a re-run reproduces it.
     let correction = "";
     if (fromChannel) {
       const originals = await prisma.journalEntry.findMany({ where: { referenceNo: { in: [fundingTx.id, `BT-${fundingTx.id}`] } } });
@@ -3251,7 +3251,7 @@ app.post("/api/projects/new", async (req, res) => {
   }
 });
 
-// A project's channel rule (Policy 020 §4.4.4, Saad 14 Sep 2026). AnaHon receives money through
+// A project's channel rule (Policy P5 §4.4.4, Saad 14 Sep 2026). AnaHon receives money through
 // every channel; only a donor's agreement can make a project "bank only", and then narrowly — the
 // donor's money must arrive through the bank, cash may still be spent on it. So "bank" must cite an
 // agreement filed on this project whose file is on disk; "any" clears the citation.
@@ -3586,7 +3586,7 @@ async function anahonBrainContext(): Promise<string> {
     prisma.client.findMany(),
     prisma.quotation.findMany(),
     // Published and still standing. A retracted piece keeps status "Published" — the record
-    // is permanent under Policy 005 — but it has been taken off the website, and offering it
+    // is permanent under Policy P4 — but it has been taken off the website, and offering it
     // to a funder as track record would be claiming work AnaHon has withdrawn.
     prisma.contentItem.findMany({ where: { status: "Published", retractedAt: "", rehearsal: false }, orderBy: { publishedAt: "desc" } }),
     strategyCorpus()
@@ -3792,7 +3792,7 @@ async function askJson(
  * One model call with real web search attached. The search runs on Anthropic's
  * side and returns actual result blocks, so the URLs we hand back are the ones
  * the search engine returned — not URLs the model wrote from memory. That
- * distinction is the whole point: Policy 005 wants sources, not recollections.
+ * distinction is the whole point: Policy P4 wants sources, not recollections.
  */
 async function askWithSearch(
   prompt: string,
@@ -4869,7 +4869,7 @@ app.get("/api/subscriptions/detect", async (req, res) => {
   }
 });
 
-// ── Editorial pipeline (Policies 002 & 005) ─────────────────────────────────
+// ── Editorial pipeline (Policies P3 & P4) ─────────────────────────────────
 // The register enforces the signed editorial and fact-checking policies: named
 // independent fact-checker (≠ author), dual approval by two distinct officers,
 // legal attestation when flagged, a publish gate, and dated public corrections.
@@ -4957,10 +4957,10 @@ app.post("/api/content/save", async (req, res) => {
     const block = await contentManageBlock(req, stream || "");
     if (block) return res.status(403).json({ error: block });
     if (contentLabel && !CONTENT_LABELS.some(([k]) => k === contentLabel)) {
-      return res.status(400).json({ error: `"${contentLabel}" is not a content label Policy 002 defines (News, Commercial, Opinion).` });
+      return res.status(400).json({ error: `"${contentLabel}" is not a content label Policy P3 defines (News, Commercial, Opinion).` });
     }
     if (contentType && !CONTENT_TYPES.includes(contentType)) {
-      return res.status(400).json({ error: `Content type must be one of: ${CONTENT_TYPES.join(", ")} (Policy 002).` });
+      return res.status(400).json({ error: `Content type must be one of: ${CONTENT_TYPES.join(", ")} (Policy P3).` });
     }
     if (stream && !STREAMS.includes(stream)) {
       return res.status(400).json({ error: `Programme must be one of: ${STREAMS.join(", ")}.` });
@@ -4968,7 +4968,7 @@ app.post("/api/content/save", async (req, res) => {
     const chan: string[] = Array.isArray(channels) ? channels : [];
     const badChan = chan.filter(c => !CONTENT_CHANNELS.includes(c));
     if (badChan.length) {
-      return res.status(400).json({ error: `Unknown channel(s): ${badChan.join(", ")}. Policy 002 channels: ${CONTENT_CHANNELS.join(", ")}.` });
+      return res.status(400).json({ error: `Unknown channel(s): ${badChan.join(", ")}. Policy P3 channels: ${CONTENT_CHANNELS.join(", ")}.` });
     }
     for (const [d, label] of [[dueDate, "Due date"], [assignedMeetingDate, "Assigned-meeting date"], [reviewedMeetingDate, "Reviewed-meeting date"]]) {
       if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return res.status(400).json({ error: `${label} must be YYYY-MM-DD.` });
@@ -5003,13 +5003,13 @@ app.post("/api/content/save", async (req, res) => {
       return res.status(403).json({ error: "Only the master account can start a rehearsal." });
     }
     if (existing && existing.status === "Published") {
-      return res.status(403).json({ error: "Published content is a permanent record — issue a public correction instead (Policy 005)." });
+      return res.status(403).json({ error: "Published content is a permanent record — issue a public correction instead (Policy P4)." });
     }
 
     const data = {
       title,
       contentType: contentType || "Post",
-      // Policy 002's News/Commercial/Opinion label. Validated here as well as at the gate so a
+      // Policy P3's News/Commercial/Opinion label. Validated here as well as at the gate so a
       // bad value cannot be stored at all; publishBlockers is what refuses an EMPTY one.
       ...(contentLabel !== undefined ? { contentLabel: String(contentLabel || "") } : {}),
       ...(sponsorDisclosure !== undefined ? { sponsorDisclosure: String(sponsorDisclosure || "").trim() } : {}),
@@ -5033,7 +5033,7 @@ app.post("/api/content/save", async (req, res) => {
           id: `content-${Date.now()}`, ...data,
           // Saad plays every seat, so he is the author of record; the author SEAT is taken at Start.
           ...(wantsRehearsal ? { rehearsal: true, assigneeUserId: assigneeUserId || user?.id || "" } : {}),
-          // Policy 002: assignments come out of the daily production meeting.
+          // Policy P3: assignments come out of the daily production meeting.
           assignedMeetingDate: assignedMeetingDate || localDate(),
           created_at: new Date().toISOString()
         } });
@@ -5092,15 +5092,15 @@ app.post("/api/content/submit-factcheck", async (req, res) => {
     }
     const checker = factCheckerUserId ? await prisma.user.findUnique({ where: { id: factCheckerUserId } }) : null;
     if (!checker || !checker.active) {
-      return res.status(400).json({ error: "Name an active user as the fact-checker (Policy 005: assign a dedicated individual responsible for verifying the facts)." });
+      return res.status(400).json({ error: "Name an active user as the fact-checker (Policy P4: assign a dedicated individual responsible for verifying the facts)." });
     }
-    // Policy 005 impartiality — same segregation spirit as the §4.3 voucher rule.
+    // Policy P4 impartiality — same segregation spirit as the §4.3 voucher rule.
     if (factCheckerUserId === item.assigneeUserId) {
-      return res.status(403).json({ error: `Policy 005 impartiality: the fact-checker must not be the author — assign someone other than ${checker.name}.` });
+      return res.status(403).json({ error: `Policy P4 impartiality: the fact-checker must not be the author — assign someone other than ${checker.name}.` });
     }
     const updated = await prisma.contentItem.update({ where: { id }, data: { status: "Fact-Check", factCheckerUserId } });
     await itemAudit(item, user, "Content Sent to Fact-Check",
-      `"${item.title}" → independent fact-check by ${checker.name} (not the author — Policy 005).`);
+      `"${item.title}" → independent fact-check by ${checker.name} (not the author — Policy P4).`);
     res.json({ success: true, item: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -5115,7 +5115,7 @@ app.post("/api/content/factcheck-log", async (req, res) => {
     if (!["In Production", "Fact-Check"].includes(item.status)) {
       return res.status(400).json({ error: `Sources are logged during production or fact-check (currently ${item.status}).` });
     }
-    if (!source) return res.status(400).json({ error: "Name the source (Policy 005: detailed records of all sources and verification steps)." });
+    if (!source) return res.status(400).json({ error: "Name the source (Policy P4: detailed records of all sources and verification steps)." });
     const allowed = user?.id === item.factCheckerUserId || user?.id === item.assigneeUserId || CONTENT_EDITOR_ROLES.includes(user?.role);
     if (!allowed) return res.status(403).json({ error: "Only the assignee, the named fact-checker or an editor can log sources." });
     const log = JSON.parse(item.factCheckJson || "[]");
@@ -5139,7 +5139,7 @@ app.post("/api/content/factcheck-pass", async (req, res) => {
     }
     // The NAMED person is the policy — no editor or master-account stand-in here.
     if (user?.id !== item.factCheckerUserId) {
-      return res.status(403).json({ error: "Only the named fact-checker can pass this item (Policy 005: independent review by the assigned individual)." });
+      return res.status(403).json({ error: "Only the named fact-checker can pass this item (Policy P4: independent review by the assigned individual)." });
     }
     if (item.rehearsal) {
       const clash = rehearsalSeatClash(item, "pass", seatOf(user));
@@ -5147,7 +5147,7 @@ app.post("/api/content/factcheck-pass", async (req, res) => {
     }
     const log = JSON.parse(item.factCheckJson || "[]");
     if (!log.length) {
-      return res.status(403).json({ error: "Log at least one source or verification step first (Policy 005: detailed records of all sources and verification steps)." });
+      return res.status(403).json({ error: "Log at least one source or verification step first (Policy P4: detailed records of all sources and verification steps)." });
     }
     const updated = await prisma.contentItem.update({ where: { id },
       data: { status: "Editorial Review", factCheckPassedAt: new Date().toISOString() } });
@@ -5198,7 +5198,7 @@ app.post("/api/content/approve", async (req, res) => {
       return res.status(400).json({ error: `Approvals happen in Editorial Review (currently ${item.status}).` });
     }
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
-      return res.status(403).json({ error: "Approval needs the Production Manager, the Programs Director or the master account (Policy 002)." });
+      return res.status(403).json({ error: "Approval needs the Production Manager, the Programs Director or the master account (Policy P3)." });
     }
     if (!item.rehearsal && user?.id === item.assigneeUserId) {
       return res.status(403).json({ error: "You authored this item — a different officer must approve it (§4.3 segregation of duties)." });
@@ -5212,7 +5212,7 @@ app.post("/api/content/approve", async (req, res) => {
     const other = target === "pm" ? item.pdApprovedBy : item.pmApprovedBy;
     if (mine) return res.status(400).json({ error: `The ${target === "pm" ? "Production Manager" : "Programs Director"} slot is already approved.` });
     if (!item.rehearsal && other === user?.id) {
-      return res.status(403).json({ error: "You already hold the other approval — Policy 002 requires the Production Manager AND the Programs Director, two different people." });
+      return res.status(403).json({ error: "You already hold the other approval — Policy P3 requires the Production Manager AND the Programs Director, two different people." });
     }
     if (item.rehearsal) {
       const clash = rehearsalSeatClash(item, target, seatOf(user));
@@ -5246,7 +5246,7 @@ app.post("/api/content/legal-record", async (req, res) => {
       return res.status(400).json({ error: `Legal review is recorded during Editorial Review or after approval (currently ${item.status}).` });
     }
     if (!legalReviewedBy) {
-      return res.status(400).json({ error: "Name who performed the legal review (Policy 002: stories with potential legal implications are reviewed by the legal team)." });
+      return res.status(400).json({ error: "Name who performed the legal review (Policy P3: stories with potential legal implications are reviewed by the legal team)." });
     }
     const updated = await prisma.contentItem.update({ where: { id }, data: {
       legalReviewedBy, legalReviewNote: legalReviewNote || "",
@@ -5266,7 +5266,7 @@ app.post("/api/content/publish", async (req, res) => {
     const item = await prisma.contentItem.findUnique({ where: { id } });
     if (!item) return res.status(404).json({ error: "Content item not found." });
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
-      return res.status(403).json({ error: "Publishing needs the Production Manager, the Programs Director or the master account (Policy 002)." });
+      return res.status(403).json({ error: "Publishing needs the Production Manager, the Programs Director or the master account (Policy P3)." });
     }
     // The whole point: the same blocker list the UI shows is what the server enforces.
     const blockers = publishBlockers(item);
@@ -5670,7 +5670,7 @@ app.get("/api/social/queue", async (_req, res) => {
 // base64 (express.json is capped at 50 MB, which would cap a video near 37 MB): the file is written
 // under GENERAL/Social Video or GENERAL/Social Image and filed as an AppDoc like every other paper.
 // What the desk may post: its own uploads and covers — never project evidence or deliverables, and never raw
-// source material (Policy 010). "Reference Material" was here until 15 Sep 2026, which put raw Idea Desk
+// source material (Policy P11). "Reference Material" was here until 15 Sep 2026, which put raw Idea Desk
 // references in the picker; an image meant for publishing is filed as "Social Image" by the upload below.
 const SOCIAL_MEDIA_CATEGORIES = ["Social Video", "Social Image", "Cover"];
 const MEDIA_FIELDS = { id: true, refNo: true, filename: true, mimeType: true, sizeStr: true, category: true, linkedRecordId: true, created_at: true } as const;
@@ -5814,7 +5814,7 @@ app.post("/api/social/image-public", async (req, res) => {
 // Meta answers at most 93 days (insights.ts windowFor), so "what has this platform done since
 // 2021" cannot be asked of the API at all. These rows are typed in by hand or off an export and
 // the live pull never touches them: the two answer different questions and must not overwrite
-// each other. Aggregates only — Policy 024 (draft) wants no personal data here, and there is none.
+// each other. Aggregates only — Policy P11 (draft) wants no personal data here, and there is none.
 // Read by anyone signed in: these are the figures AnaHon puts in front of funders, not the Page
 // tokens and queues the other social routes guard.
 app.get("/api/social/periods", async (_req, res) => {
@@ -5872,7 +5872,7 @@ app.post("/api/social/queue", async (req, res) => {
     if (!list.length) return res.status(400).json({ error: "Pick at least one account." });
     const item = contentItemId ? await prisma.contentItem.findUnique({ where: { id: String(contentItemId) } }) : null;
     if (contentItemId && !item) return res.status(404).json({ error: "Content item not found." });
-    // Policy 002 covers the social channels too — see socialPostBlockers. The gate below
+    // Policy P3 covers the social channels too — see socialPostBlockers. The gate below
     // (initialState) still decides WHEN it goes; this decides whether it may exist at all.
     const gate = socialPostBlockers(item);
     if (gate.length) return res.status(403).json({ error: gate[0] });
@@ -6280,7 +6280,7 @@ app.post("/api/website/build", async (req, res) => {
 });
 
 // Retract: the piece comes off the website. The record stays Published — with the
-// reason and date — because Policy 005 forbids silent edits to the published record.
+// reason and date — because Policy P4 forbids silent edits to the published record.
 app.post("/api/content/retract", async (req, res) => {
   try {
     const { id, reason, user } = req.body;
@@ -6289,7 +6289,7 @@ app.post("/api/content/retract", async (req, res) => {
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Retracting needs an editor role." });
     if (item.status !== "Published") return res.status(400).json({ error: "Only published content can be retracted — unpublished work is just edited or removed." });
     if (item.retractedAt) return res.status(400).json({ error: "Already retracted." });
-    if (!reason) return res.status(400).json({ error: "State why it is being retracted (public record, Policy 005)." });
+    if (!reason) return res.status(400).json({ error: "State why it is being retracted (public record, Policy P4)." });
     const updated = await prisma.contentItem.update({ where: { id }, data: { retractedAt: new Date().toISOString(), retractReason: String(reason) } });
     await itemAudit(item, user, "Content Retracted", `"${item.title}" taken off the website: ${reason}`);
     void notifySiteUnpublish(id);
@@ -6312,7 +6312,7 @@ app.post("/api/content/correction", async (req, res) => {
       return res.status(400).json({ error: "Corrections apply to published content — unpublished work is just edited." });
     }
     if (!nature || !correction) {
-      return res.status(400).json({ error: "State the nature of the error and the correction (Policy 005: public record with date and details)." });
+      return res.status(400).json({ error: "State the nature of the error and the correction (Policy P4: public record with date and details)." });
     }
     const corrections = JSON.parse(item.correctionsJson || "[]");
     corrections.push({ date: localDate(), nature, correction, by: user?.name || "" });
@@ -6326,7 +6326,7 @@ app.post("/api/content/correction", async (req, res) => {
   }
 });
 
-// Delete: only work that never reached an audience. A published piece stays — Policy 005's
+// Delete: only work that never reached an audience. A published piece stays — Policy P4's
 // correction rule exists so a reader who saw a claim gets a dated public correction, never a
 // silent removal. The test is status, on purpose: every narrower predicate ("already retracted",
 // "no website URL") is one a future editor could satisfy deliberately, and that is the
@@ -6366,7 +6366,7 @@ app.post("/api/content/delete", async (req, res) => {
     // the flag is set at creation and no route can set it later, so it cannot be claimed after the
     // fact for a real piece. That is the difference from the predicates the note above forbids.
     if (item.status === "Published" && !item.rehearsal) {
-      return res.status(403).json({ error: "Published content is a permanent record and cannot be deleted — append a correction instead (Policy 005)." });
+      return res.status(403).json({ error: "Published content is a permanent record and cannot be deleted — append a correction instead (Policy P4)." });
     }
     await prisma.contentItem.delete({ where: { id } });
     await itemAudit(item, user, "Content Item Removed", `Removed "${item.title}" (${item.status}).`);
@@ -6385,7 +6385,7 @@ app.post("/api/content/brainstorm", async (req, res) => {
   try {
     const { messages, materials, attachment, user } = req.body;
     if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
-      return res.status(403).json({ error: "The idea desk is for editors and Project Officers — assignments come out of the editorial meetings (Policy 002)." });
+      return res.status(403).json({ error: "The idea desk is for editors and Project Officers — assignments come out of the editorial meetings (Policy P3)." });
     }
     if (!aiConfigured()) return res.status(400).json({ error: "No AI provider configured — add ANTHROPIC_API_KEY or GEMINI_API_KEY to .env." });
     const thread: { role: string; text: string }[] = Array.isArray(messages) ? messages.slice(-20) : [];
@@ -6403,11 +6403,11 @@ app.post("/api/content/brainstorm", async (req, res) => {
     const prompt = [
       context,
       ``,
-      `You are the editorial idea desk for AnaHon's newsroom (Policies 002 & 005 govern all content).`,
+      `You are the editorial idea desk for AnaHon's newsroom (Policies P3 & P4 govern all content).`,
       `Content types: ${CONTENT_TYPES.join(", ")}. Channels: ${CONTENT_CHANNELS.join(", ")}. Programmes: ${STREAMS.join(", ")}.`,
       `The editor is developing a content idea in conversation. Reference links, photo/video URLs and document links they paste are MATERIALS — collect them.`,
-      `Converse briefly and concretely: sharpen the angle, suggest the right content type and channels, respect solution-journalism framing (Policy 002), and flag legal risk honestly.`,
-      `When (and only when) the idea is concrete enough to assign, set ready=true and fill draft: a title, the content type, programme, channels, a production-ready brief TAILORED to that type (an Article brief reads differently from a Reel or Podcast brief: angle, structure, key questions, visual/audio treatment as appropriate), materials (INCLUDE every provided material below plus links pasted in conversation; label each; kind is link/photo/video/doc), suggestedSources (concrete reporting leads for THIS story: people/roles to interview, offices, records, datasets — each with why it matters; these are LEADS TO VERIFY under Policy 005, never claim them as verified), and legalFlag if the story could have legal implications.`,
+      `Converse briefly and concretely: sharpen the angle, suggest the right content type and channels, respect solution-journalism framing (Policy P3), and flag legal risk honestly.`,
+      `When (and only when) the idea is concrete enough to assign, set ready=true and fill draft: a title, the content type, programme, channels, a production-ready brief TAILORED to that type (an Article brief reads differently from a Reel or Podcast brief: angle, structure, key questions, visual/audio treatment as appropriate), materials (INCLUDE every provided material below plus links pasted in conversation; label each; kind is link/photo/video/doc), suggestedSources (concrete reporting leads for THIS story: people/roles to interview, offices, records, datasets — each with why it matters; these are LEADS TO VERIFY under Policy P4, never claim them as verified), and legalFlag if the story could have legal implications.`,
       `SOURCES — name the institution, office, role or record precisely: that IS the source, and the reporter reaches it without knowing a person's name. NEVER put [FILL: …] inside a source name or its why — a source line is a place to go, not a fact to verify; if a person's name matters write "يُثبَّت الاسم عند الاتصال / confirm name on contact". Reserve [FILL: …] strictly for the brief's FACTUAL claims — figures, dates, capacities, official decisions — and use it sparingly there too: one marker per genuinely unverified fact, never as decoration.`,
       `Never invent facts, names or figures.`,
       provided.length
@@ -6476,20 +6476,20 @@ app.post("/api/content/brainstorm", async (req, res) => {
   }
 });
 
-// Record a held editorial meeting (Policy 002): attendance, the week's direction,
+// Record a held editorial meeting (Policy P3): attendance, the week's direction,
 // decisions. One row per (kind, date) — saving the same meeting day updates it.
 app.post("/api/meetings/save", async (req, res) => {
   try {
     const { kind, date, attendees, direction, notes, minutes, topics, user } = req.body;
     const mtgKind = kind || "Weekly Editorial";
     if (!["Weekly Editorial", "Daily Production"].includes(mtgKind)) {
-      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy 002)." });
+      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy P3)." });
     }
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: "Meeting date must be YYYY-MM-DD." });
     }
     if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
-      return res.status(403).json({ error: "Recording a meeting needs an editor or Project Officer (Policy 002 participants)." });
+      return res.status(403).json({ error: "Recording a meeting needs an editor or Project Officer (Policy P3 participants)." });
     }
     const ids: string[] = Array.isArray(attendees) ? attendees : [];
     const known = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true } });
@@ -6559,7 +6559,7 @@ app.post("/api/content/produce", async (req, res) => {
     const prompt = [
       await anahonBrainContext(),
       ``,
-      `You are AnaHon's production studio, working on ONE assigned content item (Policies 002 & 005 govern).`,
+      `You are AnaHon's production studio, working on ONE assigned content item (Policies P3 & P4 govern).`,
       `ITEM: "${item.title}" — ${item.contentType}, programme ${item.stream || "—"}, channels: ${JSON.parse(item.channelsJson || "[]").join(", ") || "—"}.`,
       `BRIEF (includes suggested sources to verify):\n${item.brief || "(no brief)"}`,
       materials.length ? `MATERIALS:\n${materials.map((m: any) => `- [${m.kind}] ${m.label} (${m.url})`).join("\n")}` : ``,
@@ -6610,7 +6610,7 @@ app.post("/api/content/produce", async (req, res) => {
 
 // Research the item's open facts against the live web. Returns findings with the
 // URLs the search actually returned — proposals only. A human logs the ones that
-// hold up, and only the named fact-checker can pass the item (Policy 005).
+// hold up, and only the named fact-checker can pass the item (Policy P4).
 app.post("/api/content/research", async (req, res) => {
   try {
     const { id, mode, user } = req.body;
@@ -6621,7 +6621,7 @@ app.post("/api/content/research", async (req, res) => {
       return res.status(403).json({ error: "Research is for the assignee, the fact-checker, Project Officers and editors." });
     }
     // The newsroom's own links — the reporter chose these, so reading them is both
-    // cheaper than discovery and closer to what Policy 005 asks for.
+    // cheaper than discovery and closer to what Policy P4 asks for.
     const ownLinks: string[] = JSON.parse(item.materialsJson || "[]")
       .filter((m: any) => /^https?:\/\//i.test(m.url))
       .map((m: any) => `${m.label} — ${m.url}`);
@@ -6749,11 +6749,11 @@ app.post("/api/meetings/extract-topics", async (req, res) => {
     const { kind, date, minutes, user } = req.body;
     const mtgKind = kind || "Weekly Editorial";
     if (!["Weekly Editorial", "Daily Production"].includes(mtgKind)) {
-      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy 002)." });
+      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy P3)." });
     }
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Meeting date must be YYYY-MM-DD." });
     if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
-      return res.status(403).json({ error: "Processing minutes needs an editor or Project Officer (Policy 002 participants)." });
+      return res.status(403).json({ error: "Processing minutes needs an editor or Project Officer (Policy P3 participants)." });
     }
     if (!minutes || String(minutes).trim().length < 20) {
       return res.status(400).json({ error: "Paste the meeting minutes or transcript first (at least a few lines)." });
@@ -6817,11 +6817,11 @@ app.post("/api/meetings/transcribe", async (req, res) => {
     const { kind, date, audio, user } = req.body;
     const mtgKind = kind || "Weekly Editorial";
     if (!["Weekly Editorial", "Daily Production"].includes(mtgKind)) {
-      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy 002)." });
+      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy P3)." });
     }
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Meeting date must be YYYY-MM-DD." });
     if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
-      return res.status(403).json({ error: "Processing a recording needs an editor or Project Officer (Policy 002 participants)." });
+      return res.status(403).json({ error: "Processing a recording needs an editor or Project Officer (Policy P3 participants)." });
     }
     if (!audio?.base64 || !String(audio.mimeType || "").startsWith("audio/")) {
       return res.status(400).json({ error: "Send the meeting recording as audio." });
@@ -6908,7 +6908,7 @@ app.post("/api/meetings/delete", async (req, res) => {
   }
 });
 
-// ---- The petty-cash float (draft Policy 020 §4.4, Saad's decisions of 14 Sep 2026) ----------
+// ---- The petty-cash float (draft Policy P5 §4.4, Saad's decisions of 14 Sep 2026) ----------
 // One locked box on its own ledger account, 1125, held by the Finance Officer. Until now the
 // count route compared against ledger 1120 — USD 52k of historical off-bank clearing, not a
 // float — and could only be called BY the custodian, the one person policy says may not count.
@@ -6953,7 +6953,7 @@ app.post("/api/cash/count", async (req, res) => {
     const { difference, needsExplanation } = countDifference(expected, amount);
     const why = String(explanation || "").trim();
     if (needsExplanation && why.length < 5) {
-      return res.status(400).json({ error: `Policy 020 §4.4.3: a difference is recorded at once, with its explanation — the box is ${difference > 0 ? "over" : "short"} by USD ${Math.abs(difference).toFixed(2)}.` });
+      return res.status(400).json({ error: `Policy P5 §4.4.3: a difference is recorded at once, with its explanation — the box is ${difference > 0 ? "over" : "short"} by USD ${Math.abs(difference).toFixed(2)}.` });
     }
 
     const id = `cc-${Date.now()}`;
@@ -7033,7 +7033,7 @@ app.post("/api/cash/topup/raise", async (req, res) => {
     // (Saad, 14 Sep 2026) — never from a channel, never from cash in transit without its withdrawal.
     const fromLeftover = isTransit(source);
     if (!source || !source.active || (source.type !== "Bank" && !fromLeftover)) {
-      return res.status(400).json({ error: "Policy 020 §4.4.1: the float is topped up from the bank, or from a withdrawal's leftover — choose one." });
+      return res.status(400).json({ error: "Policy P5 §4.4.1: the float is topped up from the bank, or from a withdrawal's leftover — choose one." });
     }
     let leftover: Awaited<ReturnType<typeof drawStanding>> | null = null;
     if (fromLeftover) {
@@ -7263,7 +7263,7 @@ app.post("/api/cash/draw", async (req, res) => {
     const [transit, box] = await Promise.all([cashTransit(), pettyFloat()]);
     if (!transit || !transit.active) return res.status(400).json({ error: "There is no cash-in-transit account." });
     const source = await prisma.bankAccount.findUnique({ where: { id: String(sourceAccountId || "ba-blom-usd") } });
-    // From the bank, or from money received outside it (Policy 020 §4.4.4) — never paid out directly.
+    // From the bank, or from money received outside it (Policy P5 §4.4.4) — never paid out directly.
     if (!source || !source.active || (source.type !== "Bank" && !isLiveChannel(source))) return res.status(400).json({ error: "Cash is drawn from an active bank account, or from an off-bank channel." });
     const day = String(date || localDate());
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return res.status(400).json({ error: "Date must be YYYY-MM-DD." });
@@ -7396,7 +7396,7 @@ app.post("/api/cash/draw/return", async (req, res) => {
   }
 });
 
-// ---- Money received or paid outside the bank (Policy 020 §4.4.4, §4.4.5 — Saad, 14 Sep 2026) ----
+// ---- Money received or paid outside the bank (Policy P5 §4.4.4, §4.4.5 — Saad, 14 Sep 2026) ----
 // Every channel is an account with its own ledger account. Money received through one is recorded
 // here with its evidence; it is then deposited at BLOM or moved to cash in transit against approved
 // requests (/api/cash/draw with the channel as source). It is never paid out directly.
@@ -7494,7 +7494,7 @@ app.post("/api/offbank/deposit", async (req, res) => {
     ]);
     const day = String(date || localDate());
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day > localDate()) return res.status(400).json({ error: "Enter the date the money was paid in — not a future date." });
-    if (!box?.openedOn || day < box.openedOn) return res.status(400).json({ error: "Money received before the float opened is cash awaiting vouchers (Policy 020 §4.4.5) — there is no channel balance to deposit from before that date." });
+    if (!box?.openedOn || day < box.openedOn) return res.status(400).json({ error: "Money received before the float opened is cash awaiting vouchers (Policy P5 §4.4.5) — there is no channel balance to deposit from before that date." });
     const amt = r2m(Number(amount));
     const refused = depositBlocker(account, target, amt, account?.balance || 0);
     if (refused) return res.status(400).json({ error: refused });
@@ -7653,7 +7653,7 @@ app.get("/api/offbank/overview", async (req, res) => {
   }
 });
 
-// ---- The external consultant's reports and month pack (Policy 020 §4.3, §12.1, §12.4, §13) ----------------
+// ---- The external consultant's reports and month pack (Policy P5 §4.3, §12.1, §12.4, §13) ----------------
 // The consultant has no login. Finance produces these files; Saad shares a dated view-only copy on Drive. Nothing
 // here uploads anywhere. Every read and export is audit-logged; every route is for the Finance seats only.
 
@@ -7811,7 +7811,7 @@ function sheetsToHtml(title: string, b: ConsultantBooks, sheets: [string, Record
     table { width: 100%; border-collapse: collapse; } th { text-align: left; border-bottom: 1.5px solid #111827; padding: 3px 4px; font-size: 7.5px; text-transform: uppercase; }
     td { border-bottom: 1px solid #e5e7eb; padding: 3px 4px; vertical-align: top; } .n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   </style></head><body><h1>${esc(title)} — ${esc(b.month)}</h1>
-  <div class="meta">AnaHon Civil Company · ${esc(b.start)} to ${esc(b.end)} · produced ${esc(new Date().toISOString())} by ${esc(producedBy)} · EUR at ${b.eur} · Policy 020 §12.1, §12.4</div>${tables}</body></html>`;
+  <div class="meta">AnaHon Civil Company · ${esc(b.start)} to ${esc(b.end)} · produced ${esc(new Date().toISOString())} by ${esc(producedBy)} · EUR at ${b.eur} · Policy P5 §12.1, §12.4</div>${tables}</body></html>`;
 }
 
 /** The documents a month pack is built from, and the folder each goes to: the month's payments, their
@@ -7947,12 +7947,12 @@ app.post("/api/consultant/pack", async (req, res) => {
     const missing = manifest.filter(m => m[4] === "missing from vault");
     put("README.txt", [
       `AnaHon Civil Company — month pack for the external financial consultant`, `Month: ${month} (${b.start} to ${b.end})`,
-      `Produced: ${producedAt} by ${user.name} (${user.role}). Policy 020 §12.1, §12.4, §13. View-only copy; nothing in this pack was uploaded by the system.`,
+      `Produced: ${producedAt} by ${user.name} (${user.role}). Policy P5 §12.1, §12.4, §13. View-only copy; nothing in this pack was uploaded by the system.`,
       ``, `Inside:`, `  01 general ledger detail (XLSX, PDF)`, `  02 reconciliations per account, with who prepared them and the consultant's review line (XLSX, PDF)`,
       `  03 standing schedules: 1120 cash awaiting vouchers by project, 2900 suspense, 2910 conversions in transit, 2930 reimbursements (XLSX, PDF)`,
       `  04 trial balance at ${b.end} (XLSX, PDF)`, `  05 cash counts and top-ups`, `  06 payments paid in the month: ${b.paid.length}, each with its documents and any missing-receipt declaration`,
       `  07 the agreements those payments rely on`, `  08 records added late since the previous pack (${b.late.since || "no previous pack"}): ${b.late.rows.length}`, `  manifest.csv — every file with its document id, category and SHA-256`,
-      ``, `Deliberately excluded (Policy 010 and the personnel file rule): identity documents, personnel papers other than the agreement itself, and all source or editorial material.`,
+      ``, `Deliberately excluded (Policy P11 and the personnel file rule): identity documents, personnel papers other than the agreement itself, and all source or editorial material.`,
       ...[...excluded.entries()].map(([why, n]) => `  ${n} document(s) withheld: ${why}`),
       missing.length ? `Missing from the vault (listed in the manifest, not silently dropped): ${missing.length}` : `Every listed document was found in the vault.`,
     ].join("\n"));
@@ -8728,7 +8728,7 @@ app.post("/api/expense/new", async (req, res) => {
       }
     }
 
-    // Policy 010 §6 — a protected source. Decided HERE, after every rule above has run on the request
+    // Policy P11 §6 — a protected source. Decided HERE, after every rule above has run on the request
     // exactly as it would for anyone: confidential changes only what the record calls the person.
     // The title becomes the code name and nobody is named as supplier; the identity is entered by the
     // Finance Officer into the sealed file, never into the voucher.
@@ -8840,7 +8840,7 @@ app.post("/api/expense/action", async (req, res) => {
     // the float, cash in transit, or past cash. Checked by person. A BLOM payment is exempt: the transfer
     // letter the ED signs, the statement line it waits for and Finance's reconciliation are the second person.
     const approverPaysCash = (isCash: boolean) => isCash && !!exp.approvedById && user?.id === exp.approvedById;
-    const APPROVER_PAYS_CASH = `Policy 020 §4.3: you approved ${exp.voucherNo} — a different officer must pay it in cash.`;
+    const APPROVER_PAYS_CASH = `Policy P5 §4.3: you approved ${exp.voucherNo} — a different officer must pay it in cash.`;
 
     const commentsList = JSON.parse(exp.commentsJson || "[]");
     let updatedStatus = exp.status;
@@ -9035,7 +9035,7 @@ app.post("/api/expense/action", async (req, res) => {
         `Voucher ${exp.voucherNo} sent back to Project Lead with correction feedback: "${comment}"`
       );
     } else if (action === "cashbook-pay" && pastCash) {
-      // Backfill (Policy 020 §4.4.5, §6.6): a request paid BEFORE the float opened, out of cash
+      // Backfill (Policy P5 §4.4.5, §6.6): a request paid BEFORE the float opened, out of cash
       // nobody vouchered at the time. There is no payment line and no account to take it from —
       // posting credits 1120 "Cash awaiting vouchers", which is how that balance gets settled.
       // After the opening there is no such cash: it came out of the float or out of 1127.
@@ -10293,7 +10293,7 @@ async function validateEquipmentFields(b: any, user: any, selfId: string, existi
   // two claims cannot both be true of the same item. Nothing is invented either way: a
   // real purchase must give a real number, a gift is recorded as exactly what it is, 0.
   //
-  // Since 15 Sep 2026 (Policy 020 §9) a cost without a payment request behind it is entered only
+  // Since 15 Sep 2026 (Policy P5 §9) a cost without a payment request behind it is entered only
   // by Finance, with its basis, through /api/assets/value. The desk books an item's share of a
   // request, or ticks a gift; otherwise the item is registered with no value yet. A correction
   // never touches the value at all — it keeps what the item has.
@@ -10467,7 +10467,7 @@ app.post("/api/assets/update", async (req, res) => {
   }
 });
 
-// Finance's value on an item (Policy 020 §9, 15 Sep 2026). The 13 items registered before this
+// Finance's value on an item (Policy P5 §9, 15 Sep 2026). The 13 items registered before this
 // carry cost 0 and no basis: the external financial consultant supplies their opening values, from
 // a receipt where one exists or a documented estimate where not. Nothing here enters a figure by
 // itself. What a physical confirmation was about is never touched, so a valuation never lapses one.
@@ -10502,7 +10502,7 @@ app.post("/api/assets/value", async (req, res) => {
   }
 });
 
-// Missing-receipt declaration (Policy 020 §6.6). Prepared by Finance from the voucher itself — the
+// Missing-receipt declaration (Policy P5 §6.6). Prepared by Finance from the voucher itself — the
 // date, amount, what it paid for and the project are the voucher's, never retyped; only the payee's
 // name may be given when no supplier row names them. The printed document is signed by the person
 // paid, the signed scan is filed against the voucher, and the Executive Director approves it.
@@ -10527,7 +10527,7 @@ app.post("/api/declarations/prepare", async (req, res) => {
       paidFor: exp.title, projectCode: project?.code || "", projectName: project?.name || "", madeOn, preparedBy: user.name });
     await archive(prisma, { docId, projectCode: project ? await vaultFolderForProject(prisma, project) : "GENERAL", category: DECLARATION_UNSIGNED,
       filename: `${exp.voucherNo}_missing-receipt-declaration_${madeOn}.html`, html, linkedRecordType: "Expense", linkedRecordId: exp.id,
-      note: `Missing-receipt declaration for ${exp.voucherNo} — to be signed by ${payeeName} and approved by the Executive Director (Policy 020 §6.6). Not a receipt.` });
+      note: `Missing-receipt declaration for ${exp.voucherNo} — to be signed by ${payeeName} and approved by the Executive Director (Policy P5 §6.6). Not a receipt.` });
     await prisma.missingReceiptDeclaration.create({ data: { id, expenseId: exp.id, payeeName, paymentDate, amount, currency: exp.currency,
       paidFor: exp.title, projectId: exp.projectId, madeOn, generatedDocId: docId, preparedById: user.id, preparedAt: new Date().toISOString() } });
     await createAuditLog(user.id, user.name, "Missing-Receipt Declaration Prepared",
@@ -10827,7 +10827,7 @@ app.post("/api/assets/delete", async (req, res) => {
 // equipmentStatus reports what became of it, which is what takes it off every desk, so no
 // counter has to remember to exclude it.
 //
-// Resources and Assets Policy 017 (12 Sep 2026): the organisation does not give up something it
+// Resources and Assets Policy P7 (12 Sep 2026): the organisation does not give up something it
 // owns on one signature. Sold, Given away and Broken — thrown away are DISPOSALS: one of the two
 // policy seats proposes, the other confirms, and they must be two people. Lost, Stolen and
 // Returned to its owner are events — nobody decided them, so one person writes them down.
@@ -10880,14 +10880,14 @@ app.post("/api/assets/end", async (req, res) => {
 
     await createAuditLog(user.id, user.name, kind.disposal ? "Equipment Disposal Proposed" : "Equipment Ended",
       `${label} "${asset.name}": ${equipmentStatus(asset)} → ${kind.label} on ${when}${amount !== null ? `, for ${amount.toFixed(2)} ${asset.currency || "USD"}` : ""}. ${note}` +
-      (kind.disposal ? ` Proposed by ${user.name} — Policy 017 needs the second approval before it takes effect.` : ""));
+      (kind.disposal ? ` Proposed by ${user.name} — Policy P7 needs the second approval before it takes effect.` : ""));
     res.json({ success: true, awaitingSecondApproval: kind.disposal });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// The second signature. Policy 017 again: the other one of the two seats, and a different
+// The second signature. Policy P7 again: the other one of the two seats, and a different
 // person — the master account holds both sides at once, so without that rule one person could
 // propose as the director and confirm as Finance, which is one signature wearing two hats.
 app.post("/api/assets/end-confirm", async (req, res) => {
@@ -10927,7 +10927,7 @@ app.post("/api/assets/end-confirm", async (req, res) => {
     await createAuditLog(user.id, user.name, refuse ? "Equipment Disposal Refused" : "Equipment Disposal Approved",
       refuse
         ? `${label} "${asset.name}": ${user.name} refused the ${kind?.label || asset.endKind} proposed by ${proposer}. Reason: ${reason}. The item stays on the register.`
-        : `${label} "${asset.name}": ${kind?.label || asset.endKind} proposed by ${proposer}, approved by ${user.name}. Policy 017's two approvals are complete and it leaves the working register.`);
+        : `${label} "${asset.name}": ${kind?.label || asset.endKind} proposed by ${proposer}, approved by ${user.name}. Policy P7's two approvals are complete and it leaves the working register.`);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -11447,7 +11447,7 @@ app.get("/api/document/content/:id", async (req, res) => {
 /** Personnel gate for the byte-serving routes. A passport or ID leaves the server only
  *  for the people who hold the personnel file, or for the person it is about — filtering
  *  app state is not enough on its own, because the document URLs are guessable. */
-/** Policy 001 §7.1 — evidence on an integrity entry is as private as the entry. Document
+/** Policy P1 §7.1 — evidence on an integrity entry is as private as the entry. Document
  *  URLs are guessable and the byte routes are otherwise gated only on personnel, so without
  *  this any signed-in account could read the register's evidence. ED only, never a stand-in. */
 async function integrityBlocked(doc: any, uid: string): Promise<boolean> {
@@ -11566,17 +11566,17 @@ app.post("/api/document/upload", async (req, res) => {
   try {
     const { filename, mimeType, sizeStr, base64, category, linkedRecordType, linkedRecordId, user, partyId, receiptNo } = req.body;
 
-    // Policy 001 §7.1 — only the ED attaches evidence to the integrity register, and not
+    // Policy P1 §7.1 — only the ED attaches evidence to the integrity register, and not
     // through a seat they are standing in. This route is otherwise open to every signed-in
     // account, so without this anyone could file into the register.
     if (String(linkedRecordType || "") === "Integrity" && !integrityReader(req)) {
       return res.status(403).json({ error: INTEGRITY_REFUSAL });
     }
-    // Policy 010 §6 — nothing filed on a confidential payment goes into the ordinary documents, where
+    // Policy P11 §6 — nothing filed on a confidential payment goes into the ordinary documents, where
     // every seat's state, the byte routes and the month pack would carry it. It goes into the sealed file.
     if (String(linkedRecordType || "") === "Expense") {
       const target = await prisma.expense.findUnique({ where: { id: String(linkedRecordId || "") }, select: { confidential: true } });
-      if (target?.confidential) return res.status(403).json({ error: "This is a confidential payment — its papers go into the sealed file, not the ordinary documents (Policy 010 §6)." });
+      if (target?.confidential) return res.status(403).json({ error: "This is a confidential payment — its papers go into the sealed file, not the ordinary documents (Policy P11 §6)." });
     }
 
     // A signed receipt is the same receipt that was issued, carrying the same number —
@@ -11864,7 +11864,7 @@ app.get("/api/reports/pdf", async (req, res) => {
 });
 
 // Periodic financial report (Policy 11.2) — aggregates a 6- or 12-month window.
-// The count sheet (Policy 020 §4.4.3): every count of the float — date, counter, expected,
+// The count sheet (Policy P5 §4.4.3): every count of the float — date, counter, expected,
 // counted, difference and explanation — for the Executive Director and the consultant.
 app.get("/api/cash/count-sheet.pdf", async (req, res) => {
   try {
@@ -11901,13 +11901,13 @@ app.get("/api/cash/count-sheet.pdf", async (req, res) => {
       .foot { margin-top: 12px; color: #6b7280; font-size: 9px; }
     </style></head><body>
       <h1>Petty cash count sheet <span>· كشف جرد صندوق النثرية</span></h1>
-      <div class="meta">${esc(box.name)} · custodian ${esc(nameOf(box.custodianUserId))} · float ceiling ${FLOAT_CEILING_LABEL} (Policy 020 §4.4.1) · book balance today USD ${money(box.balance)} · printed ${today} by ${esc(reader.name)}</div>
+      <div class="meta">${esc(box.name)} · custodian ${esc(nameOf(box.custodianUserId))} · float ceiling ${FLOAT_CEILING_LABEL} (Policy P5 §4.4.1) · book balance today USD ${money(box.balance)} · printed ${today} by ${esc(reader.name)}</div>
       <table><thead><tr>
         <th>Date<span>التاريخ</span></th><th>Counted by<span>أجرى الجرد</span></th><th class="c">Without notice<span>دون إشعار</span></th>
         <th class="c">Custodian present<span>بحضور الأمين</span></th><th class="n">Expected (USD)<span>المتوقَّع</span></th>
         <th class="n">Counted (USD)<span>المعدود</span></th><th class="n">Difference (USD)<span>الفرق</span></th><th>Explanation<span>التفسير</span></th>
       </tr></thead><tbody>${rows || `<tr><td colspan="8">No count has been recorded yet.</td></tr>`}</tbody></table>
-      <div class="foot">A count is made by someone other than the custodian, in their presence; a difference is recorded at once with its explanation and posted to ${COUNT_DIFFERENCES_LEDGER} for the Executive Director's review (Policy 020 §4.4.3). The first count is the opening float: expected 0.</div>
+      <div class="foot">A count is made by someone other than the custodian, in their presence; a difference is recorded at once with its explanation and posted to ${COUNT_DIFFERENCES_LEDGER} for the Executive Director's review (Policy P5 §4.4.3). The first count is the opening float: expected 0.</div>
     </body></html>`;
     const pdf = await htmlToPdf(html);
     res.setHeader("Content-Type", "application/pdf");

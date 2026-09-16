@@ -377,7 +377,7 @@ ok("the desk's cost box exists only against a voucher, and never on a correction
 ok("the card reads the server's accounting, and says \"No value yet\" — never \"Gift\" for an unvalued item",
   /a\.accounting \|\| \{ state: "unvalued" \}/.test(tab) && !/a\.cost > 0 \? \(/.test(tab));
 
-console.log("\nV2. Policy 020 §9 — capitalise from USD 500, straight-line from the month after purchase");
+console.log("\nV2. Policy P5 §9 — capitalise from USD 500, straight-line from the month after purchase");
 ok("one constant, 500", CAPITALISE_FROM_USD === 500 && DEPRECIATION_STARTS_MONTHS_AFTER_PURCHASE === 1);
 const acc = (x: any, day = "2026-09-15") => assetAccounting({ usefulLifeYears: 5, purchaseDate: "2026-01-20", currency: "USD", ...x }, day);
 ok("no basis is unvalued, whatever the cost column says", acc({ cost: 0, costBasis: "" }).state === "unvalued" && acc({ cost: 900, costBasis: "" }).state === "unvalued");
@@ -391,7 +391,7 @@ ok("by September: 8 months of 60 → 800 off 6,000", c1.accumulated === 800 && c
 ok("never below zero after the life ends", acc({ cost: 6000, costUSD: 6000, costBasis: "voucher" }, "2040-01-01").bookValue === 0);
 ok("nothing in the month it was bought", acc({ cost: 6000, costUSD: 6000, costBasis: "voucher" }, "2026-01-31").accumulated === 0);
 
-console.log("\nV3. Finance's value, with its basis (Policy 020 §9)");
+console.log("\nV3. Finance's value, with its basis (Policy P5 §9)");
 const vb = (x: any) => valuationBlocker({ basis: "receipt", cost: 700, currency: "USD", rate: 1, docFound: true, note: "", ...x });
 ok("a receipt with its document passes", vb({}) === "");
 ok("a receipt with no document is refused", /Choose the receipt/.test(vb({ docFound: false })));
@@ -629,7 +629,7 @@ ok("Sold records the money", /if \(kind\.amount\)/.test(ended) && /Record what i
 ok("nothing is erased — the row, its log and its confirmation stay exactly where they are",
   !/fixedAsset\.delete|movementsJson|repairsJson|verifiedAt: null/.test(ended));
 
-console.log("\nNN. Policy 017: the organisation does not give up what it owns on one signature");
+console.log("\nNN. Policy P7: the organisation does not give up what it owns on one signature");
 ok("a disposal is the two policy seats'; an event is the keepers' to write down",
   mayEndEquipment({ role: "Finance Officer" }, "sold") && mayEndEquipment({ role: "Program Director" }, "sold")
   && !mayEndEquipment({ role: PLO }, "sold") && mayEndEquipment({ role: PLO }, "lost"));

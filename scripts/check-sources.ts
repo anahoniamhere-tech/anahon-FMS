@@ -1,4 +1,4 @@
-// Policy 010 §6 — payments to protected sources (15 Sep 2026).
+// Policy P11 §6 — payments to protected sources (15 Sep 2026).
 //   npx tsx scripts/check-sources.ts
 import { readFileSync } from "node:fs";
 import { nextSourceCode, maySealedRead, confidentialRaiseBlocker, reviewDue, quarterStart, hasSealedReceipt, CONFIDENTIAL_PURPOSE } from "../src/sources.js";
@@ -29,13 +29,13 @@ console.log("\nB. the identity never leaves the sealed file");
 const raise = between('app.post("/api/expense/new"', "// Lock committed budget");
 const conf = raise.slice(raise.indexOf("if (confidential === true)"), raise.indexOf("const count = await prisma.expense.count()"));
 ok("the raise route is read (not a truncated slice)", raise.length > 4000 && conf.length > 500);
-ok("the voucher's title becomes the code name and its purpose a fixed sentence", /title = file!\.codeName;/.test(conf) && /purpose = CONFIDENTIAL_PURPOSE;/.test(conf) && CONFIDENTIAL_PURPOSE === "Confidential payment — Policy 010 §6");
+ok("the voucher's title becomes the code name and its purpose a fixed sentence", /title = file!\.codeName;/.test(conf) && /purpose = CONFIDENTIAL_PURPOSE;/.test(conf) && CONFIDENTIAL_PURPOSE === "Confidential payment — Policy P11 §6");
 const load = between("async function loadState", "\n}\n");
 ok("loadState is read", load.length > 20000);
 ok("loadState reads the sealed files only for the receipt yes/no — never a name, contact or identity",
   /prisma\.sourceFile\.findMany\(\{ select: \{ id: true, docsJson: true \} \}\)/.test(load) && !/realName|idDocument|sanctionsResult/.test(load));
 ok("the review sent to the ED and FO is code names and totals", /confidentialReview: viewer && \["Super Admin", "Finance Officer"\]\.includes\(viewer\.role\) \? confidentialReview : null/.test(server));
-const sealed = between("/* ── Policy 010 §6: sealed source files", "/** The ED, as themselves.");
+const sealed = between("/* ── Policy P11 §6: sealed source files", "/** The ED, as themselves.");
 ok("the sealed routes are read", sealed.length > 3000);
 ok("every sealed route asks sealedReader (or the ED-only review) before anything else",
   (sealed.match(/const me = sealedReader\(req\);/g) || []).length === 4 && /me\.role !== "Super Admin" \|\| String\(req\.get\("X-Acting-As"\)/.test(sealed));
@@ -49,7 +49,7 @@ ok("nothing ordinary can be filed on a confidential payment", /if \(target\?\.co
 ok("the consultant pack and the document routes never touch a sealed file",
   !/sourceFile|SEALED/.test(read("src/consultantPack.ts")) && !/sourceFile|SEALED/.test(between('app.get("/api/document/:id/pdf"', 'app.post("/api/document/upload"')));
 
-console.log("\nC. confidential is never a way round a finance rule (Policy 010 §6)");
+console.log("\nC. confidential is never a way round a finance rule (Policy P11 §6)");
 const idx = (re: RegExp) => { const m = raise.search(re); return m < 0 ? Infinity : m; };
 const at = idx(/if \(confidential === true\)/);
 ok("the flag is decided only after the project, closed-grant, budget-line, cost-account, date and procurement checks",

@@ -1,5 +1,5 @@
 /**
- * Missing documents behind a payment, and the missing-receipt declaration — Policy 020 §6.6
+ * Missing documents behind a payment, and the missing-receipt declaration — Policy P5 §6.6
  * (edition 2, 15 Sep 2026).
  *
  * Where a payment was made and its receipt is lost: first a copy re-issued by the supplier, the
@@ -38,7 +38,7 @@ export function evidenceOf(docs: { category: string }[], declaration?: Declarati
 export function declarationApproveBlocker(d: { preparedById: string; signedDocId?: string | null; approvedById?: string | null },
   approver: { id: string; role: string }, directorSeats: string[]): string {
   if (d.approvedById) return "This declaration is already approved.";
-  if (!directorSeats.includes(approver.role)) return "Policy 020 §6.6: the Executive Director approves a missing-receipt declaration.";
+  if (!directorSeats.includes(approver.role)) return "Policy P5 §6.6: the Executive Director approves a missing-receipt declaration.";
   if (approver.id === d.preparedById) return "You prepared this declaration — the approval must be somebody else's.";
   if (!d.signedDocId) return "File the declaration signed by the person paid before it is approved.";
   return "";

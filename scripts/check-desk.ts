@@ -159,7 +159,7 @@ const fin = viewer("Finance Officer");
 const dig = viewer("Digital Officer");
 const exp = (over: any = {}) => ({ id: "e1", voucherNo: "PV-1", title: "Cable", status: "Submitted", requestorId: "u-4", ...over });
 const st = (over: any) => ({ ...baseState(), ...over });
-// Policy 020 §5.3 (Saad, 14 Sep 2026): the Executive Director OR the Finance Officer approves — by
+// Policy P5 §5.3 (Saad, 14 Sep 2026): the Executive Director OR the Finance Officer approves — by
 // person, every active holder of a MANAGERS seat — never the requester (§4.3).
 const liveUsers = [{ id: "u-sa", role: "Super Admin", active: true }, { id: "u-fo", email: "fo@x", role: "Finance Officer", active: true }];
 let r1 = turns(sa, st({ users: liveUsers, expenses: [exp()] }), today);
@@ -237,7 +237,7 @@ ok("a quotation WITH an expiry is chased once, by the expiry rule, not twice", q
 qr = turns(fin, st({ quotations: [qt({ status: "Accepted", validUntil: "" })] }), today);
 ok("an accepted quotation with no expiry is not chased", !qr.some(i => i.verb.includes("no expiry")));
 
-// Equipment with no value (Policy 020 §9): a standing item on Finance's desk only.
+// Equipment with no value (Policy P5 §9): a standing item on Finance's desk only.
 const eq = (over: any) => ({ id: "fa1", tag: "EQ-001", name: "Camera", status: "Verified", costBasis: "", endKind: "", ...over });
 let ev = deskItems(fin, st({ fixedAssets: [eq({})] }), today).filter(i => i.id.startsWith("unvalued:"));
 ok("an item with no value basis is on Finance's desk, standing and undated", ev.length === 1 && ev[0].standing === true && ev[0].when === null && ev[0].door === "assets");
@@ -245,7 +245,7 @@ ok("an item valued by receipt, estimate, gift or voucher is not", ["receipt", "e
 ok("an item that has ended (sold, lost, given away) is not", deskItems(fin, st({ fixedAssets: [eq({ endKind: "Sold" })] }), today).every(i => !i.id.startsWith("unvalued:")));
 ok("and no seat outside Finance sees it", deskItems(viewer("Procurement and Logistics Officer"), st({ fixedAssets: [eq({})] }), today).every(i => !i.id.startsWith("unvalued:")));
 
-// Confidential payments (Policy 010 §6): one standing item for the ED while a quarterly review is due.
+// Confidential payments (Policy P11 §6): one standing item for the ED while a quarterly review is due.
 const cr = (due: boolean) => ({ count: 2, totalUSD: 300, bySource: [], lastReviewedOn: "", due });
 const crOf = (role: string, due: boolean) => deskItems(viewer(role), st({ confidentialReview: cr(due) } as any), today).filter(i => i.id === "confidentialReview:quarter");
 ok("a due confidential-payments review is on the ED's desk, standing, undated, opening Payment requests",
@@ -323,7 +323,7 @@ const twice = missingPaperItems(hr, st({ employees: [{ id: "emp-9", name: "Rita"
 ok("the id is derived from subject and paper, so it is stable across reads",
   twice.every(i => /^missing:(employees|vendors|projects):emp-9:[a-z]+$/.test(i.id)), twice.map(i => i.id).join(" "));
 
-console.log("\nH. petty cash: top-ups and counts due (Policy 020 §4.4.1)");
+console.log("\nH. petty cash: top-ups and counts due (Policy P5 §4.4.1)");
 const float = (over: any = {}) => ({ id: "ba-petty-float", name: "Petty cash float", type: "Petty Cash", ledgerCode: "1125", active: true, custodianUserId: "u-fo", openedOn: "2026-08-01", ...over });
 const users = [{ id: "u-sa", role: "Super Admin", active: true }, { id: "u-fo", role: "Finance Officer", active: true }, { id: "u-plo", role: "Procurement and Logistics Officer", active: true }];
 const saMe = { id: "u-sa", email: "sa@x", role: "Super Admin" };
@@ -360,7 +360,7 @@ ok("an off-bank channel is never treated as the float",
   counts(saMe, { bankAccounts: [float({ type: "Off-bank channel", ledgerCode: "" })], cashCounts: [] }).length === 0);
 ok("live limit: with the trimmed state the PLO really receives (no bank accounts), no count reminder reaches him",
   counts(ploMe, { bankAccounts: [], cashCounts: [] }).length === 0);
-// Cash in transit (1127), Policy 020 §4.4.2. today is 2026-09-04; the float opened 1 Aug.
+// Cash in transit (1127), Policy P5 §4.4.2. today is 2026-09-04; the float opened 1 Aug.
 const draw = (over: any = {}) => ({ id: "cd1", date: "2026-08-20", amountUSD: 500, transitAccountId: "ba-transit",
   linksJson: JSON.stringify([{ expenseId: "e1", voucherNo: "PV-1", netUSD: 300 }]), returnsJson: "[]", ...over });
 const paidLine = { id: "bt1", bankAccountId: "ba-transit", type: "Withdrawal", voucherNo: "PV-1", amount: 300, date: "2026-08-22" };

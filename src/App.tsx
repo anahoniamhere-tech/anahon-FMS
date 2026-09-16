@@ -956,7 +956,7 @@ export default function App() {
 
   // Self-service staff (Policy 8.5) see only their own timesheet screen.
   const isSelfService = currentUser?.role === "Employee (Self-Service)";
-  // Content crew (Policy 002 production team) see only the editorial desk.
+  // Content crew (Policy P3 production team) see only the editorial desk.
   const isContentCrew = ["Reporter", "Content Creator", "Podcaster"].includes(currentUser?.role || "");
 
   /** Evidence gaps, derived live from state so the count can never go stale.
@@ -967,7 +967,7 @@ export default function App() {
     const proj = (id: string) => state.projects.find(p => p.id === id);
     const money = (n: number) => formatUSD(n);
 
-    // Where each payment's evidence stands is answered by the server (Policy 020 §6.6), for every
+    // Where each payment's evidence stands is answered by the server (Policy P5 §6.6), for every
     // seat alike. It used to be derived here, where any linked file closed the gap — so an unsigned,
     // unapproved missing-receipt declaration would have cleared it alone. The app's own digitized
     // copy and a reconstructed voucher are still not proof; a declaration is, once signed AND approved.
@@ -1563,7 +1563,7 @@ export default function App() {
                 { key: "ev", title: "Posted spend with no third-party evidence", rows: evidenceGaps.noEvidence,
                   note: "No invoice, receipt or contract on file. The app's own digitized copy of the voucher does not count." },
                 { key: "pr", title: `Over ${THRESHOLD_LABEL} with no procurement record`, rows: evidenceGaps.noProcurement,
-                  note: `Policy 020 requires an RFQ or an approved single-source waiver above ${THRESHOLD_LABEL}.` }
+                  note: `Policy P5 requires an RFQ or an approved single-source waiver above ${THRESHOLD_LABEL}.` }
               ].map(group => group.rows.length > 0 && (
                 <div key={group.key} className="bg-white border border-slate-200 rounded-lg overflow-hidden">
                   <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
@@ -1804,10 +1804,10 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Policy 020 §6.6 — a paid voucher whose receipt is missing. The re-issued copy is the
+                {/* Policy P5 §6.6 — a paid voucher whose receipt is missing. The re-issued copy is the
                     first route; a declaration only when no copy can be had. Finance files and prepares;
                     the Executive Director approves, never the person who prepared it. */}
-                {/* Policy 010 §6 — a protected source. The ED (as themselves) and the Finance Officer open the
+                {/* Policy P11 §6 — a protected source. The ED (as themselves) and the Finance Officer open the
                     sealed file; the server logs every opening and refuses anyone else, stand-ins included. */}
                 {exp.confidential && <SealedSourcePanel exp={exp} currentUser={currentUser} acting={!!actingAs} triggerToast={triggerToast} refreshState={refreshState} />}
 
@@ -1825,7 +1825,7 @@ export default function App() {
                   };
                   return (
                     <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 space-y-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-amber-900">Missing receipt — Policy 020 §6.6</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-amber-900">Missing receipt — Policy P5 §6.6</p>
                       <p className="text-xs text-amber-900">{
                         exp.evidence === "declaration-unsigned" ? "A declaration is prepared. It counts once the person paid signs it and the Executive Director approves it."
                         : exp.evidence === "declaration-awaiting-director" ? "The signed declaration is filed. It is waiting for the Executive Director's approval."

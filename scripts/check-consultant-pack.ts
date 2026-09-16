@@ -1,4 +1,4 @@
-// The external consultant's reports and month pack — Policy 020 §4.3, §12.1, §12.4 (Books, 15 Sep 2026).
+// The external consultant's reports and month pack — Policy P5 §4.3, §12.1, §12.4 (Books, 15 Sep 2026).
 //
 // Pins the three things that must never go wrong: an identity paper, a personnel paper or a source's file
 // never reaches the consultant; only the Finance seats get the files, and only the Finance Officer — by

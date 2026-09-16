@@ -10,7 +10,7 @@
  *
  * Pure: no I/O, no React, no dates of its own. That is what makes it assertable.
  *
- * NOTHING HERE IS EDITABLE, and two things must never become editable (Policies 002 & 005):
+ * NOTHING HERE IS EDITABLE, and two things must never become editable (Policies P3 & P4):
  * the fact-check belongs to a named person who is not the author, and the two approval slots
  * must be held by two different people. They are rendered `locked` with the policy that fixes
  * them, so the map teaches the rule instead of inviting someone to drag it away.
@@ -83,7 +83,7 @@ function pieceAt(i: number, extra: Partial<ContentGateFields> = {}): ContentGate
     pmApprovedBy: i > APPROVALS_AT ? "pm-person" : "",
     pdApprovedBy: i > APPROVALS_AT ? "pd-person" : "",
     legalFlag: false, legalReviewedBy: "",
-    // Policy 002's News/Commercial/Opinion label is a standing requirement, not a station's job:
+    // Policy P3's News/Commercial/Opinion label is a standing requirement, not a station's job:
     // it is chosen on the piece at any point, exactly like the seven standards. So the synthetic
     // piece carries one and standingRequirements() surfaces the rule instead.
     contentLabel: CONTENT_LABELS[0][0], sponsorDisclosure: "",
@@ -93,7 +93,7 @@ function pieceAt(i: number, extra: Partial<ContentGateFields> = {}): ContentGate
 }
 
 /**
- * The seven Policy 002 standards are a constant obligation, not a station's job — they can be
+ * The seven Policy P3 standards are a constant obligation, not a station's job — they can be
  * ticked at any point and block publication until they are. Kept out of the per-station lists
  * so a station shows what IT clears, and surfaced once by standingRequirements().
  */
@@ -154,14 +154,14 @@ export function editorialStations(): Station[] {
     // A turn pinned to a record field rather than to a seat: one named individual owns it.
     if (personField && mine.every(r => !r.seat)) locks.push({
       rule: "One named person, chosen when the piece is sent here — and never the author.",
-      policy: "Policy 005 (impartiality)",
+      policy: "Policy P4 (impartiality)",
     });
     // Two slots that each exclude the other are two different people, by construction.
     if (slots.length > 1 && slots.every(s => slots.some(o => o !== s && s.excludes.includes(o.emptyField)))) locks.push({
       // A static sentence, not a template literal: this string is an i18n key, and an
       // interpolated one can never be translated. The count is visible in "The slots" below.
       rule: "No one person may hold more than one of these approvals.",
-      policy: "Policy 002 (Production Manager AND Programs Director)",
+      policy: "Policy P3 (Production Manager AND Programs Director)",
     });
     if (mine.some(r => r.exclude?.includes(AUTHOR_FIELD))) locks.push({
       rule: "Never the author of the piece.",
@@ -254,7 +254,7 @@ export function livePositions(items: any[], desk: DeskItem[]): Record<string, Li
  * has no seat, no verb and no turn — drawing it as a station would put a box on the map that
  * behaviour has nothing to say about, which is the exact thing the check script forbids.
  *
- * But leaving it off would let the map imply that publishing is the end, when Policy 005 puts a
+ * But leaving it off would let the map imply that publishing is the end, when Policy P4 puts a
  * standing duty on a published piece: correct it publicly, with the date and the details. So it
  * is drawn as an afterwards, in its own band, labelled as not part of the chain.
  *
@@ -266,12 +266,12 @@ export const AFTER_PUBLICATION = [
     action: "Correct it",
     field: "correctionsJson",
     what: "The record stays published and a dated correction is appended to it, in public.",
-    policy: "Policy 005 (public record of corrections, with date and details)",
+    policy: "Policy P4 (public record of corrections, with date and details)",
   },
   {
     action: "Retract it",
     field: "retractedAt",
     what: "The piece comes off the website with a written reason; the record itself stays, because the published record is never silently removed.",
-    policy: "Policy 005 (no silent edits to the published record)",
+    policy: "Policy P4 (no silent edits to the published record)",
   },
 ] as const;

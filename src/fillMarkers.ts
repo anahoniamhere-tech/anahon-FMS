@@ -7,7 +7,7 @@
  * imported by BOTH `server.ts` (the research route) and the Newsroom screen — so the count an
  * editor sees is exactly the list the route would research, and the two cannot drift apart.
  *
- * A marker is not a gate. An item with none is not cleared for anything: Policy 005 still needs a
+ * A marker is not a gate. An item with none is not cleared for anything: Policy P4 still needs a
  * named fact-checker who is not the author, and research is not a fact-check.
  */
 

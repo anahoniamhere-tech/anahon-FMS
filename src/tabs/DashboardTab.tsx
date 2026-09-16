@@ -105,7 +105,7 @@ export default function DashboardTab({ formatIn, formatUSD, handleNavClick, isPr
                         )}
                         {petty > 0 && (
                           <p className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 leading-snug">
-                            {/* Policy 020 §4.4.5: 1120 is cash awaiting vouchers, never cash in the box — so a
+                            {/* Policy P5 §4.4.5: 1120 is cash awaiting vouchers, never cash in the box — so a
                                 box count is not subtracted from it. */}
                             ⚠️ <strong>{formatUSD(petty)}</strong> cash awaiting vouchers (ledger 1120) — <em>not</em> available funds, and never counted as cash in the box. It falls as past vouchers are recorded.
                           </p>

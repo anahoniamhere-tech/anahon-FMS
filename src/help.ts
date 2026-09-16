@@ -28,8 +28,8 @@ export const HELP: HelpEntry[] = [
     id: "two-approvers", area: "Seats & approvals",
     q: { en: "Why does publishing need two approvals?", ar: "لماذا يحتاج النشر إلى موافقتين؟" },
     a: {
-      en: "Policy 002 requires two different approvers before a piece goes public: the Production Manager slot and the Programme Director slot. One person may not fill both from one account. Until the Chief Editor is hired, the Executive Director fills the vacant slot through “Act as…”, and the log shows it.",
-      ar: "تشترط السياسة 002 موافقتين مختلفتين قبل النشر: مقعد مدير الإنتاج ومقعد مدير البرامج. لا يجوز لشخص واحد أن يشغل المقعدين من حساب واحد. إلى أن يُعيَّن رئيس التحرير، يشغل المدير التنفيذي المقعد الشاغر عبر «التصرّف بصفة…» ويظهر ذلك في السجل.",
+      en: "Policy P3 requires two different approvers before a piece goes public: the Production Manager slot and the Programme Director slot. One person may not fill both from one account. Until the Chief Editor is hired, the Executive Director fills the vacant slot through “Act as…”, and the log shows it.",
+      ar: "تشترط السياسة P3 موافقتين مختلفتين قبل النشر: مقعد مدير الإنتاج ومقعد مدير البرامج. لا يجوز لشخص واحد أن يشغل المقعدين من حساب واحد. إلى أن يُعيَّن رئيس التحرير، يشغل المدير التنفيذي المقعد الشاغر عبر «التصرّف بصفة…» ويظهر ذلك في السجل.",
     },
   },
   {
@@ -94,8 +94,8 @@ export const HELP: HelpEntry[] = [
     id: "procurement-threshold", area: "Buying",
     q: { en: "Why does a request above USD 1,000 refuse to submit?", ar: "لماذا يرفض طلب يتجاوز 1,000 دولار الإرسال؟" },
     a: {
-      en: "Policy 020: purchases above USD 1,000 need three quotes compared and approved first, or a written single-source waiver. Between USD 150 and USD 1,000 two compared quotes are the rule, and the payment request itself goes through without naming one. Go to Quotes & bids, lodge the comparison, have it approved, then raise the payment request and pick that comparison as its authority. (The threshold was USD 300 until 12 September 2026.)",
-      ar: "السياسة 020: المشتريات التي تتجاوز 1,000 دولار تحتاج أولاً إلى مقارنة ثلاثة عروض والموافقة عليها، أو إلى إعفاء مكتوب من المصدر الوحيد. وبين 150 و1,000 دولار القاعدة هي مقارنة عرضين، ويمرّ طلب الدفع نفسه دون أن يُسمّي مقارنة. اذهب إلى «العروض والمناقصات»، سجّل المقارنة، احصل على الموافقة، ثم ارفع طلب الدفع واختر تلك المقارنة مرجعاً له. (كان الحدّ 300 دولار حتى 12 أيلول 2026.)",
+      en: "Policy P5: purchases above USD 1,000 need three quotes compared and approved first, or a written single-source waiver. Between USD 150 and USD 1,000 two compared quotes are the rule, and the payment request itself goes through without naming one. Go to Quotes & bids, lodge the comparison, have it approved, then raise the payment request and pick that comparison as its authority. (The threshold was USD 300 until 12 September 2026.)",
+      ar: "السياسة P5: المشتريات التي تتجاوز 1,000 دولار تحتاج أولاً إلى مقارنة ثلاثة عروض والموافقة عليها، أو إلى إعفاء مكتوب من المصدر الوحيد. وبين 150 و1,000 دولار القاعدة هي مقارنة عرضين، ويمرّ طلب الدفع نفسه دون أن يُسمّي مقارنة. اذهب إلى «العروض والمناقصات»، سجّل المقارنة، احصل على الموافقة، ثم ارفع طلب الدفع واختر تلك المقارنة مرجعاً له. (كان الحدّ 300 دولار حتى 12 أيلول 2026.)",
     },
   },
   {
@@ -127,8 +127,8 @@ export const HELP: HelpEntry[] = [
     id: "content-retract", area: "Editorial",
     q: { en: "Correction or retraction?", ar: "تصحيح أم سحب؟" },
     a: {
-      en: "A correction changes a published piece and re-renders it, with the change noted. A retraction takes it off the website but keeps the record as Published with the reason and date, because Policy 005 forbids silent edits to the published record.",
-      ar: "التصحيح يغيّر مادة منشورة ويعيد إخراجها مع تدوين التغيير. السحب يزيلها من الموقع لكنه يُبقي السجل بحالة «منشور» مع السبب والتاريخ، لأن السياسة 005 تمنع التعديل الصامت على السجل المنشور.",
+      en: "A correction changes a published piece and re-renders it, with the change noted. A retraction takes it off the website but keeps the record as Published with the reason and date, because Policy P4 forbids silent edits to the published record.",
+      ar: "التصحيح يغيّر مادة منشورة ويعيد إخراجها مع تدوين التغيير. السحب يزيلها من الموقع لكنه يُبقي السجل بحالة «منشور» مع السبب والتاريخ، لأن السياسة P4 تمنع التعديل الصامت على السجل المنشور.",
     },
   },
   // ---- Website -----------------------------------------------------------------

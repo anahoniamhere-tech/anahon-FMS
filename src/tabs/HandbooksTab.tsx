@@ -6,7 +6,7 @@ import { isSupersededPointer, policyHeading } from "../helpBot";
 import { NAV, ic } from "../nav";
 import {
   parseHandbooksIndex, findIndexFaults, chapterAnchors, chapterSlice, missingChapterText,
-  historyChapterOf, POLICY_DOORS, type ParsedIndex, type Chapter,
+  historyChapterOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
 
@@ -75,13 +75,13 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     await fetchText(doc);
   };
 
-  // A citation clicked in the help desk ("Policy 020 §7.2") or a notification lands here
-  // as focusId "policy:020" — the same door-plus-focus mechanism every other tab uses.
+  // A citation clicked in the help desk ("Policy P5 §7.2") or a notification lands here
+  // as focusId "policy:P5" — the same door-plus-focus mechanism every other tab uses.
   useEffect(() => {
     if (!focusId || !parsed) return;
-    const m = /^policy:(\d{3})$/.exec(focusId);
+    const m = /^policy:(P\d{1,2}|\d{3})$/i.exec(focusId);
     if (!m) { return; }
-    const no = m[1];
+    const no = policyNo(m[1]);   // an old "policy:020" link still lands on P5
     const hb = parsed.handbooks.find(h => h.chapters.some(c => c.no === no));
     if (hb) {
       const doc = findHandbookDoc(hb.heading, liveDocs);
@@ -191,7 +191,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
       <div>
         <h2 className="text-2xl font-bold text-slate-900">{t("Policies & handbooks")}</h2>
         <p className="text-sm text-slate-500 mt-1">
-          {t("AnaHon's institutional policies — the five documents that carry them, and Policy 010, which stands on its own.")}
+          {t("AnaHon's institutional policies — the five documents that carry them, and Policy P11, which stands on its own.")}
         </p>
       </div>
 

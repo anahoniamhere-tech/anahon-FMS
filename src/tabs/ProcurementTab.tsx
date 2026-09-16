@@ -184,7 +184,7 @@ export default function ProcurementTab({ currentUser, refreshState, requestableP
                     </div>
                   </div>
 
-                  {/* Sourced Option C — needed once the purchase is above the Policy 020 threshold */}
+                  {/* Sourced Option C — needed once the purchase is above the Policy P5 threshold */}
                   <div className="border border-slate-200 p-3 rounded bg-slate-50 space-y-2">
                     <span className="text-[10px] font-bold text-slate-500 block">THIRD COMPETING BID</span>
                     <input

@@ -80,7 +80,7 @@ export default function ReportsTab({ formatUSD, t, triggerToast, currentUser }: 
   };
   return (
             <div className="space-y-6">
-              {/* The external consultant's reports and month pack (Policy 020 §12.1). Finance seats only. */}
+              {/* The external consultant's reports and month pack (Policy P5 §12.1). Finance seats only. */}
               <ConsultantPackPanel currentUser={currentUser} t={t} triggerToast={triggerToast} formatUSD={formatUSD} />
               <style>{`@media print { body * { visibility: hidden; } #period-report, #period-report * { visibility: visible; } #period-report { position: absolute; left: 0; top: 0; width: 100%; padding: 24px; } }`}</style>
               <div>

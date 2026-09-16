@@ -1,4 +1,4 @@
-// A voucher's two dates (Projects & funding's late-cost trace, 15 Sep 2026; Policy 020 §6.8).
+// A voucher's two dates (Projects & funding's late-cost trace, 15 Sep 2026; Policy P5 §6.8).
 //
 // transactionDate is when the cost happened; created_at is when it was recorded. Reports place a
 // cost by the first. The late-cost rule — a cost recorded after a donor report was submitted — reads

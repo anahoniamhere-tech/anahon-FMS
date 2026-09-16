@@ -74,7 +74,7 @@ export function isPersonnelDoc(doc: { category?: string }): boolean {
  * on — Policy 8.5); or — added 14 Sep 2026 — you head a field of the freelancer pool and the
  * document is the CV of someone in YOUR field. That third way is narrow on purpose: CVs only,
  * pool entries only, never an employee's file, never the other field's people. It exists
- * because Policy 010 says access follows the work, and a field head cannot assess a freelancer
+ * because Policy P11 says access follows the work, and a field head cannot assess a freelancer
  * without reading their CV.
  *
  * `poolFieldsOf` answers "which pool fields is this party in?" for the third way. Callers that

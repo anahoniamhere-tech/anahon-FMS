@@ -53,7 +53,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/journal-entry/adjustment": BOOKS,
   "/api/ledger/reclassify": BOOKS,
   "/api/budgets/allocate": BOOKS,
-  // Policy 020 §4.4.1: counted by anyone but the custodian — the route refuses the custodian by
+  // Policy P5 §4.4.1: counted by anyone but the custodian — the route refuses the custodian by
   // person as well; a top-up is raised by the custodian and approved by the Executive Director.
   "/api/cash/count": [...DIRECTORS, PLO],
   "/api/cash/topup/raise": BOOKS,
@@ -61,11 +61,11 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // Cash withdrawn for approved payment requests, and its leftover — Finance's (Saad, 14 Sep 2026).
   "/api/cash/draw": BOOKS,
   "/api/cash/draw/return": BOOKS,
-  // Money received or paid outside the bank, and matching a statement line — Finance's (Policy 020 §4.4.4).
+  // Money received or paid outside the bank, and matching a statement line — Finance's (Policy P5 §4.4.4).
   "/api/offbank/receive": BOOKS,
   "/api/offbank/deposit": BOOKS,
   "/api/bank/match-line": BOOKS,
-  // The external consultant's month pack and reconciliations (Policy 020 §4.3, §12.1). Marking a reconciliation is
+  // The external consultant's month pack and reconciliations (Policy P5 §4.3, §12.1). Marking a reconciliation is
   // further narrowed to the Finance Officer's own seat, by person, in the route.
   "/api/consultant/pack": BOOKS,
   "/api/consultant/reconciliation/mark": BOOKS,
@@ -98,7 +98,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/subscriptions/roll": SUPPLIER_EDITORS,
   "/api/assets/register": SUPPLIER_EDITORS,
   "/api/assets/update": SUPPLIER_EDITORS,              // correcting what an item is; never what happened to it
-  "/api/assets/value": FINANCE,                        // a value and where it comes from (Policy 020 §9)
+  "/api/assets/value": FINANCE,                        // a value and where it comes from (Policy P5 §9)
   "/api/declarations/prepare": FINANCE,                // a missing-receipt declaration, from the voucher (§6.6)
   "/api/declarations/approve": DIRECTORS,              // the Executive Director, never the preparer
   "/api/assets/scan-label": SUPPLIER_EDITORS,        // reads a label, saves nothing
@@ -107,7 +107,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/assets/move": SUPPLIER_EDITORS,                // where a resting item is; a loan still goes out and comes back
   "/api/assets/delete": SUPPLIER_EDITORS,              // only an unconfirmed mistake; the route itself refuses the rest
   "/api/assets/end": MANAGERS,                         // what became of it; the route separates a disposal from an event
-  "/api/assets/end-confirm": MANAGERS,                 // Policy 017's second signature, never the proposer's
+  "/api/assets/end-confirm": MANAGERS,                 // Policy P7's second signature, never the proposer's
   "/api/assets/repair": SUPPLIER_EDITORS,
   "/api/assets/verify": EQUIPMENT_VERIFIERS,          // never the keeper of the register
 
@@ -115,7 +115,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/projects/new": [...MANAGERS, "Project Officer"],
   "/api/projects/delete": DIRECTORS,
   "/api/reports/submission": MANAGERS,              // append-only record of a donor report as submitted
-  "/api/projects/channel-rule": MANAGERS,           // bank only must cite the project's agreement (Policy 020 §4.4.4)
+  "/api/projects/channel-rule": MANAGERS,           // bank only must cite the project's agreement (Policy P5 §4.4.4)
   "/api/activities/save": ACTIVITY_EDITORS,
   "/api/activities/delete": ACTIVITY_EDITORS,          // the route checks the programme is theirs
   "/api/activities/generate": ACTIVITY_EDITORS,
@@ -208,10 +208,10 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // There is no route here that sends, replies to, labels or deletes mail — by design.
   "/api/mail/poll": DIRECTORS,          // check the mailbox now
   "/api/mail/settle": ANY,              // the route checks the item is mine
-  // Policy 001 §7 — the integrity register. MASTER_ONLY is the Super Admin seat; the routes
+  // Policy P1 §7 — the integrity register. MASTER_ONLY is the Super Admin seat; the routes
   // themselves additionally refuse a Super Admin who is standing in as another seat, and
   // there is deliberately NO update or delete route here or anywhere (§7.1 append-only).
-  // Policy 010 §6 — sealed source files. The routes also refuse a stand-in seat and log refusals.
+  // Policy P11 §6 — sealed source files. The routes also refuse a stand-in seat and log refusals.
   "/api/sources/update": ["Super Admin", "Finance Officer"],
   "/api/sources/document": ["Super Admin", "Finance Officer"],
   "/api/sources/review": MASTER_ONLY,

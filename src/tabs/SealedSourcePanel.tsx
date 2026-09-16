@@ -4,7 +4,7 @@ import { withTicket } from "../docTicket";
 import { SANCTIONS_RESULTS } from "../sources";
 
 /**
- * Policy 010 §6 — the sealed file behind a confidential payment. Nothing here is in app state: the
+ * Policy P11 §6 — the sealed file behind a confidential payment. Nothing here is in app state: the
  * file is fetched only when the ED or the Finance Officer asks for it, the server logs that opening,
  * and closing the panel drops it from memory. Anyone else sees only that the payment is confidential.
  */
@@ -43,7 +43,7 @@ export default function SealedSourcePanel({ exp, currentUser, acting, triggerToa
   const inp = "finance-input w-full text-xs";
   return (
     <div className="space-y-2 rounded-lg border border-slate-400 bg-slate-100 p-3">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-700"><Lock className="inline h-3 w-3" /> Confidential payment — Policy 010 §6</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-700"><Lock className="inline h-3 w-3" /> Confidential payment — Policy P11 §6</p>
       <p className="text-xs text-slate-700">Paid to <b>{exp.title}</b>. Who this is lives only in the sealed file.{exp.evidence === "proof" ? "" : " The receipt signed in the real name is not filed yet."}</p>
       {!mayOpen && <p className="text-[11px] text-slate-500">Only the Executive Director (as themselves) and the Finance Officer open the sealed file.</p>}
       {mayOpen && !file && <button type="button" onClick={open} className="text-[11px] bg-slate-800 hover:bg-slate-950 text-white px-3 py-1.5 rounded font-medium">Open the sealed file (the opening is logged)</button>}
@@ -52,7 +52,7 @@ export default function SealedSourcePanel({ exp, currentUser, acting, triggerToa
           <label className="block text-[11px] font-bold">Real name<input className={inp} value={form.realName || ""} onChange={e => setForm({ ...form, realName: e.target.value })} /></label>
           <label className="block text-[11px] font-bold">Contact<input className={inp} value={form.contact || ""} onChange={e => setForm({ ...form, contact: e.target.value })} /></label>
           <label className="block text-[11px] font-bold">Identity document (type and number)<input className={inp} value={form.idDocument || ""} onChange={e => setForm({ ...form, idDocument: e.target.value })} /></label>
-          <label className="block text-[11px] font-bold">Sanctions check (Policy 001 §4)
+          <label className="block text-[11px] font-bold">Sanctions check (Policy P1 §4)
             <select className={inp} value={form.sanctionsResult || ""} onChange={e => setForm({ ...form, sanctionsResult: e.target.value })}>
               {SANCTIONS_RESULTS.map(r => <option key={r} value={r}>{r || "— not recorded —"}</option>)}
             </select>

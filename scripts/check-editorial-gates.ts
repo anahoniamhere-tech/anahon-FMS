@@ -1,4 +1,4 @@
-// Editorial publish-gate self-check (Policies 002 & 005).
+// Editorial publish-gate self-check (Policies P3 & P4).
 // Pure asserts on synthetic items — never opens any database.
 // Run: npx tsx scripts/check-editorial-gates.ts
 import assert from "node:assert";
@@ -15,7 +15,7 @@ const good = {
   pdApprovedBy: "u-pd",
   legalFlag: false,
   legalReviewedBy: "",
-  // Policy 002 requires every piece to be labelled News/Commercial/Opinion (9 Sep 2026), so a
+  // Policy P3 requires every piece to be labelled News/Commercial/Opinion (9 Sep 2026), so a
   // "fully satisfied" item now carries one — an unlabelled piece is asserted separately below.
   contentLabel: "News",
   sponsorDisclosure: "",
@@ -106,13 +106,13 @@ for (const status of CONTENT_STATUSES) {
 // 5. The two policy locks must exist and must name their policy. If a refactor loses one, the
 //    map would quietly stop teaching a rule that the server still enforces.
 const factCheck = stations.find(s => s.personField && !s.seats.length);
-assert.ok(factCheck, "no station is held by a named individual — Policy 005's independent checker is missing");
-assert.ok(factCheck!.locks.some(l => /005/.test(l.policy)), "the named-checker station must cite Policy 005");
+assert.ok(factCheck, "no station is held by a named individual — Policy P4's independent checker is missing");
+assert.ok(factCheck!.locks.some(l => /\bP4\b/.test(l.policy)), "the named-checker station must cite Policy P4");
 const dual = stations.find(s => s.slots.length > 1);
-assert.ok(dual, "no station has two approval slots — Policy 002's dual approval is missing");
-assert.ok(dual!.locks.some(l => /002/.test(l.policy)), "the dual-approval station must cite Policy 002");
+assert.ok(dual, "no station has two approval slots — Policy P3's dual approval is missing");
+assert.ok(dual!.locks.some(l => /\bP3\b/.test(l.policy)), "the dual-approval station must cite Policy P3");
 assert.ok(dual!.slots.every(sl => dual!.slots.some(o => o !== sl && sl.excludes.includes(o.emptyField))),
-  "each approval slot must exclude the other — otherwise one person could hold both (Policy 002)");
+  "each approval slot must exclude the other — otherwise one person could hold both (Policy P3)");
 assert.ok(dual!.slots.every(sl => sl.excludes.includes("assigneeUserId")),
   "an approval slot must exclude the author (§4.3)");
 
@@ -141,14 +141,14 @@ assert.strictEqual(stationStanding(twoSlot, [{ id: "u1", name: "X", role: twoSlo
 assert.strictEqual(stationStanding(twoSlot, [{ id: "u1", name: "X", role: twoSlot.seats[0], active: true }]).understaffed, true,
   "one person cannot fill two slots that must be two different people");
 
-/* ── Policy 002 covers the social channels too ────────────────────────────────
+/* ── Policy P3 covers the social channels too ────────────────────────────────
  * Until 9 Sep 2026 a social post could name no piece, and went out immediately: no fact-check,
- * no dual approval, no standards, no legal review, no AI disclosure. Policy 002 names
+ * no dual approval, no standards, no legal review, no AI disclosure. Policy P3 names
  * "WhatsApp, Facebook, Instagram, YouTube, WEBSITE" as AnaHon's own channels and requires ALL
  * content to be reviewed and approved before publication, so that path was a policy bypass.
  */
 assert.strictEqual(socialPostBlockers(null).length, 1, "a post with no piece behind it must be refused");
-assert.match(socialPostBlockers(null)[0], /Policy 002/, "and the refusal must say which policy");
+assert.match(socialPostBlockers(null)[0], /Policy P3/, "and the refusal must say which policy");
 assert.deepStrictEqual(socialPostBlockers({ status: "Published", retractedAt: "" }), [],
   "a published piece may be promoted");
 assert.strictEqual(socialPostBlockers({ status: "Fact-Check", retractedAt: "" }).length, 0,
@@ -166,7 +166,7 @@ assert.ok(/const gate = socialPostBlockers\(item\);[\s\S]{0,200}?res\.status\(40
   "the guard must refuse with 403, not merely compute a list");
 
 /* ── The caption that goes out is the one the desk verified ───────────────────
- * A caption is published content under Policy 002, and the fact-checker verifies the piece's
+ * A caption is published content under Policy P3, and the fact-checker verifies the piece's
  * drafts. So the composer must send the Caption draft, not retype one. Before 9 Sep 2026 it
  * assembled title + brief and never looked at the drafts.
  */
@@ -196,14 +196,14 @@ assert.ok(/setMessage\(socialRendition\(/.test(socialSrc),
 assert.ok(!/setMessage\(`\$\{it\.title\}/.test(socialSrc),
   "the old title+brief assembly must be gone from the composer");
 
-/* ── Policy 002 "Content Types": News / Commercial / Opinion ──────────────────
+/* ── Policy P3 "Content Types": News / Commercial / Opinion ──────────────────
  * The policy defines three kinds of content and requires each be CLEARLY LABELLED and
  * distinguishable from the others. Until 9 Sep 2026 the FMS had no field for it at all, so
  * sponsored content could not be marked as sponsored anywhere.
  */
 assert.deepStrictEqual(CONTENT_LABELS.map(([k]) => k), ["News", "Commercial", "Opinion"],
-  "the three content types Policy 002 defines");
-for (const [, , sentence] of CONTENT_LABELS) assert.match(sentence, /Policy 002/, "each label cites the policy");
+  "the three content types Policy P3 defines");
+for (const [, , sentence] of CONTENT_LABELS) assert.match(sentence, /Policy P3/, "each label cites the policy");
 
 const labelled = (contentLabel: string, sponsorDisclosure = "") => ({ ...good, contentLabel, sponsorDisclosure });
 assert.match(publishBlockers({ ...good, contentLabel: "" })[0], /content label/,
@@ -211,7 +211,7 @@ assert.match(publishBlockers({ ...good, contentLabel: "" })[0], /content label/,
 assert.deepStrictEqual(publishBlockers(labelled("News")), [], "a labelled piece publishes");
 assert.deepStrictEqual(publishBlockers(labelled("Opinion")), [], "opinion needs no disclosure");
 assert.match(publishBlockers(labelled("Commercial"))[0], /who paid for it/,
-  "commercial content must disclose the relationship (Policy 002 transparency)");
+  "commercial content must disclose the relationship (Policy P3 transparency)");
 assert.deepStrictEqual(publishBlockers(labelled("Commercial", "Paid by the Municipality")), [],
   "commercial content with its disclosure publishes");
 assert.deepStrictEqual(publishBlockers(labelled("Commercial", "   ")).length, 1, "a blank disclosure is no disclosure");
@@ -235,5 +235,5 @@ assert.strictEqual(socialRendition({ title: "T", brief: "B", contentLabel: "Comm
   "an improvised text is marked too");
 
 console.log("check-editorial-gates: all assertions passed —",
-  `${5 + cases.length + CONTENT_CHECKS.length} gate scenarios (Policies 002 & 005 + transparency rule)`,
+  `${5 + cases.length + CONTENT_CHECKS.length} gate scenarios (Policies P3 & P4 + transparency rule)`,
   `+ ${stations.length} derived map stations, none hardcoded.`);
