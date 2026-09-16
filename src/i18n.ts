@@ -585,6 +585,10 @@ export const AR: Record<string, string> = {
   "Hello {name}, we have paid voucher {voucherNo}, {amount}, on {date}. Please confirm receipt. — AnaHon": "مرحباً {name}، حوّلنا لك سند الصرف {voucherNo} بمبلغ {amount} بتاريخ {date}. نرجو تأكيد الاستلام. — أنا هون",
   "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}. Tell me if anything should change.": "مرحباً {name}، إليك عرض السعر {ref} بقيمة {amount}، صالح حتى {validUntil}. أعلمني إذا أردت أي تعديل.",
   "Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change.": "مرحباً {name}، إليك عرض السعر {ref} بقيمة {amount}. أعلمني إذا أردت أي تعديل.",
+  // The same message when it carries the link on its own line (src/tabs/shared.ts quoteText).
+  "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}:": "مرحباً {name}، إليك عرض السعر {ref} بقيمة {amount}، صالح حتى {validUntil}:",
+  "Hello {name}, here is quotation {ref} for {amount}:": "مرحباً {name}، إليك عرض السعر {ref} بقيمة {amount}:",
+  "Tell me if anything should change.": "أعلمني إذا أردت أي تعديل.",
   "Hello {name}, a balance of {amount} is outstanding since {date}. Could you let us know when it will be settled?": "مرحباً {name}، ما زال هناك رصيد مستحق بقيمة {amount} منذ {date}. هلّا أعلمتنا بموعد التسديد؟",
   "Hello {name}, we are still waiting for your {what} for {period}. Send it when you can so payment is not held up. — AnaHon": "مرحباً {name}، ما زلنا بانتظار {what} الخاص بك عن {period}. أرسله متى تيسّر كي لا يتأخر الدفع. — أنا هون",
   // The personnel-file phone and the timesheet nudge that uses it.

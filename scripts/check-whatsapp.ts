@@ -84,19 +84,22 @@ for (const lang of ["en", "ar"]) {
 }
 ok("a date the code cannot read is shown as written, not guessed", Q("en", { validUntil: "end of month" }).includes("valid until end of month."));
 const URL = "https://icontent.studio/q/9d7cd729241220c537b610e3d7dd76c3.pdf";
+// Saad, 16 Sep 2026: the link on its own line, between the sentence and the request, nothing touching it.
 for (const lang of ["en", "ar"]) {
   const withLink = Q(lang, { link: URL });
   const lines = withLink.split("\n");
-  ok(`quotation (${lang}): the link is the last line, alone, with nothing after it`, lines.length === 2 && lines[1] === URL, JSON.stringify(lines.slice(-1)));
+  ok(`quotation (${lang}): three lines, the link alone in the middle`, lines.length === 3 && lines[1] === URL, JSON.stringify(lines));
+  ok(`quotation (${lang}): the sentence ends with a colon before the link`, lines[0].endsWith(":"), lines[0]);
   ok(`quotation (${lang}): the link appears once`, (withLink.match(/https:\/\//g) || []).length === 1);
-  ok(`quotation (${lang}): the first line is the message as it reads without a link`, lines[0] === Q(lang, {}), lines[0]);
+  ok(`quotation (${lang}): the request and the signature follow the link`, /^(Tell me if anything should change\.|أعلمني إذا أردت أي تعديل\.) — /.test(lines[2] || ""), lines[2]);
   ok(`quotation (${lang}) with a link still names no AnaHon`, !/AnaHon|أنا هون/i.test(withLink), withLink);
-  ok(`quotation (${lang}) with no link has no second line`, !Q(lang, { link: "" }).includes("\n") && Q(lang, { link: "" }) === Q(lang, {}));
+  ok(`quotation (${lang}) with no link is one line, as before`, !Q(lang, { link: "" }).includes("\n") && Q(lang, { link: "" }) === Q(lang, {}));
   const noDateLink = Q(lang, { validUntil: "", link: URL });
-  ok(`quotation (${lang}) with a link and no date keeps the link and drops the date`, noDateLink.endsWith("\n" + URL) && !/valid until|صالح حتى/.test(noDateLink), noDateLink);
+  ok(`quotation (${lang}) with a link and no date keeps the link and drops the date`, noDateLink.split("\n")[1] === URL && !/valid until|صالح حتى/.test(noDateLink), noDateLink);
+  ok(`quotation (${lang}): no untranslated key`, lang === "en" || !/Hello|Tell me/.test(withLink + noDateLink), withLink);
 }
 ok("the English quotation with its link reads as agreed",
-  Q("en", { link: URL }) === `Hello Maroun, here is quotation 006/2026 for 750.00 USD, valid until 30 September 2026. Tell me if anything should change. — iContent Studio\n${URL}`, Q("en", { link: URL }));
+  Q("en", { link: URL }) === `Hello Maroun, here is quotation 006/2026 for 750.00 USD, valid until 30 September 2026:\n${URL}\nTell me if anything should change. — iContent Studio`, Q("en", { link: URL }));
 ok("the English quotation reads as agreed",
   Q("en", {}) === "Hello Maroun, here is quotation 006/2026 for 750.00 USD, valid until 30 September 2026. Tell me if anything should change. — iContent Studio", Q("en", {}));
 
