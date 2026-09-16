@@ -113,7 +113,19 @@ export function waLink(phone: string, text: string): string | null {
 const fill = (s: string, p: Record<string, string>) => s.replace(/\{(\w+)\}/g, (_, k) => p[k] ?? `{${k}}`);
 
 /**
- * The four messages, each already ending "— AnaHon" so the reader knows who wrote it.
+ * A client message is signed by whoever issued the quotation (16 Sep 2026): Saad's rule is that
+ * nothing an iContent Studio client reads names AnaHon. The Latin name is isolated (FSI…PDI) so
+ * it sits correctly at the end of an Arabic sentence.
+ */
+const signed = (text: string, issuedAs?: string) => {
+  const arabic = /[\u0600-\u06FF]/.test(text);
+  const who = issuedAs === "icontent" ? (arabic ? "\u2068iContent Studio\u2069" : "iContent Studio") : (arabic ? "أنا هون" : "AnaHon");
+  return `${text} — ${who}`;
+};
+
+/**
+ * The messages, each ending with who wrote it: "— AnaHon", or "— iContent Studio" on a client
+ * message about an iContent quotation.
  * The whole sentence is one i18n key rather than stitched fragments: Arabic puts the
  * pieces in a different order, and stitching would produce word salad.
  */
@@ -121,12 +133,14 @@ export const WA_TEMPLATES = {
   /** A voucher has been paid. Buying & paying. */
   "supplier-paid": (t: (s: string) => string, p: { name: string; voucherNo: string; amount: string; date: string }) =>
     fill(t("Hello {name}, we have paid voucher {voucherNo}, {amount}, on {date}. Please confirm receipt. — AnaHon"), p),
-  /** A quotation has gone out. Projects & funding. */
-  "client-quotation": (t: (s: string) => string, p: { name: string; ref: string; amount: string }) =>
-    fill(t("Hello {name}, we have sent you quotation {ref} for {amount}. Tell us if anything should change. — AnaHon"), p),
+  /** The quotation itself, delivered by this message. Projects & funding. No date → no validity clause. */
+  "client-quotation": (t: (s: string) => string, p: { name: string; ref: string; amount: string; validUntil?: string; issuedAs?: string }) =>
+    signed(fill(t(p.validUntil
+      ? "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}. Tell me if anything should change."
+      : "Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change."), p as any), p.issuedAs),
   /** Money is still owed on it. Projects & funding. */
-  "client-balance": (t: (s: string) => string, p: { name: string; amount: string; date: string }) =>
-    fill(t("Hello {name}, a balance of {amount} is outstanding since {date}. Could you let us know when it will be settled? — AnaHon"), p),
+  "client-balance": (t: (s: string) => string, p: { name: string; amount: string; date: string; issuedAs?: string }) =>
+    signed(fill(t("Hello {name}, a balance of {amount} is outstanding since {date}. Could you let us know when it will be settled?"), p as any), p.issuedAs),
   /** A timesheet or an invoice has not arrived. People. */
   "freelancer-nudge": (t: (s: string) => string, p: { name: string; what: string; period: string }) =>
     fill(t("Hello {name}, we are still waiting for your {what} for {period}. Send it when you can so payment is not held up. — AnaHon"), p),

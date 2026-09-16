@@ -583,8 +583,9 @@ export const AR: Record<string, string> = {
   "Go to the doors": "الذهاب إلى الأبواب",
   "Hello {name}, following up on our conversation as we agreed. Would you have a few minutes this week? — AnaHon": "مرحباً {name}، أتابع معك بخصوص حديثنا كما اتفقنا. هل لديك بضع دقائق هذا الأسبوع؟ — أنا هون",
   "Hello {name}, we have paid voucher {voucherNo}, {amount}, on {date}. Please confirm receipt. — AnaHon": "مرحباً {name}، حوّلنا لك سند الصرف {voucherNo} بمبلغ {amount} بتاريخ {date}. نرجو تأكيد الاستلام. — أنا هون",
-  "Hello {name}, we have sent you quotation {ref} for {amount}. Tell us if anything should change. — AnaHon": "مرحباً {name}، أرسلنا لك عرض السعر {ref} بقيمة {amount}. أخبرنا إن كان يلزم أي تعديل. — أنا هون",
-  "Hello {name}, a balance of {amount} is outstanding since {date}. Could you let us know when it will be settled? — AnaHon": "مرحباً {name}، ما زال هناك رصيد مستحق بقيمة {amount} منذ {date}. هلّا أعلمتنا بموعد التسديد؟ — أنا هون",
+  "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}. Tell me if anything should change.": "مرحباً {name}، إليك عرض السعر {ref} بقيمة {amount}، صالح حتى {validUntil}. أعلمني إذا أردت أي تعديل.",
+  "Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change.": "مرحباً {name}، إليك عرض السعر {ref} بقيمة {amount}. أعلمني إذا أردت أي تعديل.",
+  "Hello {name}, a balance of {amount} is outstanding since {date}. Could you let us know when it will be settled?": "مرحباً {name}، ما زال هناك رصيد مستحق بقيمة {amount} منذ {date}. هلّا أعلمتنا بموعد التسديد؟",
   "Hello {name}, we are still waiting for your {what} for {period}. Send it when you can so payment is not held up. — AnaHon": "مرحباً {name}، ما زلنا بانتظار {what} الخاص بك عن {period}. أرسله متى تيسّر كي لا يتأخر الدفع. — أنا هون",
   // The personnel-file phone and the timesheet nudge that uses it.
   "WhatsApp": "واتساب",

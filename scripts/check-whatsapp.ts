@@ -31,8 +31,8 @@ ok("the message is encoded, so & and + survive", link?.endsWith("?text=hello%20%
 console.log("\nC. the four messages, both languages");
 const params: Record<WaTemplateKey, any> = {
   "supplier-paid": { name: "Beirut Print House", voucherNo: "ANH-PV-00412", amount: "$1,250.00", date: "2026-09-02" },
-  "client-quotation": { name: "Zahle Municipality", ref: "Q-2026-018", amount: "$4,000.00" },
-  "client-balance": { name: "Zahle Municipality", amount: "$1,500.00", date: "2026-08-01" },
+  "client-quotation": { name: "Zahle Municipality", ref: "Q-2026-018", amount: "$4,000.00", validUntil: "2026-09-30", issuedAs: "anahon" },
+  "client-balance": { name: "Zahle Municipality", amount: "$1,500.00", date: "2026-08-01", issuedAs: "anahon" },
   "freelancer-nudge": { name: "Omar", what: "timesheet", period: "August 2026" },
   "contact-followup": { name: "Jihane" },
 };
@@ -62,6 +62,27 @@ for (const lang of ["en", "ar"]) {
 ok("it takes the name and nothing else",
   WA_TEMPLATES["contact-followup"]((s: string) => s, { name: "X" }) ===
   "Hello X, following up on our conversation as we agreed. Would you have a few minutes this week? — AnaHon");
+
+console.log("\nE. a client message is signed by whoever issued the quotation (16 Sep 2026)");
+// Saad's rule: nothing a client of iContent Studio reads mentions AnaHon. 006/2026 went out
+// signed "— AnaHon" and saying "we have sent you" at the moment it was being sent.
+const Q = (lang: string, over: any) => WA_TEMPLATES["client-quotation"]((s: string) => tr(lang, s),
+  { name: "Maroun", ref: "006/2026", amount: "750.00 USD", validUntil: "2026-09-30", issuedAs: "icontent", ...over });
+const BAL = (lang: string, over: any) => WA_TEMPLATES["client-balance"]((s: string) => tr(lang, s),
+  { name: "Maroun", amount: "250.00 USD", date: "2026-09-10", issuedAs: "icontent", ...over });
+for (const lang of ["en", "ar"]) {
+  for (const [label, text] of [["quotation", Q(lang, {})], ["balance", BAL(lang, {})]] as const) {
+    ok(`iContent ${label} (${lang}) never names AnaHon`, !/AnaHon|أنا هون/i.test(text), text);
+    ok(`iContent ${label} (${lang}) is signed iContent Studio`, /— \u2068?iContent Studio\u2069?$/.test(text.trim()), text.slice(-24));
+  }
+  ok(`AnaHon quotation (${lang}) is still signed AnaHon`, /— (AnaHon|أنا هون)$/.test(Q(lang, { issuedAs: "anahon" }).trim()));
+  ok(`quotation (${lang}) delivers it rather than claiming it was sent`, !/we have sent|أرسلنا/.test(Q(lang, {})), Q(lang, {}));
+  ok(`quotation (${lang}) carries the validity date`, Q(lang, {}).includes("2026-09-30"));
+  const noDate = Q(lang, { validUntil: "" });
+  ok(`quotation (${lang}) with no validity date drops the clause`, !/valid until|صالح حتى|\{validUntil\}/.test(noDate) && !/,\s*\./.test(noDate), noDate);
+}
+ok("the English quotation reads as agreed",
+  Q("en", {}) === "Hello Maroun, here is quotation 006/2026 for 750.00 USD, valid until 2026-09-30. Tell me if anything should change. — iContent Studio", Q("en", {}));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

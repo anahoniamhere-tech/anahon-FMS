@@ -694,8 +694,8 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                 // balance, and the figure is what the books still show owed.
                                 const stillAnOffer = q.status === "Sent" && paidSoFar === 0;
                                 const text = stillAnOffer
-                                  ? WA_TEMPLATES["client-quotation"](t, { name: first, ref: q.quoteNo, amount: money(q.amount) })
-                                  : WA_TEMPLATES["client-balance"](t, { name: first, amount: money(stillOwed), date: q.date });
+                                  ? WA_TEMPLATES["client-quotation"](t, { name: first, ref: q.quoteNo, amount: money(q.amount), validUntil: q.validUntil || "", issuedAs: q.issuedAs })
+                                  : WA_TEMPLATES["client-balance"](t, { name: first, amount: money(stillOwed), date: q.date, issuedAs: q.issuedAs });
                                 const link = client ? waLink(client.phone || "", text) : null;
                                 return link ? (
                                   <a href={link} target="_blank" rel="noreferrer"
