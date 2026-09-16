@@ -54,6 +54,7 @@ ok("research (web search) runs on Sonnet", /async function askWithSearch[\s\S]{0
 console.log("\nD. the help desk's cached prefix carries nothing about the asker");
 const asker = { role: "Finance Officer", ownRole: "Finance Officer", doors: ["expenses"], rows: [], today: "2031-01-02" };
 const [prefix, rest] = helpPromptParts("QUESTION-XYZ", asker, "HANDBOOK-TEXT");
+ok("the cached prefix lives an hour", /cache_control: \{ type: "ephemeral", ttl: "1h" \}/.test(src));
 ok("prefix holds the handbooks", prefix.includes("HANDBOOK-TEXT"));
 ok("prefix has no question", !prefix.includes("QUESTION-XYZ"));
 ok("prefix has no date", !prefix.includes("2031-01-02"));

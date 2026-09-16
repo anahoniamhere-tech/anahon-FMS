@@ -3690,14 +3690,14 @@ type Tier = keyof typeof MODELS;
 const PRICE: Record<string, [number, number]> = { "claude-haiku-4-5": [1, 5], "claude-sonnet-5": [2, 10] };
 
 /** Tokens and rough cost of the last model call, for the audit line. Cache reads bill at a
- *  tenth of input, cache writes at 1.25x. */
+ *  tenth of input; the one cache in use (the help desk's, 1 hour) writes at 2x. */
 let lastUsage = "";
 function usageNote(u: any, model: string): string {
   if (!u) return "";
   const [pi, po] = PRICE[model] || [0, 0];
   const i = u.input_tokens || 0, o = u.output_tokens || 0;
   const cr = u.cache_read_input_tokens || 0, cw = u.cache_creation_input_tokens || 0;
-  const cost = (i * pi + cr * pi * 0.1 + cw * pi * 1.25 + o * po) / 1_000_000;
+  const cost = (i * pi + cr * pi * 0.1 + cw * pi * 2 + o * po) / 1_000_000;
   const cached = cr ? ` · cached ${(cr / 1000).toFixed(1)}k` : "";
   return ` [${model} · in ${((i + cw) / 1000).toFixed(1)}k${cached} · out ${(o / 1000).toFixed(1)}k${cost ? ` ≈ $${cost.toFixed(3)}` : ""}]`;
 }
@@ -3723,8 +3723,10 @@ function parseModelJson(text: string): any {
 }
 
 async function askJson(
-  // A pair is [stable prefix, the rest]: the prefix is cached, so a long fixed context
-  // (the help desk's handbooks) is billed at a tenth after the first question.
+  // A pair is [stable prefix, the rest]: the prefix is cached for an hour, so a long fixed
+  // context (the help desk's handbooks) is billed at a tenth after the first question. An
+  // hour, not five minutes: staff questions arrive minutes apart, and a missed 5-minute
+  // cache re-bills the whole prefix every time.
   prompt: string | [string, string], schema: Record<string, any>, file?: Attachment,
   effort: "low" | "medium" | "high" = "medium",
   // Which provider to spend on. A Claude tier is Claude-first with the Gemini fallback
@@ -3747,7 +3749,7 @@ async function askJson(
         : { type: "image", source: { type: "base64", media_type: file.mimeType, data: file.base64 } });
     }
     parts.forEach((text, k) => content.push(
-      k === 0 && parts.length > 1 ? { type: "text", text, cache_control: { type: "ephemeral" } } : { type: "text", text }));
+      k === 0 && parts.length > 1 ? { type: "text", text, cache_control: { type: "ephemeral", ttl: "1h" } } : { type: "text", text }));
     const model = MODELS[prefer as Tier];
     // Haiku 4.5 takes neither adaptive thinking nor effort; it reads, it does not deliberate.
     // On Sonnet, effort is the main cost dial: routine extraction runs cheap, drafting runs deep.
