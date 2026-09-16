@@ -59,7 +59,7 @@ const MARK = new RegExp(
   "gi",
 );
 
-export type Piece = { text: string; mark: false | "fact" | "find" };
+export type Piece = { text: string; mark: false | "fact" | "find" | "role" };
 
 /** Shortest search that filters and highlights; one letter would match nearly everything. */
 export const MIN_FIND = 2;
@@ -84,7 +84,7 @@ const splitFind = (p: Piece, q: string): Piece[] => {
 
 /** The text cut into plain, "fact" (amount/deadline) and "find" (the reader's search) pieces,
  *  in order; joining them gives the text back. A search hit inside a fact wins that stretch. */
-export const markPieces = (text: string, find = ""): Piece[] => {
+export const markPieces = (text: string, find = "", roles: Record<string, string> = {}): Piece[] => {
   const out: Piece[] = [];
   let at = 0;
   for (const m of text.matchAll(MARK)) {
@@ -93,7 +93,23 @@ export const markPieces = (text: string, find = ""): Piece[] => {
     at = m.index! + m[0].length;
   }
   if (at < text.length) out.push({ text: text.slice(at), mark: false });
-  return isFinding(find) ? out.flatMap(p => splitFind(p, findKey(find))) : out;
+  const found = isFinding(find) ? out.flatMap(p => splitFind(p, findKey(find))) : out;
+  const abbrs = Object.keys(roles);
+  if (!abbrs.length) return found;
+  // Keys come from roleDefs (2–4 capital letters), so they are safe inside a pattern.
+  const re = new RegExp(`\\b(?:${abbrs.join("|")})\\b`, "g");
+  return found.flatMap(p => {
+    if (p.mark) return [p];
+    const parts: Piece[] = [];
+    let at = 0;
+    for (const m of p.text.matchAll(re)) {
+      if (m.index! > at) parts.push({ text: p.text.slice(at, m.index), mark: false });
+      parts.push({ text: m[0], mark: "role" });
+      at = m.index! + m[0].length;
+    }
+    if (at < p.text.length) parts.push({ text: p.text.slice(at), mark: false });
+    return parts;
+  });
 };
 
 /** "… a decision you take. Examples: engaging a relative, …" → the sentence before, and the
@@ -119,3 +135,15 @@ export const splitLabel = (text: string): { label: string; detail: string } | nu
   if (!m || m[1].trim().split(/\s+/).length > 6) return null;
   return { label: m[1].trim(), detail: m[2] };
 };
+
+/** The seats a handbook defines for itself — '"Executive Director" (ED)' — as ED → title.
+ *  Read from the document, so a new seat (P11's "Digital Officer" (DO)) needs no code. */
+export const roleDefs = (text: string): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const m of text.matchAll(/"([A-Z][A-Za-z]+(?: [A-Za-z]+){0,4})" \(([A-Z]{2,4})\)/g)) out[m[2]] ??= m[1];
+  return out;
+};
+
+/** Which defined seats a stretch of text names, by abbreviation or full title, in definition order. */
+export const rolesIn = (text: string, defs: Record<string, string>): string[] =>
+  Object.entries(defs).filter(([a, full]) => new RegExp(`\\b${a}\\b`).test(text) || text.includes(full)).map(([a]) => a);

@@ -7,7 +7,7 @@
 // "At a glance" lines where the rule order decides the answer. A new rule that shifts any of
 // these fails here before a reader sees a wrong icon.
 // Run: npx tsx scripts/check-policy-reading.ts
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel } from "../src/policyReading.js";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn } from "../src/policyReading.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -177,6 +177,16 @@ ok("a list lead-in with nothing after is not a label", splitLabel("Never paid fr
 ok("a long clause before a colon is not a label", splitLabel("Where the person who raised the concern asked to stay anonymous: nobody asks.") === null);
 ok("a lower-case start is not a label", splitLabel("in cash: never.") === null);
 ok("a sentence with a full stop before the colon is not a label", splitLabel("Pay by bank. Exceptions: none.") === null);
+
+// Seats, read from the handbook's own definitions (real P5 §0.3 / P11 wording).
+const DEFS = roleDefs('"Executive Director" (ED), "Finance Officer" (FO) and "Procurement and Logistics Officer" (PLO) mean the seats defined in P5 §0.3. "Digital Officer" (DO) is the seat in the systems policy.');
+ok("the four defined seats are read", JSON.stringify(DEFS) === JSON.stringify({ ED: "Executive Director", FO: "Finance Officer", PLO: "Procurement and Logistics Officer", DO: "Digital Officer" }), JSON.stringify(DEFS));
+const rp = (s: string) => markPieces(s, "", DEFS).filter(p => p.mark === "role").map(p => p.text);
+ok("ED and FO become chips in the real P1 §2.2 line", same(rp("Declare the interest before the decision, in writing, to the ED; where it concerns the ED, to the FO, and the record is kept on the file."), ["ED", "ED", "FO"]));
+ok("letters inside a word are not a seat (EDITOR, FOund, DOne)", rp("EDITOR FOund DOne").length === 0);
+ok("a search hit wins over a chip", markPieces("the ED signs", "ed", DEFS).some(p => p.mark === "find" && p.text === "ED") && rp("the ED signs").length === 1);
+ok("no definitions, no chips", markPieces("the ED signs").every(p => p.mark !== "role"));
+ok("Who: full title or abbreviation both count", same(rolesIn("The Finance Officer checks; the ED approves.", DEFS), ["ED", "FO"]));
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nall policy reading rules hold");

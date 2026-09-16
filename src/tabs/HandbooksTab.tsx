@@ -13,7 +13,7 @@ import {
   historyChaptersOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, type Topic } from "../policyReading";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, type Topic } from "../policyReading";
 
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
@@ -173,8 +173,23 @@ const TOPIC_ICON: Record<Topic, LucideIcon> = {
 };
 
 /** Amounts and deadlines picked out inside the sentence, and the reader's search on top. */
-const marked = (text: string, find: string, facts = true) =>
-  markPieces(text, find).map((p, k) =>
+type Roles = Record<string, string>;
+
+/** A defined seat (ED, FO …) as a chip; a tap spells out the title in place — no popover to
+ *  position, and it reads the same either way round. The hit area reaches past the chip. */
+function RoleChip({ abbr, full }: { abbr: string; full: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} title={full}
+      className="relative mx-px inline rounded bg-slate-200/80 px-1 font-semibold text-slate-900 before:absolute before:-inset-x-1 before:-inset-y-2.5 before:content-[''] hover:bg-slate-300/80">
+      {abbr}{open && <span className="font-normal"> · {full}</span>}
+    </button>
+  );
+}
+
+const marked = (text: string, find: string, facts = true, roles: Roles = {}) =>
+  markPieces(text, find, roles).map((p, k) =>
+    p.mark === "role" ? <span key={k}><RoleChip abbr={p.text} full={roles[p.text]} /></span> :
     p.mark === "find" ? <mark key={k} className="rounded bg-yellow-300 px-0.5 text-slate-900 ring-1 ring-yellow-500">{p.text}</mark>
     : p.mark && facts ? <mark key={k} className="rounded bg-amber-100 px-1 font-semibold text-slate-900">{p.text}</mark>
     : p.text);
@@ -182,10 +197,10 @@ const marked = (text: string, find: string, facts = true) =>
 type ListItem = { text: string; subs: string[] };
 
 /** A "Label: detail" line with its label in bold; anything else just marked. */
-const leadIn = (text: string, find: string, facts = true) => {
+const leadIn = (text: string, find: string, facts = true, roles: Roles = {}) => {
   const sp = splitLabel(text);
-  if (!sp) return marked(text, find, facts);
-  return <><strong className="font-bold text-slate-900">{marked(sp.label, find, facts)}:</strong> {marked(sp.detail, find, facts)}</>;
+  if (!sp) return marked(text, find, facts, roles);
+  return <><strong className="font-bold text-slate-900">{marked(sp.label, find, facts)}:</strong> {marked(sp.detail, find, facts, roles)}</>;
 };
 
 /** Renders the classified blocks: consecutive bullet/numbered lines become one real
@@ -195,10 +210,10 @@ const leadIn = (text: string, find: string, facts = true) => {
 /** Subsections (2.1, 2.2 …) become cards: the heading row carries the subsection's own icon,
  *  and everything up to the next subsection sits inside. Text before the first subsection
  *  stays plain above them. */
-function renderBody(blocks: BodyBlock[], accent: Accent, find: string) {
+function renderBody(blocks: BodyBlock[], accent: Accent, find: string, roles: Roles) {
   const firstSub = blocks.findIndex(b => b.kind === "h3");
-  if (firstSub === -1) return renderFlat(blocks, accent, find);
-  const nodes: ReactNode[] = [...renderFlat(blocks.slice(0, firstSub), accent, find)];
+  if (firstSub === -1) return renderFlat(blocks, accent, find, roles);
+  const nodes: ReactNode[] = [...renderFlat(blocks.slice(0, firstSub), accent, find, roles)];
   for (let i = firstSub; i < blocks.length;) {
     const h = blocks[i] as { id: string; num: string; title: string };
     let end = i + 1;
@@ -212,7 +227,7 @@ function renderBody(blocks: BodyBlock[], accent: Accent, find: string) {
           {intro ? <span>{marked(h.title, find)}</span>
             : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{h.num}</span>{marked(h.title, find)}</span>}
         </h3>
-        {end > i + 1 && <div className="mt-2">{renderFlat(blocks.slice(i + 1, end), accent, find)}</div>}
+        {end > i + 1 && <div className="mt-2">{renderFlat(blocks.slice(i + 1, end), accent, find, roles)}</div>}
       </div>
     );
     i = end;
@@ -220,7 +235,7 @@ function renderBody(blocks: BodyBlock[], accent: Accent, find: string) {
   return nodes;
 }
 
-function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
+function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, roles: Roles) {
   const nodes: ReactNode[] = [];
   let i = 0;
   const readList = () => {
@@ -254,10 +269,10 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
                   </span>
                 )}
                 {/* With the deadline already in its chip, the sentence is not marked a second time. */}
-                <p className={isWarningLine(it.text) ? "font-semibold text-amber-900" : undefined}>{leadIn(it.text, find, !due)}</p>
+                <p className={isWarningLine(it.text) ? "font-semibold text-amber-900" : undefined}>{leadIn(it.text, find, !due, roles)}</p>
                 {it.subs.length > 0 && (
                   <ul className="mt-1 list-[circle] space-y-1 ps-5">
-                    {it.subs.map((sub, k) => <li key={k}>{marked(sub, find)}</li>)}
+                    {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, roles)}</li>)}
                   </ul>
                 )}
               </div>
@@ -275,10 +290,10 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
           return (
             <li key={j} className={`rounded-lg border bg-white p-3 ${warn ? "border-amber-300" : "border-slate-200"}`}>
               <p className={`text-[12px] font-bold ${warn ? "text-amber-900" : "text-slate-900"}`}>{marked(labels[j]!.label, find)}</p>
-              <p className="mt-0.5 text-slate-700">{marked(labels[j]!.detail, find)}</p>
+              <p className="mt-0.5 text-slate-700">{marked(labels[j]!.detail, find, true, roles)}</p>
               {it.subs.length > 0 && (
                 <ul className="mt-1 list-[circle] space-y-1 ps-5 text-slate-700">
-                  {it.subs.map((sub, k) => <li key={k}>{marked(sub, find)}</li>)}
+                  {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, roles)}</li>)}
                 </ul>
               )}
             </li>
@@ -291,10 +306,10 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
       <Tag key={key} dir="auto" className={`list-disc space-y-1.5 ps-5 text-[13px] leading-relaxed ${className}`}>
         {items.map((it, j) => (
           <li key={j} className={isWarningLine(it.text) ? "font-semibold text-amber-900 marker:text-amber-600" : undefined}>
-            {leadIn(it.text, find)}
+            {leadIn(it.text, find, true, roles)}
             {it.subs.length > 0 && (
               <ul className="mt-1 list-[circle] space-y-1 ps-5 font-normal text-slate-800">
-                {it.subs.map((sub, k) => <li key={k}>{marked(sub, find)}</li>)}
+                {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, roles)}</li>)}
               </ul>
             )}
           </li>
@@ -318,7 +333,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
               {items.map((it, j) => (
                 <li key={j} className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-[13px] leading-relaxed text-slate-800">
                   {ic(TOPIC_ICON[topicOf(it.text)], `mt-0.5 h-5 w-5 ${accent.text}`)}
-                  <span>{leadIn(it.text, find)}</span>
+                  <span>{leadIn(it.text, find, true, roles)}</span>
                 </li>
               ))}
             </ul>
@@ -354,13 +369,13 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
         <div key={i} dir="auto" className="mt-3 first:mt-0">
           {(!ex || ex.before) && (
             <p className={`text-[13px] leading-relaxed ${warn ? "border-s-2 border-amber-500 ps-3 font-semibold text-amber-900" : "text-slate-800"}`}>
-              {marked(ex ? ex.before : b.text, find)}
+              {marked(ex ? ex.before : b.text, find, true, roles)}
             </p>
           )}
           {ex && (
             <p className={`flex gap-2 rounded-lg border-s-4 border-slate-300 bg-slate-100/80 px-3 py-2 text-[13px] leading-relaxed text-slate-700 ${ex.before ? "mt-2" : ""}`}>
               {ic(Lightbulb, "mt-0.5 h-4 w-4 text-slate-500")}
-              <span>{marked(ex.example, find)}</span>
+              <span>{marked(ex.example, find, true, roles)}</span>
             </p>
           )}
         </div>
@@ -520,6 +535,8 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   const selectedIsMissing = selected ? missingChapterText(selected.chapters, selectedAnchors).some(c => c.no === selected.no) : false;
   const selectedBody = selected && !selectedIsMissing ? chapterSlice(selectedText, selected.no, selectedAnchors) : "";
   const { lead, sections, toc } = useMemo(() => parseBody(selectedBody), [selectedBody]);
+  // The seats this handbook defines for itself ('"Executive Director" (ED)'), for chips and "Who".
+  const roles = useMemo(() => roleDefs(selectedText), [selectedText]);
   // Each section's searchable text (title, subheadings, every line), built once per policy.
   const hay = useMemo(() => {
     const text = (bs: BodyBlock[]) => bs.map(b => ("title" in b ? b.title : b.text)).join("\n");
@@ -678,12 +695,12 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                 className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 text-start">
                 <span className="min-w-0 flex-1">
                   <span className="block text-[11px] font-semibold text-slate-500">{progressLabel}</span>
-                  <span className="block truncate text-[13px] font-bold text-slate-800">{cur ? cur.title : selected.title}</span>
+                  <span dir="auto" className="block truncate text-[13px] font-bold text-slate-800 [text-align:match-parent]">{cur ? cur.title : selected.title}</span>
                 </span>
                 <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${sectionsOpen ? "rotate-180" : ""}`} />
               </button>
             ) : (
-              <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800">{selected.title}</span>
+              <span dir="auto" className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800 [text-align:match-parent]">{selected.title}</span>
             )}
             <button onClick={() => { setFindOpen(o => !o); setSectionsOpen(false); }} aria-expanded={findOpen}
               aria-label={t("Search this policy…")} title={t("Search this policy…")}
@@ -749,7 +766,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
               // the text's first letter, not dir="auto" — that skips children carrying their
               // own dir and resolved on the Arabic "Expand all" label instead (measured).
               <div dir={/^[^A-Za-z]*[؀-ۿ]/.test(selectedBody) ? "rtl" : "ltr"} className="mx-auto max-w-[70ch]">
-                {leadHit && renderBody(lead, accent, find)}
+                {leadHit && renderBody(lead, accent, find, roles)}
                 {sections.length > 0 && !finding && (
                   <div className="mt-4 flex justify-end gap-1 border-b border-slate-100 pb-1">
                     <button onClick={() => setAll(true)} className="min-h-11 rounded-lg px-3 text-[12px] font-semibold text-slate-600 hover:bg-slate-100">{t("Expand all")}</button>
@@ -771,7 +788,20 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                           <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
                         </button>
                       </h2>
-                      {open && <div id={`${s.id}-body`} className="pb-5">{renderBody(s.blocks, accent, find)}</div>}
+                      {open && (() => {
+                        const who = rolesIn(hay.sections[s.id], roles);
+                        return (
+                          <div id={`${s.id}-body`} className="pb-5">
+                            {who.length > 0 && (
+                              <p className="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-slate-500">
+                                {ic(Users, "h-3.5 w-3.5")} {t("Who")}:
+                                {who.map(a => <span key={a}><RoleChip abbr={a} full={roles[a]} /></span>)}
+                              </p>
+                            )}
+                            {renderBody(s.blocks, accent, find, roles)}
+                          </div>
+                        );
+                      })()}
                     </section>
                   );
                 })}
