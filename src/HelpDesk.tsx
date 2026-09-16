@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
-import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, Volume2, VolumeX, AudioLines } from "lucide-react";
+import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, MoreHorizontal } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
 import AnnaGuide, { type Guide } from "./AnnaGuide";
 import { voiceSupported, record, clipBase64, speak, hush, type Recording } from "./annaVoice";
@@ -105,10 +105,7 @@ let openChatId = "";
 const focusBox = (el: HTMLTextAreaElement | null) => { if (!window.matchMedia?.("(pointer: coarse)").matches) el?.focus(); };
 /** Voice choices last only as long as the page, like the open chat: no browser storage. */
 let voiceLangPick: "en" | "ar" | "" = "";
-let readAloud = false;
 let listenHandled = 0;
-/** Talk mode: once Saad starts with the mic, answers are spoken and she listens again, like a call. */
-let talkPick: boolean | null = null;
 /** Saying one of these ends a talk (Anna still answers it). */
 const BYE = /\b(bye|goodbye|good night|that'?s all|thanks?,? anna|thank you,? anna)\b|باي|مع السلامة|شكرا(ً)?,? (يا )?(anna|آنا)/i;
 /** The line Anna opens with. Local and free: no API call. */
@@ -128,7 +125,7 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
   t: (s: string) => string;
   userName: string;
   spend: AnnaSpend | null;
-  /** "Ask about this policy": the chapter, put in the box for the user to finish. */
+  /** "Ask about this policy": the chapter, shown as a chip above the box and sent with the question. */
   prefill: { text: string; nonce: number } | null;
   /** The panel is showing. The chat stays mounted while it is closed, so an answer on its way still lands. */
   open: boolean;
@@ -154,13 +151,13 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
   const [voice, setVoice] = useState<VoiceState>("idle");
   const [level, setLevel] = useState(0);
   const [vLang, setVLang] = useState<"en" | "ar">(voiceLangPick || (lang === "ar" ? "ar" : "en"));
-  const [aloud, setAloud] = useState(readAloud);
+  const [menu, setMenu] = useState(false);
+  const [about, setAbout] = useState("");
   const recRef = useRef<Recording | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { openChatId = chatId; }, [chatId]);
   useEffect(() => { voiceLangPick = vLang; }, [vLang]);
-  useEffect(() => { readAloud = aloud; if (!aloud) hush(); }, [aloud]);
   const [speaking, setSpeaking] = useState(false);
   const [opening, setOpening] = useState(false);
   const [talk, setTalk] = useState(false);
@@ -171,7 +168,9 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
   const sendRef = useRef<(s: string) => void>(() => {});
   const turnId = useRef(0);   // bumped whenever a pending "listen after speaking" must not fire
   useEffect(() => { talkRef.current = talk; }, [talk]);
-  useEffect(() => { if (prefill) { setList(null); setQ(prev => prev || prefill.text); } }, [prefill?.nonce]);
+  useEffect(() => { if (prefill) { setList(null); setAbout(prefill.text.replace(/(\s*[—–-]\s*)+$/, "")); } }, [prefill?.nonce]);
+  const misses = useRef(0);   // not understood twice in a row ends a talk
+  const endedByHand = useRef(false);   // he ended the talk: an answer still on its way is shown, not spoken
   const stopTalk = () => { setTalk(false); talkRef.current = false; turnId.current++; };
   /** Speak, then (in talk mode) listen again. Without device voices she just listens. */
   const sayThenListen = (text: string, listen: boolean) => {
@@ -183,14 +182,14 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
   const greet = (listen: boolean) => {
     const line = greeting(lang, userName);
     setMsgs(prev => (prev.length ? prev : [{ role: "assistant", content: line, local: true }]));
-    if (listen || readAloud) sayThenListen(line, listen);
+    if (listen) sayThenListen(line, true);
   };
   // A bump from the floating mic is acted on once, even if this chat is later remounted.
   useEffect(() => {
     if (!listenSignal || listenSignal === listenHandled) return;
     listenHandled = listenSignal;
-    if (talkPick !== false) { setTalk(true); talkRef.current = true; }
-    if (!msgs.length && talkRef.current) greet(true); else void mic();
+    setTalk(true); talkRef.current = true; endedByHand.current = false;
+    if (!msgs.length) greet(true); else void mic();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listenSignal]);
   // Closing the panel ends a recording (nothing is sent), any speech and the talk; opening greets.
@@ -204,11 +203,13 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
   const mood: AnnaMood = voice === "listening" ? "listening" : busy || voice === "sending" ? "thinking" : opening ? "opening" : speaking ? "speaking" : "idle";
   useEffect(() => { onMood(mood, level); }, [mood, level, onMood]);
 
-  /** Tap: start. Tap again: stop and send. The clip also ends itself when Saad goes quiet. */
+  /** One control for voice. Tap: start talking (answers are spoken, she listens again). While
+   *  listening, tap sends. While she is thinking or speaking in a talk, tap ends the talk. */
   const mic = async (byHand = false) => {
     if (voice === "listening") { recRef.current?.stop(); return; }
+    if (byHand && talkRef.current) { endedByHand.current = true; stopTalk(); hush(); setVoice({ note: t("Talk ended.") }); return; }
     if (busy || voice === "sending") return;
-    if (byHand && talkPick !== false) { setTalk(true); talkRef.current = true; }
+    if (byHand) { setTalk(true); talkRef.current = true; misses.current = 0; endedByHand.current = false; }
     turnId.current++;
     if (!voiceReady) { setVoice({ note: t("Voice is not set up yet.") }); return; }
     if (!voiceSupported()) { setVoice({ note: t("Voice needs the secure address of the app (https) on a recent browser.") }); return; }
@@ -226,7 +227,15 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
           const d = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(d.error || t("I couldn't hear that. Try again."));
           const words = String(d.transcript || "").trim();
-          if (!words) { stopTalk(); setVoice({ note: t("I didn't catch that. Try again.") }); return; }
+          if (d.lang === "ar" || d.lang === "en") setVLang(d.lang);   // the next clip starts in the language just heard
+          if (!words) {
+            // Not understood: said here, for free — nothing goes to Anna. Twice in a row ends a talk.
+            const miss = t("Didn't catch that — try again.");
+            setVoice({ note: miss });
+            if (talkRef.current && ++misses.current < 2) sayThenListen(miss, true); else stopTalk();
+            return;
+          }
+          misses.current = 0;
           setVoice("idle");
           sendRef.current(words);
           if (BYE.test(words)) stopTalk();   // she answers the goodbye, then stops listening
@@ -296,11 +305,13 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
   };
 
   const send = async (spoken?: string) => {
-    const text = (spoken ?? q).trim();
-    if (!text || busy) return;
+    const typed = (spoken ?? q).trim();
+    if (!typed || busy) return;
+    const text = about ? `${about}: ${typed}` : typed;
     const inTalk = talkRef.current;   // read before a goodbye ends the talk: the goodbye is still answered aloud
     const history = [...msgs.filter(m => !m.error && !m.local), { role: "user" as const, content: text }];
     if (spoken === undefined) setQ("");
+    setAbout("");
     setMsgs(prev => [...prev, { role: "user", content: text }]);
     setBusy(true);
     try {
@@ -312,7 +323,7 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
       if (!r.ok) throw new Error(d.error || t("Anna could not answer just now."));
       const actions: AnnaAction[] = Array.isArray(d.actions) ? d.actions : [];
       if (d.chatId) setChatId(d.chatId);
-      if (d.answer && (inTalk || readAloud)) sayThenListen(String(d.answer), talkRef.current);
+      if (d.answer && inTalk && !endedByHand.current) sayThenListen(String(d.answer), talkRef.current);
       setMsgs(prev => [...prev, { role: "assistant", content: String(d.answer || ""), actions, usd: d.usage?.usd }]);
       const navs = actions.filter(a => a.type === "open_door" || a.type === "open_record") as NavAction[];
       navs.forEach(run);
@@ -440,49 +451,55 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
         <div ref={endRef} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-200 px-2 pt-1.5 text-[11px] text-slate-500">
-        <div role="radiogroup" aria-label={t("Speaking language")} className="flex overflow-hidden rounded-md border border-slate-300">
-          {(["en", "ar"] as const).map(l => (
-            <button key={l} role="radio" aria-checked={vLang === l} onClick={() => setVLang(l)} disabled={voice === "listening"}
-              className={`min-h-[28px] px-2 font-bold ${vLang === l ? "bg-[#6D1A1A] text-white" : "text-slate-600 hover:bg-slate-100"}`}>
-              {l === "en" ? "EN" : "عربي"}
+      {(() => {
+        const note = voice === "listening" ? t("Listening… tap to send") : voice === "sending" ? t("Writing it down…")
+          : typeof voice === "object" ? voice.note : talk && (busy || speaking) ? t("Tap the mic to end the talk") : "";
+        return note ? <p role="status" className="border-t border-slate-200 px-3 pt-1.5 text-center text-[11px] leading-snug text-slate-600">{note}</p> : <p role="status" className="sr-only" />;
+      })()}
+      {about && (
+        <div className="flex px-2 pt-1.5">
+          <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-[#F88888]/15 ps-2.5 text-[11px] font-bold text-[#6D1A1A]">
+            <span className="truncate">{t("About")}: {about}</span>
+            <button onClick={() => setAbout("")} aria-label={t("Remove")} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full hover:bg-[#6D1A1A]/10">
+              <X className="h-3 w-3" />
             </button>
-          ))}
+          </span>
         </div>
-        <button onClick={() => setAloud(a => !a)} aria-pressed={aloud}
-          className={`inline-flex min-h-[28px] items-center gap-1 rounded-md px-1.5 font-bold ${aloud ? "text-[#6D1A1A]" : "text-slate-500"} hover:bg-slate-100`}>
-          {aloud ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />} {t("Read answers aloud")}
-        </button>
-        <button onClick={() => { if (talk) { talkPick = false; stopTalk(); recRef.current?.cancel(); hush(); } else { talkPick = true; setTalk(true); talkRef.current = true; } }}
-          aria-pressed={talk}
-          className={`inline-flex min-h-[28px] items-center gap-1 rounded-md px-1.5 font-bold ${talk ? "bg-[#6D1A1A] text-white" : "text-slate-500 hover:bg-slate-100"}`}>
-          <AudioLines className="h-3.5 w-3.5" /> {t("Talk mode")}
-        </button>
-        <span role="status" className="min-w-0 flex-1 truncate text-end">
-          {voice === "listening" ? t("Listening… tap to stop") : voice === "sending" ? t("Writing down what you said…") : typeof voice === "object" ? voice.note : ""}
-        </span>
-      </div>
-      {spend && (
-        <p dir="ltr" data-anna-spend className={`px-2 pt-1 text-[10px] ${spend.modelsUSD >= 0.8 * spend.limitUSD ? "font-bold text-amber-700" : "text-slate-400"}`}>
-          {spend.month} so far: ${spend.modelsUSD.toFixed(2)} of ${spend.limitUSD} · voice ${spend.voiceUSD.toFixed(2)}
-        </p>
       )}
-      <div className="flex items-end gap-2 p-2">
-        <button
-          onClick={showList} disabled={busy}
-          title={t("Past chats")} aria-label={t("Past chats")}
-          className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
-        >
-          <History className="h-4 w-4" />
+      <div className="relative flex items-end gap-2 border-t border-slate-200 p-2">
+        <button onClick={() => setMenu(m => !m)} aria-label={t("More")} aria-expanded={menu} title={t("More")}
+          className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100">
+          <MoreHorizontal className="h-5 w-5" />
         </button>
-        <button
-          onClick={newChat}
-          disabled={busy || !msgs.length}
-          title={t("New conversation")} aria-label={t("New conversation")}
-          className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
-        >
-          <RotateCcw className="h-4 w-4" />
-        </button>
+        {menu && (<>
+          <button aria-hidden tabIndex={-1} onClick={() => setMenu(false)} className="fixed inset-0 cursor-default" />
+          <div role="menu" data-anna-menu className="absolute bottom-full start-2 mb-1 w-64 space-y-1 rounded-xl border border-[#E6D3CA] bg-white p-1.5 text-[12px] shadow-xl">
+            <button role="menuitem" onClick={() => { setMenu(false); void showList(); }} disabled={busy}
+              className="flex min-h-[40px] w-full items-center gap-2 rounded-lg px-2 text-start text-slate-800 hover:bg-slate-100 disabled:opacity-40">
+              <History className="h-4 w-4 text-slate-500" /> {t("Past chats")}
+            </button>
+            <button role="menuitem" onClick={() => { setMenu(false); newChat(); }} disabled={busy || !msgs.some(m => !m.local)}
+              className="flex min-h-[40px] w-full items-center gap-2 rounded-lg px-2 text-start text-slate-800 hover:bg-slate-100 disabled:opacity-40">
+              <RotateCcw className="h-4 w-4 text-slate-500" /> {t("New conversation")}
+            </button>
+            <div className="flex min-h-[40px] items-center justify-between gap-2 px-2">
+              <span className="text-slate-600">{t("Voice language")}</span>
+              <div role="radiogroup" aria-label={t("Voice language")} className="flex overflow-hidden rounded-md border border-slate-300">
+                {(["en", "ar"] as const).map(l => (
+                  <button key={l} role="radio" aria-checked={vLang === l} onClick={() => setVLang(l)} disabled={voice === "listening"}
+                    className={`min-h-[30px] px-2.5 font-bold ${vLang === l ? "bg-[#6D1A1A] text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+                    {l === "en" ? "EN" : "عربي"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {spend && (
+              <p dir="ltr" data-anna-spend className={`border-t border-slate-100 px-2 pt-1.5 text-[11px] ${spend.modelsUSD >= 0.8 * spend.limitUSD ? "font-bold text-amber-700" : "text-slate-500"}`}>
+                {spend.month} so far: ${spend.modelsUSD.toFixed(2)} of ${spend.limitUSD} · voice ${spend.voiceUSD.toFixed(2)}
+              </p>
+            )}
+          </div>
+        </>)}
         <textarea
           ref={inputRef}
           value={q}
@@ -494,25 +511,25 @@ function AnnaChat({ t, lang, userName, spend, prefill, open, voiceReady, listenS
         />
         <button
           onClick={() => mic(true)}
-          disabled={busy || voice === "sending"}
-          aria-label={voice === "listening" ? t("Stop and send") : t("Speak to Anna")}
-          aria-pressed={voice === "listening"}
-          className={`relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border transition-colors disabled:opacity-40 ${voice === "listening" ? "border-[#6D1A1A] bg-[#6D1A1A]/10 text-[#6D1A1A]" : "border-slate-300 text-slate-600 hover:bg-slate-100"} ${voiceReady ? "" : "opacity-60"}`}
+          disabled={!talk && (busy || voice === "sending")}
+          aria-label={voice === "listening" ? t("Stop and send") : talk ? t("End the talk") : t("Speak to Anna")}
+          aria-pressed={talk}
+          className={`relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full text-white shadow-md transition-colors disabled:opacity-40 ${voice === "listening" ? "bg-[#4A1010]" : "bg-[#6D1A1A] hover:bg-[#4A1010]"} ${voiceReady ? "" : "opacity-60"}`}
         >
           {voice === "listening" ? (
             <span aria-hidden className="flex h-5 items-center gap-[3px]">
               {[0.6, 1, 0.8].map((k, i) => (
-                <span key={i} className="w-[3px] rounded-full bg-[#6D1A1A]" style={{ height: `${Math.max(3, Math.round(20 * Math.min(1, level * k * 1.6)))}px` }} />
+                <span key={i} className="w-[3px] rounded-full bg-white" style={{ height: `${Math.max(3, Math.round(20 * Math.min(1, level * k * 1.6)))}px` }} />
               ))}
               <Square className="ms-1 h-2.5 w-2.5 fill-current" />
             </span>
-          ) : <Mic className="h-4 w-4" />}
+          ) : talk ? <Square className="h-4 w-4 fill-current" /> : <Mic className="h-5 w-5" />}
         </button>
         <button
           onClick={() => send()}
           disabled={busy || !q.trim()}
           aria-label={t("Send")}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#6D1A1A] text-white transition-colors hover:bg-[#4A1010] disabled:opacity-40"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[#6D1A1A] text-[#6D1A1A] transition-colors hover:bg-[#6D1A1A]/5 disabled:border-slate-300 disabled:text-slate-400"
         >
           <CornerDownLeft className="h-4 w-4" />
         </button>

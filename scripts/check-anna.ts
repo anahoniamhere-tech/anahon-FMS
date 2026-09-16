@@ -211,16 +211,26 @@ ok("the listen route exists and checks the owner first", /^[^\n]*\n  const me = 
 ok("without the key it says so and does nothing", /if \(!annaVoiceReady\(\)\) return res\.status\(503\)/.test(listen)
   && /const annaVoiceReady = \(\) => !!process\.env\.DEEPGRAM_API_KEY;/.test(server)
   && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), spend \};/.test(server));
-ok("Deepgram Nova-3 with the training opt-out, and nothing else is called", /model=nova-3&language=\$\{DEEPGRAM_LANG\[lang\]\}&smart_format=true&mip_opt_out=true/.test(listen)
+ok("Deepgram Nova-3 with the training opt-out, and nothing else is called", /model=nova-3&language=\$\{DEEPGRAM_LANG\[l\]\}&smart_format=true&mip_opt_out=true/.test(listen)
   && (listen.match(/fetch\(/g) || []).length === 1 && !/gemini|anthropic|askJson/i.test(listen));
 ok("English is en (multi heard Spanish), Arabic is Lebanese (multi has no Arabic)", /const DEEPGRAM_LANG = \{ en: "en", ar: "ar-LB" \} as const;/.test(server)
-  && /const lang = req\.body\?\.lang === "ar" \? "ar" : "en";/.test(listen));
+  && /const lang: "en" \| "ar" = req\.body\?\.lang === "ar" \? "ar" : "en";/.test(listen));
+ok("the other language is tried once when the first is unsure, and the surer one wins (the 'Minnmio' fix)",
+  /const first = await hear\(lang\);\s*const best = first\.confidence >= VOICE_SURE \? first\s*: await hear\(lang === "ar" \? "en" : "ar"\)\.then\(second => \(second\.confidence > first\.confidence \? second : first\)\);/.test(listen)
+  && /const VOICE_SURE = 0\.6, VOICE_MIN = 0\.5;/.test(server));
+ok("words in the wrong script count as not heard", /const script = !words \|\| \(l === "ar" \? \/\[\\u0600-\\u06FF\]\/\.test\(words\) : !\/\[\\u0600-\\u06FF\]\/\.test\(words\)\);/.test(listen)
+  && /confidence: script \? Number\(alt\.confidence\) \|\| 0 : 0/.test(listen));
+ok("a clip not understood comes back empty and is never sent to Anna", /const heard = best\.confidence >= VOICE_MIN \? best\.words : "";/.test(listen)
+  && (() => { const i = chat.indexOf("if (!words) {"); const b = chat.slice(i, chat.indexOf("\n          }\n", i));
+    return i > 0 && /const miss = t\("Didn't catch that — try again\."\);/.test(b) && /return;$/.test(b.trim()) && !/send|fetch/i.test(b.replace(/sayThenListen/g, "")); })());
+ok("its audit line says which language won and how sure, never the words", /`\$\{lang\}\$\{tried === 2 \? `→\$\{best\.lang\}` : ""\} · \$\{first\.secs\.toFixed\(1\)\} s · conf \$\{best\.confidence\.toFixed\(2\)\}/.test(listen));
+ok("the next clip starts in the language just heard", /if \(d\.lang === "ar" \|\| d\.lang === "en"\) setVLang\(d\.lang\);/.test(chat));
 ok("the clip is a sound file under the cap, held in memory only", /if \(audio\.length > ANNA_CLIP_MAX\) return res\.status\(413\)/.test(listen)
   && /ANNA_CLIP_MAX = 1_000_000;/.test(server) && /\^audio\\\//.test(listen) && !WRITE.test(listen) && !/vault|writeFile|tmp/i.test(listen));
 const heard = [...listen.matchAll(/createAuditLog\(([^;]*)\);/g)].map(m => m[1]);
 ok("its audit lines hold the length and cost, never the words", heard.length === 2 && heard.every(a => !/words|transcript|\bd\b|body|err\.message/.test(a)), heard.join(" | "));
 ok("the error never quotes Deepgram", !/err\.message|err\?\.message|r\.text\(\)/.test(listen));
-ok("the words go back to the device, then travel as an ordinary turn", /res\.json\(\{ transcript: words \}\)/.test(listen) && /setVoice\("idle"\);\s*sendRef\.current\(words\);/.test(chat) && /sendRef\.current = s => void send\(s\);/.test(chat));
+ok("the words go back to the device, then travel as an ordinary turn", /res\.json\(\{ transcript: heard, lang: best\.lang \}\)/.test(listen) && /setVoice\("idle"\);\s*sendRef\.current\(words\);/.test(chat) && /sendRef\.current = s => void send\(s\);/.test(chat));
 ok("gated, and a read-only POST", /"\/api\/anna\/listen": ANY/.test(read("../src/gates.ts")) && /READ_ONLY_POSTS = new Set\(\[[^\]]*"\/api\/anna\/listen"/.test(server));
 const allSrc = ["../src/HelpDesk.tsx", "../src/annaVoice.ts", "../src/App.tsx"].map(read).join("\n");
 ok("never the browser's speech recognition (audio to Google)", !/SpeechRecognition/.test(allSrc));
@@ -229,7 +239,9 @@ ok("the mic is released when a clip ends", /rec\.onstop = \(\) => \{[\s\S]{0,80}
 ok("a clip with no speech is not sent", /if \(!heard && now - started > NOTHING_MS\) \{ cancelled = true; stop\(\); \}/.test(voiceSrc)
   && /onDone\(cancelled \|\| !chunks\.length \? null :/.test(voiceSrc) && /if \(!clip\) \{ stopTalk\(\); setVoice/.test(chat));
 ok("closing the panel cancels a recording", /useEffect\(\(\) => \(\) => \{ recRef\.current\?\.cancel\(\); hush\(\); \}, \[\]\);/.test(chat));
-ok("reading aloud is off until Saad turns it on, and uses the device's voices", /let readAloud = false;/.test(desk) && /new SpeechSynthesisUtterance\(/.test(voiceSrc));
+ok("answers are spoken only in a talk (started with the mic), with the device's voices", !/readAloud/.test(desk) && /new SpeechSynthesisUtterance\(/.test(voiceSrc)
+  && /if \(d\.answer && inTalk && !endedByHand\.current\) sayThenListen\(String\(d\.answer\), talkRef\.current\);/.test(chat)
+  && /if \(byHand && talkRef\.current\) \{ endedByHand\.current = true; stopTalk\(\);/.test(chat));
 
 console.log("\nC. floating Anna: drag, tap, mic; only her position is remembered");
 const launcher = desk.slice(desk.indexOf("  if (!open) {"), desk.indexOf("  // Open: the panel is"));
@@ -241,7 +253,7 @@ ok("only Anna's people get the floating Anna; the help bubble stays where it was
 ok("a drag never opens the panel", /onClick=\{\(\) => \{ if \(drag\.current\?\.moved\) return;/.test(launcher));
 ok("her mic opens the panel already listening, and only once per tap", /onClick=\{\(\) => openPanel\(true\)\}/.test(launcher)
   && /if \(listen\) setListenSignal\(n => n \+ 1\);/.test(desk)
-  && /if \(!listenSignal \|\| listenSignal === listenHandled\) return;\s*listenHandled = listenSignal;[\s\S]{0,120}if \(!msgs\.length && talkRef\.current\) greet\(true\); else void mic\(\);/.test(chat));
+  && /if \(!listenSignal \|\| listenSignal === listenHandled\) return;\s*listenHandled = listenSignal;[\s\S]{0,120}setTalk\(true\); talkRef\.current = true; endedByHand\.current = false;\s*if \(!msgs\.length\) greet\(true\); else void mic\(\);/.test(chat));
 ok("she is never left on the orange missing pill", /const at = clearOfPill\(orbAt\);/.test(launcher) && /if \(open \|\| !anna \|\| !orbAt \|\| drag\.current\) return;\s*const at = clearOfPill\(orbAt\);/.test(desk)
   && /document\.querySelector\('\[data-float="gaps"\]'\)/.test(desk));
 ok("the page does not scroll while she is dragged on a phone", /style=\{anna \? \{ touchAction: "none" \} : undefined\}/.test(launcher));
@@ -266,17 +278,31 @@ ok("a reply made of text alone is returned (a greeting is never empty)", /if \(t
 ok("she greets by name when opened, from the page, for free", /const greeting = \(lang: string, name: string\) => \{/.test(desk)
   && /`Hi\$\{first \? ` \$\{first\}` : ""\}, how can I help\?`/.test(desk) && /أهلاً/.test(desk)
   && /if \(!msgs\.length && listenSignal === listenHandled && !talkRef\.current\) greet\(false\);/.test(chat) && /userName=\{currentUser\?\.name \|\| ""\}/.test(read("../src/App.tsx")));
-ok("the greeting is shown only, and spoken only when voice is on", /setMsgs\(prev => \(prev\.length \? prev : \[\{ role: "assistant", content: line, local: true \}\]\)\);\s*if \(listen \|\| readAloud\) sayThenListen\(line, listen\);/.test(chat));
-ok("starting with the mic starts a talk, unless he switched talk off", /if \(byHand && talkPick !== false\) \{ setTalk\(true\); talkRef\.current = true; \}/.test(chat) && /onClick=\{\(\) => mic\(true\)\}/.test(chat)
-  && /let talkPick: boolean \| null = null;/.test(desk));
-ok("in a talk every answer is spoken and she listens again when she stops", /if \(d\.answer && \(inTalk \|\| readAloud\)\) sayThenListen\(String\(d\.answer\), talkRef\.current\);/.test(chat)
+ok("the greeting is shown only, and spoken only when voice is on", /setMsgs\(prev => \(prev\.length \? prev : \[\{ role: "assistant", content: line, local: true \}\]\)\);\s*if \(listen\) sayThenListen\(line, true\);/.test(chat));
+ok("one voice control: the mic starts a talk, sends while listening, and ends the talk", /if \(voice === "listening"\) \{ recRef\.current\?\.stop\(\); return; \}\s*if \(byHand && talkRef\.current\) \{ endedByHand\.current = true; stopTalk\(\); hush\(\);/.test(chat)
+  && /if \(byHand\) \{ setTalk\(true\); talkRef\.current = true; misses\.current = 0; endedByHand\.current = false; \}/.test(chat) && /onClick=\{\(\) => mic\(true\)\}/.test(chat)
+  && !/talkPick|Talk mode"\)\}/.test(desk));
+ok("in a talk every answer is spoken and she listens again when she stops", /if \(d\.answer && inTalk && !endedByHand\.current\) sayThenListen\(String\(d\.answer\), talkRef\.current\);/.test(chat)
   && /const next = \(\) => \{ if \(listen && id === turnId\.current && talkRef\.current\) micRef\.current\(\); \};/.test(chat));
 ok("a stale 'listen again' never fires after a tap, a close or a new chat", /turnId\.current\+\+;/.test(chat.slice(chat.indexOf("const mic = async"))) && /const stopTalk = \(\) => \{ setTalk\(false\); talkRef\.current = false; turnId\.current\+\+; \};/.test(chat)
   && /const newChat = \(\) => \{ stopTalk\(\); hush\(\);/.test(chat));
-ok("a talk ends on goodbye, on silence, on a failure and on the toggle", /if \(BYE\.test\(words\)\) stopTalk\(\);/.test(chat) && /if \(!words\) \{ stopTalk\(\);/.test(chat)
-  && /\} catch \(e: any\) \{ stopTalk\(\); setVoice/.test(chat) && /if \(talk\) \{ talkPick = false; stopTalk\(\);/.test(chat) && NOTHING_OK);
+ok("a talk ends on goodbye, on silence, on two misses, on a failure and on the mic", /if \(BYE\.test\(words\)\) stopTalk\(\);/.test(chat) && /if \(!clip\) \{ stopTalk\(\);/.test(chat)
+  && /if \(talkRef\.current && \+\+misses\.current < 2\) sayThenListen\(miss, true\); else stopTalk\(\);/.test(chat)
+  && /\} catch \(e: any\) \{ stopTalk\(\); setVoice/.test(chat) && NOTHING_OK);
 ok("goodbye is heard in both languages", ["bye", "Thanks Anna", "thank you, Anna", "باي", "مع السلامة", "شكرا آنا"].every(w => BYE_RE.test(w)) && !["thanks for the list", "by the way"].some(w => BYE_RE.test(w)));
 ok("Arabic policy questions read the Arabic handbooks", /const policies = await policyCorpus\(isArabicText\(String\(c\.input\?\.question \|\| ""\)\) \? "ar" : "en"\);/.test(route));
+
+console.log("\nU. the panel is simple (Saad, 16 Sep): chat, box, mic, send; the rest behind ⋯");
+const footer = chat.slice(chat.indexOf('role="status"'));
+const mainRow = footer.slice(0, footer.indexOf("{menu && (")) + footer.slice(footer.indexOf("</>)}", footer.indexOf("{menu && (")));
+ok("the main row is ⋯, the box, the mic and send (plus the chip's ✕) — nothing else",
+  (mainRow.match(/<button\b/g) || []).length === 4 && (mainRow.match(/<textarea\b/g) || []).length === 1 && /aria-label=\{t\("Remove"\)\}/.test(mainRow), String((mainRow.match(/<button\b/g) || []).length));
+ok("history, new chat, voice language and spend live in the menu", /role="menu"[\s\S]*t\("Past chats"\)[\s\S]*t\("New conversation"\)[\s\S]*t\("Voice language"\)[\s\S]*data-anna-spend[\s\S]*<\/>\)\}/.test(footer)
+  && (chat.match(/data-anna-spend/g) || []).length === 1);
+ok("no truncated status: it wraps, on its own line", /role="status" className="border-t border-slate-200 px-3 pt-1\.5 text-center text-\[11px\] leading-snug text-slate-600"/.test(chat) && !/role="status"[^>]*truncate/.test(chat));
+ok("'Ask about this policy' is a chip, not text in the box", /setAbout\(prefill\.text\.replace\(/.test(chat) && !/setQ\(prev => prev \|\| prefill/.test(chat)
+  && /\{t\("About"\)\}: \{about\}/.test(chat) && /const text = about \? `\$\{about\}: \$\{typed\}` : typed;/.test(chat));
+ok("the mic is the big round button", /relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full/.test(chat));
 
 console.log("\nE. guided walkthroughs: Anna points, Saad presses");
 const { readdirSync } = await import("node:fs");

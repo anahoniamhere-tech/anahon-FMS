@@ -1748,7 +1748,9 @@ async function monthSpend() {
  * Nova-3's `multi` does not cover Arabic, so the mic carries a language switch; and EN is plain `en`,
  * because `multi` heard Saad's English as Spanish on the first day ("¿Marthave?"). */
 const DEEPGRAM_LANG = { en: "en", ar: "ar-LB" } as const;
-const ANNA_CLIP_MAX = 1_000_000;   // bytes; the panel stops at 30 s, well under this
+const ANNA_CLIP_MAX = 1_000_000;
+/** Deepgram confidence: at or above SURE the first language is kept; below MIN nothing was understood. */
+const VOICE_SURE = 0.6, VOICE_MIN = 0.5;   // bytes; the panel stops at 30 s, well under this
 const annaVoiceReady = () => !!process.env.DEEPGRAM_API_KEY;
 
 app.post("/api/anna/listen", async (req, res) => {
@@ -1763,20 +1765,34 @@ app.post("/api/anna/listen", async (req, res) => {
   const audio = Buffer.from(String(req.body?.audio?.base64 || ""), "base64");
   if (!audio.length) return res.status(400).json({ error: "The clip was empty." });
   if (audio.length > ANNA_CLIP_MAX) return res.status(413).json({ error: "That clip is too long. Keep it under 30 seconds." });
-  const lang = req.body?.lang === "ar" ? "ar" : "en";
+  const lang: "en" | "ar" = req.body?.lang === "ar" ? "ar" : "en";
   try {
-    const url = `https://api.deepgram.com/v1/listen?model=nova-3&language=${DEEPGRAM_LANG[lang]}&smart_format=true&mip_opt_out=true`;
-    const r = await fetch(url, {
-      method: "POST", body: audio, signal: AbortSignal.timeout(15_000),
-      headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, "Content-Type": mimeType.split(";")[0] },
-    });
-    if (!r.ok) throw Object.assign(new Error("deepgram"), { status: r.status });
-    const d: any = await r.json();
-    const words = String(d?.results?.channels?.[0]?.alternatives?.[0]?.transcript || "").trim();
-    const secs = Number(d?.metadata?.duration) || 0;
-    // Nova-3 pre-recorded: $0.0052 a minute, billed by the second.
-    await createAuditLog(me.id, me.name, "Anna Heard", `${lang} · ${secs.toFixed(1)} s · ≈ $${(secs * 0.0052 / 60).toFixed(4)}`);
-    res.json({ transcript: words });
+    const hear = async (l: "en" | "ar") => {
+      const url = `https://api.deepgram.com/v1/listen?model=nova-3&language=${DEEPGRAM_LANG[l]}&smart_format=true&mip_opt_out=true`;
+      const r = await fetch(url, {
+        method: "POST", body: audio, signal: AbortSignal.timeout(15_000),
+        headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, "Content-Type": mimeType.split(";")[0] },
+      });
+      if (!r.ok) throw Object.assign(new Error("deepgram"), { status: r.status });
+      const d: any = await r.json();
+      const alt = d?.results?.channels?.[0]?.alternatives?.[0] || {};
+      const words = String(alt.transcript || "").trim();
+      // Words in the wrong script for the language asked are a mishearing, whatever the score.
+      const script = !words || (l === "ar" ? /[\u0600-\u06FF]/.test(words) : !/[\u0600-\u06FF]/.test(words));
+      return { lang: l, words, confidence: script ? Number(alt.confidence) || 0 : 0, secs: Number(d?.metadata?.duration) || 0 };
+    };
+    // The language asked for first; if it heard nothing sure, the other one once, and the surer of the two
+    // wins. Measured 16 Sep: the wrong model returns "" at 0 (and once "Minnmio." for Arabic on en).
+    const first = await hear(lang);
+    const best = first.confidence >= VOICE_SURE ? first
+      : await hear(lang === "ar" ? "en" : "ar").then(second => (second.confidence > first.confidence ? second : first));
+    const tried = best === first && first.confidence >= VOICE_SURE ? 1 : 2;
+    const secs = first.secs * tried;
+    const heard = best.confidence >= VOICE_MIN ? best.words : "";
+    // Nova-3 pre-recorded: $0.0052 a minute, billed by the second — once per model asked.
+    await createAuditLog(me.id, me.name, "Anna Heard", `${lang}${tried === 2 ? `→${best.lang}` : ""} · ${first.secs.toFixed(1)} s · conf ${best.confidence.toFixed(2)}${heard ? "" : " · not understood"} · ≈ $${(secs * 0.0052 / 60).toFixed(4)}`);
+    // Nothing understood is not sent anywhere: the panel says so itself, for free.
+    res.json({ transcript: heard, lang: best.lang });
   } catch (err: any) {
     const status = Number(err?.status) || 0;
     await createAuditLog(me.id, me.name, "Anna Failed", `listen · ${status || "error"}`);
