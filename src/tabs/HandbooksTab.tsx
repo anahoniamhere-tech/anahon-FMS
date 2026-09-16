@@ -13,7 +13,7 @@ import {
   historyChaptersOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, type Topic } from "../policyReading";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, type Topic } from "../policyReading";
 
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
@@ -181,6 +181,13 @@ const marked = (text: string, find: string, facts = true) =>
 
 type ListItem = { text: string; subs: string[] };
 
+/** A "Label: detail" line with its label in bold; anything else just marked. */
+const leadIn = (text: string, find: string, facts = true) => {
+  const sp = splitLabel(text);
+  if (!sp) return marked(text, find, facts);
+  return <><strong className="font-bold text-slate-900">{marked(sp.label, find, facts)}:</strong> {marked(sp.detail, find, facts)}</>;
+};
+
 /** Renders the classified blocks: consecutive bullet/numbered lines become one real
  *  <ul>/<ol> (with any "◦" sub-points nested under their bullet), "At a glance" becomes a
  *  grid of cards with an icon each, any other label becomes a callout with its list, and a
@@ -247,7 +254,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
                   </span>
                 )}
                 {/* With the deadline already in its chip, the sentence is not marked a second time. */}
-                <p className={isWarningLine(it.text) ? "font-semibold text-amber-900" : undefined}>{marked(it.text, find, !due)}</p>
+                <p className={isWarningLine(it.text) ? "font-semibold text-amber-900" : undefined}>{leadIn(it.text, find, !due)}</p>
                 {it.subs.length > 0 && (
                   <ul className="mt-1 list-[circle] space-y-1 ps-5">
                     {it.subs.map((sub, k) => <li key={k}>{marked(sub, find)}</li>)}
@@ -259,12 +266,32 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
         })}
       </ol>
     );
+    // Every bullet a "Label: detail" (P5 §4.4, P7 §11 …): a grid of small tiles, label on top.
+    const labels = items.map(it => splitLabel(it.text));
+    if (items.length >= 2 && labels.every(Boolean)) return (
+      <ul key={key} dir="auto" className={`grid grid-cols-1 gap-2 text-[13px] leading-relaxed sm:grid-cols-2 ${className}`}>
+        {items.map((it, j) => {
+          const warn = isWarningLine(it.text);
+          return (
+            <li key={j} className={`rounded-lg border bg-white p-3 ${warn ? "border-amber-300" : "border-slate-200"}`}>
+              <p className={`text-[12px] font-bold ${warn ? "text-amber-900" : "text-slate-900"}`}>{marked(labels[j]!.label, find)}</p>
+              <p className="mt-0.5 text-slate-700">{marked(labels[j]!.detail, find)}</p>
+              {it.subs.length > 0 && (
+                <ul className="mt-1 list-[circle] space-y-1 ps-5 text-slate-700">
+                  {it.subs.map((sub, k) => <li key={k}>{marked(sub, find)}</li>)}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    );
     const Tag = "ul";
     return (
       <Tag key={key} dir="auto" className={`list-disc space-y-1.5 ps-5 text-[13px] leading-relaxed ${className}`}>
         {items.map((it, j) => (
           <li key={j} className={isWarningLine(it.text) ? "font-semibold text-amber-900 marker:text-amber-600" : undefined}>
-            {marked(it.text, find)}
+            {leadIn(it.text, find)}
             {it.subs.length > 0 && (
               <ul className="mt-1 list-[circle] space-y-1 ps-5 font-normal text-slate-800">
                 {it.subs.map((sub, k) => <li key={k}>{marked(sub, find)}</li>)}
@@ -291,7 +318,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
               {items.map((it, j) => (
                 <li key={j} className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-[13px] leading-relaxed text-slate-800">
                   {ic(TOPIC_ICON[topicOf(it.text)], `mt-0.5 h-5 w-5 ${accent.text}`)}
-                  <span>{marked(it.text, find)}</span>
+                  <span>{leadIn(it.text, find)}</span>
                 </li>
               ))}
             </ul>

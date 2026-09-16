@@ -7,7 +7,7 @@
 // "At a glance" lines where the rule order decides the answer. A new rule that shifts any of
 // these fails here before a reader sees a wrong icon.
 // Run: npx tsx scripts/check-policy-reading.ts
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn } from "../src/policyReading.js";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel } from "../src/policyReading.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -170,6 +170,13 @@ ok("P1 §7.2 step 1 carries its deadline", deadlineIn("Acknowledge within 5 work
 ok("P1 §7.2 step 3 carries its deadline", deadlineIn("Preliminary review within 15 working days: is there enough to look into?") === "within 15 working days");
 ok("an amount is not a deadline", deadlineIn("A cash payment above USD 150 needs approval.") === null);
 ok("a step with no time has no chip", deadlineIn("Decide and record the outcome in the register, with the reasons.") === null);
+
+// "Label: detail" bullets, from the real P5 §4.4 list.
+ok("P5 §4.4 \"Custodian and float:\" splits", splitLabel("Custodian and float: the Finance Officer holds the float, in a locked box.")?.label === "Custodian and float");
+ok("a list lead-in with nothing after is not a label", splitLabel("Never paid from the float:") === null);
+ok("a long clause before a colon is not a label", splitLabel("Where the person who raised the concern asked to stay anonymous: nobody asks.") === null);
+ok("a lower-case start is not a label", splitLabel("in cash: never.") === null);
+ok("a sentence with a full stop before the colon is not a label", splitLabel("Pay by bank. Exceptions: none.") === null);
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nall policy reading rules hold");

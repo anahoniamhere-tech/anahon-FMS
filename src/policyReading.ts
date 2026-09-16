@@ -110,3 +110,12 @@ export const splitExample = (text: string): { before: string; example: string } 
  *  month"), for a step's time chip. Amounts are not deadlines. */
 export const deadlineIn = (text: string): string | null =>
   markPieces(text).find(p => p.mark === "fact" && /^(within|by the)\b/i.test(p.text))?.text ?? null;
+
+/** "Custodian and float: the Finance Officer holds …" → label + detail. A capitalised lead of
+ *  at most six words before a colon, with text after it; "Never paid from the float:" (a list
+ *  lead-in, nothing after) is not one. 98 of the 644 real bullets have this shape. */
+export const splitLabel = (text: string): { label: string; detail: string } | null => {
+  const m = /^([A-Z][^:.;]{1,40}):\s+(\S.*)$/.exec(text.trim());
+  if (!m || m[1].trim().split(/\s+/).length > 6) return null;
+  return { label: m[1].trim(), detail: m[2] };
+};
