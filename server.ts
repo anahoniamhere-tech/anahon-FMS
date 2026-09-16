@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import zlib from "zlib";
 import os from "os";
 import crypto from "crypto";
 import { fileURLToPath } from "url";
@@ -12615,6 +12616,28 @@ if (process.env.NODE_ENV !== "production") {
   // replaced. Express then 404s past them to this catch-all, which serves index.html again —
   // 200, but as if it were the JS or CSS file — and the app never boots. Seen on Saad's iPhone,
   // 16 Sep, from the VPS access log: a 613-byte "index-*.js" is index.html in disguise.
+  // Scripts and stylesheets leave compressed. Every byte to a phone crosses the office's upload
+  // link first (NAS → VPS door), and the 2 MB village script was most of an iPhone's first
+  // open (16 Sep: 24 of 30 seconds). gzip takes it to about a quarter. Compressed once per
+  // file and kept: the filenames are content hashes, so a file never changes under its name.
+  // ponytail: in-memory, a few MB for the two bundles; add pre-built .gz files if dist grows.
+  const gzipped = new Map<string, Buffer>();
+  app.get(/\.(js|css)$/, (req, res, next) => {
+    if (!/\bgzip\b/.test(String(req.headers["accept-encoding"] || ""))) return next();
+    let file: string;
+    try { file = path.join(distPath, path.normalize(decodeURIComponent(req.path))); } catch { return next(); }
+    if (!file.startsWith(distPath + path.sep)) return next();
+    let body = gzipped.get(file);
+    if (!body) {
+      try { body = zlib.gzipSync(fs.readFileSync(file), { level: 9 }); } catch { return next(); }
+      gzipped.set(file, body);
+    }
+    res.setHeader("Content-Type", file.endsWith(".css") ? "text/css; charset=UTF-8" : "application/javascript; charset=UTF-8");
+    res.setHeader("Content-Encoding", "gzip");
+    res.setHeader("Vary", "Accept-Encoding");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.end(body);
+  });
   app.use(express.static(distPath, { setHeaders: (res, filePath) => {
     res.setHeader("Cache-Control", filePath.endsWith(".html") ? "no-store" : "public, max-age=31536000, immutable");
   } }));

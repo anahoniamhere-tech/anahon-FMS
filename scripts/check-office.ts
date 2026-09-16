@@ -52,5 +52,14 @@ const frame = css.slice(css.indexOf(".office-frame {"), css.indexOf("}", css.ind
 ok("OfficeTab uses the office-frame class", /className="office-frame /.test(tab));
 ok("its height is svh, after a vh fallback, and never dvh", /height: calc\(100vh - 9rem\);\s*height: calc\(100svh - 9rem\);/.test(frame) && !/dvh/.test(frame));
 
+// 16 Sep 2026: an iPhone's first open spent 24 of 30 seconds on the 2 MB village script, because
+// every byte crosses the office's upload link to the VPS door. Scripts and styles leave gzipped.
+console.log("\nscripts leave the NAS compressed");
+const gz = server.slice(server.indexOf("const gzipped = new Map"), server.indexOf("app.use(express.static(distPath"));
+ok("js and css are gzipped when the browser accepts it", /app\.get\(\/\\\.\(js\|css\)\$\//.test(gz) && /zlib\.gzipSync\(/.test(gz) && /"Content-Encoding", "gzip"/.test(gz) && /\\bgzip\\b/.test(gz));
+ok("only files inside dist can be read", /if \(!file\.startsWith\(distPath \+ path\.sep\)\) return next\(\);/.test(gz));
+ok("caches know the answer depends on encoding", /"Vary", "Accept-Encoding"/.test(gz));
+ok("a file that isn't there falls through to the normal handlers", /catch \{ return next\(\); \}/.test(gz));
+
 console.log(failed ? `\n${failed} FAILED\n` : "\nall green\n");
 process.exit(failed ? 1 : 0);
