@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, Volume2, VolumeX } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
+import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, Volume2, VolumeX, AudioLines } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
 import { voiceSupported, record, clipBase64, speak, hush, type Recording } from "./annaVoice";
 
@@ -43,6 +43,20 @@ function rich(text: string, onOpenDoor: (navKey: string, focus?: string) => void
     i % 2 ? <strong key={i}>{citeLinks(part, onOpenDoor)}</strong> : <span key={i}>{citeLinks(part, onOpenDoor)}</span>);
 }
 
+/* ── Floating Anna (stage C). When her panel is closed, the launcher is Anna herself: drag her
+   anywhere over the screen, tap to open the chat, or tap her mic to open it already listening.
+   Where she rests is remembered on this device only, as fractions of the content column so a
+   rotated phone or a resized window keeps her on screen. */
+const ORB_KEY = "anna-orb-position";
+type OrbAt = { fx: number; fy: number };
+const readOrb = (): OrbAt | null => {
+  try {
+    const v = JSON.parse(localStorage.getItem(ORB_KEY) || "null");
+    return v && Number.isFinite(v.fx) && Number.isFinite(v.fy) ? { fx: Math.min(1, Math.max(0, v.fx)), fy: Math.min(1, Math.max(0, v.fy)) } : null;
+  } catch { return null; }
+};
+const ORB = 48, ORB_MARGIN = 12;
+
 /* ── Anna (src/anna.ts). Each finished turn is saved on the server in Saad's own chat
    (decision B); the page keeps nothing in browser storage. Past chats open read-only for
    their cards: a card's buttons belong to the turn that made it, so an old draft cannot be
@@ -67,8 +81,10 @@ const KIND_LABEL: Record<string, string> = {
   vendor: "Supplier", document: "Document", task: "Task", engagement: "Event",
 };
 
-function AnnaChat({ t, lang, voiceReady, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
+function AnnaChat({ t, lang, voiceReady, listenNow = false, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   t: (s: string) => string;
+  /** Opened from the floating button's mic: start listening at once. */
+  listenNow?: boolean;
   lang: string;
   voiceReady: boolean;
   doorLabel: (navKey: string) => string;
@@ -93,6 +109,8 @@ function AnnaChat({ t, lang, voiceReady, doorLabel, onOpenDoor, onOpenRecord, on
   useEffect(() => { openChatId = chatId; }, [chatId]);
   useEffect(() => { voiceLangPick = vLang; }, [vLang]);
   useEffect(() => { readAloud = aloud; if (!aloud) hush(); }, [aloud]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (listenNow) void mic(); }, []);
   // Closing the panel ends a recording (nothing is sent) and any speech.
   useEffect(() => () => { recRef.current?.cancel(); hush(); }, []);
 
@@ -414,6 +432,37 @@ export default function HelpDesk({
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
+  const [listenNow, setListenNow] = useState(false);
+  const [orbAt, setOrbAt] = useState<OrbAt | null>(() => (anna ? readOrb() : null));
+  const [, setResized] = useState(0);
+  const orbRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  // A later open, the Help tab or a policy page must not start the mic again.
+  useEffect(() => { if (!open || mode === "help") setListenNow(false); }, [open, mode]);
+  // Each time the launcher appears, place a remembered Anna against the real column (the ref
+  // is empty on the render that creates it), not the window.
+  useEffect(() => { if (!open) setResized(n => n + 1); }, [open]);
+
+  /** Never left on the orange "missing" pill: it sits above her and would take the tap. */
+  const clearOfPill = (at: OrbAt): OrbAt => {
+    const col = (orbRef.current?.offsetParent as HTMLElement | null)?.getBoundingClientRect();
+    const me = orbRef.current?.getBoundingClientRect();
+    const pill = document.querySelector('[data-float="gaps"]')?.getBoundingClientRect();
+    if (!col || !me || !pill || me.right < pill.left - 8 || me.left > pill.right + 8 || me.bottom < pill.top - 8 || me.top > pill.bottom + 8) return at;
+    const top = pill.top - 8 - ORB - col.top;
+    return { ...at, fy: Math.min(1, Math.max(0, (top - ORB_MARGIN) / Math.max(1, col.height - ORB - 2 * ORB_MARGIN))) };
+  };
+  // A remembered spot can land on the pill after a rotation or when the pill first appears.
+  useEffect(() => {
+    if (open || !anna || !orbAt || drag.current) return;
+    const at = clearOfPill(orbAt);
+    if (at.fy !== orbAt.fy) setOrbAt(at);
+  });
+  useEffect(() => {
+    const again = () => setResized(n => n + 1);
+    window.addEventListener("resize", again);
+    return () => window.removeEventListener("resize", again);
+  }, []);
   const boxRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -464,17 +513,70 @@ export default function HelpDesk({
   // z-[95] keeps it beside the "N missing" pill and under that drawer's backdrop
   // (z-[96]) — the column is `relative` with no z-index, so it is a containing block
   // but not a stacking context, and this still competes on z with the whole page.
+  const openPanel = (listen: boolean) => { setMode("anna"); setListenNow(listen); setOpen(true); };
+
   if (!open) {
+    // The column the bubble is placed in; a dragged Anna is kept inside it.
+    const box = orbRef.current?.offsetParent as HTMLElement | null;
+    const w = box?.clientWidth || window.innerWidth, h = box?.clientHeight || window.innerHeight;
+    const place = (fx: number, fy: number) => ({
+      insetInlineStart: "auto", insetBlockEnd: "auto",
+      left: Math.round(ORB_MARGIN + fx * Math.max(0, w - ORB - 2 * ORB_MARGIN)),
+      top: Math.round(ORB_MARGIN + fy * Math.max(0, h - ORB - 2 * ORB_MARGIN)),
+    });
+    const moveTo = (e: PointerEvent) => {
+      // Read at event time: on the first render the ref was still empty.
+      const r = (orbRef.current?.offsetParent as HTMLElement | null)?.getBoundingClientRect();
+      if (!r) return null;
+      const span = (n: number) => Math.max(1, n - ORB - 2 * ORB_MARGIN);
+      const clamp = (v: number) => Math.min(1, Math.max(0, v));
+      return { fx: clamp((e.clientX - r.left - ORB / 2 - ORB_MARGIN) / span(r.width)), fy: clamp((e.clientY - r.top - ORB / 2 - ORB_MARGIN) / span(r.height)) };
+    };
     return (
-      <button
-        onClick={() => setOpen(true)}
+      <div
+        ref={orbRef}
         data-float="help"
-        title={t("Ask for help")}
-        aria-label={t("Ask for help")}
-        className="absolute bottom-5 start-5 md:start-8 z-[95] flex h-12 w-12 items-center justify-center rounded-full bg-[#6D1A1A] text-white shadow-lg shadow-[#6D1A1A]/25 transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-[#4A1010] hover:shadow-xl hover:shadow-[#6D1A1A]/30"
+        style={anna && orbAt ? place(orbAt.fx, orbAt.fy) : undefined}
+        className="absolute bottom-5 start-5 md:start-8 z-[95] h-12 w-12 rounded-full"
       >
-        <MessageCircleQuestion className="h-5 w-5" />
-      </button>
+        <button
+          onClick={() => { if (drag.current?.moved) return; anna ? openPanel(false) : setOpen(true); }}
+          onPointerDown={anna ? e => { drag.current = { x: e.clientX, y: e.clientY, moved: false }; e.currentTarget.setPointerCapture(e.pointerId); } : undefined}
+          onPointerMove={anna ? e => {
+            const d = drag.current;
+            if (!d) return;
+            if (!d.moved && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
+            d.moved = true;
+            const at = moveTo(e);
+            if (at) setOrbAt(at);
+          } : undefined}
+          onPointerUp={anna ? () => {
+            if (drag.current?.moved && orbAt) {
+              const at = clearOfPill(orbAt);
+              if (at !== orbAt) setOrbAt(at);
+              try { localStorage.setItem(ORB_KEY, JSON.stringify(at)); } catch { /* private mode: she stays put until reload */ }
+            }
+            // The click that follows a drag is swallowed, then the flag clears.
+            setTimeout(() => { drag.current = null; }, 0);
+          } : undefined}
+          onPointerCancel={anna ? () => { drag.current = null; } : undefined}
+          title={anna ? t("Anna — tap to talk, drag to move") : t("Ask for help")}
+          aria-label={anna ? t("Open Anna") : t("Ask for help")}
+          style={anna ? { touchAction: "none" } : undefined}
+          className="flex h-12 w-12 items-center justify-center rounded-full bg-[#6D1A1A] text-white shadow-lg shadow-[#6D1A1A]/25 transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-[#4A1010] hover:shadow-xl hover:shadow-[#6D1A1A]/30"
+        >
+          {anna ? <AudioLines className="h-5 w-5" /> : <MessageCircleQuestion className="h-5 w-5" />}
+        </button>
+        {anna && (
+          <button
+            onClick={() => openPanel(true)}
+            aria-label={t("Speak to Anna")} title={t("Speak to Anna")}
+            className="absolute -top-3 -end-3 flex h-8 w-8 items-center justify-center rounded-full border border-[#E6D3CA] bg-white text-[#6D1A1A] shadow-md transition-colors hover:bg-[#F88888]/15"
+          >
+            <Mic className="h-4 w-4" />
+          </button>
+        )}
+      </div>
     );
   }
 
@@ -512,7 +614,7 @@ export default function HelpDesk({
       </div>
 
       {mode === "anna" && anna ? (
-        <AnnaChat t={t} lang={lang} voiceReady={annaVoice} doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
+        <AnnaChat t={t} lang={lang} voiceReady={annaVoice} listenNow={listenNow} doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
       ) : (<>
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
         {!turns.length && (

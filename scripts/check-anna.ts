@@ -217,6 +217,21 @@ ok("a clip with no speech is not sent", /if \(!heard && now - started > NOTHING_
 ok("closing the panel cancels a recording", /useEffect\(\(\) => \(\) => \{ recRef\.current\?\.cancel\(\); hush\(\); \}, \[\]\);/.test(chat));
 ok("reading aloud is off until Saad turns it on, and uses the device's voices", /let readAloud = false;/.test(desk) && /new SpeechSynthesisUtterance\(/.test(voiceSrc));
 
+console.log("\nC. floating Anna: drag, tap, mic; only her position is remembered");
+const launcher = desk.slice(desk.indexOf("  if (!open) {"), desk.indexOf("  // Open: the panel is"));
+ok("the one browser store in the file is her position", [...desk.matchAll(/localStorage\.(\w+)\(([^,)]*)/g)].every(m => m[2] === "ORB_KEY")
+  && (desk.match(/localStorage\./g) || []).length === 2 && /localStorage\.setItem\(ORB_KEY, JSON\.stringify\(at\)\)/.test(desk) && !/sessionStorage|indexedDB/.test(desk));
+ok("a stored position is read back as two clamped numbers only", /return v && Number\.isFinite\(v\.fx\) && Number\.isFinite\(v\.fy\) \? \{ fx: Math\.min\(1, Math\.max\(0, v\.fx\)\), fy: Math\.min\(1, Math\.max\(0, v\.fy\)\) \} : null;/.test(desk));
+ok("only Anna's people get the floating Anna; the help bubble stays where it was", /useState<OrbAt \| null>\(\(\) => \(anna \? readOrb\(\) : null\)\)/.test(desk)
+  && /style=\{anna && orbAt \? place\(orbAt\.fx, orbAt\.fy\) : undefined\}/.test(launcher) && /onPointerDown=\{anna \?/.test(launcher));
+ok("a drag never opens the panel", /onClick=\{\(\) => \{ if \(drag\.current\?\.moved\) return;/.test(launcher));
+ok("her mic opens the panel already listening, and only that once", /onClick=\{\(\) => openPanel\(true\)\}/.test(launcher)
+  && /useEffect\(\(\) => \{ if \(listenNow\) void mic\(\); \}, \[\]\);/.test(chat)
+  && /useEffect\(\(\) => \{ if \(!open \|\| mode === "help"\) setListenNow\(false\); \}, \[open, mode\]\);/.test(desk));
+ok("she is never left on the orange missing pill", /const at = clearOfPill\(orbAt\);/.test(launcher) && /if \(open \|\| !anna \|\| !orbAt \|\| drag\.current\) return;\s*const at = clearOfPill\(orbAt\);/.test(desk)
+  && /document\.querySelector\('\[data-float="gaps"\]'\)/.test(desk));
+ok("the page does not scroll while she is dragged on a phone", /style=\{anna \? \{ touchAction: "none" \} : undefined\}/.test(launcher));
+
 console.log("\n6. drafts are cards; Saad's press writes, through the existing routes");
 ok("four confirm routes, exactly", JSON.stringify(CONFIRM_ROUTES) === '["/api/quotations/save","/api/compliance/save","/api/requests/save","form:contract"]');
 const st2: any = { ...state,

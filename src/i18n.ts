@@ -972,6 +972,8 @@ export const AR: Record<string, string> = {
   "Stop and send": "إيقاف وإرسال",
   "Speak to Anna": "تحدّث إلى Anna",
   "I meant": "قصدت",
+  "Open Anna": "افتح Anna",
+  "Anna — tap to talk, drag to move": "Anna — اضغط للتحدث، واسحب للتحريك",
   "From an earlier session — ask Anna again to act on it.": "من جلسة سابقة — اطلب من Anna مجددًا لتنفيذها.",
   "Ask Anna…": "اسأل Anna…",
   "Anna is looking…": "Anna تبحث…",
