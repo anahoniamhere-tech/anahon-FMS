@@ -7,7 +7,7 @@
 // "At a glance" lines where the rule order decides the answer. A new rule that shifts any of
 // these fails here before a reader sees a wrong icon.
 // Run: npx tsx scripts/check-policy-reading.ts
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, keyFacts, isGlanceLabel, arabicChapters, governingLine } from "../src/policyReading.js";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, keyFacts, isGlanceLabel, arabicChapters, governingLine, readArabicIndex } from "../src/policyReading.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -245,6 +245,29 @@ const GOV_EN = "ترجمة رسمية للنص الإنكليزي. عند أي �
 ok("governing line: English governs today", governingLine(`عنوان\n${GOV_EN}\nالإصدار 7`)?.governs === "en");
 ok("governing line: the approved clause makes Arabic govern", governingLine("عنوان\nاللغة. صدرت هذه السياسة بالعربية والإنكليزية، والنص العربي هو النص الملزم. وعند أي اختلاف في المعنى بين النصين، يُعمل بالنص العربي.")?.governs === "ar");
 ok("no status line, no badge", governingLine("Title\nEdition 7") === null);
+
+// The Arabic Index twin, a frozen excerpt of its real wording (16 Sep 2026).
+const AR_INDEX = `منصة «أنا هون» الإعلامية — السياسات والأدلة
+ترجمة رسمية للنص الإنكليزي. عند أي اختلاف في المعنى بين النصين، يُعمل بالنص الإنكليزي.
+تحمل السياسات الأرقام من P1 إلى P11، مجمّعةً بحسب الدليل وبترتيب القراءة.
+1. دليل الفريق
+\t•\tP1 مدوّنة السلوك والنزاهة — الاحتيال، والفساد، وتضارب المصالح
+\t•\tP2 سياسة شؤون الأفراد — كيف تتعاقد «أنا هون» مع مقدّمي الخدمات
+كُتب وفق إعلان 12 أيلول 2026: ليس لدى «أنا هون» موظفون.
+5. الاستراتيجية
+\t•\tP10 الخطة الاستراتيجية — خطة لا قاعدة، وهي الوثيقة التي تخدمها الأدلة
+مستقلة بذاتها
+\t•\tP11 سياسة المعلومات والبيانات وخصوصية المصادر — أين تُحفظ المعلومات
+ما زال بحاجة إلى حسم
+\t•\tمتلقٍّ مستقل للبلاغات — يترك البند 6.3 من السياسة P1 الاسم مفتوحاً.
+\t•\tسنة بدء الاستراتيجية (P10).
+أرقام السياسات القديمة (للوثائق الموقَّعة قبل 16 أيلول 2026)
+001 → P1 · 006 → P2.`;
+const ai = readArabicIndex(AR_INDEX);
+ok("AR index: titles and summaries by number", ai.policies.P1?.title === "مدوّنة السلوك والنزاهة" && ai.policies.P2?.summary.startsWith("كيف تتعاقد") && ai.policies.P11?.title === "سياسة المعلومات والبيانات وخصوصية المصادر", JSON.stringify(ai.policies));
+ok("AR index: groups carry their numbers; the standalone does not join a group", JSON.stringify(ai.groups) === JSON.stringify([{ heading: "دليل الفريق", nos: ["P1", "P2"] }, { heading: "الاستراتيجية", nos: ["P10"] }]), JSON.stringify(ai.groups));
+ok("AR index: standalone heading and the items still to settle", ai.standalone === "مستقلة بذاتها" && ai.stillToSettle.length === 2 && !ai.policies["متلقٍّ"], JSON.stringify(ai.stillToSettle));
+ok("AR index: a note line under a group is not a policy, and the old-numbers table is ignored", Object.keys(ai.policies).join() === "P1,P2,P10,P11");
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nall policy reading rules hold");

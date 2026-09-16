@@ -13,7 +13,7 @@ import {
   historyChaptersOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, keyFacts, isGlanceLabel, arabicChapters, governingLine, type Ref, type Topic } from "../policyReading";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, keyFacts, isGlanceLabel, arabicChapters, governingLine, readArabicIndex, type Ref, type Topic } from "../policyReading";
 
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
@@ -377,7 +377,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
         // column would leave each sentence about twenty characters a line.
         nodes.push(
           <div key={`glance-${i}`} className="my-5">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{marked(label, find)}</p>
+            <p className={`text-[11px] font-bold text-slate-500 ${body.dir === "rtl" ? "" : "uppercase tracking-wider"}`}>{marked(label, find)}</p>
             <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {items.map((it, j) => (
                 <li key={j} className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-[13px] leading-relaxed text-slate-800">
@@ -484,6 +484,22 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
   const barRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLDivElement>(null);
 
+  // The door in Arabic reads its titles, summaries and group headings from the Arabic Index twin,
+  // keyed by policy number; the English Index stays the structure (order, groups, files).
+  const arIndexDoc = indexDoc ? twinOf(indexDoc) : undefined;
+  const arIndexText = arIndexDoc ? docText[arIndexDoc.id] : undefined;
+  const arIdx = useMemo(() => (lang === "ar" && arIndexText ? readArabicIndex(arIndexText) : null), [lang, arIndexText]);
+  const cardTitle = (c: Chapter) => arIdx?.policies[c.no]?.title || c.title;
+  const cardSummary = (c: Chapter) => (arIdx?.policies[c.no] ? arIdx.policies[c.no].summary : noteSummary(c.note));
+  const groupLabel = (heading: string | undefined) => {
+    const h = heading && parsed?.handbooks.find(x => x.heading === heading);
+    if (!h) return arIdx?.standalone || t("Standing on its own");
+    const nos = h.chapters.map(c => c.no).join();
+    return arIdx?.groups.find(g => g.nos.join() === nos)?.heading || h.heading;
+  };
+  // Arabic letters join: letter-spacing and capitals are English-only styling.
+  const caps = lang === "ar" ? "" : "uppercase tracking-wider";
+
   const fetchText = async (doc: AppDoc) => {
     if (docText[doc.id]) return docText[doc.id];
     setBusyDoc(doc.id);
@@ -496,6 +512,11 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
       setBusyDoc(null);
     }
   };
+
+  useEffect(() => {
+    if (lang === "ar" && arIndexDoc && arIndexText === undefined) fetchText(arIndexDoc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang, arIndexDoc?.id]);
 
   useEffect(() => {
     if (!indexDoc || parsed) return;
@@ -545,7 +566,7 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
    *  more instances of it when key on the button itself, which has always type-checked
    *  cleanly here, does the same job. */
   const policyCard = (key: string, c: Chapter, heading: string, accent: { badge: string; text: string }, disabled: boolean, onOpen: () => void) => {
-    const summary = noteSummary(c.note);
+    const summary = cardSummary(c);
     return (
       <button
         key={key}
@@ -557,7 +578,7 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
           {c.no}
         </span>
         <div className="min-w-0 flex-1">
-          <p dir="auto" className="text-lg font-bold leading-snug text-slate-900 [text-align:match-parent]">{c.title}</p>
+          <p dir="auto" className="text-lg font-bold leading-snug text-slate-900 [text-align:match-parent]">{cardTitle(c)}</p>
           {/* dir="auto": the Index is English, so on the Arabic screen the sentence keeps its
               own order (the clamp's "…" at its end); match-parent keeps it aligned with the card. */}
           {summary && <p dir="auto" className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-slate-600 [text-align:match-parent]">{summary}</p>}
@@ -579,9 +600,10 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
     return groups.flatMap(g => g.chapters
       // An old three-digit number still finds its policy (policyNo maps "005" → P4), without
       // the old number ever being shown.
-      .filter(c => c.no.toLowerCase().includes(q) || policyNo(q) === c.no || c.title.toLowerCase().includes(q) || noteSummary(c.note).toLowerCase().includes(q))
+      .filter(c => c.no.toLowerCase().includes(q) || policyNo(q) === c.no || c.title.toLowerCase().includes(q) || noteSummary(c.note).toLowerCase().includes(q)
+        || (!!arIdx?.policies[c.no] && isFinding(query) && mentions(`${arIdx.policies[c.no].title}\n${arIdx.policies[c.no].summary}`, query)))
       .map(c => ({ ...c, heading: g.heading, standalone: g.standalone })));
-  }, [parsed, query, t]);
+  }, [parsed, query, t, arIdx]);
 
   // Only parseBody() below is a Hook (useMemo) — everything that feeds it is a plain
   // value and could live inside `if (selected)` same as before, but the memo call
@@ -895,12 +917,12 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
                 className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1 text-start">
                 <span className="min-w-0 flex-1">
                   <span className="block text-[11px] font-semibold text-slate-500">{progressLabel}</span>
-                  <span dir="auto" className="block truncate text-[13px] font-bold text-slate-800 [text-align:match-parent]">{cur ? cur.title : selected.title}</span>
+                  <span dir="auto" className="block truncate text-[13px] font-bold text-slate-800 [text-align:match-parent]">{cur ? cur.title : (showAr && arRead?.title) || selected.title}</span>
                 </span>
                 <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${sectionsOpen ? "rotate-180" : ""}`} />
               </button>
             ) : (
-              <span dir="auto" className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800 [text-align:match-parent]">{selected.title}</span>
+              <span dir="auto" className="min-w-0 flex-1 truncate text-[13px] font-bold text-slate-800 [text-align:match-parent]">{(showAr && arRead?.title) || selected.title}</span>
             )}
             <button onClick={() => { setFindOpen(o => !o); setSectionsOpen(false); }} aria-expanded={findOpen}
               aria-label={t("Search this policy…")} title={t("Search this policy…")}
@@ -923,8 +945,8 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
         </button>
 
         <div className={`border-s-4 ps-4 ${accent.ring}`}>
-          <p className={`text-xs font-mono font-bold uppercase tracking-wider ${accent.text}`}>
-            {selectedHeading || t("Standing on its own")} · {t("Policy")} {selected.no}
+          <p className={`text-xs font-bold ${lang === "ar" ? "" : "font-mono uppercase tracking-wider"} ${accent.text}`}>
+            {groupLabel(selectedHeading)} · {t("Policy")} <span dir="ltr">{selected.no}</span>
           </p>
           <h1 dir="auto" className="mt-1 text-3xl font-bold leading-tight text-slate-900 [text-align:match-parent]">{showAr && arRead?.title ? arRead.title : selected.title}</h1>
         </div>
@@ -956,7 +978,7 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
           </div>
         )}
 
-        <button onClick={() => askHelp(`${t("Policy")} ${selected.no} — ${selected.title}`)}
+        <button onClick={() => askHelp(`${t("Policy")} ${selected.no} — ${showAr && arRead?.title ? arRead.title : selected.title}`)}
           className="inline-flex items-center gap-1.5 rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-[12px] font-bold text-white hover:bg-[#4A1010]">
           {ic(MessageCircleQuestion, "h-3.5 w-3.5")} {t("Ask about this policy")}
         </button>
@@ -1045,7 +1067,7 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
           {sections.length > 0 && (
             <div className="sticky top-4 mt-6 hidden max-h-[75vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 md:mt-0 md:block">
               <div className="mb-3 space-y-1">{findBox(false)}{findSummary}</div>
-              <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Sections")}</p>
+              <p className={`mb-2 text-[11px] font-bold text-slate-400 ${caps}`}>{t("Sections")}</p>
               {tocList(true)}
             </div>
           )}
@@ -1061,7 +1083,7 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
               <div className="flex items-start gap-3 border-b border-slate-100 p-4">
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-mono text-sm font-bold text-white ${accentFor(peekLoc?.heading || "", !peekLoc?.heading).badge}`}>{peek.no}</span>
                 <div className="min-w-0 flex-1">
-                  <p dir="auto" className="font-bold leading-snug text-slate-900 [text-align:match-parent]">{peekView?.title || peekLoc?.title || peek.no}</p>
+                  <p dir="auto" className="font-bold leading-snug text-slate-900 [text-align:match-parent]">{peekView?.title || (peekLoc && arIdx?.policies[peekLoc.no]?.title) || peekLoc?.title || peek.no}</p>
                   {peekView?.heading && <p dir={peekTwin ? "rtl" : "ltr"} className="text-[13px] text-slate-500 [text-align:match-parent]">{peekView.heading}</p>}
                 </div>
                 <button onClick={() => setPeek(null)} aria-label={t("Close")} title={t("Close")}
@@ -1140,7 +1162,7 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
                 const doc = findHandbookDoc(c.standalone ? c.no : c.heading, liveDocs);
                 const chapters = c.standalone ? parsed!.standalone : parsed!.handbooks.find(h => h.heading === c.heading)!.chapters;
                 return (
-                  policyCard(`${c.heading}-${c.no}`, c, c.heading, accentFor(c.heading, c.standalone), !doc,
+                  policyCard(`${c.heading}-${c.no}`, c, groupLabel(c.standalone ? undefined : c.heading), accentFor(c.heading, c.standalone), !doc,
                     () => { if (doc) openChapter(doc, chapters, c.no, c.title); })
                 );
               })}
@@ -1156,12 +1178,12 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
             const accent = accentFor(h.heading);
             return (
               <div key={h.heading}>
-                <h3 className={`flex items-center gap-2 text-base font-bold uppercase tracking-wider ${accent.text}`}>
-                  {ic(BookOpen, "h-5 w-5")} {h.heading}
+                <h3 className={`flex items-center gap-2 text-base font-bold ${caps} ${accent.text}`}>
+                  {ic(BookOpen, "h-5 w-5")} {groupLabel(h.heading)}
                 </h3>
                 <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {h.chapters.map(c => (
-                    policyCard(c.no, c, h.heading, accent, !doc,
+                    policyCard(c.no, c, groupLabel(h.heading), accent, !doc,
                       () => { if (doc) openChapter(doc, h.chapters, c.no, c.title); })
                   ))}
                 </div>
@@ -1171,14 +1193,14 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
 
           {parsed.standalone.length > 0 && (
             <div>
-              <h3 className={`flex items-center gap-2 text-base font-bold uppercase tracking-wider ${STANDALONE_ACCENT.text}`}>
-                {ic(BookOpen, "h-5 w-5")} {t("Standing on its own")}
+              <h3 className={`flex items-center gap-2 text-base font-bold ${caps} ${STANDALONE_ACCENT.text}`}>
+                {ic(BookOpen, "h-5 w-5")} {groupLabel(undefined)}
               </h3>
               <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {parsed.standalone.map(c => {
                   const doc = findHandbookDoc(c.no, liveDocs);
                   return (
-                    policyCard(c.no, c, t("Standing on its own"), STANDALONE_ACCENT, !doc,
+                    policyCard(c.no, c, groupLabel(undefined), STANDALONE_ACCENT, !doc,
                       () => { if (doc) openChapter(doc, parsed.standalone, c.no, c.title); })
                   );
                 })}
@@ -1190,7 +1212,7 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
             <div className="rounded-xl border border-slate-200 bg-white p-4">
               <p className="text-[11px] font-bold text-slate-500">{t("Still to settle")}</p>
               <ul className="mt-1 space-y-1 text-[11.5px] text-slate-500 list-disc ps-4">
-                {parsed.stillToSettle.map((s, i) => <li key={i}>{s}</li>)}
+                {(arIdx?.stillToSettle.length ? arIdx.stillToSettle : parsed.stillToSettle).map((s, i) => <li key={i}>{s}</li>)}
               </ul>
             </div>
           )}

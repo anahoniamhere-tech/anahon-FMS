@@ -238,3 +238,31 @@ export const governingLine = (text: string): { line: string; governs: "en" | "ar
   }
   return null;
 };
+
+/** The Arabic Policies Index twin (ANH-DOC-00781), read for the door's cards: each policy's
+ *  Arabic title and summary by number, each handbook group's Arabic heading (with the numbers it
+ *  holds, so it pairs with the English group by content, not by position), the standalone
+ *  heading, and the «ما زال بحاجة إلى حسم» items. Anything missing stays English on screen. */
+export const readArabicIndex = (text: string) => {
+  const policies: Record<string, { title: string; summary: string }> = {};
+  const groups: { heading: string; nos: string[] }[] = [];
+  let standalone: string | null = null;
+  const stillToSettle: string[] = [];
+  let mode: "group" | "standalone" | "settle" | "other" = "other";
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const g = /^\d+\.\s+(\S.*)$/.exec(line);
+    const item = /^•\s*(\S.*)$/.exec(line.replace(/^\t?•\t?/, "• "));
+    if (g && !raw.startsWith("\t")) { groups.push({ heading: g[1], nos: [] }); mode = "group"; continue; }
+    if (line === "مستقلة بذاتها") { standalone = line; mode = "standalone"; continue; }
+    if (line === "ما زال بحاجة إلى حسم") { mode = "settle"; continue; }
+    if (!item) { if (mode !== "group") mode = "other"; continue; }
+    if (mode === "settle") { stillToSettle.push(item[1]); continue; }
+    const p = /^(P\d{1,2})\s+(.+?)(?:\s+—\s+(.+))?$/.exec(item[1]);
+    if (!p || (mode !== "group" && mode !== "standalone")) continue;
+    policies[p[1]] = { title: p[2], summary: p[3] ?? "" };
+    if (mode === "group") groups[groups.length - 1].nos.push(p[1]);
+  }
+  return { policies, groups, standalone, stillToSettle };
+};
