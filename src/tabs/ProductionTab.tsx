@@ -274,11 +274,11 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
               </div>
 
               {/* Clients register */}
-              <div className="space-y-4">
+              <div data-anna-target="production.clients" className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-md font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(Contact)}Client Log</span></h3>
                   {MANAGERS.includes(currentUser.role) && !clientForm && (
-                    <button onClick={() => setClientForm({})} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all">
+                    <button data-anna-target="production.register-client" onClick={() => setClientForm({})} className="bg-red-600 text-white text-xs font-medium rounded-lg px-3 py-2 hover:bg-red-700 transition-all">
                       <span className="inline-flex items-center gap-1.5">{ic(Plus)}Register Client</span>
                     </button>
                   )}
@@ -349,11 +349,11 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
               </div>
 
               {/* Quotations log */}
-              <div className="space-y-4">
+              <div data-anna-target="production.quotations" className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-md font-bold text-slate-800 uppercase font-mono"><span className="inline-flex items-center gap-1.5">{ic(ScrollText)}Quotations</span></h3>
                   {MANAGERS.includes(currentUser.role) && !quoteForm && (
-                    <button onClick={() => setQuoteForm({
+                    <button data-anna-target="production.new-quotation" onClick={() => setQuoteForm({
                       status: "Draft",
                       issuedAs: DEFAULT_NEW_QUOTE_ISSUER,
                       currency: "USD",

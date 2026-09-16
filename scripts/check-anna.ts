@@ -7,7 +7,7 @@
 // Run: npx tsx scripts/check-anna.ts
 import { readFileSync } from "node:fs";
 import {
-  ANNA_MODEL, ANNA_USERS, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, READ_TOOLS, DRAFT_TOOLS, RECORD_KINDS, CONFIRM_ROUTES,
+  ANNA_TARGETS, GUIDE_MAX_STEPS, LOOSE_TOOLS, ANNA_MODEL, ANNA_USERS, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, READ_TOOLS, DRAFT_TOOLS, RECORD_KINDS, CONFIRM_ROUTES,
   annaTools, annaSystem, readTool, draftTool, clientAction, cleanHistory, visibleRows, type AnnaCtx,
 } from "../src/anna.js";
 import { searchHits } from "../src/globalSearch.js";
@@ -65,11 +65,12 @@ ok("what is saved is the question and Anna's reply, nothing from the tools", /sa
 
 console.log("\n4. the tool list is closed");
 const tools = annaTools(["mydesk", "expenses"]);
-ok("exactly the thirteen tools", JSON.stringify(tools.map(t => t.name)) === JSON.stringify(ANNA_TOOL_NAMES) && ANNA_TOOL_NAMES.length === 13
+ok("exactly the fourteen tools", JSON.stringify(tools.map(t => t.name)) === JSON.stringify(ANNA_TOOL_NAMES) && ANNA_TOOL_NAMES.length === 14
   && JSON.stringify(DRAFT_TOOLS) === '["draft_quotation","draft_task","draft_contract","draft_request"]');
 ok("every tool has a closed schema", tools.every(t => t.input_schema.additionalProperties === false));
-ok("navigation and read tools are strict; only the drafts are not (the API's complexity limit)",
-  tools.every(t => t.strict === !(DRAFT_TOOLS as readonly string[]).includes(t.name)));
+ok("navigation and read tools are strict; only the drafts and the guide are not (the API's complexity limit)",
+  JSON.stringify(LOOSE_TOOLS) === JSON.stringify([...DRAFT_TOOLS, "guide"]) &&
+  tools.every(t => t.strict === !LOOSE_TOOLS.includes(t.name)));
 const FORBIDDEN = /\b(approve|reject|pay|send|share|delete|publish|sign|receipt|match|deposit)\b/i;
 ok("no tool name or description names a tier-3 act", tools.every(t => !FORBIDDEN.test(t.name + " " + t.description)),
   tools.filter(t => FORBIDDEN.test(t.name + " " + t.description)).map(t => t.name).join(","));
@@ -166,7 +167,7 @@ const nav: any = { formatUSD: (n: number) => `$${n}`, setSearchTerm() {}, handle
 ok("the screen still finds a voucher, a project and a bank line", ["VCH-1", "SKF", "Print"].every(q => searchHits(q, state, nav).length > 0)
   && searchHits("transfer", state, nav)[0]?.k === "Bank");
 ok("both read src/searchCore.ts", /from "\.\/searchCore"/.test(read("../src/globalSearch.tsx")) && /from "\.\/searchCore"/.test(annaSrc));
-ok("tool kinds are closed", CLIENT_TOOLS.length === 2 && READ_TOOLS.length === 7 && visibleRows("voucher", state).length === 1);
+ok("tool kinds are closed", JSON.stringify(CLIENT_TOOLS) === '["open_door","open_record","guide"]' && READ_TOOLS.length === 7 && visibleRows("voucher", state).length === 1);
 
 console.log("\nP. the panel keeps nothing in the browser and only navigates");
 const desk = read("../src/HelpDesk.tsx");
@@ -243,6 +244,42 @@ ok("speaking is reported by the voice itself", /u\.onstart = \(\) => onSpeaking\
 ok("the chat stays mounted but hidden when the panel closes, so an answer on its way still lands",
   /<div\s+ref=\{boxRef\}\s+hidden=\{!open\}/.test(desk) && /<div hidden=\{mode !== "anna"\} className="flex min-h-0 flex-1 flex-col">\s*<AnnaChat /.test(desk));
 ok("closing still stops a recording and her voice", /useEffect\(\(\) => \{ if \(!open\) \{ recRef\.current\?\.cancel\(\); hush\(\); \}/.test(chat) && /open=\{open && mode === "anna"\}/.test(desk));
+
+console.log("\nE. guided walkthroughs: Anna points, Saad presses");
+const { readdirSync } = await import("node:fs");
+const srcFiles = (dir: string): string[] => readdirSync(new URL(dir, import.meta.url), { withFileTypes: true })
+  .flatMap(d => d.isDirectory() ? srcFiles(`${dir}${d.name}/`) : /\.tsx?$/.test(d.name) ? [`${dir}${d.name}`] : []);
+const markup = srcFiles("../src/").map(f => ({ f, text: read(f) }));
+const TARGET_FILE: Record<string, string> = { production: "ProductionTab.tsx", expenses: "ExpensesTab.tsx", mydesk: "MyDeskTab.tsx", help: "RequestsList.tsx" };
+for (const [id, { door }] of Object.entries(ANNA_TARGETS)) {
+  const homes = markup.flatMap(({ f, text }) => (text.split(`"${id}"`).length - 1) && /data-anna-target/.test(text) && !f.endsWith("anna.ts") ? [f] : []);
+  ok(`"${id}" is on exactly one element, on the ${door} screen`, homes.length === 1 && homes[0].endsWith(TARGET_FILE[door])
+    && markup.find(m => m.f === homes[0])!.text.split(`"${id}"`).length === 2, homes.join(", "));
+}
+// A marker is a literal, or an expression naming one "door.part" literal (MyDesk's per-group one).
+const marked = markup.filter(({ f }) => !f.endsWith("AnnaGuide.tsx"))
+  .flatMap(({ text }) => [...text.matchAll(/data-anna-target=(?:"([^"]+)"|\{[^}]*?"([\w-]+\.[\w.-]+)")/g)].map(m => m[1] || m[2]));
+ok("every marker on a screen is on the list", marked.length === Object.keys(ANNA_TARGETS).length && marked.every(m => m in ANNA_TARGETS), marked.join(" "));
+const deskOnly = annaTools(["mydesk"]).find(t => t.name === "guide")!;
+ok("the guide offers only parts of the viewer's own doors", /mydesk\.waiting/.test(deskOnly.description) && !/production\.|expenses\./.test(deskOnly.description)
+  && JSON.stringify(deskOnly.input_schema.properties.door.enum) === '["mydesk"]');
+const gctx: AnnaCtx = { ...ctx, doors: ["mydesk", "production"] };
+const g = (input: any) => clientAction("guide", input, gctx) as any;
+ok("a walkthrough on his own screen is accepted", g({ door: "production", steps: [{ target: "production.new-quotation", text: "Press this to start one." }] }).type === "guide");
+ok("a door he lacks is refused", "error" in g({ door: "expenses", steps: [{ target: "expenses.vouchers", text: "x" }] }));
+ok("a part of another screen is refused", "error" in g({ door: "production", steps: [{ target: "mydesk.new-task", text: "x" }] }));
+ok("an unknown part is refused", "error" in g({ door: "production", steps: [{ target: "production.approve-button", text: "x" }] }));
+ok("a step with no words is refused", "error" in g({ door: "production", steps: [{ target: "production.clients", text: "  " }] }));
+ok(`no more than ${GUIDE_MAX_STEPS} steps`, GUIDE_MAX_STEPS === 6 && "error" in g({ door: "production", steps: Array(7).fill({ target: "production.clients", text: "x" }) }));
+ok("step text is capped", g({ door: "production", steps: [{ target: "production.clients", text: "y".repeat(900) }] }).steps[0].text.length === 300);
+const guideSrc = read("../src/AnnaGuide.tsx");
+ok("the walkthrough never presses, types, submits or calls anything",
+  !/\.click\(|dispatchEvent|\.submit\(|requestSubmit|fetch\(|\.value\s*=|execCommand|localStorage|sessionStorage/.test(guideSrc));
+ok("its ring lets every click through to the page", /data-anna-ring\s+className="pointer-events-none /.test(guideSrc));
+ok("it looks up only marked parts", (guideSrc.match(/querySelector/g) || []).length === 1 && /document\.querySelector\(`\[data-anna-target="\$\{CSS\.escape\(step\.target\)\}"\]`\)/.test(guideSrc));
+ok("a walkthrough starts only when he taps Show me", /onClick=\{\(\) => onGuide\(\{ door: a\.door, steps: a\.steps \}\)\}/.test(chat)
+  && (desk.match(/startGuide\b/g) || []).length === 2 && (desk.match(/onGuide\(/g) || []).length === 1);
+ok("the route tells Anna he starts it himself", /a\.type === "guide" \? "A Show me button is offered with your answer; he starts the walkthrough himself\."/.test(route));
 
 console.log("\n6. drafts are cards; Saad's press writes, through the existing routes");
 ok("four confirm routes, exactly", JSON.stringify(CONFIRM_ROUTES) === '["/api/quotations/save","/api/compliance/save","/api/requests/save","form:contract"]');

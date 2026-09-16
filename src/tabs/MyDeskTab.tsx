@@ -392,7 +392,7 @@ export default function MyDeskTab({
     // Everything late or due this week is always shown; only the undated tail is capped.
     const shown = all ? list : list.slice(0, Math.max(CAP, list.filter(i => i.urgency !== "waiting").length));
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div data-anna-target={key === "mine" ? "mydesk.waiting" : undefined} className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
           <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
             <Icon className="h-4 w-4 text-[#6D1A1A]" /> {title}
@@ -575,7 +575,7 @@ export default function MyDeskTab({
       {/* A task is the one thing on the desk with no record of its own behind it, so it is
           written here. Everything else arrives by doing the work on its own screen. */}
       {isDirector && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <div data-anna-target="mydesk.new-task" className="rounded-xl border border-slate-200 bg-white p-4">
           {!taskForm ? (
             <button
               onClick={() => setTaskForm({ title: "", category: "Governance", dueDate: today, notes: "", assigneeUserId: "" })}

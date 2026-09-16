@@ -34,7 +34,7 @@ export default function RequestsList({ state, currentUser, t, refreshState, trig
   };
 
   return (
-    <section>
+    <section data-anna-target="help.requests">
       <h2 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Requests")}</h2>
       <div className="divide-y divide-slate-200 rounded-lg border border-slate-200 bg-white">
         {rows.map(r => {

@@ -1824,7 +1824,10 @@ app.post("/api/anna/turn", async (req, res) => {
           await createAuditLog(viewer.id, viewer.name, "Anna Refused", `turn ${turn} · unknown tool`);
         } else if ((CLIENT_TOOLS as readonly string[]).includes(c.name)) {
           const a = clientAction(c.name, c.input, ctx);
-          if ("type" in a) { actions.push(a); out = { ok: "The screen will open when you answer." }; } else out = a;
+          if ("type" in a) {
+            actions.push(a);
+            out = { ok: a.type === "guide" ? "A Show me button is offered with your answer; he starts the walkthrough himself." : "The screen will open when you answer." };
+          } else out = a;
           await createAuditLog(viewer.id, viewer.name, "Anna Navigate", `turn ${turn} · ${c.name}${c.input?.kind ? ` ${c.input.kind}` : ""}`);
         } else if ((DRAFT_TOOLS as readonly string[]).includes(c.name)) {
           // A card for Saad, never a write: his Confirm or Save on the existing screen does that.

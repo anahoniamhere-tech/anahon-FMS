@@ -353,7 +353,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
 
               {/* Expense submission Drawer form */}
               {REQUESTERS.includes(currentUser.role) && (
-                <div className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm">
+                <div data-anna-target="expenses.new-request" className="p-6 bg-white border border-slate-200 rounded-xl shadow-sm">
                   <h3 className="text-sm font-bold text-slate-950 uppercase border-b border-slate-100 pb-2 mb-4">Lodge Disbursement Voucher PV-2026</h3>
                   <form onSubmit={handleExpenseSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="md:col-span-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -734,7 +734,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
               )}
 
               {/* Vouchers directory */}
-              <div className="space-y-4">
+              <div data-anna-target="expenses.vouchers" className="space-y-4">
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                   <h3 className="text-md font-bold text-slate-950 uppercase font-mono">Ledger Vouchers Logs</h3>
                   <div className="flex items-center gap-2 flex-wrap">

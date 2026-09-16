@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
 import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, Volume2, VolumeX } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
+import AnnaGuide, { type Guide } from "./AnnaGuide";
 import { voiceSupported, record, clipBase64, speak, hush, type Recording } from "./annaVoice";
 
 /**
@@ -92,7 +93,7 @@ function AnnaWave({ mood, level = 0, t, className = "" }: { mood: AnnaMood; leve
    their cards: a card's buttons belong to the turn that made it, so an old draft cannot be
    confirmed twice. Actions are navigation only — a door or a record — and run once on arrival. */
 type NavAction = { type: "open_door"; door: string } | { type: "open_record"; kind: string; id: string };
-type AnnaAction = NavAction | { type: "proposal"; proposal: Proposal } | { type: "choice"; options: string[] };
+type AnnaAction = NavAction | { type: "proposal"; proposal: Proposal } | { type: "choice"; options: string[] } | ({ type: "guide" } & Guide);
 type CardState = "open" | "saving" | "saved" | "gone" | { error: string };
 /** Where a saved draft lives, for the button after Confirm. */
 const DRAFT_DOOR: Record<string, string> = { quotation: "production", task: "mydesk", request: "help" };
@@ -112,13 +113,15 @@ const KIND_LABEL: Record<string, string> = {
   vendor: "Supplier", document: "Document", task: "Task", engagement: "Event",
 };
 
-function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
+function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   t: (s: string) => string;
   /** The panel is showing. The chat stays mounted while it is closed, so an answer on its way still lands. */
   open: boolean;
   /** Bumped by the floating button's mic: start listening once per bump. */
   listenSignal: number;
   onMood: (mood: AnnaMood, level: number) => void;
+  /** Start a walkthrough: the panel steps aside so the screen can be seen. */
+  onGuide: (g: Guide) => void;
   lang: string;
   voiceReady: boolean;
   doorLabel: (navKey: string) => string;
@@ -322,7 +325,12 @@ function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, doorLabel, 
         ) : (
           <div key={i} className="w-fit max-w-[95%] space-y-1.5 rounded-2xl bg-slate-100 px-3 py-2">
             <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-slate-800">{rich(m.content, onOpenDoor)}</p>
-            {(m.actions || []).map((a, k) => a.type === "choice" ? (
+            {(m.actions || []).map((a, k) => a.type === "guide" ? (
+              <button key={k} onClick={() => onGuide({ door: a.door, steps: a.steps })}
+                className="me-1.5 inline-flex items-center gap-1.5 rounded-lg bg-[#6D1A1A] px-3 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-[#4A1010]">
+                {t("Show me")} · {doorLabel(a.door)} <ArrowRight className="h-3 w-3 rtl:rotate-180" />
+              </button>
+            ) : a.type === "choice" ? (
               // A close spelling is never picked for Saad: he taps the one he meant, which is sent as his reply.
               <div key={k} className="flex flex-wrap gap-1.5">
                 {a.options.map(name => (
@@ -479,6 +487,9 @@ export default function HelpDesk({
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [listenSignal, setListenSignal] = useState(0);
+  const [guide, setGuide] = useState<Guide | null>(null);
+  const startGuide = useCallback((g: Guide) => { setGuide(g); setOpen(false); }, []);
+  const endGuide = useCallback(() => setGuide(null), []);
   const [mood, setMood] = useState<{ mood: AnnaMood; level: number }>({ mood: "idle", level: 0 });
   const onMood = useCallback((m: AnnaMood, level: number) => setMood({ mood: m, level }), []);
   const [orbAt, setOrbAt] = useState<OrbAt | null>(() => (anna ? readOrb() : null));
@@ -562,7 +573,7 @@ export default function HelpDesk({
   // z-[95] keeps it beside the "N missing" pill and under that drawer's backdrop
   // (z-[96]) — the column is `relative` with no z-index, so it is a containing block
   // but not a stacking context, and this still competes on z with the whole page.
-  const openPanel = (listen: boolean) => { setMode("anna"); if (listen) setListenSignal(n => n + 1); setOpen(true); };
+  const openPanel = (listen: boolean) => { setGuide(null); setMode("anna"); if (listen) setListenSignal(n => n + 1); setOpen(true); };
 
   let launcher: ReactNode = null;
   if (!open) {
@@ -639,6 +650,7 @@ export default function HelpDesk({
   // 768-771px puts its right edge back under the pill. Measured, not guessed.
   return (<>
     {launcher}
+    {guide && <AnnaGuide guide={guide} t={t} rtl={rtl} onOpenDoor={onOpenDoor} onDone={endGuide} />}
     <div
       ref={boxRef}
       hidden={!open}
@@ -670,7 +682,7 @@ export default function HelpDesk({
 
       {anna && (
         <div hidden={mode !== "anna"} className="flex min-h-0 flex-1 flex-col">
-          <AnnaChat t={t} lang={lang} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood}
+          <AnnaChat t={t} lang={lang} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
             doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
         </div>
       )}

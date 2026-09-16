@@ -146,7 +146,7 @@ ok("the desk asks for this account's own diary", desk.includes("useEffect(() => 
 ok("the tick belongs to the task's holder, or the director when it has none",
   /isTask && \(i\.record\.assigneeUserId \? i\.record\.assigneeUserId === currentUser\?\.id \|\| isDirector : isDirector\)/.test(desk)
   && /x\.assigneeUserId \? x\.assigneeUserId === currentUser\?\.id \|\| isDirector : isDirector/.test(desk));
-ok("only a director writes or removes a task", /isDirector && \(\n?\s*<div className="rounded-xl border border-slate-200 bg-white p-4">\n?\s*\{!taskForm/.test(desk) && /isTask && isDirector && \(/.test(desk));
+ok("only a director writes or removes a task", /isDirector && \(\n?\s*<div (?:data-anna-target="mydesk\.new-task" )?className="rounded-xl border border-slate-200 bg-white p-4">\n?\s*\{!taskForm/.test(desk) && /isTask && isDirector && \(/.test(desk));
 
 console.log("\nF. behaviour fixtures");
 // Section F is about turns a record's status creates. The missing-paper rule adds standing
