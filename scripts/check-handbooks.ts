@@ -10,7 +10,7 @@
 import { NAV_KEYS } from "../src/nav.js";
 import {
   parseHandbooksIndex, findIndexFaults, checkPolicyDoors, chapterAnchors, missingChapterText,
-  POLICY_DOORS, FORMER, policyNo, historyChapterOf,
+  POLICY_DOORS, FORMER, policyNo, historyChapterOf, historyChaptersOf,
 } from "../src/handbooksIndex.js";
 
 let failed = 0;
@@ -94,6 +94,75 @@ ok("a single-chapter document (no Part heading at all) is never flagged this way
   missingChapterText(parsed.handbooks[4].chapters, chapterAnchors("just prose, no heading")).length === 0);
 ok("an old history note still lands on its new chapter",
   historyChapterOf({ filename: "x.docx", note: "Superseded on 15 Sep 2026: the 12 Sep 2026 draft of Policy 010, replaced…" }) === "P11");
+
+console.log("\nH. every superseded file sits under the policy it belonged to (16 Sep 2026)");
+// The 57 live Superseded rows as of 16 Sep 2026, and where each belongs. A compiled edition sits under
+// every policy its handbook carries; an old Index under none.
+const HISTORY_FILES: [string, string[]][] = [
+  ["AnaHon_Accounting_Business_Policy_020.docx", ["P5"]],
+  ["Anahon_AI_Policy_022.docx", ["P3"]],
+  ["Anahon_AI_Visuals_Generation_Policy_021.docx", ["P3"]],
+  ["Anahon_AntiTerrorismFinancing_Sanctions_AntiCorruption_Policy_013.docx", ["P1"]],
+  ["AnaHon_Business Handbook_003.docx", ["P5"]],
+  ["Anahon_CommunityNeedsAssessmentPolicyProcedure_011.docx", ["P9"]],
+  ["Anahon_CompensationPolicy_015.docx", ["P2"]],
+  ["AnaHon_DataProtectionPolicy_024_DRAFT.md", ["P11"]],
+  ["Anahon_DueDiligencePolicy_012.docx", ["P6"]],
+  ["Anahon_Editorial Policies and Guidelines_002.docx", ["P3"]],
+  ["AnaHon_Editorial_Standards_Handbook_Edition1_12Sep2026.docx", ["P3", "P4"]],
+  ["AnaHon_Editorial_Standards_Handbook_Edition2_15Sep2026.docx", ["P3", "P4"]],
+  ["AnaHon_Editorial_Standards_Handbook_Edition3_16Sep2026.docx", ["P3", "P4"]],
+  ["Anahon_Fact-Checking Policy_005.docx", ["P4"]],
+  ["AnaHon_Finance_and_Controls_Handbook_Edition1_12Sep2026.docx", ["P5", "P6", "P7"]],
+  ["AnaHon_Finance_and_Controls_Handbook_Edition2_15Sep2026.docx", ["P5", "P6", "P7"]],
+  ["AnaHon_Finance_and_Controls_Handbook_Edition3_15Sep2026.docx", ["P5", "P6", "P7"]],
+  ["AnaHon_Finance_and_Controls_Handbook_Edition4_15Sep2026.docx", ["P5", "P6", "P7"]],
+  ["AnaHon_Finance_and_Controls_Handbook_Edition5_15Sep2026.docx", ["P5", "P6", "P7"]],
+  ["AnaHon_Finance_and_Controls_Handbook_Edition6_15Sep2026.docx", ["P5", "P6", "P7"]],
+  ["AnaHon_Finance_and_Controls_Handbook_Edition7_16Sep2026.docx", ["P5", "P6", "P7"]],
+  ["Anahon_FundraisingPolicy_018.docx", ["P8"]],
+  ["Anahon_HR Policy_006.docx", ["P2"]],
+  ["Anahon_Inclusion_Policy_004.docx", ["P2"]],
+  ["Anahon_Information_Data_and_Source_Privacy_Policy_010_Approved_15Sep2026.docx", ["P11"]],
+  ["Anahon_Information_Data_and_Source_Privacy_Policy_010_Draft_12Sep2026.docx", ["P11"]],
+  ["AnaHon_InternalCodeOfConduct_001.docx", ["P1"]],
+  ["Anahon_KeyPerformanceIndicators_008.docx", ["P9"]],
+  ["AnaHon_Policies_Index_12Sep2026.docx", []],
+  ["AnaHon_Policies_Index_15Sep2026_before_001.docx", []],
+  ["AnaHon_Policies_Index_15Sep2026_before_002.docx", []],
+  ["AnaHon_Policies_Index_15Sep2026_before_006.docx", []],
+  ["AnaHon_Policies_Index_15Sep2026_before_010.docx", []],
+  ["AnaHon_Policies_Index_15Sep2026_before_011.docx", []],
+  ["AnaHon_Policies_Index_15Sep2026_before_012.docx", []],
+  ["AnaHon_Policies_Index_15Sep2026_before_018.docx", []],
+  ["AnaHon_Policies_Index_15Sep2026_before_renumbering.docx", []],
+  ["AnaHon_Policies_Index_16Sep2026_with_former_numbers.docx", []],
+  ["AnaHon_Privacy_P11_16Sep2026_first_renumbered_copy.docx", ["P11"]],
+  ["AnaHon_Programmes_and_Funding_Handbook_Edition1_12Sep2026.docx", ["P8", "P9"]],
+  ["AnaHon_Programmes_and_Funding_Handbook_Edition2_15Sep2026.docx", ["P8", "P9"]],
+  ["AnaHon_Programmes_and_Funding_Handbook_Edition3_15Sep2026.docx", ["P8", "P9"]],
+  ["AnaHon_Programmes_and_Funding_Handbook_Edition4_16Sep2026.docx", ["P8", "P9"]],
+  ["Anahon_Proposal&GrantsManagement Policy_019.docx", ["P8"]],
+  ["Anahon_Resources&AssetsPolicy_017.docx", ["P7"]],
+  ["AnaHon_Risk Management Policy_009.docx", ["P6"]],
+  ["AnaHon_SafeguardingPolicy_023_DRAFT.md", ["P1", "P3"]],
+  ["Anahon_Sharing Repository Policy_018.docx.superseded-by-010", ["P11"]],
+  ["Anahon_StrategicPlan_Strategy_007.docx", ["P10"]],
+  ["AnaHon_Strategy_007_before_renumbering_12Sep2026.docx", ["P10"]],
+  ["AnaHon_Strategy_P10_16Sep2026_first_renumbered_copy.docx", ["P10"]],
+  ["AnaHon_Team_Handbook_Edition1_12Sep2026.docx", ["P1", "P2"]],
+  ["AnaHon_Team_Handbook_Edition2_15Sep2026.docx", ["P1", "P2"]],
+  ["AnaHon_Team_Handbook_Edition3_15Sep2026.docx", ["P1", "P2"]],
+  ["AnaHon_Team_Handbook_Edition4_15Sep2026.docx", ["P1", "P2"]],
+  ["AnaHon_Team_Handbook_Edition5_16Sep2026.docx", ["P1", "P2"]],
+  ["Anahon_WellbeingPolicy_016.docx", ["P2"]],
+];
+const misfiled = HISTORY_FILES.filter(([f, want]) => historyChaptersOf({ filename: f }).join() !== want.join());
+ok("each of the 57 old files is filed under the right policies", misfiled.length === 0, misfiled.map(([f]) => f).slice(0, 4).join(" | "));
+ok("a note that mentions another policy in passing does not move a file",
+  historyChaptersOf({ filename: "AnaHon_Finance_and_Controls_Handbook_Edition3_15Sep2026.docx", note: "Superseded on 15 Sep 2026: … when Annex A (anti-fraud) moved into the Code of Conduct and Integrity (001) … Policy 010 …" }).join() === "P5,P6,P7");
+ok("the second 018 (Sharing Repository) is filed with privacy, not fundraising", historyChaptersOf({ filename: "Anahon_Sharing Repository Policy_018.docx.superseded-by-010" }).join() === "P11");
+ok("an old Index belongs to no policy", historyChaptersOf({ filename: "AnaHon_Policies_Index_12Sep2026.docx" }).length === 0 && historyChapterOf({ filename: "AnaHon_Policies_Index_12Sep2026.docx" }) === null);
 
 console.log("\nD. the enforcement map names doors that still exist");
 ok(`every door POLICY_DOORS names is a real navKey (checked against nav.tsx's ${NAV_KEYS.length})`,

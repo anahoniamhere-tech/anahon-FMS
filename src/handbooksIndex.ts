@@ -162,14 +162,37 @@ export function checkPolicyDoors(existingNavKeys: readonly string[]): string[] {
 }
 
 /**
- * Which chapter an old file belongs to, for the History list — read from its own note
- * first ("…Policy 010 is now…", mapped through FORMER), since that is the fact a person wrote down about it;
- * the trailing number in its filename is only a fallback for the few notes that don't
- * name one.
+ * Which policies an old file belongs to, for the History list (16 Sep 2026). Filenames are the
+ * reliable fact here: a compiled handbook edition belongs to every policy that handbook carries,
+ * an old Index belongs to none of them, and a standalone old policy carries its number at the end
+ * of its name. Notes are only a fallback — they mention other policies in passing ("…when 013
+ * merged into 001…"), which is how a Finance edition once landed under P11.
  */
-export function historyChapterOf(doc: { filename: string; note?: string | null }): string | null {
+const HISTORY_BY_NAME: [RegExp, string[]][] = [
+  [/Policies_Index/i, []],
+  [/Team_Handbook/i, ["P1", "P2"]],
+  [/Editorial_Standards_Handbook/i, ["P3", "P4"]],
+  [/Finance_and_Controls_Handbook/i, ["P5", "P6", "P7"]],
+  [/Programmes_and_Funding_Handbook/i, ["P8", "P9"]],
+  [/Strateg/i, ["P10"]],
+  [/Information_Data_and_Source_Privacy|Privacy_P11/i, ["P11"]],
+  // The second document once numbered 018 — replaced by the privacy policy, not by Fundraising.
+  [/Sharing Repository/i, ["P11"]],
+  // Never adopted; its child and reporting rules went to P1, its consent and media rules to P3.
+  [/Safeguarding.*023/i, ["P1", "P3"]],
+  [/DataProtection.*024/i, ["P11"]],
+];
+
+export function historyChaptersOf(doc: { filename: string; note?: string | null }): string[] {
+  for (const [re, nos] of HISTORY_BY_NAME) if (re.test(doc.filename)) return nos;
+  const fromName = /(?:^|[_\s-])(\d{3})(?:_DRAFT)?(?:\.\w+)*$/i.exec(doc.filename);
+  if (fromName && FORMER[fromName[1]]) return [FORMER[fromName[1]]];
   const fromNote = /Policy\s+(P\d{1,2}|\d{3})\b/i.exec(doc.note || "");
-  if (fromNote) return policyNo(fromNote[1]);
-  const fromName = /(\d{3})(?:[^\d]*)$/.exec(doc.filename.replace(/\.\w+$/, ""));
-  return fromName ? policyNo(fromName[1]) : null;
+  const no = fromNote ? policyNo(fromNote[1]) : "";
+  return /^P\d{1,2}$/.test(no) ? [no] : [];
+}
+
+/** The first policy an old file belongs to (kept for older callers; prefer historyChaptersOf). */
+export function historyChapterOf(doc: { filename: string; note?: string | null }): string | null {
+  return historyChaptersOf(doc)[0] ?? null;
 }
