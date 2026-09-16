@@ -271,18 +271,25 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
       .map(c => ({ ...c, heading: g.heading, standalone: g.standalone })));
   }, [parsed, query, t]);
 
+  // Only parseBody() below is a Hook (useMemo) — everything that feeds it is a plain
+  // value and could live inside `if (selected)` same as before, but the memo call
+  // itself cannot: selected flips between an object and null on every render, and a
+  // Hook may never run conditionally (React error #310 — caught live, not guessed).
+  // Called with an empty body when nothing is selected; parseBody("") is a harmless
+  // no-op, so this costs nothing on every other screen.
+  const selectedText = selected ? docText[selected.doc.id] || "" : "";
+  const selectedAnchors = selected ? chapterAnchors(selectedText) : {};
+  const selectedIsMissing = selected ? missingChapterText(selected.chapters, selectedAnchors).some(c => c.no === selected.no) : false;
+  const selectedBody = selected && !selectedIsMissing ? chapterSlice(selectedText, selected.no, selectedAnchors) : "";
+  const { blocks, toc } = useMemo(() => parseBody(selectedBody), [selectedBody]);
+
   if (selected) {
-    const text = docText[selected.doc.id] || "";
-    const anchors = chapterAnchors(text);
-    const missing = missingChapterText(selected.chapters, anchors);
-    const isMissing = missing.some(c => c.no === selected.no);
-    const body = isMissing ? "" : chapterSlice(text, selected.no, anchors);
+    const isMissing = selectedIsMissing;
     const chapterMeta = selected.chapters.find(c => c.no === selected.no);
     const doors = POLICY_DOORS[selected.no] || [];
     const history = historyByChapter[selected.no] || [];
     const selectedHeading = parsed?.handbooks.find(h => h.chapters.some(c => c.no === selected.no))?.heading;
     const accent = accentFor(selectedHeading || "", !selectedHeading);
-    const { blocks, toc } = useMemo(() => parseBody(body), [body]);
 
     const tocList = (onJump?: () => void) => (
       <nav className="space-y-0.5">
