@@ -1821,14 +1821,14 @@ async function annaKeyterms(): Promise<{ en: string[]; ar: string[] }> {
   ]);
   const names: KeytermName[] = [
     ...clients.map(c => ({ latin: c.name })),
-    ...projects.flatMap(p => [{ latin: p.code }, { latin: p.name }]),
+    ...projects.flatMap(p => [{ latin: p.code, latinOnly: true }, { latin: p.name, latinOnly: true }]),
     ...contacts.map(c => ({ latin: c.name, arabic: c.nameAr || undefined })),
     ...vendors.map(v => ({ latin: v.name })),
     ...users.map(u => ({ latin: u.name })),
   ];
   let spelled: Record<string, string> = {};
   try { spelled = JSON.parse(await fs.promises.readFile(KEYTERM_FILE, "utf8")); } catch { /* first run */ }
-  const missing = [...new Set(names.filter(n => !n.arabic && !spelled[n.latin] && /[a-z]/i.test(n.latin) && n.latin.length <= 40).map(n => n.latin))].slice(0, 150);
+  const missing = [...new Set(names.filter(n => !n.latinOnly && !n.arabic && !spelled[n.latin] && /[a-z]/i.test(n.latin) && n.latin.length <= 40).map(n => n.latin))].slice(0, 150);
   if (missing.length && anthropicKey()) {
     try {
       const raw = await askJson(

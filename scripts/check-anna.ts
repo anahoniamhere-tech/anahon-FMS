@@ -342,14 +342,18 @@ ok("an Arabic answer in a talk: shown, said once in the status line, and she kee
   /setVoice\(\{ note: t\("Arabic answers are shown as text — no Arabic voice yet\."\) \}\);\s*\}?\s*next\(\);/.test(chat));
 console.log("\nK. names Deepgram should expect (plan §A; measured: Arabic speech needs Arabic spellings)");
 const { pickKeyterms, KEYTERM_BUDGET, ANNA_FIXED_TERMS } = await import("../src/anna.js");
+const kb = server.slice(server.indexOf("async function annaKeyterms("), server.indexOf('app.post("/api/anna/listen"'));
 const kt = pickKeyterms([{ latin: "Zeina Hamoud" }, { latin: "Maroun Asmar" }, { latin: "Ayman Haddad", arabic: "أيمن حداد" }, { latin: "SKF" }, { latin: "zeina hamoud" },
   ...Array.from({ length: 300 }, (_, i) => ({ latin: `Person Number ${i}` }))], { "Zeina Hamoud": "زينة حمود" });
 ok("English terms are Latin, Arabic terms are Arabic script", kt.en.every(t => !/[؀-ۿ]/.test(t)) && kt.ar.every(t => /[؀-ۿ]/.test(t)));
 ok("a name is boosted in Arabic from the record or from the stored spelling; none without one", kt.ar.includes("زينة حمود") && kt.ar.includes("أيمن حداد") && !kt.ar.some(t => /Maroun|مارون/.test(t)));
+ok("project codes stay out of the Arabic list and are never sent to be spelled", !pickKeyterms([{ latin: "BWZ 2023 FRL", latinOnly: true }], { "BWZ 2023 FRL": "بي دبليو زد" }).ar.includes("بي دبليو زد")
+  && pickKeyterms([{ latin: "BWZ 2023 FRL", latinOnly: true }], {}).en.includes("BWZ 2023 FRL") && /names\.filter\(n => !n\.latinOnly && !n\.arabic && !spelled\[n\.latin\]/.test(kb)
+  && /\{ latin: p\.code, latinOnly: true \}/.test(kb));
+ok("no common words or generic nouns in the Arabic list (they diluted the names)", !kt.ar.some(t => ["شو", "بدي", "عرض سعر", "مكتب"].includes(t)));
 ok("fixed terms come first, duplicates once, both lists within Deepgram's budget", kt.en[0] === ANNA_FIXED_TERMS[0][0] && kt.ar[0] === ANNA_FIXED_TERMS[0][1]
   && kt.en.filter(t => t.toLowerCase() === "zeina hamoud").length === 1
   && kt.en.join(" ").length <= KEYTERM_BUDGET.en && kt.ar.join(" ").length <= KEYTERM_BUDGET.ar && kt.en.length < 303);
-const kb = server.slice(server.indexOf("async function annaKeyterms("), server.indexOf('app.post("/api/anna/listen"'));
 ok("built from names only, once a day", /prisma\.client\.findMany\(\{ where: \{ active: true \}, select: \{ name: true \} \}\)/.test(kb)
   && /prisma\.networkContact\.findMany\(\{ select: \{ name: true, nameAr: true \} \}\)/.test(kb) && !/email|phone|contact:|taxId|bank/i.test(kb.replace(/networkContact/g, ""))
   && [...kb.matchAll(/prisma\.\w+\.findMany\(([^)]*)\)/g)].length === 5 && [...kb.matchAll(/prisma\.\w+\.findMany\(([^)]*)\)/g)].every(m => /select: \{ (name|code): true(, (name|nameAr): true)? \}/.test(m[1]))

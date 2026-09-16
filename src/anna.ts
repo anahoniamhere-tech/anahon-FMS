@@ -464,10 +464,11 @@ export const ANNA_FIXED_TERMS: [string, string][] = [
   ["Akkar", "عكار"], ["Halba", "حلبا"], ["Beirut", "بيروت"], ["quotation", "عرض سعر"], ["voucher", "سند"],
   ["receipt", "إيصال"], ["desk", "مكتب"], ["project", "مشروع"], ["Anna", "آنا"],
 ];
-const ANNA_AR_WORDS = ["شو", "هلق", "بدي", "كتير", "منيح", "يلا", "فيك", "عندي"];
 /** Deepgram allows 500 tokens of keyterms; these budgets stay well under it for each script. */
 export const KEYTERM_BUDGET = { en: 700, ar: 450 } as const;
-export type KeytermName = { latin: string; arabic?: string };
+/** `latinOnly`: a code or title that is said as spelled (project codes) — measured 16 Sep: their
+ *  Arabic spellings were noise («بي دبليو زد 2023 إف آر إل») and took room from people's names. */
+export type KeytermName = { latin: string; arabic?: string; latinOnly?: boolean };
 /** Fixed terms first, then names in the order given (clients, projects, contacts, suppliers, team),
  *  deduplicated and cut to the budget. Names only — nothing else from a record. */
 export function pickKeyterms(names: KeytermName[], spelled: Record<string, string>): { en: string[]; ar: string[] } {
@@ -482,10 +483,11 @@ export function pickKeyterms(names: KeytermName[], spelled: Record<string, strin
     return out;
   };
   const latin = names.map(n => n.latin).filter(x => !/[\u0600-\u06FF]/.test(x));
-  const arabic = names.map(n => n.arabic || spelled[n.latin] || "").filter(x => /[\u0600-\u06FF]/.test(x));
+  const arabic = names.filter(n => !n.latinOnly).map(n => n.arabic || spelled[n.latin] || "").filter(x => /[\u0600-\u06FF]/.test(x));
   return {
     en: take([...ANNA_FIXED_TERMS.map(f => f[0]), ...latin], KEYTERM_BUDGET.en),
-    ar: take([...ANNA_FIXED_TERMS.map(f => f[1]), ...ANNA_AR_WORDS, ...arabic], KEYTERM_BUDGET.ar),
+    // Common words and generic nouns are left out of Arabic: Deepgram knows them, and they diluted the names.
+    ar: take([...ANNA_FIXED_TERMS.filter(f => /^[A-Z]/.test(f[0])).map(f => f[1]), ...arabic], KEYTERM_BUDGET.ar),
   };
 }
 
