@@ -53,6 +53,7 @@ import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } 
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, cutPoolFor, POOL_FIELD_KEYS, POOL_STATUSES, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy, poolAssessedAs } from "./src/personnelDocs.js";
 import { parseIcs } from "./src/ics.js";
+import { ANNA_MODEL, ANNA_USERS, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, annaTools, annaSystem, clientAction, readTool, cleanHistory, type ClientAction } from "./src/anna.js";
 
 dotenv.config();
 
@@ -254,7 +255,7 @@ const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
  * refused or failed request never buzzes anyone, and the debounce inside schedulePush
  * collapses the several writes one approval makes into a single pass.
  */
-const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/reminders/plan", "/api/push/unsubscribe"]);
+const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/anna/turn", "/api/reminders/plan", "/api/push/unsubscribe"]);
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path.startsWith("/api/") && !READ_ONLY_POSTS.has(req.path)) {
     res.on("finish", () => { if (res.statusCode < 400) schedulePush(); });
@@ -922,6 +923,8 @@ async function loadState(viewer?: any) {
     fixedAssets,
     partnerAccounts,
     confidentialReview: viewer && ["Super Admin", "Finance Officer"].includes(viewer.role) ? confidentialReview : null,
+    // Anna's panel shows only for the real user on her list (src/anna.ts); the route checks again.
+    anna: { enabled: !!viewer && ANNA_USERS.includes(viewer.id) },
     // Passports, IDs and CVs are stripped here, not hidden in the browser: a personnel
     // document only reaches the people who hold the personnel file, or the person it is about.
     // The integrity register is the ED's alone (§7.1); its evidence must not ride along
@@ -1640,6 +1643,101 @@ app.post("/api/help/ask", async (req, res) => {
         ? "The help desk is busy right now. Try again in a moment."
         : m;
     res.status(500).json({ error: friendly });
+  }
+});
+
+/* ── Anna: Saad's typed assistant (src/anna.ts, drafts/anna-assistant-plan.md) ─────────────
+ * Stateless: the browser sends the conversation, nothing about it is stored or logged — the
+ * audit lines name the tool and the kind, never an id, a value or the question. Paid key only
+ * (P11: record data goes to Anthropic under paid terms), never the Gemini free tier. This
+ * handler writes nothing but audit lines; scripts/check-anna.ts reads it to keep it that way.
+ */
+app.post("/api/anna/turn", async (req, res) => {
+  const viewer = (req as any).dbUser;
+  if (!ANNA_USERS.includes(viewer.id)) {
+    await createAuditLog(viewer.id, viewer.name, "Anna Refused", "Not on the Anna user list.");
+    return res.status(403).json({ error: "Anna is not switched on for this account." });
+  }
+  const key = anthropicKey();
+  if (!key) return res.status(503).json({ error: "Anna needs the server's Anthropic key." });
+  const messages: any[] = cleanHistory(req.body?.messages);
+  if (!messages.length) return res.status(400).json({ error: "Write a message first." });
+  const turn = crypto.randomBytes(3).toString("hex");
+  const started = Date.now();
+  const actions: ClientAction[] = [];
+  const usage = { calls: 0, input: 0, cached: 0, written: 0, output: 0 };
+  try {
+    const role = String(req.body?.user?.role || viewer.role);   // the worn seat when standing in
+    const state = await loadState(viewer);
+    const today = localDate();
+    const doors = doorsFor(role);
+    const ctx = { state, desk: deskItems({ id: viewer.id, email: viewer.email, role }, state as any, today), doors, today };
+    const labels = new Map(NAV.flatMap(sec => sec.items.map(i => [i.navKey, i.label] as const)));
+    const system = annaSystem(role, doors.map(d => `${d} = ${labels.get(d) || d}`).join("\n"), today);
+    const tools = annaTools(doors);
+    const { default: Anthropic } = await import("@anthropic-ai/sdk");
+    const client = new Anthropic({ apiKey: key, timeout: 60_000, maxRetries: 1 });
+    let answer = "";
+    // What the model says beside a tool call is often the answer itself, so every call's text is kept.
+    const said: string[] = [];
+    while (usage.calls < ANNA_LIMITS.calls) {
+      if (Date.now() - started > ANNA_LIMITS.ms) { answer = "I ran out of time on that one. Ask again, more narrowly."; break; }
+      const msg: any = await client.messages.create({
+        model: ANNA_MODEL, max_tokens: ANNA_LIMITS.maxTokens,
+        thinking: { type: "adaptive" }, output_config: { effort: "medium" },
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral", ttl: "1h" } }],
+        tools, messages,
+      } as any);
+      usage.calls++;
+      const u = msg.usage || {};
+      usage.input += u.input_tokens || 0; usage.cached += u.cache_read_input_tokens || 0;
+      usage.written += u.cache_creation_input_tokens || 0; usage.output += u.output_tokens || 0;
+      if (msg.stop_reason === "refusal") { answer = "I can't help with that request."; break; }
+      const text = msg.content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("\n").trim();
+      const calls = msg.content.filter((b: any) => b.type === "tool_use");
+      if (text) said.push(text);
+      if (msg.stop_reason !== "tool_use" || !calls.length) {
+        if (msg.stop_reason === "max_tokens") answer = "My answer was cut off. Ask again, more narrowly.";
+        break;
+      }
+      messages.push({ role: "assistant", content: msg.content });
+      const results: any[] = [];
+      for (const c of calls) {
+        let out: unknown;
+        if (!ANNA_TOOL_NAMES.includes(c.name)) {
+          out = { error: "No such tool." };
+          await createAuditLog(viewer.id, viewer.name, "Anna Refused", `turn ${turn} · unknown tool`);
+        } else if ((CLIENT_TOOLS as readonly string[]).includes(c.name)) {
+          const a = clientAction(c.name, c.input, ctx);
+          if ("type" in a) { actions.push(a); out = { ok: "The screen will open when you answer." }; } else out = a;
+          await createAuditLog(viewer.id, viewer.name, "Anna Navigate", `turn ${turn} · ${c.name}${c.input?.kind ? ` ${c.input.kind}` : ""}`);
+        } else if (c.name === "policy_answer") {
+          const policies = await policyCorpus();
+          const raw = await askJson(
+            helpPromptParts(String(c.input?.question || "").slice(0, 2000),
+              { role, ownRole: viewer.role, doors, rows: [], today }, policies.text),
+            REPLY_SCHEMA, undefined, "low", "haiku", true);
+          out = { answer: parseReply(raw, doors).answer };
+          await createAuditLog(viewer.id, viewer.name, "Anna Read", `turn ${turn} · policy_answer${takeUsage()}`);
+        } else {
+          out = readTool(c.name, c.input, ctx);
+          await createAuditLog(viewer.id, viewer.name, "Anna Read", `turn ${turn} · ${c.name}${c.input?.kind ? ` ${c.input.kind}` : ""}`);
+        }
+        results.push({ type: "tool_result", tool_use_id: c.id, content: JSON.stringify(out) });
+      }
+      messages.push({ role: "user", content: results });
+    }
+    answer = [...said, answer].filter(Boolean).join("\n\n")
+      || (usage.calls >= ANNA_LIMITS.calls ? "That took more steps than I am allowed. Ask again, more narrowly." : "");
+    // Sonnet 5: $2/M in, $10/M out; the 1-hour cache writes at 2x and reads at a tenth.
+    const usd = Math.round((usage.input * 2 + usage.written * 4 + usage.cached * 0.2 + usage.output * 10) / 10) / 100_000;
+    await createAuditLog(viewer.id, viewer.name, "Anna Turn", `turn ${turn} · ${usage.calls} call${usage.calls === 1 ? "" : "s"} · ${ANNA_MODEL} ≈ $${usd.toFixed(4)}`);
+    res.json({ answer, actions, usage: { ...usage, usd } });
+  } catch (err: any) {
+    // The status only: an SDK message can quote the request, and nothing of the chat is kept.
+    const status = Number(err?.status) || 0;
+    await createAuditLog(viewer.id, viewer.name, "Anna Failed", `turn ${turn} · ${status || "error"}`);
+    res.status(502).json({ error: status === 429 ? "Anna is busy — try again in a minute." : `Anna could not answer just now (${status || "error"}).` });
   }
 });
 
@@ -3733,9 +3831,12 @@ async function askJson(
   // below. "gemini" means the caller has chosen the free tier on purpose and would rather
   // be told the answer is unavailable than be billed for it; Claude is not tried at all,
   // so nothing falls through to a paid call by accident.
-  prefer: Tier | "gemini" = "sonnet"
+  prefer: Tier | "gemini" = "sonnet",
+  // Anna's calls carry record data under paid terms and must never reach the free tier (P11).
+  paidOnly = false
 ): Promise<any> {
   const key = prefer === "gemini" ? undefined : anthropicKey();
+  if (paidOnly && !key) throw new Error("No Anthropic key — this call is paid-only.");
   const parts = typeof prompt === "string" ? [prompt] : prompt;
   if (key) {
     try {
@@ -3770,7 +3871,7 @@ async function askJson(
     } catch (err: any) {
       // Out of credits, rate-limited, or provider down: fall through to Gemini
       // rather than failing the feature. Only a missing fallback key is fatal.
-      if (!process.env.GEMINI_API_KEY) throw err;
+      if (paidOnly || !process.env.GEMINI_API_KEY) throw err;
       console.warn(`[ai] Claude call failed (${err?.message?.slice(0, 120)}) — falling back to Gemini.`);
     }
   }

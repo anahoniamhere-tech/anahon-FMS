@@ -13,6 +13,7 @@
  */
 import React from "react";
 import type { DatabaseState } from "./types";
+import { searchMatches } from "./searchCore";
 
 export type Hit = { k: string; label: string; sub: string; go: () => void };
 
@@ -27,28 +28,18 @@ export type SearchNav = {
   setBankFilterAcc: (s: string) => void;
 };
 
-/**
- * What the query matches, in the order a person scans: money first, then the project it
- * belongs to, then who and what it involved. Each kind is capped so one noisy match cannot
- * push the others off the list.
- */
+/** The shared matcher (src/searchCore.ts), turned into buttons that open what they name. */
 export function searchHits(query: string, state: DatabaseState, nav: SearchNav): Hit[] {
-  const q = query.trim().toLowerCase();
-  if (q.length < 2) return [];
-  const hits: Hit[] = [];
-  (state.expenses || []).filter(e => (e.voucherNo + " " + e.title + " " + e.purpose).toLowerCase().includes(q)).slice(0, 4)
-    .forEach(e => hits.push({ k: "Voucher", label: `${e.voucherNo} — ${e.title}`, sub: nav.formatUSD(e.convertedAmount), go: () => { nav.setSearchTerm(e.voucherNo); nav.handleNavClick("expenses"); } }));
-  (state.projects || []).filter(p => (p.code + " " + p.name).toLowerCase().includes(q)).slice(0, 3)
-    .forEach(p => hits.push({ k: "Project", label: `${p.code} — ${p.name}`, sub: p.status, go: () => { nav.setSelectedProjectId(p.id); nav.handleNavClick("projects"); } }));
-  (state.vendors || []).filter(v => v.name.toLowerCase().includes(q)).slice(0, 3)
-    .forEach(v => hits.push({ k: "Vendor", label: v.name, sub: v.category, go: () => nav.handleNavClick("vendors") }));
-  (state.documents || []).filter(d => d.filename.toLowerCase().includes(q)).slice(0, 3)
-    .forEach(d => hits.push({ k: "Document", label: d.filename, sub: d.category, go: () => nav.openDoc(d) }));
-  (state.bankTransactions || []).filter(t => t.description.toLowerCase().includes(q)).slice(0, 3)
-    .forEach(t => hits.push({ k: "Bank", label: t.description.slice(0, 64), sub: `${t.date} · ${t.type}`, go: () => { nav.setBankSearch(query); nav.setBankFilterAcc(""); nav.handleNavClick("banking"); } }));
-  (state.employees || []).filter(emp => emp.name.toLowerCase().includes(q)).slice(0, 2)
-    .forEach(emp => hits.push({ k: "Team member", label: emp.name, sub: emp.position, go: () => nav.handleNavClick("payroll") }));
-  return hits;
+  return searchMatches(query, state).map(({ k, row }): Hit => {
+    switch (k) {
+      case "Voucher": return { k, label: `${row.voucherNo} — ${row.title}`, sub: nav.formatUSD(row.convertedAmount), go: () => { nav.setSearchTerm(row.voucherNo); nav.handleNavClick("expenses"); } };
+      case "Project": return { k, label: `${row.code} — ${row.name}`, sub: row.status, go: () => { nav.setSelectedProjectId(row.id); nav.handleNavClick("projects"); } };
+      case "Vendor": return { k, label: row.name, sub: row.category, go: () => nav.handleNavClick("vendors") };
+      case "Document": return { k, label: row.filename, sub: row.category, go: () => nav.openDoc(row) };
+      case "Bank": return { k, label: row.description.slice(0, 64), sub: `${row.date} · ${row.type}`, go: () => { nav.setBankSearch(query); nav.setBankFilterAcc(""); nav.handleNavClick("banking"); } };
+      case "Team member": return { k, label: row.name, sub: row.position, go: () => nav.handleNavClick("payroll") };
+    }
+  });
 }
 
 /**
