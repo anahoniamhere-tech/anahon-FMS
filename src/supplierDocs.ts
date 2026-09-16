@@ -44,6 +44,9 @@ export type SupplierParty = {
   /** The login this party is also known by, when they are one of the team. Explicit — the
    *  register never decides that two rows are the same person because the names match. */
   userEmail?: string;
+  /** Computed by the server (teamMemberFlag) for every seat: the linked login belongs to an ACTIVE
+   *  annual-contract personnel record. Never set by hand, never stored. */
+  teamMember?: boolean;
 };
 
 /**
@@ -58,7 +61,18 @@ export type SupplierParty = {
  * a suggestion for a human to confirm, never a match this function will assert.
  */
 export function isTeamMember(v: SupplierParty): boolean {
-  return !!String(v.userEmail || "").trim();
+  return v.teamMember === true;
+}
+
+/**
+ * The server's half (16 Sep 2026). A linked login alone is NOT enough: Omar Al-Abyad raises requests
+ * under his own login but is engaged per project, not on the annual contract. The link stays — it is
+ * what lets the approval queue catch a requester paying themselves — but "team member" means the
+ * login belongs to an active personnel record, which is where the annual contract lives.
+ */
+export function teamMemberFlag(v: { userEmail?: string | null }, employees: { userEmail?: string | null; active?: boolean }[]): boolean {
+  const email = String(v.userEmail || "").trim().toLowerCase();
+  return !!email && employees.some(e => e.active !== false && String(e.userEmail || "").trim().toLowerCase() === email);
 }
 
 /**

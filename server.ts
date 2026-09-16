@@ -10,6 +10,7 @@ import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { evidenceOf, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATION_SIGNED } from "./src/declarations.js";
+import { teamMemberFlag } from "./src/supplierDocs.js";
 import { CONFIDENTIAL_PURPOSE, nextSourceCode, maySealedRead, SEALED_REFUSAL, confidentialRaiseBlocker, SANCTIONS_RESULTS, SEALED_DOC_KINDS, hasSealedReceipt, reviewDue, type SealedDoc } from "./src/sources.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory } from "./src/editorialGates.js";
@@ -650,6 +651,9 @@ async function loadState(viewer?: any) {
   const heldByViewer = viewer ? fixedAssets.filter((a: any) => a.holderId === viewer.id).map((a: any) =>
     ({ id: a.id, tag: a.tag, name: a.name, status: a.status, holderId: a.holderId, heldFor: a.heldFor, outAt: a.outAt, dueBack: a.dueBack })) : [];
 
+  // Whether a supplier row is one of the annual-contract team — answered here for every seat, as a
+  // yes/no, because trimmed payloads carry no personnel records to answer it with (16 Sep 2026).
+  for (const v of vendors as any[]) v.teamMember = teamMemberFlag(v, employees);
   const auditTotal = await prisma.auditLog.count();
   // Feature requests: everyone sees their own, the master account sees all (Anna plan §3).
   const featureRequests = viewer ? await prisma.featureRequest.findMany({

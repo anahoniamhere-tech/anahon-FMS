@@ -709,6 +709,13 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                                   <button type="button" onClick={() => handleLinkLogin(v.id, v.name, "")} className="ms-1 text-slate-400 hover:underline">{t("unlink")}</button>
                                 )}
                               </p>
+                            ) : v.userEmail ? (
+                              // A login, but no annual-contract personnel record: engaged per project (16 Sep 2026).
+                              // The link stays — the approval queue uses it to catch a requester paying themselves.
+                              <p className="text-[10px] text-slate-600">
+                                {t("Has a login — engaged per project, not on the annual contract")}
+                                {" · "}<span dir="ltr" className="font-mono">{v.userEmail}</span>
+                              </p>
                             ) : canManage && v.partyKind === "individual" && (() => {
                               const hit = (state.users || []).find(u => u.active && u.name.trim().toLowerCase() === v.name.trim().toLowerCase());
                               if (!hit) return null;
@@ -867,7 +874,14 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                                       <button type="button" onClick={() => handleLinkLogin(v.id, v.name, "")} className="ms-1 text-slate-400 hover:underline">{t("unlink")}</button>
                                     )}
                                   </p>
-                                ) : canManage && v.partyKind === "individual" && (() => {
+                                ) : v.userEmail ? (
+                              // A login, but no annual-contract personnel record: engaged per project (16 Sep 2026).
+                              // The link stays — the approval queue uses it to catch a requester paying themselves.
+                              <p className="text-[10px] text-slate-600">
+                                {t("Has a login — engaged per project, not on the annual contract")}
+                                {" · "}<span dir="ltr" className="font-mono">{v.userEmail}</span>
+                              </p>
+                            ) : canManage && v.partyKind === "individual" && (() => {
                                   // A SUGGESTION, never a match: same name, different records.
                                   const hit = (state.users || []).find(u => u.active && u.name.trim().toLowerCase() === v.name.trim().toLowerCase());
                                   if (!hit) return null;

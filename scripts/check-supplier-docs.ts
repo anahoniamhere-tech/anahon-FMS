@@ -8,7 +8,7 @@
 // checklist into a colour people stop reading: a taxi has no service agreement, and it
 // must not be asked for one. Run: npx tsx scripts/check-supplier-docs.ts
 import { readFileSync } from "node:fs";
-import { REQUIRED_SUPPLIER, missingSupplierDocs, PARTY_KINDS, partyKindLabel, isTeamMember } from "../src/supplierDocs.js";
+import { REQUIRED_SUPPLIER, missingSupplierDocs, PARTY_KINDS, partyKindLabel, isTeamMember, teamMemberFlag } from "../src/supplierDocs.js";
 import { REQUIRED_PERSONNEL, missingPersonnelDocs } from "../src/personnelDocs.js";
 
 let failed = 0;
@@ -132,13 +132,22 @@ console.log("\nZ2. a team member is the normal arrangement, not an anomaly");
 // Saad, 12 Sep 2026: AnaHon has no employees — everyone is a service provider on an annual
 // contract. So a row that is also a login is two views of one person, and their identity papers
 // live in the personnel file; demanding a second copy here makes a second thing to disagree.
+// 16 Sep 2026: a linked login is not enough — the login must belong to an ACTIVE annual-contract
+// personnel record. Omar Al-Abyad (ven-3) has a login but is engaged per project.
+const STAFF = [{ userEmail: "marwan@x", active: true }, { userEmail: "Left@X", active: false }];
 ok("the link is explicit, never a name that merely looks alike",
-  isTeamMember(party({ userEmail: "omar@x" })) && !isTeamMember(party({ userEmail: "" })) && !isTeamMember(party({ userEmail: "   " })));
+  teamMemberFlag({ userEmail: "Marwan@X " }, STAFF) && !teamMemberFlag({ userEmail: "" }, STAFF) && !teamMemberFlag({ userEmail: "   " }, STAFF));
+ok("a login with no active personnel record is NOT a team member (Omar's shape)",
+  !teamMemberFlag({ userEmail: "omaralabiad21@gmail.com" }, STAFF) && !teamMemberFlag({ userEmail: "left@x" }, STAFF));
+ok("the screen reads the server's flag, not the link", isTeamMember(party({ teamMember: true })) && !isTeamMember(party({ userEmail: "omar@x" })));
+ok("a login without the annual contract is said as such, and not offered as a team-member match",
+  (vendorsTab.match(/\) : v\.userEmail \? \(/g) || []).length === 2 && vendorsTab.includes('t("Has a login — engaged per project, not on the annual contract")'));
+ok("the server sets it for every seat from the personnel records", /for \(const v of vendors as any\[\]\) v\.teamMember = teamMemberFlag\(v, employees\);/.test(server));
 ok("a team member is not asked for identity or a CV again",
-  !missingSupplierDocs([], party({ partyKind: "individual", userEmail: "omar@x" })).some(g => ["identity", "cv"].includes(g.key)));
+  !missingSupplierDocs([], party({ partyKind: "individual", userEmail: "marwan@x", teamMember: true })).some(g => ["identity", "cv"].includes(g.key)));
 // 16 Sep 2026: no registration form either — the personnel file and annual contract cover it (Saad, option b).
 ok("but still owes the paper that is about the ENGAGEMENT, not the person",
-  missingSupplierDocs([], party({ partyKind: "individual", userEmail: "omar@x" })).map(g => g.key).sort().join() === "agreement");
+  missingSupplierDocs([], party({ partyKind: "individual", userEmail: "marwan@x", teamMember: true })).map(g => g.key).sort().join() === "agreement");
 ok("the screen says what it is rather than flagging it unresolved",
   vendorsTab.includes('t("Team member, engaged as a service provider (annual contract)")')
   && !/classification unresolved/i.test(vendorsTab));
@@ -164,7 +173,9 @@ ok("the overruled exclusion is kept in the comment rather than deleted, with the
 console.log("\nR. which registration form — Saad, 16 Sep 2026 (option b)");
 const reg = (over: any) => missingSupplierDocs([], party(over)).map(g => g.key).filter(k => k.endsWith("registration"));
 ok("a team member on the annual contract owes no registration form at all",
-  reg({ partyKind: "individual", userEmail: "omaralabiad21@gmail.com" }).length === 0 && reg({ partyKind: "", userEmail: "x@y" }).length === 0);
+  reg({ partyKind: "individual", userEmail: "marwan@x", teamMember: true }).length === 0 && reg({ partyKind: "", teamMember: true }).length === 0);
+ok("Omar — a login, engaged per project — owes the service provider form",
+  reg({ partyKind: "individual", userEmail: "omaralabiad21@gmail.com", teamMember: teamMemberFlag({ userEmail: "omaralabiad21@gmail.com" }, STAFF) }).join() === "sp-registration");
 ok("an outside person owes the service provider form, not the vendor form", reg({ partyKind: "individual" }).join() === "sp-registration");
 ok("so does one we only buy from", reg({ partyKind: "individual", engageable: false }).join() === "sp-registration");
 ok("an organisation owes the vendor form", reg({ partyKind: "organisation" }).join() === "registration");

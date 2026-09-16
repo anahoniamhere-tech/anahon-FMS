@@ -919,6 +919,7 @@ export const AR: Record<string, string> = {
   "Signed contract": "عقد موقّع",
   "Vendor registration form": "استمارة تسجيل مورّد",
   "Service provider registration form": "استمارة تسجيل مقدّم خدمة",
+  "Has a login — engaged per project, not on the annual contract": "لديه حساب — متعاقد لكل مشروع، لا بالعقد السنوي",
   "Commercial registration": "السجل التجاري",
   "VAT / tax registration": "التسجيل الضريبي / ضريبة القيمة المضافة",
   "Signed agreement": "اتفاقية موقّعة",
