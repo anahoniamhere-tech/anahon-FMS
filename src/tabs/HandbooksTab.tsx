@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BookOpen, Search, ChevronDown, ChevronRight, History as HistoryIcon, MessageCircleQuestion, ArrowRight, AlertTriangle,
   Bot, MessageSquareWarning, PenLine, UserSearch, Gift, Scale, ShieldCheck, Lock, Database, GraduationCap, BadgeCheck,
@@ -617,14 +617,25 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
   }, [enBody, lead, sections]);
   const enRoles = useMemo(() => roleDefs(enFull), [enFull]);
 
-  // The app language changed with a policy open: stay on the same § in the other text.
+  // Where the reader is, kept on every scroll: the section whose heading last crossed the
+  // reading line and how far past it they are — or null when no heading has crossed yet (the top).
+  const place = useRef<{ id: string; past: number } | null>(null);
+  // The app language changed with a policy open: put the reader back exactly where they were in
+  // the other text, before the browser paints — the section ids are the same in both texts. At
+  // the top nothing moves. Waits (keeping `place`) while the other text is still loading.
   const langSeen = useRef(lang);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (langSeen.current === lang) return;
+    const main = articleRef.current?.closest("main");
+    if (!main || !sections.length) return;
     langSeen.current = lang;
-    if (selected && currentSec) setPendingSec(currentSec);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lang]);
+    const at = place.current;
+    if (!at) return;
+    const el = document.getElementById(at.id);
+    if (!el) return;
+    const line = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top) + 24;
+    main.scrollTop += el.getBoundingClientRect().top - (line - at.past);
+  }, [lang, sections]);
 
   // The twin is read for English readers too: its status line says which text governs.
   useEffect(() => {
@@ -698,23 +709,34 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
     const measure = () => {
       const main = articleRef.current?.closest("main");
       if (!main) return;
-      if (pinned.current && Math.abs(main.scrollTop - pinned.current.top) < 2) { setCurrentSec(pinned.current.sec); return; }
+      if (pinned.current && Math.abs(main.scrollTop - pinned.current.top) < 2) {
+        const el = document.getElementById(pinned.current.sec);
+        const line = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top) + 24;
+        if (el && langSeen.current === lang) place.current = { id: pinned.current.sec, past: line - el.getBoundingClientRect().top };
+        setCurrentSec(pinned.current.sec);
+        return;
+      }
       pinned.current = null;
       const limit = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top) + 24;
       let cur: string | null = null;
+      let crossed: { id: string; past: number } | null = null;
       for (const s of sections) {
         const el = document.getElementById(s.id);
         if (!el) continue;
-        if (cur && el.getBoundingClientRect().top > limit) break;
+        const top = el.getBoundingClientRect().top;
+        if (top <= limit) crossed = { id: s.id, past: limit - top };
+        if (cur && top > limit) break;
         cur = s.id;
       }
+      // Only while the language is settled: the restore above reads this after the swap.
+      if (langSeen.current === lang) place.current = crossed;
       setCurrentSec(cur);
     };
     document.addEventListener("scroll", measure, { capture: true, passive: true });
     pinned.current = null;
     measure();
     return () => document.removeEventListener("scroll", measure, { capture: true });
-  }, [sections, find]);
+  }, [sections, find, lang]);
 
   if (selected) {
     const isMissing = selectedIsMissing;
