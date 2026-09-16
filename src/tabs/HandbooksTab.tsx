@@ -241,9 +241,12 @@ const marked = (text: string, find: string, facts = true, body: BodyCtx = NO_BOD
 
 type ListItem = { text: string; subs: string[]; en?: string };
 
+/** "Label: detail" — in a twin, only where the English line is one too, so both read alike. */
+const labelOf = (text: string, en?: string) => (en === undefined || splitLabel(en) ? splitLabel(text) : null);
+
 /** A "Label: detail" line with its label in bold; anything else just marked. */
-const leadIn = (text: string, find: string, facts = true, body: BodyCtx = NO_BODY) => {
-  const sp = splitLabel(text);
+const leadIn = (text: string, find: string, facts = true, body: BodyCtx = NO_BODY, en?: string) => {
+  const sp = labelOf(text, en);
   if (!sp) return marked(text, find, facts, body);
   return <><strong className="font-bold text-slate-900">{marked(sp.label, find, facts)}:</strong> {marked(sp.detail, find, facts, body)}</>;
 };
@@ -315,7 +318,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
                   </span>
                 )}
                 {/* With the deadline already in its chip, the sentence is not marked a second time. */}
-                <p className={isWarningLine(it.en ?? it.text) ? "font-semibold text-amber-900" : undefined}>{leadIn(it.text, find, !due, body)}</p>
+                <p className={isWarningLine(it.en ?? it.text) ? "font-semibold text-amber-900" : undefined}>{leadIn(it.text, find, !due, body, it.en)}</p>
                 {it.subs.length > 0 && (
                   <ul className="mt-1 list-[circle] space-y-1 ps-5">
                     {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, body)}</li>)}
@@ -328,7 +331,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
       </ol>
     );
     // Every bullet a "Label: detail" (P5 §4.4, P7 §11 …): a grid of small tiles, label on top.
-    const labels = items.map(it => splitLabel(it.text));
+    const labels = items.map(it => labelOf(it.text, it.en));
     if (items.length >= 2 && labels.every(Boolean)) return (
       <ul key={key} className={`grid grid-cols-1 gap-2 text-[13px] leading-relaxed sm:grid-cols-2 ${className}`}>
         {items.map((it, j) => {
@@ -352,7 +355,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
       <Tag key={key} className={`list-disc space-y-1.5 ps-5 text-[13px] leading-relaxed ${className}`}>
         {items.map((it, j) => (
           <li key={j} className={isWarningLine(it.en ?? it.text) ? "font-semibold text-amber-900 marker:text-amber-600" : undefined}>
-            {leadIn(it.text, find, true, body)}
+            {leadIn(it.text, find, true, body, it.en)}
             {it.subs.length > 0 && (
               <ul className="mt-1 list-[circle] space-y-1 ps-5 font-normal text-slate-800">
                 {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, body)}</li>)}
@@ -379,7 +382,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
               {items.map((it, j) => (
                 <li key={j} className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-[13px] leading-relaxed text-slate-800">
                   {ic(TOPIC_ICON[topicOf(it.en ?? it.text)], `mt-0.5 h-5 w-5 ${accent.text}`)}
-                  <span>{leadIn(it.text, find, true, body)}</span>
+                  <span>{leadIn(it.text, find, true, body, it.en)}</span>
                 </li>
               ))}
             </ul>
