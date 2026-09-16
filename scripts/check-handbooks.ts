@@ -30,7 +30,7 @@ Since 16 September 2026, AnaHon's eleven policies are numbered P1 to P11, groupe
 Written for the declaration of 12 September 2026: AnaHon has no employees. Everyone on the team is a service provider on an annual contract stating the total fee and terms of reference, with subcontracts per project, and no payment where there is no project.
 2. Editorial Standards Handbook
 •P3 Editorial Standards — formerly 002; merged with 022 (and 021), approved 15 Sep 2026: content standards and labels, the two approvals, independence, consent and safeguarding in stories, journalist safety, corrections, AI
-•P4 Fact-Checking Policy — formerly 005
+•P4 Fact-Checking Policy — formerly 005; every claim is checked against credible, cross-checked sources by someone other than the author before publication, and errors are corrected openly with a public record
 3. Finance and Controls Handbook
 •P5 Finance and Procurement Policy — formerly 020; merged with 003, approved 15 Sep 2026: accounts, procurement, payments, petty cash, money received outside the bank, fixed assets and financial records
 •P6 Risk and Due Diligence — formerly 012; merged with 009, approved 15 Sep 2026: checking suppliers, partners, donors and people; the quarterly risk register; legal checks before publication
