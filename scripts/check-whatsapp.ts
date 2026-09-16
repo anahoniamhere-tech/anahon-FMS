@@ -77,12 +77,14 @@ for (const lang of ["en", "ar"]) {
   }
   ok(`AnaHon quotation (${lang}) is still signed AnaHon`, /— (AnaHon|أنا هون)$/.test(Q(lang, { issuedAs: "anahon" }).trim()));
   ok(`quotation (${lang}) delivers it rather than claiming it was sent`, !/we have sent|أرسلنا/.test(Q(lang, {})), Q(lang, {}));
-  ok(`quotation (${lang}) carries the validity date`, Q(lang, {}).includes("2026-09-30"));
+  ok(`quotation (${lang}) prints the validity date as the PDF does`,
+    lang === "en" ? Q(lang, {}).includes("valid until 30 September 2026.") : /30\u2069? أيلول \u2066?2026/.test(Q(lang, {})) && !Q(lang, {}).includes("2026-09-30"), Q(lang, {}));
   const noDate = Q(lang, { validUntil: "" });
   ok(`quotation (${lang}) with no validity date drops the clause`, !/valid until|صالح حتى|\{validUntil\}/.test(noDate) && !/,\s*\./.test(noDate), noDate);
 }
+ok("a date the code cannot read is shown as written, not guessed", Q("en", { validUntil: "end of month" }).includes("valid until end of month."));
 ok("the English quotation reads as agreed",
-  Q("en", {}) === "Hello Maroun, here is quotation 006/2026 for 750.00 USD, valid until 2026-09-30. Tell me if anything should change. — iContent Studio", Q("en", {}));
+  Q("en", {}) === "Hello Maroun, here is quotation 006/2026 for 750.00 USD, valid until 30 September 2026. Tell me if anything should change. — iContent Studio", Q("en", {}));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

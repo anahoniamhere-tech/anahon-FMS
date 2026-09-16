@@ -117,6 +117,21 @@ const fill = (s: string, p: Record<string, string>) => s.replace(/\{(\w+)\}/g, (
  * nothing an iContent Studio client reads names AnaHon. The Latin name is isolated (FSI…PDI) so
  * it sits correctly at the end of an Arabic sentence.
  */
+/**
+ * A date as the quotation PDF prints it: "30 September 2026", or in Arabic the Levantine month
+ * with Western digits ("30 أيلول 2026") — the same forms docgen.ts uses. Anything unparseable
+ * is returned as written rather than guessed.
+ */
+const EN_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const AR_MONTHS = ["كانون الثاني", "شباط", "آذار", "نيسان", "أيار", "حزيران", "تموز", "آب", "أيلول", "تشرين الأول", "تشرين الثاني", "كانون الأول"];
+const longDate = (iso: string, arabic: boolean) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  if (!m || +m[2] < 1 || +m[2] > 12) return iso;
+  const day = String(+m[3]);
+  return arabic ? `\u2066${day}\u2069 ${AR_MONTHS[+m[2] - 1]} \u2066${m[1]}\u2069` : `${day} ${EN_MONTHS[+m[2] - 1]} ${m[1]}`;
+};
+const isArabic = (t: (s: string) => string) => /[\u0600-\u06FF]/.test(t("Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change."));
+
 const signed = (text: string, issuedAs?: string) => {
   const arabic = /[\u0600-\u06FF]/.test(text);
   const who = issuedAs === "icontent" ? (arabic ? "\u2068iContent Studio\u2069" : "iContent Studio") : (arabic ? "أنا هون" : "AnaHon");
@@ -137,7 +152,8 @@ export const WA_TEMPLATES = {
   "client-quotation": (t: (s: string) => string, p: { name: string; ref: string; amount: string; validUntil?: string; issuedAs?: string }) =>
     signed(fill(t(p.validUntil
       ? "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}. Tell me if anything should change."
-      : "Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change."), p as any), p.issuedAs),
+      : "Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change."),
+      { ...p, validUntil: longDate(p.validUntil || "", isArabic(t)) } as any), p.issuedAs),
   /** Money is still owed on it. Projects & funding. */
   "client-balance": (t: (s: string) => string, p: { name: string; amount: string; date: string; issuedAs?: string }) =>
     signed(fill(t("Hello {name}, a balance of {amount} is outstanding since {date}. Could you let us know when it will be settled?"), p as any), p.issuedAs),
