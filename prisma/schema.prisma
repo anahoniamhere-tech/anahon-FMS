@@ -505,7 +505,7 @@ model QuoteShare {
   expiresAt     String
   revokedAt     String?
   revokeReason  String  @default("")
-  revokePending Boolean @default(false)
+  revokePending Boolean @default(false) // unused since the outbox design (16 Sep 2026): deleting a local file does not go pending
 
   @@index([quotationId])
 }

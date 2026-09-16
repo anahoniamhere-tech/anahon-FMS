@@ -776,7 +776,7 @@ export interface DatabaseState {
   clients: Client[];
   quotations: Quotation[];
   /** Client links ever issued for quotations (src/quoteShare.ts). */
-  quoteShares?: { token: string; quotationId: string; url: string; createdAt: string; createdByName: string; expiresAt: string; revokedAt: string | null; revokeReason: string; revokePending: boolean }[];
+  quoteShares?: { token: string; quotationId: string; url: string; createdAt: string; createdByName: string; expiresAt: string; revokedAt: string | null; revokeReason: string }[];
   /** The server can push links (its key is configured). */
   quoteLinksReady?: boolean;
   networkContacts: NetworkContact[];

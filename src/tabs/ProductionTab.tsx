@@ -227,7 +227,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
       });
       const out = await res.json();
       if (!res.ok) throw new Error(out.error || "The link was not revoked.");
-      triggerToast(out.pending ? `${q.quoteNo}: ${t("link withdrawn; the server could not be reached, so deletion is pending and retried")}.` : `${q.quoteNo}: ${t("link revoked")}.`);
+      triggerToast(`${q.quoteNo}: ${t("link revoked")}.`);
       refreshState();
     } catch (err: any) {
       triggerToast(err.message, "error");
@@ -724,7 +724,6 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                   The PDF lives on icontent.studio until its validity date. */}
                               {q.issuedAs === "icontent" && SHAREABLE_STATUSES.includes(q.status) && MANAGERS.includes(currentUser.role) && (() => {
                                 const live = liveShare(state.quoteShares || [], q.id, new Date());
-                                const pending = (state.quoteShares || []).some(r => r.quotationId === q.id && r.revokePending);
                                 return (
                                   <span className="inline-flex items-center gap-1">
                                     {live ? (
@@ -740,7 +739,6 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                         title={state.quoteLinksReady ? t("Publish this quotation's PDF so the client can open it from WhatsApp") : t("Quotation links are not set up on this server yet")}
                                         className="text-slate-500 hover:text-sky-700 p-1 text-[10px] font-semibold rounded hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50">🔗 {t("Get client link")}</button>
                                     )}
-                                    {pending && <span className="text-[10px] font-bold text-amber-700" title={t("The server could not be reached when the link was revoked; deletion is retried every 10 minutes and the file expires on its own.")}>{t("revocation pending")}</span>}
                                   </span>
                                 );
                               })()}

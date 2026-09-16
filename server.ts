@@ -47,7 +47,7 @@ import { isFloat as isFloatAccount } from "./src/pettyCash.js";
 import { pairFxLegs, isFxReversal, FX_PATTERN } from "./src/fxPairs.js";
 import { CONSULTANT_REVIEW_CATEGORY, isMonth, monthBounds, packExcludes, reconcileMarkBlocker, legsOf, trialBalance, openItems, paymentDate, lateRecords, safeName, type Recorded } from "./src/consultantPack.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
-import { shareBlocker, shareExpiry, shareUrl, remotePath, printedChange, SHAREABLE_STATUSES } from "./src/quoteShare.js";
+import { shareBlocker, shareExpiry, shareUrl, outboxName, printedChange, SHAREABLE_STATUSES } from "./src/quoteShare.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
@@ -987,7 +987,7 @@ async function loadState(viewer?: any) {
     })),
     // Client links ever issued (src/quoteShare.ts). This branch is FULL_VIEW only, like the quotations.
     quoteShares: await prisma.quoteShare.findMany({ orderBy: { createdAt: "desc" } }),
-    quoteLinksReady: !!quoteLinkSsh(),
+    quoteLinksReady: quoteOutboxReady(),
     // Networking register — people met at trainings and events. No financial data.
     networkContacts,
     // The freelancer pool. Personnel-file roles get the whole row; managers get name and skills
@@ -8470,56 +8470,41 @@ async function quotationPdf(quote: any, client: any, preparer: { name: string; r
   }));
 }
 
-// ---- Quotation share links (src/quoteShare.ts; VPS contract in QUOTATION-LINKS.md) ----------
-// Push only: the FMS writes /srv/quotations/<token>.pdf on the VPS with its mtime set to the
-// expiry, and deletes it to revoke. Nothing about the FMS becomes reachable. With the key, the
-// pinned host key or the host unset, no link is issued — there is no fallback.
-function quoteLinkSsh(): { host: string; ssh: string[] } | null {
-  const key = process.env.QUOTE_LINK_SSH_KEY, known = process.env.QUOTE_LINK_KNOWN_HOSTS, host = process.env.QUOTE_LINK_HOST;
-  if (!key || !known || !host) return null;
-  return { host, ssh: ["-i", key, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", `UserKnownHostsFile=${known}`, "-o", "ConnectTimeout=15"] };
+// ---- Quotation share links (src/quoteShare.ts; contract in QUOTATION-LINKS.md) ------------------
+// The FMS holds no key and names no host. It writes <token>.pdf into the outbox with its mtime set
+// to the expiry, and deletes it to revoke; Admin's syncer on the NAS prunes expired files and
+// mirrors the outbox to icontent.studio. The outbox is the single source of truth. With it missing
+// or not writable, no link is issued — there is no fallback.
+const QUOTE_OUTBOX = process.env.QUOTE_OUTBOX || "/data/quote-outbox";
+function quoteOutboxReady(): boolean {
+  try { fs.accessSync(QUOTE_OUTBOX, fs.constants.W_OK); return fs.statSync(QUOTE_OUTBOX).isDirectory(); } catch { return false; }
 }
-const QUOTE_LINK_UNSET = "Quotation links are not set up on this server yet (the push key is missing). Send the PDF instead.";
+const QUOTE_LINK_UNSET = "Quotation links are not set up on this server yet (the outbox is missing or not writable). Send the PDF instead.";
 
-async function run(cmd: string, args: string[]): Promise<void> {
-  const { execFile } = await import("child_process");
-  await new Promise<void>((resolve, reject) =>
-    execFile(cmd, args, { timeout: 60_000 }, (err, _out, stderr) => err ? reject(new Error(`${cmd}: ${String(stderr || err.message).trim().slice(0, 300)}`)) : resolve()));
-}
-
-async function pushSharePdf(token: string, pdf: Buffer, expiresAt: Date): Promise<void> {
-  const cfg = quoteLinkSsh();
-  if (!cfg) throw new Error(QUOTE_LINK_UNSET);
-  const local = path.join(os.tmpdir(), `qshare-${token}.pdf`);
-  try {
-    fs.writeFileSync(local, pdf, { mode: 0o600 });
-    // The mtime IS the expiry on the VPS: its cron deletes any file whose mtime has passed.
-    fs.utimesSync(local, expiresAt, expiresAt);
-    // -a keeps the mtime (a plain scp would land it already expired); -e carries the pinned host key.
-    await run("rsync", ["-a", "--chmod=F640", "-e", ["ssh", ...cfg.ssh].join(" "), local, `${cfg.host}:${remotePath(token)}`]);
-  } finally {
-    fs.rmSync(local, { force: true });
-  }
+function writeSharePdf(token: string, pdf: Buffer, expiresAt: Date): void {
+  if (!quoteOutboxReady()) throw new Error(QUOTE_LINK_UNSET);
+  const final = path.join(QUOTE_OUTBOX, outboxName(token));
+  // Written under a dot-name and renamed, so the syncer never mirrors half a PDF. The mtime IS the
+  // expiry, set before the file becomes visible.
+  const part = path.join(QUOTE_OUTBOX, `.${outboxName(token)}.part`);
+  fs.writeFileSync(part, pdf, { mode: 0o640 });
+  fs.utimesSync(part, expiresAt, expiresAt);
+  fs.renameSync(part, final);
 }
 
-async function deleteSharePdf(token: string): Promise<void> {
-  const cfg = quoteLinkSsh();
-  if (!cfg) throw new Error(QUOTE_LINK_UNSET);
-  await run("ssh", [...cfg.ssh, cfg.host, "rm", "-f", remotePath(token)]);
+function deleteSharePdf(token: string): void {
+  fs.rmSync(path.join(QUOTE_OUTBOX, outboxName(token)), { force: true });
 }
 
-/** Stop offering every live link of a quotation; delete on the VPS, or leave it pending for the retry sweep. */
-async function revokeShares(quotationId: string, reason: string, who: { id?: string; name?: string } | null): Promise<{ revoked: number; pending: number }> {
+/** Stop offering every live link of a quotation, and delete its file from the outbox. */
+async function revokeShares(quotationId: string, reason: string, who: { id?: string; name?: string } | null): Promise<number> {
   const rows = await prisma.quoteShare.findMany({ where: { quotationId, revokedAt: null } });
-  let pending = 0;
   for (const r of rows) {
-    let ok = true;
-    try { await deleteSharePdf(r.token); } catch { ok = false; pending++; }
-    await prisma.quoteShare.update({ where: { token: r.token }, data: { revokedAt: new Date().toISOString(), revokeReason: reason, revokePending: !ok } });
-    await createAuditLog(who?.id, who?.name || "System", "Quotation Link Revoked",
-      `Link ${r.token.slice(0, 8)}… for quotation ${quotationId}: ${reason}.${ok ? "" : " The VPS could not be reached — revocation pending; retried every 10 minutes, and the file expires on its own at " + r.expiresAt + "."}`);
+    deleteSharePdf(r.token);
+    await prisma.quoteShare.update({ where: { token: r.token }, data: { revokedAt: new Date().toISOString(), revokeReason: reason } });
+    await createAuditLog(who?.id, who?.name || "System", "Quotation Link Revoked", `Link ${r.token.slice(0, 8)}… for quotation ${quotationId}: ${reason}.`);
   }
-  return { revoked: rows.length, pending };
+  return rows.length;
 }
 
 /** Issue a fresh link (never a reused token) and retire any earlier one. */
@@ -8530,8 +8515,8 @@ async function issueShare(quote: any, who: { id: string; name: string; role: str
   const expiresAt = shareExpiry(quote.validUntil, now);
   const token = crypto.randomBytes(16).toString("hex");
   const pdf = await quotationPdf(quote, client, who);
-  await pushSharePdf(token, pdf, expiresAt);
-  // Retire the old link only once the new one exists, so a failed push leaves the client's link alone.
+  writeSharePdf(token, pdf, expiresAt);
+  // Retire the old link only once the new one exists, so a failed write leaves the client's link alone.
   await revokeShares(quote.id, `replaced by a new link (${reason})`, who);
   const row = await prisma.quoteShare.create({ data: {
     token, quotationId: quote.id, url: shareUrl(token), createdAt: now.toISOString(),
@@ -8542,18 +8527,6 @@ async function issueShare(quote: any, who: { id: string; name: string; role: str
   return row;
 }
 
-async function retryPendingRevokes() {
-  if (!quoteLinkSsh()) return;
-  for (const r of await prisma.quoteShare.findMany({ where: { revokePending: true } })) {
-    try {
-      await deleteSharePdf(r.token);
-      await prisma.quoteShare.update({ where: { token: r.token }, data: { revokePending: false } });
-      await createAuditLog(undefined, "System", "Quotation Link Revoked", `Pending revocation of link ${r.token.slice(0, 8)}… completed on the VPS.`);
-    } catch { /* still unreachable; next sweep */ }
-  }
-}
-setInterval(() => { retryPendingRevokes().catch(() => {}); }, 10 * 60 * 1000).unref();
-
 app.post("/api/quotations/share", async (req, res) => {
   try {
     const who = (req as any).dbUser;
@@ -8561,11 +8534,11 @@ app.post("/api/quotations/share", async (req, res) => {
     if (!quote) return res.status(404).json({ error: "Quotation not found." });
     const blocked = shareBlocker(quote, new Date());
     if (blocked) return res.status(400).json({ error: blocked });
-    if (!quoteLinkSsh()) return res.status(503).json({ error: QUOTE_LINK_UNSET });
+    if (!quoteOutboxReady()) return res.status(503).json({ error: QUOTE_LINK_UNSET });
     const share = await issueShare(quote, who, "issued from the quotation");
     res.json({ success: true, share });
   } catch (err: any) {
-    res.status(502).json({ error: `The link was not created: ${err.message}` });
+    res.status(500).json({ error: `The link was not created: ${err.message}` });
   }
 });
 
@@ -8574,8 +8547,8 @@ app.post("/api/quotations/share/revoke", async (req, res) => {
     const who = (req as any).dbUser;
     const quote = await prisma.quotation.findUnique({ where: { id: req.body.id } });
     if (!quote) return res.status(404).json({ error: "Quotation not found." });
-    const out = await revokeShares(quote.id, "revoked from the quotation", who);
-    res.json({ success: true, ...out });
+    const revoked = await revokeShares(quote.id, "revoked from the quotation", who);
+    res.json({ success: true, revoked });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

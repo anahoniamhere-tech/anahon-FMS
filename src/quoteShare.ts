@@ -1,9 +1,10 @@
 /**
  * Quotation share links — a client opens the quotation PDF from a WhatsApp message.
  *
- * The FMS stays tailnet-only. It pushes the rendered PDF to the VPS, where the presence of
- * /srv/quotations/<token>.pdf is the whole permission check (contract: QUOTATION-LINKS.md,
- * Admin's half). Expiry rides in the file's mtime and the VPS cron deletes it; revoke = delete.
+ * The FMS stays tailnet-only and holds no key. It writes the rendered PDF into an outbox that
+ * Admin's NAS syncer mirrors to the VPS, where the presence of /srv/quotations/<token>.pdf is the
+ * whole permission check (contract: QUOTATION-LINKS.md). Expiry rides in the file's mtime (the
+ * syncer prunes it, the VPS cron is the backstop); revoke = delete from the outbox.
  *
  * Saad's rules (16 Sep 2026): only iContent Studio quotations get a link (the route exists only
  * on icontent.studio, and client-facing iContent paper never names AnaHon); never for a Draft;
@@ -11,10 +12,9 @@
  * silently at an address they already hold.
  */
 
+import { QUOTE_VALIDITY_DAYS } from "./constants";
+
 export const SHARE_ORIGIN = "https://icontent.studio";
-export const SHARE_DIR = "/srv/quotations";
-/** A quotation with no validity date: the link lives this long. */
-export const SHARE_DEFAULT_DAYS = 30;
 /** Statuses where the client is still meant to read the offer (Invoiced = part paid, balance still owed). */
 export const SHAREABLE_STATUSES = ["Sent", "Accepted", "Invoiced"];
 
@@ -25,20 +25,23 @@ export function shareUrl(token: string): string {
   return `${SHARE_ORIGIN}/q/${token}.pdf`;
 }
 
-export function remotePath(token: string): string {
+/** The file name in the outbox (and on the VPS). Nothing but a well-formed token ever becomes a path. */
+export function outboxName(token: string): string {
   if (!TOKEN_PATTERN.test(token)) throw new Error("Not a share token.");
-  return `${SHARE_DIR}/${token}.pdf`;
+  return `${token}.pdf`;
 }
 
 /**
  * When the link dies: the end of the validity day in Beirut (quotations are dated there),
- * or SHARE_DEFAULT_DAYS from now when the quotation carries no date.
+ * or — with no date on the quotation — the same QUOTE_VALIDITY_DAYS a new quotation gets, so a link
+ * never outlives the offer it carries.
  * Beirut is UTC+2 in winter and +3 in summer; taking 23:59:59 at +02:00 keeps a link alive
  * for the whole Beirut day either way (in summer it lives one hour past midnight).
  */
 export function shareExpiry(validUntil: string, now: Date): Date {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(validUntil || "")) return new Date(`${validUntil}T23:59:59+02:00`);
-  return new Date(now.getTime() + SHARE_DEFAULT_DAYS * 86_400_000);
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(validUntil || "") ? validUntil
+    : new Date(now.getTime() + QUOTE_VALIDITY_DAYS * 86_400_000).toISOString().slice(0, 10);
+  return new Date(`${day}T23:59:59+02:00`);
 }
 
 type QuoteLike = { status: string; issuedAs: string; validUntil: string };
@@ -65,8 +68,7 @@ export function printedChange(before: Record<string, any>, after: Record<string,
   return PRINTED_FIELDS.filter(f => String(before[f] ?? "") !== String(after[f] ?? ""));
 }
 
-/** revokedAt = when the link stopped being offered; revokePending = the VPS delete has not yet succeeded. */
-export type ShareRow = { token: string; quotationId: string; createdAt: string; expiresAt: string; revokedAt: string | null; revokePending: boolean };
+export type ShareRow = { token: string; quotationId: string; createdAt: string; expiresAt: string; revokedAt: string | null };
 
 /** The link a client may be sent today: not revoked, not expired, newest first. */
 export function liveShare<T extends ShareRow>(rows: T[], quotationId: string, now: Date): T | null {
