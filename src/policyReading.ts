@@ -171,3 +171,20 @@ export const roleDefs = (text: string): Record<string, string> => {
 /** Which defined seats a stretch of text names, by abbreviation or full title, in definition order. */
 export const rolesIn = (text: string, defs: Record<string, string>): string[] =>
   Object.entries(defs).filter(([a, full]) => new RegExp(`\\b${a}\\b`).test(text) || text.includes(full)).map(([a]) => a);
+
+/** A section's key numbers — its amounts and deadlines — for tiles at the top. The caption is
+ *  only ever the document's own words: the line's "Label:" if it has one, otherwise the title
+ *  of the (sub)section it sits in. Each tile lands on that (sub)section. First `max`, no repeats. */
+export const keyFacts = (lines: { text: string; at: { id: string; title: string } }[], max = 6) => {
+  const out: { fact: string; caption: string; id: string }[] = [];
+  for (const { text, at } of lines) {
+    for (const p of markPieces(text)) {
+      if (p.mark !== "fact") continue;
+      const caption = splitLabel(text)?.label ?? at.title;
+      if (out.some(f => f.fact === p.text && f.caption === caption)) continue;
+      out.push({ fact: p.text, caption, id: at.id });
+      if (out.length === max) return out;
+    }
+  }
+  return out;
+};

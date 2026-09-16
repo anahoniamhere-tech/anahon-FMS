@@ -7,7 +7,7 @@
 // "At a glance" lines where the rule order decides the answer. A new rule that shifts any of
 // these fails here before a reader sees a wrong icon.
 // Run: npx tsx scripts/check-policy-reading.ts
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId } from "../src/policyReading.js";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, keyFacts } from "../src/policyReading.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -199,6 +199,21 @@ ok("words that merely contain P and digits are not references (MP3, COP28, USD 1
 ok("an amount keeps its highlight next to a reference", markPieces("USD 150 (P5 §4.4)").map(p => p.mark || "-").join(",") === "fact,-,ref,-");
 ok("a quoted citation sample stays plain", refs('cite them as "Policy 4.4.2", "§7.2". Section numbers').length === 0);
 ok("secId", secId("4.4.2") === "sec-4-4-2" && secId("14") === "sec-14");
+
+// Key-number tiles, from real P5 §4.4 lines.
+const CASH = { id: "sec-4-4", title: "Cash" }, PAY = { id: "sec-4-4-2", title: "Cash payments" };
+const tiles = keyFacts([
+  { text: "Custodian and float: the Finance Officer holds the float, in a locked box. It may not exceed USD 1,000, and has its own account in the management system.", at: CASH },
+  { text: "Paying from it: a single payment from the float may not exceed USD 150 (4.4.2). Each payment has a receipt and is recorded the same day.", at: CASH },
+  { text: "A cash payment above USD 150, or its equivalent, requires the Executive Director's approval before the money is paid.", at: PAY },
+  { text: "A small expense up to USD 150 may be paid directly from the float by the Finance Officer.", at: PAY },
+  { text: "It is cleared against them within seven days, with the receipts or signed confirmations of the people paid.", at: PAY },
+]).map(f => `${f.fact}|${f.caption}|${f.id}`);
+ok("tiles take the line's own label, else the subsection title, and never repeat", same(tiles, [
+  "USD 1,000|Custodian and float|sec-4-4", "USD 150|Paying from it|sec-4-4", "USD 150|Cash payments|sec-4-4-2", "within seven days|Cash payments|sec-4-4-2",
+]), JSON.stringify(tiles));
+ok("tiles stop at the limit", keyFacts([{ text: "USD 1 USD 2 USD 3", at: CASH }], 2).length === 2);
+ok("a section with no amounts or deadlines has no tiles", keyFacts([{ text: "Records are kept monthly.", at: CASH }]).length === 0);
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nall policy reading rules hold");

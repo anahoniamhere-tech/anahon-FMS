@@ -13,7 +13,7 @@ import {
   historyChaptersOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, type Ref, type Topic } from "../policyReading";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, keyFacts, type Ref, type Topic } from "../policyReading";
 
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
@@ -865,6 +865,11 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                       </h2>
                       {open && (() => {
                         const who = rolesIn(hay.sections[s.id], roles);
+                        let at = { id: s.id, title: s.title };
+                        const facts = keyFacts(s.blocks.flatMap(b => {
+                          if (b.kind === "h3" || b.kind === "h4") { at = { id: b.id, title: b.title }; return []; }
+                          return [{ text: b.text, at }];
+                        }));
                         return (
                           <div id={`${s.id}-body`} className="pb-5">
                             {who.length > 0 && (
@@ -872,6 +877,17 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                                 {ic(Users, "h-3.5 w-3.5")} {t("Who")}:
                                 {who.map(a => <span key={a}><RoleChip abbr={a} full={roles[a]} /></span>)}
                               </p>
+                            )}
+                            {facts.length > 0 && (
+                              <div className="mb-3 flex flex-wrap gap-2">
+                                {facts.map(f => (
+                                  <button key={`${f.fact}|${f.caption}`} onClick={() => jump(f.id, parentOf(f.id))}
+                                    className="min-h-11 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-start hover:bg-amber-100">
+                                    <span className="block text-[13px] font-bold text-amber-950">{f.fact}</span>
+                                    <span className="block text-[11px] leading-tight text-amber-900/80">{f.caption}</span>
+                                  </button>
+                                ))}
+                              </div>
                             )}
                             {renderBody(s.blocks, accent, find, bodyCtx)}
                           </div>
