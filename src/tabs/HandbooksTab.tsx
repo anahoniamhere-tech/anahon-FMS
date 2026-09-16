@@ -192,7 +192,8 @@ function renderBody(blocks: BodyBlock[], accentText: string, find: string) {
     nodes.push(
       <div key={h.id} className="mt-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 first:mt-0 md:p-4">
         <h3 id={h.id} className="flex items-start gap-2.5 text-[15px] font-bold leading-snug text-slate-800">
-          {ic(TOPIC_ICON[topicOf(h.title)], `mt-0.5 h-4 w-4 ${accentText}`)}
+          {/* Only a specific topic earns an icon here: a row of identical neutral books said nothing. */}
+          {topicOf(h.title) !== "general" && ic(TOPIC_ICON[topicOf(h.title)], `mt-0.5 h-4 w-4 ${accentText}`)}
           {intro ? <span>{marked(h.title, find)}</span>
             : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{h.num}</span>{marked(h.title, find)}</span>}
         </h3>
