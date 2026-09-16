@@ -51,8 +51,16 @@ export const isWarningLine = (text: string) => /^(Must|Never|Do not|Only)\b/.tes
 // 5 working days", "within seven days", "within 30 to 60 days", "by the last working day
 // of the month". Frequencies ("monthly", "the same day") are left alone on purpose.
 const N = "(?:\\d+|one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|thirty|sixty|ninety)";
+// The Arabic twins (16 Sep 2026) write the same facts as «1,000 دولار», «خلال 5 أيام عمل»,
+// «خلال سبعة أيام», «في آخر يوم عمل من الشهر». JS \b is ASCII-only, so Arabic words are
+// bounded with a lookbehind on the Arabic block instead.
+const NA = "(?:\\d+|سبعة|ثلاثة|خمسة|عشرة|خمسة عشر|ثلاثين|ستين)";
+const NOT_AR = "(?<![\\u0621-\\u064A])";
 const MARK = new RegExp(
   "\\b(?:USD|EUR|LBP)\\s?\\d[\\d,]*(?:\\.\\d+)?\\b" +
+  "|\\b\\d[\\d,]*(?:\\.\\d+)?\\s?(?:دولار(?:اً)?|يورو)(?![\\u0621-\\u064A])" +
+  `|${NOT_AR}خلال ${NA}(?: إلى ${NA})? (?:أيام|يوم|يوماً|أسابيع|أسبوع|أشهر|شهر|شهراً)(?: عمل)?(?![\\u0621-\\u064A])` +
+  `|${NOT_AR}(?:في|بحلول) (?:آخر|أول) يوم عمل من (?:الشهر|كل شهر)(?![\\u0621-\\u064A])` +
   "|\\b\\d[\\d,]*(?:\\.\\d+)?\\s?(?:USD|EUR|LBP)\\b" +
   `|\\bwithin ${N}(?: to ${N})? (?:working |calendar |business )?(?:days?|hours?|weeks?|months?)\\b` +
   "|\\bby the (?:last|first|\\d+(?:st|nd|rd|th)?) (?:working )?day of (?:the|each) month\\b",
@@ -66,20 +74,33 @@ export type Piece = { text: string; mark: false | "fact" | "find" | "role" | "re
 
 /** Shortest search that filters and highlights; one letter would match nearly everything. */
 export const MIN_FIND = 2;
-const findKey = (find: string) => find.trim().toLowerCase();
+// Arabic is searched without its short vowels and tatweel: the twins are voweled («يُقيَّد»),
+// a reader types «يقيد». Dropping them changes length, so splitFind keeps an index map.
+const MARKS_AR = /[\u064B-\u065F\u0670\u0640]/g;
+const fold = (s: string) => s.toLowerCase().replace(MARKS_AR, "");
+const findKey = (find: string) => fold(find.trim());
 export const isFinding = (find: string) => findKey(find).length >= MIN_FIND;
-export const mentions = (text: string, find: string) => text.toLowerCase().includes(findKey(find));
+export const mentions = (text: string, find: string) => fold(text).includes(findKey(find));
 
 // Plain indexOf, never a RegExp built from what the reader typed. toLowerCase keeps length
 // for the English (and caseless Arabic) text these documents hold.
 const splitFind = (p: Piece, q: string): Piece[] => {
   const out: Piece[] = [];
-  const low = p.text.toLowerCase();
+  const src = p.text.toLowerCase();
+  let low = "";
+  const orig: number[] = [];               // orig[k] = index in p.text of folded char k
+  for (let k = 0; k < src.length; k++) if (!/[\u064B-\u065F\u0670\u0640]/.test(src[k])) { orig.push(k); low += src[k]; }
+  orig.push(src.length);
   let at = 0;
-  for (let i = low.indexOf(q); i !== -1; i = low.indexOf(q, at)) {
+  for (let f = low.indexOf(q), from = 0; f !== -1; f = low.indexOf(q, from)) {
+    const i = orig[f];
+    // A hit ends after any vowel marks that sit on its last letter.
+    let end = orig[f + q.length - 1] + 1;
+    while (end < src.length && /[\u064B-\u065F\u0670]/.test(src[end])) end++;
     if (i > at) out.push({ text: p.text.slice(at, i), mark: p.mark });
-    out.push({ text: p.text.slice(i, i + q.length), mark: "find" });
-    at = i + q.length;
+    out.push({ text: p.text.slice(i, end), mark: "find" });
+    at = end;
+    from = f + q.length;
   }
   if (at < p.text.length) out.push({ text: p.text.slice(at), mark: p.mark });
   return out;
@@ -87,7 +108,8 @@ const splitFind = (p: Piece, q: string): Piece[] => {
 
 // "P5 §0.3", "Policy P6", "(P7)", "§6.3" — the forms the handbooks use (17 spellings counted,
 // all reduce to these). A section number never swallows a sentence's closing full stop.
-const REF = /\b(?:Policy\s)?P(\d{1,2})(?:\s§\s?(\d+(?:\.\d+)*))?\b|§\s?(\d+(?:\.\d+)*)/g;
+// Arabic: «السياسة P5، البند 4.3», «(P5، البند 6.8)», «البند 6».
+const REF = /(?:\bPolicy\s|(?<![\u0621-\u064A])السياسة\s)?\bP(\d{1,2})(?:(?:\s§\s?|،\s?البند\s)(\d+(?:\.\d+)*))?\b|(?:§\s?|(?<![\u0621-\u064A])البند\s)(\d+(?:\.\d+)*)/g;
 const splitRefs = (p: Piece): Piece[] => {
   if (p.mark) return [p];
   const out: Piece[] = [];
@@ -137,7 +159,7 @@ export const markPieces = (text: string, find = "", roles: Record<string, string
  *  example from its marker on. Only a capitalised marker at a sentence start ("Examples:",
  *  "Example:", "For example,") — a lower-case "for example" mid-sentence stays in place. */
 export const splitExample = (text: string): { before: string; example: string } | null => {
-  const m = /(^|[.;:!?]\s+)(Examples?:|For example,)/.exec(text);
+  const m = /(^|[.;:!?؛]\s+)(Examples?:|For example,|أمثلة:|مثال:|على سبيل المثال،)/.exec(text);
   if (!m) return null;
   const at = m.index + m[1].length;
   return { before: text.slice(0, at).trimEnd(), example: text.slice(at) };
@@ -146,13 +168,13 @@ export const splitExample = (text: string): { before: string; example: string } 
 /** The first deadline in a line ("within 5 working days", "by the last working day of the
  *  month"), for a step's time chip. Amounts are not deadlines. */
 export const deadlineIn = (text: string): string | null =>
-  markPieces(text).find(p => p.mark === "fact" && /^(within|by the)\b/i.test(p.text))?.text ?? null;
+  markPieces(text).find(p => p.mark === "fact" && /^(within|by the|خلال|في آخر|في أول|بحلول)/i.test(p.text))?.text ?? null;
 
 /** "Custodian and float: the Finance Officer holds …" → label + detail. A capitalised lead of
  *  at most six words before a colon, with text after it; "Never paid from the float:" (a list
  *  lead-in, nothing after) is not one. 98 of the 644 real bullets have this shape. */
 export const splitLabel = (text: string): { label: string; detail: string } | null => {
-  const m = /^([A-Z][^:.;]{1,40}):\s+(\S.*)$/.exec(text.trim());
+  const m = /^([A-Z\u0621-\u064A][^:.;؛]{1,40}):\s+(\S.*)$/.exec(text.trim());
   if (!m || m[1].trim().split(/\s+/).length > 6) return null;
   return { label: m[1].trim(), detail: m[2] };
 };
@@ -187,4 +209,32 @@ export const keyFacts = (lines: { text: string; at: { id: string; title: string 
     }
   }
   return out;
+};
+
+/** "At a glance" in either language. */
+export const isGlanceLabel = (label: string) => /^(at a glance|لمحة سريعة)$/i.test(label.trim());
+
+/** Chapter headings of an Arabic twin: «الجزء الأول — مدوّنة السلوك والنزاهة (السياسة P1)» → P1 at
+ *  that line, and the Arabic title. The English ones are read by handbooksIndex.chapterAnchors. */
+const AR_CHAPTER = /^الجزء\s+\S+\s+—\s+(.+?)\s*\(السياسة\s+(P\d{1,2})\b.*?\)\s*$/;
+export const arabicChapters = (text: string) => {
+  const anchors: Record<string, number> = {};
+  const titles: Record<string, string> = {};
+  text.split("\n").forEach((raw, i) => {
+    const m = AR_CHAPTER.exec(raw.trim());
+    if (m) { anchors[m[2]] = i; titles[m[2]] = m[1]; }
+  });
+  return { anchors, titles };
+};
+
+/** Which text governs, read from a twin's own status line (plan §1): the current «… يُعمل بالنص
+ *  الإنكليزي …», the draft «… يبقى النص الإنكليزي هو النص النافذ», or, once approved, «… والنص
+ *  العربي هو النص الملزم …». The line itself is returned so the view can show it as written. */
+export const governingLine = (text: string): { line: string; governs: "en" | "ar" } | null => {
+  for (const raw of text.split("\n").slice(0, 8)) {
+    const line = raw.trim();
+    if (/يُعمل بالنص العربي|النص العربي هو النص الملزم/.test(line)) return { line, governs: "ar" };
+    if (/يُعمل بالنص الإنكليزي|النص الإنكليزي هو النص النافذ/.test(line)) return { line, governs: "en" };
+  }
+  return null;
 };

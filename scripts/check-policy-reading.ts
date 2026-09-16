@@ -7,7 +7,7 @@
 // "At a glance" lines where the rule order decides the answer. A new rule that shifts any of
 // these fails here before a reader sees a wrong icon.
 // Run: npx tsx scripts/check-policy-reading.ts
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, keyFacts } from "../src/policyReading.js";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, keyFacts, isGlanceLabel, arabicChapters, governingLine } from "../src/policyReading.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -214,6 +214,36 @@ ok("tiles take the line's own label, else the subsection title, and never repeat
 ]), JSON.stringify(tiles));
 ok("tiles stop at the limit", keyFacts([{ text: "USD 1 USD 2 USD 3", at: CASH }], 2).length === 2);
 ok("a section with no amounts or deadlines has no tiles", keyFacts([{ text: "Records are kept monthly.", at: CASH }]).length === 0);
+
+// ---- The Arabic twins (16 Sep 2026), real lines. ----
+const factsOf = (s: string) => markPieces(s).filter(p => p.mark === "fact").map(p => p.text);
+ok("AR amounts «1,000 دولار» / «150 دولار»", same(factsOf("لا يتجاوز الصندوق 1,000 دولار، ولا تتجاوز الدفعة الواحدة 150 دولار."), ["1,000 دولار", "150 دولار"]), JSON.stringify(factsOf("لا يتجاوز الصندوق 1,000 دولار، ولا تتجاوز الدفعة الواحدة 150 دولار.")));
+ok("AR deadlines: digits, words, ranges, «يوم عمل»", same(factsOf("الإقرار بالبلاغ خلال 5 أيام عمل، ومراجعة أولية خلال 15 يوم عمل، وتسوية خلال سبعة أيام، والتقرير خلال 30 إلى 60 يوماً."),
+  ["خلال 5 أيام عمل", "خلال 15 يوم عمل", "خلال سبعة أيام", "خلال 30 إلى 60 يوماً"]), JSON.stringify(factsOf("الإقرار بالبلاغ خلال 5 أيام عمل، ومراجعة أولية خلال 15 يوم عمل، وتسوية خلال سبعة أيام، والتقرير خلال 30 إلى 60 يوماً.")));
+ok("AR «في آخر يوم عمل من الشهر»", same(factsOf("1. تُقدَّم جداول ساعات العمل في آخر يوم عمل من الشهر."), ["في آخر يوم عمل من الشهر"]));
+ok("AR «خلال» that is not a time limit stays plain", factsOf("من خلال الشراكات مع الصحفيين، خلال الاثني عشر شهراً الماضية، خلال سنة.").length === 0);
+ok("AR «مدخلال» is not «خلال»", factsOf("مدخلال 5 أيام").length === 0);
+ok("AR step chip", deadlineIn("الإقرار بالبلاغ خلال 5 أيام عمل، حيثما أمكن التواصل مع الشخص.") === "خلال 5 أيام عمل");
+const arRefs = (s: string) => markPieces(s).filter(p => p.mark === "ref").map(p => `${p.text}=${p.ref!.policy ?? "-"}:${p.ref!.sec ?? "-"}`);
+ok("AR refs «السياسة P5، البند 4.3», «(P5، البند 6.8)», «البند 6», «(السياسة P11)»",
+  same(arRefs("كما في السياسة P5، البند 4.3 و(P5، البند 6.8) ثم البند 6 (السياسة P11)."),
+    ["السياسة P5، البند 4.3=P5:4.3", "P5، البند 6.8=P5:6.8", "البند 6=-:6", "السياسة P11=P11:-"]),
+  JSON.stringify(arRefs("كما في السياسة P5، البند 4.3 و(P5، البند 6.8) ثم البند 6 (السياسة P11).")));
+ok("AR «البنود» / «والبند» are not a bare «البند»", arRefs("البنود 4 و5، والبند 6").length === 0);
+ok("AR example strip at «أمثلة:»", splitExample("… في قرار تتّخذه باسم «أنا هون». أمثلة: التعاقد مع قريب.")?.example === "أمثلة: التعاقد مع قريب.");
+ok("AR «— أمثلة:» mid-bullet stays put (as the English does)", splitExample("المعلومات الشخصية — أمثلة: بطاقات الهوية") === null);
+ok("AR label «أمين الصندوق: …»", splitLabel("أمين الصندوق والنقد: يحتفظ المسؤول المالي بالصندوق.")?.label === "أمين الصندوق والنقد");
+ok("AR list lead-in with nothing after is not a label", splitLabel("ما لا يُدفع من الصندوق أبداً:") === null);
+ok("AR «لمحة سريعة» is At a glance", isGlanceLabel("لمحة سريعة") && isGlanceLabel("At a glance") && !isGlanceLabel("ملاحظة المحرّر"));
+ok("AR search ignores short vowels", mentions("يُقيَّد كل بلاغ في سجلّ خاص", "يقيد") && mentions("سجلّ", "سجل"));
+const hits = markPieces("يُقيَّد كل بلاغ", "يقيد").filter(p => p.mark === "find").map(p => p.text);
+ok("AR hit keeps its vowels, text survives", same(hits, ["يُقيَّد"]) && markPieces("يُقيَّد كل بلاغ", "يقيد").map(p => p.text).join("") === "يُقيَّد كل بلاغ", JSON.stringify(hits));
+const ch = arabicChapters("منصة «أنا هون» الإعلامية — دليل الفريق\nالجزء الأول — مدوّنة السلوك والنزاهة (السياسة P1)\nنص\n(السياسة P11) في السطر\nالجزء الثاني — سياسة شؤون الأفراد (السياسة P2)");
+ok("AR chapter headings, and a body «(السياسة P11)» is not one", JSON.stringify(ch.anchors) === '{"P1":1,"P2":4}' && ch.titles.P1 === "مدوّنة السلوك والنزاهة", JSON.stringify(ch));
+const GOV_EN = "ترجمة رسمية للنص الإنكليزي. عند أي اختلاف في المعنى بين النصين، يُعمل بالنص الإنكليزي ويُرجع إلى المدير التنفيذي لتصويب الترجمة.";
+ok("governing line: English governs today", governingLine(`عنوان\n${GOV_EN}\nالإصدار 7`)?.governs === "en");
+ok("governing line: the approved clause makes Arabic govern", governingLine("عنوان\nاللغة. صدرت هذه السياسة بالعربية والإنكليزية، والنص العربي هو النص الملزم. وعند أي اختلاف في المعنى بين النصين، يُعمل بالنص العربي.")?.governs === "ar");
+ok("no status line, no badge", governingLine("Title\nEdition 7") === null);
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nall policy reading rules hold");

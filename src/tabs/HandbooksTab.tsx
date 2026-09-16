@@ -13,7 +13,7 @@ import {
   historyChaptersOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, keyFacts, type Ref, type Topic } from "../policyReading";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, keyFacts, isGlanceLabel, arabicChapters, governingLine, type Ref, type Topic } from "../policyReading";
 
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
@@ -174,8 +174,43 @@ const TOPIC_ICON: Record<Topic, LucideIcon> = {
 
 type Roles = Record<string, string>;
 /** What body text can link to: seat chips, and cross-references this reader can follow. */
-type BodyCtx = { roles: Roles; knows?: (r: Ref) => boolean; onRef?: (r: Ref) => void };
+/** `en` maps a block of an Arabic twin to the same block of the English text (the twins match
+ *  paragraph for paragraph), so icons and the warning style come from the English rules. */
+type BodyCtx = { roles: Roles; dir?: "ltr" | "rtl"; en?: Map<BodyBlock, BodyBlock>; knows?: (r: Ref) => boolean; onRef?: (r: Ref) => void };
 const NO_BODY: BodyCtx = { roles: {} };
+const enText = (body: BodyCtx, b: BodyBlock) => { const e = body.en?.get(b); return e && "text" in e ? e.text : undefined; };
+
+/** Seat names in the Arabic twins, from the translation glossary (drafts/policies-arabic-plan.md §3):
+ *  the twins write them out and never abbreviate. */
+const SEAT_AR: Record<string, string> = { ED: "المدير التنفيذي", FO: "المسؤول المالي", PLO: "مسؤول المشتريات واللوجستيات" };
+
+/** Pair each block of `ar` with the same block of `en`, only when the two runs have the same
+ *  shape line for line — otherwise no hints, and the Arabic simply shows no topic icons. */
+const pairBlocks = (ar: BodyBlock[], en: BodyBlock[], into: Map<BodyBlock, BodyBlock>) => {
+  if (ar.length !== en.length || ar.some((b, i) => b.kind !== en[i].kind)) return;
+  ar.forEach((b, i) => into.set(b, en[i]));
+};
+
+/** A standalone twin's title: its first line after "— ", without «(السياسة P10)». */
+const arTitleOf = (text: string) => {
+  const first = text.split("\n").find(l => l.trim())?.trim() || "";
+  return first.split(" — ").pop()!.replace(/\s*\(السياسة\s+P\d{1,2}\)\s*$/, "");
+};
+
+/** One chapter of a handbook text, in either language: its body, whether the text lacks it,
+ *  the Arabic title and the twin's governing line (kept out of the body — it is shown apart). */
+const readChapter = (text: string, ar: boolean, chapters: Chapter[], no: string) => {
+  if (!ar) {
+    const anchors = chapterAnchors(text);
+    const missing = missingChapterText(chapters, anchors).some(c => c.no === no);
+    return { body: missing ? "" : chapterSlice(text, no, anchors), missing, title: null as string | null, gov: null as ReturnType<typeof governingLine> };
+  }
+  const { anchors, titles } = arabicChapters(text);
+  const missing = Object.keys(anchors).length > 0 && !(no in anchors);
+  const gov = governingLine(text);
+  const body = missing ? "" : chapterSlice(text, no, anchors).split("\n").filter(l => !gov || l.trim() !== gov.line).join("\n");
+  return { body, missing, title: titles[no] ?? arTitleOf(text), gov };
+};
 const parentOf = (id: string) => id.split("-").slice(0, 2).join("-");
 
 /** A defined seat (ED, FO …) as a chip; a tap spells out the title in place — no popover to
@@ -196,14 +231,15 @@ const marked = (text: string, find: string, facts = true, body: BodyCtx = NO_BOD
   markPieces(text, find, body.roles).map((p, k) =>
     p.mark === "role" ? <span key={k}><RoleChip abbr={p.text} full={body.roles[p.text]} /></span> :
     p.mark === "ref" ? (body.onRef && body.knows?.(p.ref!)
-      ? <button key={k} type="button" onClick={() => body.onRef!(p.ref!)}
+      ? <button key={k} type="button" dir={body.dir} onClick={() => body.onRef!(p.ref!)}
           className="relative font-semibold text-[#6D1A1A] underline decoration-dotted underline-offset-2 before:absolute before:-inset-x-1 before:-inset-y-3 before:content-[''] hover:decoration-solid">{p.text}</button>
       : p.text) :
-    p.mark === "find" ? <mark key={k} className="rounded bg-yellow-300 px-0.5 text-slate-900 ring-1 ring-yellow-500">{p.text}</mark>
+    // No side padding in Arabic: it would break the letters' joining where a hit ends mid-word.
+    p.mark === "find" ? <mark key={k} className={`rounded bg-yellow-300 text-slate-900 ring-1 ring-yellow-500 ${body.dir === "rtl" ? "" : "px-0.5"}`}>{p.text}</mark>
     : p.mark && facts ? <mark key={k} className="rounded bg-amber-100 px-1 font-semibold text-slate-900">{p.text}</mark>
     : p.text);
 
-type ListItem = { text: string; subs: string[] };
+type ListItem = { text: string; subs: string[]; en?: string };
 
 /** A "Label: detail" line with its label in bold; anything else just marked. */
 const leadIn = (text: string, find: string, facts = true, body: BodyCtx = NO_BODY) => {
@@ -232,9 +268,10 @@ function renderBody(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
       <div key={h.id} className="mt-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 first:mt-0 md:p-4">
         <h3 id={h.id} className="flex items-start gap-2.5 text-[15px] font-bold leading-snug text-slate-800">
           {/* Only a specific topic earns an icon here: a row of identical neutral books said nothing. */}
-          {topicOf(h.title) !== "general" && ic(TOPIC_ICON[topicOf(h.title)], `mt-0.5 h-4 w-4 ${accent.text}`)}
-          {intro ? <span>{marked(h.title, find)}</span>
-            : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{h.num}</span>{marked(h.title, find)}</span>}
+          {(() => { const tp = topicOf((body.en?.get(blocks[i]) as { title?: string } | undefined)?.title ?? h.title);
+            return tp !== "general" && ic(TOPIC_ICON[tp], `mt-0.5 h-4 w-4 ${accent.text}`); })()}
+          {intro ? <span>{marked(h.title, find, true, { roles: {}, dir: body.dir })}</span>
+            : <span dir={body.dir ?? "ltr"}><span className="me-2 font-mono text-[13px] text-slate-400">{h.num}</span>{marked(h.title, find, true, { roles: {}, dir: body.dir })}</span>}
         </h3>
         {end > i + 1 && <div className="mt-2">{renderFlat(blocks.slice(i + 1, end), accent, find, body)}</div>}
       </div>
@@ -252,7 +289,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
     const items: ListItem[] = [];
     while (i < blocks.length) {
       const b = blocks[i];
-      if (b.kind === kind || (b.kind === "sub" && !items.length)) items.push({ text: b.text, subs: [] });
+      if (b.kind === kind || (b.kind === "sub" && !items.length)) items.push({ text: b.text, subs: [], en: enText(body, b) });
       else if (b.kind === "sub") items[items.length - 1].subs.push(b.text);
       else break;
       i++;
@@ -264,7 +301,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
     // A numbered list is a real procedure in these handbooks (P1 §7.2, P3 §4.1, P8 §4.2 …):
     // numbered circles on a line, each step's deadline as a chip above its text.
     if (kind === "numbered") return (
-      <ol key={key} dir="auto" className={`text-[13px] leading-relaxed text-slate-800 ${className}`}>
+      <ol key={key} className={`text-[13px] leading-relaxed text-slate-800 ${className}`}>
         {items.map((it, j) => {
           const due = deadlineIn(it.text);
           return (
@@ -278,7 +315,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
                   </span>
                 )}
                 {/* With the deadline already in its chip, the sentence is not marked a second time. */}
-                <p className={isWarningLine(it.text) ? "font-semibold text-amber-900" : undefined}>{leadIn(it.text, find, !due, body)}</p>
+                <p className={isWarningLine(it.en ?? it.text) ? "font-semibold text-amber-900" : undefined}>{leadIn(it.text, find, !due, body)}</p>
                 {it.subs.length > 0 && (
                   <ul className="mt-1 list-[circle] space-y-1 ps-5">
                     {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, body)}</li>)}
@@ -293,9 +330,9 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
     // Every bullet a "Label: detail" (P5 §4.4, P7 §11 …): a grid of small tiles, label on top.
     const labels = items.map(it => splitLabel(it.text));
     if (items.length >= 2 && labels.every(Boolean)) return (
-      <ul key={key} dir="auto" className={`grid grid-cols-1 gap-2 text-[13px] leading-relaxed sm:grid-cols-2 ${className}`}>
+      <ul key={key} className={`grid grid-cols-1 gap-2 text-[13px] leading-relaxed sm:grid-cols-2 ${className}`}>
         {items.map((it, j) => {
-          const warn = isWarningLine(it.text);
+          const warn = isWarningLine(it.en ?? it.text);
           return (
             <li key={j} className={`rounded-lg border bg-white p-3 ${warn ? "border-amber-300" : "border-slate-200"}`}>
               <p className={`text-[12px] font-bold ${warn ? "text-amber-900" : "text-slate-900"}`}>{marked(labels[j]!.label, find)}</p>
@@ -312,9 +349,9 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
     );
     const Tag = "ul";
     return (
-      <Tag key={key} dir="auto" className={`list-disc space-y-1.5 ps-5 text-[13px] leading-relaxed ${className}`}>
+      <Tag key={key} className={`list-disc space-y-1.5 ps-5 text-[13px] leading-relaxed ${className}`}>
         {items.map((it, j) => (
-          <li key={j} className={isWarningLine(it.text) ? "font-semibold text-amber-900 marker:text-amber-600" : undefined}>
+          <li key={j} className={isWarningLine(it.en ?? it.text) ? "font-semibold text-amber-900 marker:text-amber-600" : undefined}>
             {leadIn(it.text, find, true, body)}
             {it.subs.length > 0 && (
               <ul className="mt-1 list-[circle] space-y-1 ps-5 font-normal text-slate-800">
@@ -332,16 +369,16 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
       const label = b.text;
       i++;
       const { kind, items } = i < blocks.length && isList(blocks[i].kind) ? readList() : { kind: "bullet" as const, items: [] };
-      if (/^at a glance$/i.test(label.trim()) && kind === "bullet" && items.length > 0) {
+      if (isGlanceLabel(label) && kind === "bullet" && items.length > 0) {
         // Cards stop at two columns: the reading column is ~70 characters wide, and a third
         // column would leave each sentence about twenty characters a line.
         nodes.push(
-          <div key={`glance-${i}`} dir="auto" className="my-5">
+          <div key={`glance-${i}`} className="my-5">
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{marked(label, find)}</p>
             <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {items.map((it, j) => (
                 <li key={j} className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-[13px] leading-relaxed text-slate-800">
-                  {ic(TOPIC_ICON[topicOf(it.text)], `mt-0.5 h-5 w-5 ${accent.text}`)}
+                  {ic(TOPIC_ICON[topicOf(it.en ?? it.text)], `mt-0.5 h-5 w-5 ${accent.text}`)}
                   <span>{leadIn(it.text, find, true, body)}</span>
                 </li>
               ))}
@@ -351,7 +388,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
         continue;
       }
       nodes.push(
-        <div key={`label-${i}`} dir="auto" className="my-4 rounded-xl border border-amber-100 bg-amber-50/60 p-4">
+        <div key={`label-${i}`} className="my-4 rounded-xl border border-amber-100 bg-amber-50/60 p-4">
           <p className="text-[13px] font-bold text-amber-900">{marked(label, find)}</p>
           {items.length > 0 && list(kind, items, "mt-2 text-amber-950")}
         </div>
@@ -365,17 +402,17 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
     }
     if (b.kind === "h4") {
       nodes.push(
-        <h4 key={i} id={b.id} dir="ltr" className="mt-4 text-[13px] font-bold text-slate-800 first:mt-0">
+        <h4 key={i} id={b.id} dir={body.dir ?? "ltr"} className="mt-4 text-[13px] font-bold text-slate-800 first:mt-0">
           <span className="me-2 font-mono text-[12px] text-slate-400">{b.num}</span>{marked(b.title, find)}
         </h4>
       );
       i++; continue;
     }
     if (b.kind === "p") {
-      const warn = isWarningLine(b.text);
+      const warn = isWarningLine(enText(body, b) ?? b.text);
       const ex = warn ? null : splitExample(b.text);
       nodes.push(
-        <div key={i} dir="auto" className="mt-3 first:mt-0">
+        <div key={i} className="mt-3 first:mt-0">
           {(!ex || ex.before) && (
             <p className={`text-[13px] leading-relaxed ${warn ? "border-s-2 border-amber-500 ps-3 font-semibold text-amber-900" : "text-slate-800"}`}>
               {marked(ex ? ex.before : b.text, find, true, body)}
@@ -397,7 +434,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
 
 type Selected = { doc: AppDoc; no: string; title: string; chapters: Chapter[] };
 
-export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, focusId, setFocusId }: SharedProps) {
+export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHelp, focusId, setFocusId }: SharedProps) {
   const liveDocs = useMemo(
     () => state.documents.filter(d => d.category === "Handbook" && !isSupersededDoc(d)),
     [state.documents]
@@ -415,6 +452,9 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   }, [supersededDocs]);
 
   const indexDoc = liveDocs.find(d => d.id === INDEX_DOC);
+  // The Arabic twin of a governing document (category "Handbook (Arabic)", linked to its English row).
+  const twinOf = (doc: AppDoc) => state.documents.find(d =>
+    d.category === "Handbook (Arabic)" && d.linkedRecordType === "Handbook" && d.linkedRecordId === doc.id && !isSupersededDoc(d));
 
   const [parsed, setParsed] = useState<ParsedIndex | null>(null);
   const [docText, setDocText] = useState<Record<string, string>>({});
@@ -436,6 +476,9 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   const [peek, setPeek] = useState<{ no: string; sec?: string } | null>(null);
   const [pendingSec, setPendingSec] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
+  // The text a policy is read in; null follows the app language.
+  const [textLang, setTextLang] = useState<"en" | "ar" | null>(null);
+  const wantAr = (textLang ?? lang) === "ar";
   const barRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLDivElement>(null);
 
@@ -544,11 +587,39 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   // Hook may never run conditionally (React error #310 — caught live, not guessed).
   // Called with an empty body when nothing is selected; parseBody("") is a harmless
   // no-op, so this costs nothing on every other screen.
-  const selectedText = selected ? docText[selected.doc.id] || "" : "";
-  const selectedAnchors = selected ? chapterAnchors(selectedText) : {};
-  const selectedIsMissing = selected ? missingChapterText(selected.chapters, selectedAnchors).some(c => c.no === selected.no) : false;
-  const selectedBody = selected && !selectedIsMissing ? chapterSlice(selectedText, selected.no, selectedAnchors) : "";
+  const enFull = selected ? docText[selected.doc.id] || "" : "";
+  const twin = selected ? twinOf(selected.doc) : undefined;
+  const arFull = twin ? docText[twin.id] : undefined;
+  const enRead = selected ? readChapter(enFull, false, selected.chapters, selected.no) : null;
+  const arRead = selected && arFull !== undefined ? readChapter(arFull, true, selected.chapters, selected.no) : null;
+  // Arabic asked for: the twin's chapter if it has one; otherwise the English, with a note.
+  // While the twin is still loading nothing is shown, so a pending § jump waits for the right text.
+  const arLoading = wantAr && !!twin && arFull === undefined;
+  const showAr = wantAr && !!arRead && !arRead.missing && !!arRead.body;
+  const arFallback = wantAr && !arLoading && !showAr;
+  const selectedText = showAr ? arFull! : enFull;
+  const selectedIsMissing = !showAr && !!enRead?.missing;
+  const selectedBody = arLoading ? "" : showAr ? arRead!.body : enRead?.body || "";
   const { lead, sections, toc } = useMemo(() => parseBody(selectedBody), [selectedBody]);
+  const enBody = showAr ? enRead?.body || "" : "";
+  const enHints = useMemo(() => {
+    const en = parseBody(enBody);
+    const map = new Map<BodyBlock, BodyBlock>();
+    const titles: Record<string, string> = {};
+    pairBlocks(lead, en.lead, map);
+    for (const s of sections) {
+      const e = en.sections.find(x => x.id === s.id);
+      if (e) { pairBlocks(s.blocks, e.blocks, map); titles[s.id] = e.title; }
+    }
+    return { map, titles, text: Object.fromEntries(en.sections.map(x => [x.id, `${x.title}\n${x.blocks.map(b => ("title" in b ? b.title : b.text)).join("\n")}`])) };
+  }, [enBody, lead, sections]);
+  const enRoles = useMemo(() => roleDefs(enFull), [enFull]);
+
+  // The twin is read for English readers too: its status line says which text governs.
+  useEffect(() => {
+    if (twin && arFull === undefined) fetchText(twin);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [twin?.id]);
   // The seats this handbook defines for itself ('"Executive Director" (ED)'), for chips and "Who".
   const roles = useMemo(() => roleDefs(selectedText), [selectedText]);
   // Each section's searchable text (title, subheadings, every line), built once per policy.
@@ -566,9 +637,11 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   }, [sections, pendingSec]);
 
   const peekLoc = peek ? locate(peek.no) : null;
-  const peekText = peekLoc ? docText[peekLoc.doc.id] : undefined;
+  const peekTwin = peekLoc && wantAr ? twinOf(peekLoc.doc) : undefined;
+  const peekDoc = peekTwin ?? peekLoc?.doc;
+  const peekText = peekDoc ? docText[peekDoc.id] : undefined;
   useEffect(() => {
-    if (peekLoc && peekText === undefined) fetchText(peekLoc.doc);
+    if (peekDoc && peekText === undefined) fetchText(peekDoc);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [peek?.no]);
   useEffect(() => {
@@ -655,8 +728,11 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     // Every anchor in this policy (sections, subsections, 4.4.1-style headings), so a "§6.3"
     // only becomes a link when there is somewhere to land.
     const ids = new Set([...toc.map(e => e.id), ...sections.flatMap(x => x.blocks.flatMap(b => (b.kind === "h4" ? [b.id] : [])))]);
+    const docDir: "ltr" | "rtl" = showAr ? "rtl" : "ltr";
     const bodyCtx: BodyCtx = {
       roles,
+      dir: docDir,
+      en: showAr ? enHints.map : undefined,
       knows: r => (!r.policy || r.policy === selected.no) ? !!r.sec && ids.has(secId(r.sec)) : !!locate(r.policy),
       onRef: r => {
         if (!r.policy || r.policy === selected.no) { if (r.sec) jump(secId(r.sec), parentOf(secId(r.sec))); return; }
@@ -669,21 +745,21 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     // if a large handbook ever makes the sheet feel slow.
     const peekView = (() => {
       if (!peek || !peekLoc || peekText === undefined) return null;
-      const anchors = chapterAnchors(peekText);
-      const missing = { heading: null as string | null, blocks: null as BodyBlock[] | null };
-      if (missingChapterText(peekLoc.chapters, anchors).some(c => c.no === peekLoc.no)) return missing;
-      const parsedPeek = parseBody(chapterSlice(peekText, peekLoc.no, anchors));
-      if (!peek.sec) return { heading: null, blocks: parsedPeek.lead.length ? parsedPeek.lead : parsedPeek.sections[0]?.blocks ?? [] };
+      const read = readChapter(peekText, !!peekTwin, peekLoc.chapters, peekLoc.no);
+      const missing = { heading: null as string | null, blocks: null as BodyBlock[] | null, title: read.title };
+      if (read.missing) return missing;
+      const parsedPeek = parseBody(read.body);
+      if (!peek.sec) return { heading: null, title: read.title, blocks: parsedPeek.lead.length ? parsedPeek.lead : parsedPeek.sections[0]?.blocks ?? [] };
       const id = secId(peek.sec);
       const top = parsedPeek.sections.find(x => x.id === parentOf(id));
       if (!top) return missing;
-      if (top.id === id) return { heading: `${top.num}. ${top.title}`, blocks: top.blocks };
+      if (top.id === id) return { heading: `${top.num}. ${top.title}`, title: read.title, blocks: top.blocks };
       const at = top.blocks.findIndex(b => "id" in b && b.id === id);
       if (at < 0) return missing;
       const h = top.blocks[at] as { kind: "h3" | "h4"; num: string; title: string };
       let end = at + 1;
       while (end < top.blocks.length && top.blocks[end].kind !== "h3" && !(h.kind === "h4" && top.blocks[end].kind === "h4")) end++;
-      return { heading: `${h.num} ${h.title}`, blocks: top.blocks.slice(at + 1, end) };
+      return { heading: `${h.num} ${h.title}`, title: read.title, blocks: top.blocks.slice(at + 1, end) };
     })();
     const openPeek = () => {
       if (!peek || !peekLoc) return;
@@ -705,7 +781,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     // measured live ("0.2" trading places with "What moved out") — so num and title are
     // isolated as one run. Section 0 has no number left to invert.
     const numTitle = (num: string, title: ReactNode, numClass: string) =>
-      isIntroNum(num) ? title : <span dir="ltr"><span className={`me-2 font-mono ${numClass}`}>{num}{num.includes(".") ? "" : "."}</span>{title}</span>;
+      isIntroNum(num) ? title : <span dir={docDir}><span className={`me-2 font-mono ${numClass}`}>{num}{num.includes(".") ? "" : "."}</span>{title}</span>;
 
     const tocList = (subsections: boolean) => (
       <nav className="space-y-0.5">
@@ -714,7 +790,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
             className={`block min-h-11 w-full rounded-md px-2 py-2 text-start text-[13px] md:min-h-0 md:py-1.5 ${
               s.level === 3 ? "ps-5 text-slate-500 hover:bg-slate-50" :
               s.id === currentSec ? "bg-slate-100 font-semibold text-slate-900" : "font-semibold text-slate-700 hover:bg-slate-50"}`}>
-            {numTitle(s.num, marked(s.title, find, false), "text-slate-400")}
+            {numTitle(s.num, marked(s.title, find, false, { roles: {}, dir: docDir }), "text-slate-400")}
           </button>
         ))}
       </nav>
@@ -801,8 +877,37 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
           <p className={`text-xs font-mono font-bold uppercase tracking-wider ${accent.text}`}>
             {selectedHeading || t("Standing on its own")} · {t("Policy")} {selected.no}
           </p>
-          <h1 className="mt-1 text-3xl font-bold leading-tight text-slate-900">{selected.title}</h1>
+          <h1 dir="auto" className="mt-1 text-3xl font-bold leading-tight text-slate-900 [text-align:match-parent]">{showAr && arRead?.title ? arRead.title : selected.title}</h1>
         </div>
+
+        {twin && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div role="group" aria-label={t("Language of the text")} className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5">
+              {(["en", "ar"] as const).map(l => {
+                const on = (showAr ? "ar" : "en") === l;
+                const governs = arRead?.gov?.governs === l;
+                return (
+                  <button key={l} type="button" aria-pressed={on}
+                    onClick={() => { if (on) return; setPendingSec(currentSec); setTextLang(l); }}
+                    className={`flex min-h-11 items-center gap-1.5 rounded-md px-3 text-[13px] font-semibold ${on ? "bg-[#6D1A1A] text-white" : "text-slate-600 hover:bg-slate-100"}`}>
+                    <span lang={l} dir={l === "ar" ? "rtl" : "ltr"}>{l === "ar" ? "العربية" : "English"}</span>
+                    {governs && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${on ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"}`}>{t("Governs")}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {showAr && arRead?.gov && (
+          <p dir="rtl" className="flex gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] leading-relaxed text-slate-700">
+            {ic(Info, "mt-0.5 h-4 w-4 text-slate-500")}<span>{arRead.gov.line}</span>
+          </p>
+        )}
+        {arFallback && twin && (
+          <p className="flex gap-2 rounded-lg bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+            {ic(AlertTriangle, "mt-0.5 h-4 w-4")}<span>{t("The Arabic text of this chapter is under review.")}</span>
+          </p>
+        )}
 
         {doors.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -828,7 +933,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
         {sections.length === 0 && !isMissing && <div className="hidden max-w-sm space-y-1 md:block">{findBox(false)}{findSummary}</div>}
         <div ref={articleRef} className={sections.length > 0 ? "md:grid md:grid-cols-[1fr_15rem] md:items-start md:gap-8" : ""}>
           <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 md:p-6">
-            {busyDoc === selected.doc.id ? (
+            {busyDoc === selected.doc.id || arLoading ? (
               <p className="text-sm text-slate-500">{t("Reading the handbook…")}</p>
             ) : isMissing ? (
               <div className="flex gap-2 rounded-lg bg-amber-50 p-3 text-[13px] text-amber-900">
@@ -836,11 +941,10 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                 <p>{t("The Index lists this chapter here, but the handbook's own text does not carry it yet.")}{chapterMeta?.note ? ` ${noteSummary(chapterMeta.note)}.` : ""}</p>
               </div>
             ) : (
-              // The handbooks are written in English, so on the Arabic screen the document
-              // itself still lays out left-to-right; the chrome around it stays RTL. Set from
-              // the text's first letter, not dir="auto" — that skips children carrying their
-              // own dir and resolved on the Arabic "Expand all" label instead (measured).
-              <div dir={/^[^A-Za-z]*[؀-ۿ]/.test(selectedBody) ? "rtl" : "ltr"} className="mx-auto max-w-[70ch]">
+              // The document's own direction, whatever the app's: the English text stays LTR on
+              // the Arabic screen, the Arabic twin is RTL. Explicit, not dir="auto" — that skips
+              // children carrying their own dir and resolved on the "Expand all" label (measured).
+              <div dir={docDir} className="mx-auto max-w-[70ch]">
                 {leadHit && renderBody(lead, accent, find, bodyCtx)}
                 {sections.length > 0 && !finding && (
                   <div className="mt-4 flex justify-end gap-1 border-b border-slate-100 pb-1">
@@ -856,15 +960,17 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                         <button onClick={() => setOpenSecs(o => ({ ...o, [s.id]: !open }))}
                           aria-expanded={open} aria-controls={`${s.id}-body`}
                           className="flex min-h-11 w-full items-center gap-3 py-3 text-start hover:bg-slate-50/60">
-                          {isIntroNum(s.num) ? ic(Info, "h-5 w-5 text-slate-400") : ic(TOPIC_ICON[topicOf(s.title)], `h-5 w-5 ${accent.text}`)}
+                          {isIntroNum(s.num) ? ic(Info, "h-5 w-5 text-slate-400") : ic(TOPIC_ICON[topicOf(enHints.titles[s.id] ?? s.title)], `h-5 w-5 ${accent.text}`)}
                           <span className={`min-w-0 flex-1 text-lg font-bold leading-snug ${isIntroNum(s.num) ? "text-slate-800" : accent.text}`}>
-                            {numTitle(s.num, marked(s.title, find), "text-base text-slate-400")}
+                            {numTitle(s.num, marked(s.title, find, true, { roles: {}, dir: docDir }), "text-base text-slate-400")}
                           </span>
                           <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
                         </button>
                       </h2>
                       {open && (() => {
-                        const who = rolesIn(hay.sections[s.id], roles);
+                        const who = showAr
+                          ? rolesIn(enHints.text[s.id] || "", enRoles).filter(a => SEAT_AR[a])
+                          : rolesIn(hay.sections[s.id], roles);
                         let at = { id: s.id, title: s.title };
                         const facts = keyFacts(s.blocks.flatMap(b => {
                           if (b.kind === "h3" || b.kind === "h4") { at = { id: b.id, title: b.title }; return []; }
@@ -875,7 +981,9 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                             {who.length > 0 && (
                               <p className="mb-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] text-slate-500">
                                 {ic(Users, "h-3.5 w-3.5")} {t("Who")}:
-                                {who.map(a => <span key={a}><RoleChip abbr={a} full={roles[a]} /></span>)}
+                                {showAr
+                                  ? <span className="font-semibold text-slate-700">{who.map(a => SEAT_AR[a]).join("، ")}</span>
+                                  : who.map(a => <span key={a}><RoleChip abbr={a} full={roles[a]} /></span>)}
                               </p>
                             )}
                             {facts.length > 0 && (
@@ -918,8 +1026,8 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
               <div className="flex items-start gap-3 border-b border-slate-100 p-4">
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-mono text-sm font-bold text-white ${accentFor(peekLoc?.heading || "", !peekLoc?.heading).badge}`}>{peek.no}</span>
                 <div className="min-w-0 flex-1">
-                  <p dir="auto" className="font-bold leading-snug text-slate-900 [text-align:match-parent]">{peekLoc?.title || peek.no}</p>
-                  {peekView?.heading && <p dir="ltr" className="text-[13px] text-slate-500 [text-align:match-parent]">{peekView.heading}</p>}
+                  <p dir="auto" className="font-bold leading-snug text-slate-900 [text-align:match-parent]">{peekView?.title || peekLoc?.title || peek.no}</p>
+                  {peekView?.heading && <p dir={peekTwin ? "rtl" : "ltr"} className="text-[13px] text-slate-500 [text-align:match-parent]">{peekView.heading}</p>}
                 </div>
                 <button onClick={() => setPeek(null)} aria-label={t("Close")} title={t("Close")}
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100">
@@ -929,7 +1037,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
               <div className="min-h-0 flex-1 overflow-y-auto p-4">
                 {!peekView ? <p className="text-sm text-slate-500">{t("Reading the handbook…")}</p>
                   : !peekView.blocks ? <p className="text-sm text-amber-800">{t("That section is not in the policy's current text.")}</p>
-                  : <div dir="ltr">{renderBody(peekView.blocks, accentFor(peekLoc?.heading || "", !peekLoc?.heading), "", { roles: roleDefs(peekText || "") })}</div>}
+                  : <div dir={peekTwin ? "rtl" : "ltr"}>{renderBody(peekView.blocks, accentFor(peekLoc?.heading || "", !peekLoc?.heading), "", { roles: roleDefs(peekText || ""), dir: peekTwin ? "rtl" : "ltr" })}</div>}
               </div>
               <div className="border-t border-slate-100 p-3">
                 <button onClick={openPeek} disabled={!peekLoc}
