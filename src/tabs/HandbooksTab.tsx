@@ -892,11 +892,13 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
           )}
         </div>
 
+        {/* m-0: this sits in the view's space-y-5 stack, whose 20px bottom margin lifted a
+            bottom-0 sheet off the screen edge (measured: 822 of 842px). */}
         {peek && (
           <>
-            <div className="fixed inset-0 z-[96] bg-black/30" onClick={() => setPeek(null)} />
+            <div className="fixed inset-0 z-[96] m-0 bg-black/30" onClick={() => setPeek(null)} />
             <div role="dialog" aria-modal="true" aria-label={`${t("Policy")} ${peekRef}`}
-              className="fixed inset-x-0 bottom-0 z-[97] flex max-h-[75vh] flex-col rounded-t-2xl bg-white shadow-2xl md:inset-x-auto md:bottom-6 md:end-6 md:w-[30rem] md:rounded-2xl">
+              className="fixed inset-x-0 bottom-0 z-[97] m-0 flex max-h-[75vh] flex-col rounded-t-2xl bg-white shadow-2xl md:inset-x-auto md:bottom-6 md:end-6 md:w-[30rem] md:rounded-2xl">
               <div className="flex items-start gap-3 border-b border-slate-100 p-4">
                 <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-mono text-sm font-bold text-white ${accentFor(peekLoc?.heading || "", !peekLoc?.heading).badge}`}>{peek.no}</span>
                 <div className="min-w-0 flex-1">
