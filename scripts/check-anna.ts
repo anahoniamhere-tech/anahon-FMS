@@ -342,7 +342,7 @@ ok("an Arabic answer in a talk: shown, said once in the status line, and she kee
   /setVoice\(\{ note: t\("Arabic answers are shown as text — no Arabic voice yet\."\) \}\);\s*\}?\s*next\(\);/.test(chat));
 console.log("\nK. names Deepgram should expect (plan §A; measured: Arabic speech needs Arabic spellings)");
 const { pickKeyterms, KEYTERM_BUDGET, ANNA_FIXED_TERMS } = await import("../src/anna.js");
-const kb = server.slice(server.indexOf("async function annaKeyterms("), server.indexOf('app.post("/api/anna/listen"'));
+const kb = server.slice(server.indexOf("async function annaKeyterms("), server.indexOf("\n}\n", server.indexOf("async function annaKeyterms(")));
 const kt = pickKeyterms([{ latin: "Zeina Hamoud" }, { latin: "Maroun Asmar" }, { latin: "Ayman Haddad", arabic: "أيمن حداد" }, { latin: "SKF" }, { latin: "zeina hamoud" },
   ...Array.from({ length: 300 }, (_, i) => ({ latin: `Person Number ${i}` }))], { "Zeina Hamoud": "زينة حمود" });
 ok("English terms are Latin, Arabic terms are Arabic script", kt.en.every(t => !/[؀-ۿ]/.test(t)) && kt.ar.every(t => /[؀-ۿ]/.test(t)));
@@ -362,6 +362,40 @@ ok("only new names go to Haiku, paid-only, and the spellings are kept in the vau
   && /const KEYTERM_FILE = path\.join\(VAULT_ROOT, "ANNA", "keyterms\.json"\);/.test(server));
 ok("each language's request carries its own list; a failure never blocks listening", /for \(const k of terms\[l\]\) q\.append\("keyterm", k\);/.test(listen)
   && /const terms = await annaKeyterms\(\)\.catch\(\(\) => \(\{ en: \[\] as string\[\], ar: \[\] as string\[\] \}\)\);/.test(listen));
+
+console.log("\nR. Saad's own voice: the recording bank (plan §C)");
+const vb = server.slice(server.indexOf("const VOICE_BANK = "), server.indexOf('app.post("/api/anna/listen"'));
+const vbRoutes = [...vb.matchAll(/app\.(get|post)\("(\/api\/anna\/voicebank[^"]*)"/g)].map(m => m[2]);
+ok("four routes, each Saad's as himself first", JSON.stringify(vbRoutes) === '["/api/anna/voicebank","/api/anna/voicebank/consent","/api/anna/voicebank/take","/api/anna/voicebank/delete"]'
+  && /const voiceOwner = \(req: any\) => \{\s*const me = annaOwner\(req\);\s*return me && me\.role === "Super Admin" && !String\(req\.get\("X-Acting-As"\) \|\| ""\)\.trim\(\) \? me : null;/.test(vb)
+  && (vb.match(/if \(!(me|voiceOwner\(req\))\) return res\.status\(403\)/g) || []).length === 4);
+ok("nothing is saved before the consent note is accepted, word for word", /if \(!consent\) return res\.status\(409\)/.test(vb) && /if \(req\.body\?\.text !== VOICE_CONSENT\) return res\.status\(400\)/.test(vb)
+  && vb.indexOf("if (!consent)") < vb.indexOf("writeFile(file, wav)"));
+ok("files in the vault, named only from a real session and line (no path from the request)", /const VOICE_BANK = path\.join\(VAULT_ROOT, "ANNA-VOICE-SAAD"\);/.test(vb)
+  && /Number\.isInteger\(idx\) && idx >= 0 && idx < sess\.lines\.length/.test(vb) && !/req\.body\?\.(path|file|name)/.test(vb) && !/prisma\./.test(vb));
+ok("every take is checked as a 22.05 kHz mono 16-bit WAV of a sane length before it is written", /const info = wavInfo\(new Uint8Array\(wav\)\);\s*if \(!info\) return res\.status\(400\)/.test(vb));
+const vbAudits = [...vb.matchAll(/createAuditLog\(([^;]*)\);/g)].map(m => m[1]);
+ok("audit lines name the line number and length, never the sentence or the audio", vbAudits.length === 4 && vbAudits.every(x => !/lines\[|wav\b|text\b|base64/.test(x)));
+ok("delete one or all (all removes the consent too)", /await fs\.promises\.rm\(VOICE_BANK, \{ recursive: true, force: true \}\);/.test(vb) && /await fs\.promises\.rm\(takePath\(at\.sess\.id, at\.idx\), \{ force: true \}\);/.test(vb));
+ok("gated to the master seat, and no push pass", ["consent", "take", "delete"].every(r => new RegExp(`"/api/anna/voicebank/${r}": \\["Super Admin"\\]`).test(read("../src/gates.ts")))
+  && ["take", "consent", "delete"].every(r => new RegExp(`READ_ONLY_POSTS = new Set\\(\\[[^\\]]*"/api/anna/voicebank/${r}"`).test(server)));
+const vbank = await import("../src/annaVoiceBank.js");
+const mkWav = (secs: number, rate = 22050, ch = 1, bits = 16) => { const n = Math.round(secs * rate) * ch * (bits / 8); const b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+  const t = (o: number, x: string) => [...x].forEach((c, i) => b[o + i] = c.charCodeAt(0));
+  t(0, "RIFF"); v.setUint32(4, 36 + n, true); t(8, "WAVE"); t(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, ch, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * ch * bits / 8, true); v.setUint16(32, ch * bits / 8, true); v.setUint16(34, bits, true); t(36, "data"); v.setUint32(40, n, true); return b; };
+ok("the WAV check takes the right format only", vbank.wavInfo(mkWav(3))?.seconds === 3 && !vbank.wavInfo(mkWav(3, 44100)) && !vbank.wavInfo(mkWav(3, 22050, 2))
+  && !vbank.wavInfo(mkWav(3, 22050, 1, 8)) && !vbank.wavInfo(mkWav(0.2)) && !vbank.wavInfo(mkWav(25)) && !vbank.wavInfo(new Uint8Array(10)));
+const tone = (amp: number, lead = 0) => Float32Array.from({ length: 22050 * 2 }, (_, i) => (i < 22050 * 0.25 ? lead : amp) * Math.sin(i / 8));
+ok("the quality check blocks clipping and whispering, warns on noise", !vbank.takeQuality(tone(1.2)).ok && !vbank.takeQuality(tone(0.01)).ok
+  && vbank.takeQuality(tone(0.4)).ok && vbank.takeQuality(tone(0.4, 0.05)).warn.length > 0);
+ok("the script has two sessions of short, Arabic lines", vbank.VOICE_SESSIONS.length >= 2 && vbank.VOICE_SESSIONS.every(x => x.lines.length >= 50 && x.lines.every(l => /[\u0600-\u06FF]/.test(l) && l.length <= 80)));
+const recSrc = read("../src/AnnaRecorder.tsx");
+ok("the recorder records raw (no echo cancelling, noise suppression or gain), keeps nothing in the browser, and saves only through its route",
+  /echoCancellation: false, noiseSuppression: false, autoGainControl: false/.test(recSrc) && !/localStorage|sessionStorage|indexedDB/.test(recSrc)
+  && [...recSrc.matchAll(/call\("([^"]+)"/g)].every(m => m[1].startsWith("/api/anna/voicebank")) && !/fetch\("(?!\s*path)/.test(recSrc.replace("fetch(path", "")));
+ok("a blocked take cannot be saved", /disabled=\{!take\.q\.ok \|\| rec === "saving"\}/.test(recSrc));
+ok("the menu offers it only to Saad", /annaVoiceBank=\{!!state\.anna\?\.enabled && currentUser\?\.role === "Super Admin"\}/.test(read("../src/App.tsx")) && /\{voiceBank && \(/.test(chat));
 
 ok("the player is unlocked by the tap that starts a talk (iOS)", /if \(listen\) unlockVoice\(\);/.test(desk) && /unlockVoice\(\); setTalk\(true\)/.test(chat));
 

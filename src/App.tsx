@@ -1483,6 +1483,7 @@ export default function App() {
               annaVoice={!!state.anna?.voice}
               annaSpeech={!!state.anna?.speech}
               annaArabicVoice={!!state.anna?.arabicVoice}
+              annaVoiceBank={!!state.anna?.enabled && currentUser?.role === "Super Admin"}
               annaSpend={state.anna?.spend || null}
               onEditDraft={(kind, data) => {
                 // A contract is only ever a filled form: Saad reviews it and presses Generate (D4).

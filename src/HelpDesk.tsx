@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerE
 import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, MoreHorizontal } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
 import AnnaGuide, { type Guide } from "./AnnaGuide";
+import AnnaRecorder from "./AnnaRecorder";
 import { voiceSupported, record, clipBase64, speak, hush, unlockVoice, type Recording } from "./annaVoice";
 
 /**
@@ -121,13 +122,15 @@ const KIND_LABEL: Record<string, string> = {
 
 type AnnaSpend = { month: string; modelsUSD: number; voiceUSD: number; limitUSD: number; speechChars?: number; speechLimit?: number };
 
-function AnnaChat({ t, lang, userName, speechReady, arabicVoice, spend, prefill, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
+function AnnaChat({ t, lang, userName, speechReady, arabicVoice, voiceBank, spend, prefill, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   t: (s: string) => string;
   userName: string;
   /** Layla/Ava are set up on the server (state.anna.speech); otherwise the phone's own voice. */
   speechReady: boolean;
   /** Arabic answers spoken too (off: Saad found the Lebanese voices poor). */
   arabicVoice: boolean;
+  /** Saad's own recording space (plan §C) is offered in the ⋯ menu. */
+  voiceBank: boolean;
   spend: AnnaSpend | null;
   /** "Ask about this policy": the chapter, shown as a chip above the box and sent with the question. */
   prefill: { text: string; nonce: number } | null;
@@ -156,6 +159,7 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, spend, prefill,
   const [level, setLevel] = useState(0);
   const [vLang, setVLang] = useState<"en" | "ar">(voiceLangPick || (lang === "ar" ? "ar" : "en"));
   const [menu, setMenu] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [about, setAbout] = useState("");
   const recRef = useRef<Recording | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -477,6 +481,7 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, spend, prefill,
           </span>
         </div>
       )}
+      {recording && <AnnaRecorder onClose={() => setRecording(false)} />}
       <div className="relative flex items-end gap-2 border-t border-slate-200 p-2">
         <button onClick={() => setMenu(m => !m)} aria-label={t("More")} aria-expanded={menu} title={t("More")}
           className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100">
@@ -493,6 +498,12 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, spend, prefill,
               className="flex min-h-[40px] w-full items-center gap-2 rounded-lg px-2 text-start text-slate-800 hover:bg-slate-100 disabled:opacity-40">
               <RotateCcw className="h-4 w-4 text-slate-500" /> {t("New conversation")}
             </button>
+            {voiceBank && (
+              <button role="menuitem" onClick={() => { setMenu(false); stopTalk(); hush(); setRecording(true); }}
+                className="flex min-h-[40px] w-full items-center gap-2 rounded-lg px-2 text-start text-slate-800 hover:bg-slate-100">
+                <Mic className="h-4 w-4 text-slate-500" /> {t("Record my voice for Anna")}
+              </button>
+            )}
             <div className="flex min-h-[40px] items-center justify-between gap-2 px-2">
               <span className="text-slate-600">{t("Voice language")}</span>
               <div role="radiogroup" aria-label={t("Voice language")} className="flex overflow-hidden rounded-md border border-slate-300">
@@ -551,7 +562,7 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, spend, prefill,
 }
 
 export default function HelpDesk({
-  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, annaSpeech = false, annaArabicVoice = false, userName = "", annaSpend = null, onOpenRecord = () => {}, onEditDraft = () => {},
+  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, annaSpeech = false, annaArabicVoice = false, annaVoiceBank = false, userName = "", annaSpend = null, onOpenRecord = () => {}, onEditDraft = () => {},
 }: {
   t: (s: string) => string;
   lang: string;
@@ -572,6 +583,8 @@ export default function HelpDesk({
   annaSpeech?: boolean;
   /** Whether Arabic answers are spoken (state.anna.arabicVoice). Off by default. */
   annaArabicVoice?: boolean;
+  /** Offer "Record my voice for Anna" (Saad, as himself). */
+  annaVoiceBank?: boolean;
   /** This month's AI spend — the server sends it to the master account only. */
   annaSpend?: AnnaSpend | null;
   onOpenRecord?: (kind: string, id: string) => void;
@@ -776,7 +789,7 @@ export default function HelpDesk({
 
       {anna && (
         <div hidden={mode !== "anna"} className="flex min-h-0 flex-1 flex-col">
-          <AnnaChat t={t} lang={lang} userName={userName} speechReady={annaSpeech} arabicVoice={annaArabicVoice} spend={annaSpend} prefill={prefill} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
+          <AnnaChat t={t} lang={lang} userName={userName} speechReady={annaSpeech} arabicVoice={annaArabicVoice} voiceBank={annaVoiceBank} spend={annaSpend} prefill={prefill} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
             doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
         </div>
       )}

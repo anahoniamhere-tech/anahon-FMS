@@ -55,6 +55,7 @@ import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } 
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, cutPoolFor, POOL_FIELD_KEYS, POOL_STATUSES, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy, poolAssessedAs } from "./src/personnelDocs.js";
 import { parseIcs } from "./src/ics.js";
+import { VOICE_SESSIONS, VOICE_CONSENT, wavInfo } from "./src/annaVoiceBank.js";
 import { ANNA_PRICE, ANNA_CLIP_FACTOR, pickKeyterms, type KeytermName, parseRollout, annaModelFor, annaDailyCap, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, DRAFT_TOOLS, REQUEST_URGENCIES, annaTools, annaSystem, clientAction, readTool, draftTool, cleanHistory, type ClientAction } from "./src/anna.js";
 
 dotenv.config();
@@ -261,7 +262,7 @@ const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
  *  CONFIRM_ROUTES). It only labels the audit line; the person saving is still the signed-in user. */
 const draftedBy = (req: any) => req.get?.("X-Drafted-By") === "anna" ? " (drafted by Anna)" : "";
 
-const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/anna/turn", "/api/anna/listen", "/api/anna/say", "/api/reminders/plan", "/api/push/unsubscribe"]);
+const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/anna/turn", "/api/anna/listen", "/api/anna/say", "/api/anna/voicebank/take", "/api/anna/voicebank/consent", "/api/anna/voicebank/delete", "/api/reminders/plan", "/api/push/unsubscribe"]);
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path.startsWith("/api/") && !READ_ONLY_POSTS.has(req.path)) {
     res.on("finish", () => { if (res.statusCode < 400) schedulePush(); });
@@ -1845,6 +1846,83 @@ async function annaKeyterms(): Promise<{ en: string[]; ar: string[] }> {
   keytermCache = { day, terms };
   return terms;
 }
+
+/* ── Saad's own voice: the recording bank (plan §C). Files on the NAS vault, never the database;
+ * Saad only, as himself (not through a seat he stands in); consent first; audit lines count, never
+ * content. Takes are WAVs the page made (22.05 kHz mono 16-bit), checked again here. */
+const VOICE_BANK = path.join(VAULT_ROOT, "ANNA-VOICE-SAAD");
+const voiceOwner = (req: any) => {
+  const me = annaOwner(req);
+  return me && me.role === "Super Admin" && !String(req.get("X-Acting-As") || "").trim() ? me : null;
+};
+const takePath = (session: number, line: number) => path.join(VOICE_BANK, `s${String(session).padStart(2, "0")}`, `${String(line + 1).padStart(4, "0")}.wav`);
+const validTake = (session: unknown, line: unknown) => {
+  const sess = VOICE_SESSIONS.find(x => x.id === Number(session));
+  const idx = Number(line);
+  return sess && Number.isInteger(idx) && idx >= 0 && idx < sess.lines.length ? { sess, idx } : null;
+};
+async function voiceBankState() {
+  let consent: any = null;
+  try { consent = JSON.parse(await fs.promises.readFile(path.join(VOICE_BANK, "consent.json"), "utf8")); } catch { /* not yet */ }
+  let seconds = 0;
+  const sessions = await Promise.all(VOICE_SESSIONS.map(async s => {
+    const done: number[] = [];
+    for (let i = 0; i < s.lines.length; i++) {
+      const st = await fs.promises.stat(takePath(s.id, i)).catch(() => null);
+      if (st) { done.push(i); seconds += Math.max(0, st.size - 44) / (22050 * 2); }
+    }
+    return { id: s.id, title: s.title, lines: s.lines, done };
+  }));
+  return { consent: consent ? { acceptedAt: consent.acceptedAt } : null, consentText: VOICE_CONSENT, sessions, minutes: Math.round(seconds / 6) / 10 };
+}
+
+app.get("/api/anna/voicebank", async (req, res) => {
+  if (!voiceOwner(req)) return res.status(403).json({ error: "This is Saad's own recording space." });
+  res.json(await voiceBankState());
+});
+
+app.post("/api/anna/voicebank/consent", async (req, res) => {
+  const me = voiceOwner(req);
+  if (!me) return res.status(403).json({ error: "This is Saad's own recording space." });
+  if (req.body?.text !== VOICE_CONSENT) return res.status(400).json({ error: "Please accept the consent note as shown." });
+  await fs.promises.mkdir(VOICE_BANK, { recursive: true });
+  await fs.promises.writeFile(path.join(VOICE_BANK, "consent.json"), JSON.stringify({ text: VOICE_CONSENT, acceptedAt: new Date().toISOString(), by: me.id }, null, 1));
+  await createAuditLog(me.id, me.name, "Voice Consent", "Consent given for Anna's voice recordings.");
+  res.json(await voiceBankState());
+});
+
+app.post("/api/anna/voicebank/take", async (req, res) => {
+  const me = voiceOwner(req);
+  if (!me) return res.status(403).json({ error: "This is Saad's own recording space." });
+  const at = validTake(req.body?.session, req.body?.line);
+  if (!at) return res.status(400).json({ error: "No such line." });
+  const consent = await fs.promises.stat(path.join(VOICE_BANK, "consent.json")).catch(() => null);
+  if (!consent) return res.status(409).json({ error: "Accept the consent note first." });
+  const wav = Buffer.from(String(req.body?.wav || ""), "base64");
+  const info = wavInfo(new Uint8Array(wav));
+  if (!info) return res.status(400).json({ error: "That recording is not in the expected format." });
+  const file = takePath(at.sess.id, at.idx);
+  await fs.promises.mkdir(path.dirname(file), { recursive: true });
+  await fs.promises.writeFile(file, wav);
+  await fs.promises.appendFile(path.join(path.dirname(file), "lines.tsv"), `${path.basename(file)}\t${at.sess.lines[at.idx]}\n`);
+  await createAuditLog(me.id, me.name, "Voice Take", `session ${at.sess.id} · line ${at.idx + 1} · ${info.seconds.toFixed(1)} s`);
+  res.json({ success: true, seconds: info.seconds });
+});
+
+app.post("/api/anna/voicebank/delete", async (req, res) => {
+  const me = voiceOwner(req);
+  if (!me) return res.status(403).json({ error: "This is Saad's own recording space." });
+  if (req.body?.all === true) {
+    await fs.promises.rm(VOICE_BANK, { recursive: true, force: true });
+    await createAuditLog(me.id, me.name, "Voice Deleted", "All of Anna's voice recordings and the consent note.");
+    return res.json(await voiceBankState());
+  }
+  const at = validTake(req.body?.session, req.body?.line);
+  if (!at) return res.status(400).json({ error: "No such line." });
+  await fs.promises.rm(takePath(at.sess.id, at.idx), { force: true });
+  await createAuditLog(me.id, me.name, "Voice Deleted", `session ${at.sess.id} · line ${at.idx + 1}`);
+  res.json(await voiceBankState());
+});
 
 app.post("/api/anna/listen", async (req, res) => {
   const me = annaOwner(req);
