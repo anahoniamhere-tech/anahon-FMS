@@ -130,7 +130,11 @@ function renderBody(blocks: BodyBlock[], accentText: string) {
     if (b.kind === "h2") {
       nodes.push(
         <h2 key={i} id={b.id} className={`mt-8 scroll-mt-4 border-b border-slate-100 pb-2 text-xl font-bold first:mt-0 ${accentText}`}>
-          <span className="me-2 font-mono text-base text-slate-400">{b.num}.</span>{b.title}
+          {/* dir="ltr": a bare "N." immediately followed by a Latin-word title inverts
+              under RTL — measured live, this exact shape ("0.2" trading places with
+              "What moved out") — so num and title are isolated as one run, same as the
+              app's other digit-leading headings. */}
+          <span dir="ltr"><span className="me-2 font-mono text-base text-slate-400">{b.num}.</span>{b.title}</span>
         </h2>
       );
       i++; continue;
@@ -138,7 +142,7 @@ function renderBody(blocks: BodyBlock[], accentText: string) {
     if (b.kind === "h3") {
       nodes.push(
         <h3 key={i} id={b.id} className="mt-5 scroll-mt-4 text-[15px] font-bold text-slate-800">
-          <span className="me-2 font-mono text-[13px] text-slate-400">{b.num}</span>{b.title}
+          <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{b.num}</span>{b.title}</span>
         </h3>
       );
       i++; continue;
@@ -296,7 +300,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
         {toc.map(s => (
           <a key={s.id} href={`#${s.id}`} onClick={onJump}
             className={`block rounded-md px-2 py-1.5 text-[13px] hover:bg-slate-50 ${s.level === 3 ? "ps-5 text-slate-500" : "font-semibold text-slate-700"}`}>
-            {s.num} {s.title}
+            <span dir="ltr">{s.num} {s.title}</span>
           </a>
         ))}
       </nav>
