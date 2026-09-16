@@ -34,5 +34,15 @@ const page = new URL("../public/village/index.html", import.meta.url);
 ok("the built village is in public/village", existsSync(page));
 if (existsSync(page)) ok("its assets load from /village/", /src="\/village\/assets\//.test(readFileSync(page, "utf8")));
 
+// 16 Sep 2026: a phone open across a redeploy reused a cached index.html naming asset hashes
+// the next build had already removed — the fallback route served index.html AS the JS file
+// and the app never booted (seen on Saad's iPhone, VPS log). Fixed on the server: index.html
+// is never cached, content-hashed assets are cached forever (their filename IS the cache key).
+console.log("\na phone open across a deploy never boots a stale build");
+const staticBlock = server.slice(server.indexOf('const distPath = path.join(process.cwd(), "dist")'), server.indexOf('app.get("*"'));
+ok("index.html is never cached", /filePath\.endsWith\(".html"\)\s*\?\s*"no-store"/.test(staticBlock));
+ok("hashed assets are cached as immutable", /"public, max-age=31536000, immutable"/.test(staticBlock));
+ok("the catch-all (index.html for every other path) matches", /res\.setHeader\("Cache-Control", "no-store"\);\s*\n\s*res\.sendFile\(path\.join\(distPath, "index\.html"\)\);/.test(server));
+
 console.log(failed ? `\n${failed} FAILED\n` : "\nall green\n");
 process.exit(failed ? 1 : 0);

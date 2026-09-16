@@ -246,3 +246,12 @@ body {
   /* Keep the page itself from ever panning sideways. */
   html, body { overflow-x: hidden; }
 }
+
+/* The Virtual Office iframe (src/tabs/OfficeTab.tsx). Plain height: calc() with two
+   declarations for a browser that has never seen a modern viewport unit to fall back on —
+   a browser ignores a declaration it cannot parse and keeps the one before it, but a React
+   inline style object can only hold one `height` key, so this lives here instead. */
+.office-frame {
+  height: calc(100vh - 9rem);
+  height: calc(100dvh - 9rem);
+}

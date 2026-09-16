@@ -12423,8 +12423,22 @@ if (process.env.NODE_ENV !== "production") {
   app.use(vite.middlewares);
 } else {
   const distPath = path.join(process.cwd(), "dist");
-  app.use(express.static(distPath));
+  // Every build fingerprints its JS/CSS by content hash (Vite, and the village build it copies
+  // in), so a page that loads its index.html can trust every filename that page names — nothing
+  // deploy-related, ever, or the cache clears itself.
+  //
+  // The bug this fixes: express.static's default is Cache-Control: public, max-age=0. That's
+  // "revalidate before use", not "never use" — a page opened on a phone (a PWA relaunch from
+  // suspended, a bfcache restore, a plain reload that races a deploy) can reuse a cached
+  // index.html from BEFORE a redeploy, naming asset hashes that no longer exist once dist/ is
+  // replaced. Express then 404s past them to this catch-all, which serves index.html again —
+  // 200, but as if it were the JS or CSS file — and the app never boots. Seen on Saad's iPhone,
+  // 16 Sep, from the VPS access log: a 613-byte "index-*.js" is index.html in disguise.
+  app.use(express.static(distPath, { setHeaders: (res, filePath) => {
+    res.setHeader("Cache-Control", filePath.endsWith(".html") ? "no-store" : "public, max-age=31536000, immutable");
+  } }));
   app.get("*", (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
     res.sendFile(path.join(distPath, "index.html"));
   });
 }

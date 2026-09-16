@@ -14,8 +14,8 @@ export default function OfficeTab(_: SharedProps) {
     <iframe
       src="/village/"
       title="Virtual Office"
-      className="block w-full rounded-lg border-0"
-      style={{ height: "calc(100dvh - 9rem)", minHeight: 480 }}
+      className="office-frame block w-full rounded-lg border-0"
+      style={{ minHeight: 480 }}
     />
   );
 }
