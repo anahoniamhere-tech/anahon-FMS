@@ -20,9 +20,19 @@ export const SHAREABLE_STATUSES = ["Sent", "Accepted", "Invoiced"];
 
 export const TOKEN_PATTERN = /^[0-9a-f]{32}$/;
 
-export function shareUrl(token: string): string {
+/** The name the client's browser saves the file under (the VPS never reads it; only the token counts). */
+export const DISPLAY_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/;
+export function displayName(quoteNo: string): string {
+  const name = `iContent-Studio-Quotation-${String(quoteNo || "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "")}.pdf`;
+  if (!DISPLAY_NAME_PATTERN.test(name)) throw new Error("Not a display name.");
+  return name;
+}
+
+/** The address a client is sent: /q/<token>/<display name>. Built from the token, so an older bare
+ *  /q/<token>.pdf row (the one hand-issued link, 006/2026) is offered in the named form too. */
+export function shareUrl(token: string, quoteNo: string): string {
   if (!TOKEN_PATTERN.test(token)) throw new Error("Not a share token.");
-  return `${SHARE_ORIGIN}/q/${token}.pdf`;
+  return `${SHARE_ORIGIN}/q/${token}/${displayName(quoteNo)}`;
 }
 
 /** The file name in the outbox (and on the VPS). Nothing but a well-formed token ever becomes a path. */

@@ -8519,7 +8519,7 @@ async function issueShare(quote: any, who: { id: string; name: string; role: str
   // Retire the old link only once the new one exists, so a failed write leaves the client's link alone.
   await revokeShares(quote.id, `replaced by a new link (${reason})`, who);
   const row = await prisma.quoteShare.create({ data: {
-    token, quotationId: quote.id, url: shareUrl(token), createdAt: now.toISOString(),
+    token, quotationId: quote.id, url: shareUrl(token, quote.quoteNo), createdAt: now.toISOString(),
     createdById: who.id, createdByName: who.name, expiresAt: expiresAt.toISOString(),
   } });
   await createAuditLog(who.id, who.name, "Quotation Link Issued",

@@ -8,7 +8,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import crypto from "crypto";
-import { shareBlocker, shareExpiry, shareUrl, outboxName, printedChange, liveShare, TOKEN_PATTERN, SHARE_ORIGIN } from "../src/quoteShare.js";
+import { shareBlocker, shareExpiry, shareUrl, displayName, DISPLAY_NAME_PATTERN, outboxName, printedChange, liveShare, TOKEN_PATTERN, SHARE_ORIGIN } from "../src/quoteShare.js";
 import { quotationHtml } from "../docgen.js";
 
 const now = new Date("2026-09-16T10:00:00+03:00");
@@ -16,9 +16,11 @@ const token = crypto.randomBytes(16).toString("hex");
 
 // A — the link itself.
 assert.ok(TOKEN_PATTERN.test(token), "16 random bytes, lowercase hex");
-assert.equal(shareUrl(token), `https://icontent.studio/q/${token}.pdf`);
+assert.equal(shareUrl(token, "006/2026"), `https://icontent.studio/q/${token}/iContent-Studio-Quotation-006-2026.pdf`, "named form (Admin, 16 Sep)");
+assert.ok(DISPLAY_NAME_PATTERN.test(displayName("006/2026")) && DISPLAY_NAME_PATTERN.test(displayName("12 / 2027 rev")), "the VPS name rule");
+assert.ok(!/\/.*\//.test(displayName("a/b/c")), "a quote number never adds a path segment");
 assert.equal(outboxName(token), `${token}.pdf`);
-assert.throws(() => shareUrl("006-2026"), "a quote number is never a token");
+assert.throws(() => shareUrl("006-2026", "006/2026"), "a quote number is never a token");
 assert.throws(() => outboxName("../etc/passwd" + "0".repeat(20)), "no path in a token");
 assert.throws(() => outboxName(token.toUpperCase()), "the VPS route serves lowercase hex only");
 assert.ok(!/anahon/i.test(SHARE_ORIGIN), "an iContent link never names AnaHon");
@@ -67,6 +69,9 @@ assert.ok(/await revokeShares\(id, "quotation deleted"/.test(server), "deleting 
 assert.ok(/!SHAREABLE_STATUSES\.includes\(status\)\) await revokeShares\(id,/.test(server), "settling in full revokes");
 assert.ok(/await issueShare\(quote, \(req as any\)\.dbUser, `quotation changed/.test(server), "an edit re-issues");
 assert.ok(/quotation changed and the new link failed/.test(server), "a failed re-issue still kills the old price");
+assert.ok(server.includes("url: shareUrl(token, quote.quoteNo),"), "new links are issued in the named form");
+const tab = fs.readFileSync("src/tabs/ProductionTab.tsx", "utf8");
+assert.ok(!/\.url\b/.test(tab.slice(tab.indexOf("The client link (src/quoteShare.ts)"), tab.indexOf("Message the client")) ) && /link: shared \? shareUrl\(shared\.token, q\.quoteNo\)/.test(tab), "the screen and the WhatsApp text build the named form from the token, never the stored url");
 assert.equal((server.match(/await quotationPdf\(quote, client, /g) || []).length, 2, "the download and the link render through one function");
 const gates = fs.readFileSync("src/gates.ts", "utf8");
 assert.ok(/"\/api\/quotations\/share": MANAGERS/.test(gates) && /"\/api\/quotations\/share\/revoke": MANAGERS/.test(gates), "ED/managers only");

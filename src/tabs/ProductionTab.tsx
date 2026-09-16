@@ -10,7 +10,7 @@ import { withTicket } from "../docTicket";
 import { outstandingOn, paidOn } from "../quoteTranches";
 import { DEFAULT_NEW_QUOTE_ISSUER, QUOTE_ISSUERS, QUOTE_ISSUER_LABELS, quoteTotals, discountBlocker, DEFAULT_DISCOUNT_LABEL } from "../quoteTotals";
 import { RECEIPT_CATEGORY, receiptLog, receiptNoOf } from "../receipts";
-import { liveShare, SHAREABLE_STATUSES } from "../quoteShare";
+import { liveShare, shareUrl, SHAREABLE_STATUSES } from "../quoteShare";
 import ReceiveOffbankForm from "./ReceiveOffbankForm";
 
 export default function ProductionTab({ currentUser, formatIn, formatUSD, openDoc, refreshState, state, t, triggerToast }: SharedProps) {
@@ -209,7 +209,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
       });
       const out = await res.json();
       if (!res.ok) throw new Error(out.error || "The link was not created.");
-      try { await navigator.clipboard.writeText(out.share.url); } catch { /* the row shows it anyway */ }
+      try { await navigator.clipboard.writeText(shareUrl(out.share.token, q.quoteNo)); } catch { /* the row shows it anyway */ }
       triggerToast(`${q.quoteNo}: ${t("client link ready and copied")}.`);
       refreshState();
     } catch (err: any) {
@@ -724,12 +724,13 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                   The PDF lives on icontent.studio until its validity date. */}
                               {q.issuedAs === "icontent" && SHAREABLE_STATUSES.includes(q.status) && MANAGERS.includes(currentUser.role) && (() => {
                                 const live = liveShare(state.quoteShares || [], q.id, new Date());
+                                const liveUrl = live ? shareUrl(live.token, q.quoteNo) : "";
                                 return (
                                   <span className="inline-flex items-center gap-1">
                                     {live ? (
                                       <>
-                                        <button type="button" onClick={() => navigator.clipboard.writeText(live.url).then(() => triggerToast(t("Client link copied.")), () => window.prompt(t("Client link"), live.url))}
-                                          title={`${live.url} — ${t("live until")} ${live.expiresAt.slice(0, 10)}`}
+                                        <button type="button" onClick={() => navigator.clipboard.writeText(liveUrl).then(() => triggerToast(t("Client link copied.")), () => window.prompt(t("Client link"), liveUrl))}
+                                          title={`${liveUrl} — ${t("live until")} ${live.expiresAt.slice(0, 10)}`}
                                           className="text-sky-700 hover:text-sky-900 p-1 text-[10px] font-bold rounded hover:bg-sky-50">🔗 {t("client link")}</button>
                                         <button type="button" onClick={() => revokeQuoteLink(q)} title={t("Revoke the client link")} aria-label={`${t("Revoke the client link")} ${q.quoteNo}`}
                                           className="text-slate-400 hover:text-red-600 p-1 text-[10px] rounded hover:bg-slate-100">✕</button>
@@ -756,7 +757,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                 // balance, and the figure is what the books still show owed.
                                 const stillAnOffer = q.status === "Sent" && paidSoFar === 0;
                                 const text = stillAnOffer
-                                  ? WA_TEMPLATES["client-quotation"](t, { name: first, ref: q.quoteNo, amount: money(q.amount), validUntil: q.validUntil || "", issuedAs: q.issuedAs, link: shared?.url || "" })
+                                  ? WA_TEMPLATES["client-quotation"](t, { name: first, ref: q.quoteNo, amount: money(q.amount), validUntil: q.validUntil || "", issuedAs: q.issuedAs, link: shared ? shareUrl(shared.token, q.quoteNo) : "" })
                                   : WA_TEMPLATES["client-balance"](t, { name: first, amount: money(stillOwed), date: q.date, issuedAs: q.issuedAs });
                                 const link = client ? waLink(client.phone || "", text) : null;
                                 return link ? (
