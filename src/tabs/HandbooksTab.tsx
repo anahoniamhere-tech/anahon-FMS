@@ -351,30 +351,26 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
 
   // "Where am I": the last section header that has scrolled up past the sticky bar (or
   // the top of the content column on desktop). Scroll events don't bubble, so this
-  // listens in the capture phase and catches <main>'s own scrolling. At the very bottom
-  // the last section counts as reached even if its header never gets to the top.
+  // listens in the capture phase and catches <main>'s own scrolling. No "bottom of page =
+  // last section" rule: with most sections folded the page is short, and that rule would
+  // name a section the reader never opened.
   useEffect(() => {
     if (!sections.length) return;
-    let raf = 0;
     const measure = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const main = articleRef.current?.closest("main");
-        if (!main) return;
-        const limit = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top) + 24;
-        let cur = sections[0].id;
-        for (const s of sections) {
-          const el = document.getElementById(s.id);
-          if (!el || el.getBoundingClientRect().top > limit) break;
-          cur = s.id;
-        }
-        if (main.scrollTop > 0 && main.scrollTop + main.clientHeight >= main.scrollHeight - 4) cur = sections[sections.length - 1].id;
-        setCurrentSec(cur);
-      });
+      const main = articleRef.current?.closest("main");
+      if (!main) return;
+      const limit = Math.max(barRef.current?.getBoundingClientRect().bottom ?? 0, main.getBoundingClientRect().top) + 24;
+      let cur = sections[0].id;
+      for (const s of sections) {
+        const el = document.getElementById(s.id);
+        if (!el || el.getBoundingClientRect().top > limit) break;
+        cur = s.id;
+      }
+      setCurrentSec(cur);
     };
     document.addEventListener("scroll", measure, { capture: true, passive: true });
     measure();
-    return () => { document.removeEventListener("scroll", measure, { capture: true }); cancelAnimationFrame(raf); };
+    return () => document.removeEventListener("scroll", measure, { capture: true });
   }, [sections]);
 
   if (selected) {
