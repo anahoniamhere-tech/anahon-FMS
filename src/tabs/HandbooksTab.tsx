@@ -139,8 +139,8 @@ function parseBody(body: string) {
   return { lead, sections, toc };
 }
 
-/** Clears the phone's sticky reading bar when a TOC jump scrolls a heading to the top. */
-const JUMP_MARGIN = "scroll-mt-28 md:scroll-mt-4";
+/** A jumped-to heading lands just under the phone bar (64px < bar bottom + 24, so it counts as current). */
+const JUMP_MARGIN = "scroll-mt-16 md:scroll-mt-4";
 
 /** Renders the classified blocks, grouping consecutive bullet/numbered lines into one
  *  real <ul>/<ol> rather than a run of stray <li>s, and a "label" block together with the
