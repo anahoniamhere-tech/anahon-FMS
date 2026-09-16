@@ -147,5 +147,19 @@ ok("the screen still finds a voucher, a project and a bank line", ["VCH-1", "SKF
 ok("both read src/searchCore.ts", /from "\.\/searchCore"/.test(read("../src/globalSearch.tsx")) && /from "\.\/searchCore"/.test(annaSrc));
 ok("tool kinds are closed", CLIENT_TOOLS.length === 2 && READ_TOOLS.length === 7 && visibleRows("voucher", state).length === 1);
 
+console.log("\nP. the panel keeps nothing and only navigates");
+const desk = read("../src/HelpDesk.tsx");
+const chat = desk.slice(desk.indexOf("function AnnaChat("), desk.indexOf("export default function HelpDesk("));
+ok("the panel exists", chat.length > 500);
+ok("no browser storage for the chat", !/localStorage|sessionStorage|indexedDB/.test(chat));
+ok("one endpoint, and it is Anna's", (chat.match(/fetch\(/g) || []).length === 1 && /fetch\("\/api\/anna\/turn"/.test(chat));
+ok("only plain text turns are sent", /messages: history\.map\(m => \(\{ role: m\.role, content: m\.content \}\)\)/.test(chat));
+ok("a failed turn is never sent back", /msgs\.filter\(m => !m\.error\)/.test(chat));
+ok("an action can only open a door or a record",
+  /const run = \(a: AnnaAction\) => a\.type === "open_door" \? onOpenDoor\(a\.door\) : onOpenRecord\(a\.kind, a\.id\);/.test(chat)
+  && /type AnnaAction = \{ type: "open_door"; door: string \} \| \{ type: "open_record"; kind: string; id: string \};/.test(desk));
+ok("the tab shows only when the server says so", /anna=\{!!state\.anna\?\.enabled\}/.test(read("../src/App.tsx")));
+ok("the name is Anna in both languages (D7)", !/"Anna":/.test(read("../src/i18n.ts")) && /\{m === "anna" \? "Anna" : t\("Help"\)\}/.test(desk));
+
 console.log(failed ? `\n${failed} FAILED` : "\nall ok");
 process.exit(failed ? 1 : 0);

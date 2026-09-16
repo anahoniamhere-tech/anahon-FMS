@@ -1476,6 +1476,14 @@ export default function App() {
               doorLabel={k => t(NAV.flatMap(s => s.items).find(i => i.navKey === k)?.label || k)}
               onOpenDoor={(door, focus) => { handleNavClick(door); if (focus) setFocusId(focus); }}
               openSignal={helpAsk}
+              anna={!!state.anna?.enabled}
+              onOpenRecord={(kind, id) => {
+                // Where each kind opens; a kind with no record view opens its door (as My Desk does).
+                if (kind === "voucher") { handleNavClick("expenses"); setDrawerExpenseId(id); }
+                else if (kind === "project") { setSelectedProjectId(id); handleNavClick("projects"); }
+                else if (kind === "document") { const d = state.documents.find(x => x.id === id); if (d) openDoc(d); }
+                else handleNavClick({ quotation: "production", client: "production", vendor: "vendors", task: "mydesk", engagement: "network" }[kind] || "mydesk");
+              }}
             />
           )}
         </div>
