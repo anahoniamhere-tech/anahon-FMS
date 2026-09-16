@@ -90,6 +90,18 @@ export const REQUIRED_SUPPLIER: {
     key: "registration",
     label: "Vendor registration form",
     accepts: ["Vendor Registration", "Vendor Registration Form", "Supplier Registration"],
+    // Saad, 16 Sep 2026 (option b): the vendor form is for organisations and for parties nobody
+    // has classified yet. A team member on the annual service-provider contract owes none — the
+    // personnel file and the annual contract cover it — and an outside person fills the service
+    // provider form below instead.
+    onlyIf: v => !isTeamMember(v) && v.partyKind !== "individual",
+  },
+  {
+    // The same P5 §7.3 paper, in the form that fits a person engaged or paid from outside the team.
+    key: "sp-registration",
+    label: "Service provider registration form",
+    accepts: ["Service Provider Registration", "Service Provider Registration Form", "Individual Registration"],
+    onlyIf: v => !isTeamMember(v) && v.partyKind === "individual",
   },
   {
     // §7.4.2 Consultancy Contracts and §7.2.D ("All consultants must have: Signed

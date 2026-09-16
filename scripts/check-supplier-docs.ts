@@ -105,7 +105,7 @@ ok("an unknown word is not a kind", partyKindLabel("company") === "Not said yet"
 ok("nothing is asked of a party whose kind nobody has said — the papers wait for the answer",
   !missingSupplierDocs([], party({ partyKind: "" })).some(g => ["identity", "cv"].includes(g.key)));
 ok("a person we engage owes identity and a CV",
-  missingSupplierDocs([], party({ partyKind: "individual" })).map(g => g.key).sort().join() === "agreement,cv,identity,registration");
+  missingSupplierDocs([], party({ partyKind: "individual" })).map(g => g.key).sort().join() === "agreement,cv,identity,sp-registration");
 ok("an organisation owes neither — they are papers about a human being",
   !missingSupplierDocs([], party({ partyKind: "organisation" })).some(g => ["identity", "cv"].includes(g.key)));
 ok("nor does a party we only BUY from, whatever they are",
@@ -136,8 +136,9 @@ ok("the link is explicit, never a name that merely looks alike",
   isTeamMember(party({ userEmail: "omar@x" })) && !isTeamMember(party({ userEmail: "" })) && !isTeamMember(party({ userEmail: "   " })));
 ok("a team member is not asked for identity or a CV again",
   !missingSupplierDocs([], party({ partyKind: "individual", userEmail: "omar@x" })).some(g => ["identity", "cv"].includes(g.key)));
-ok("but still owes the papers that are about the ENGAGEMENT, not the person",
-  missingSupplierDocs([], party({ partyKind: "individual", userEmail: "omar@x" })).map(g => g.key).sort().join() === "agreement,registration");
+// 16 Sep 2026: no registration form either — the personnel file and annual contract cover it (Saad, option b).
+ok("but still owes the paper that is about the ENGAGEMENT, not the person",
+  missingSupplierDocs([], party({ partyKind: "individual", userEmail: "omar@x" })).map(g => g.key).sort().join() === "agreement");
 ok("the screen says what it is rather than flagging it unresolved",
   vendorsTab.includes('t("Team member, engaged as a service provider (annual contract)")')
   && !/classification unresolved/i.test(vendorsTab));
@@ -159,6 +160,19 @@ ok("and no withholding rate appears in this module at all — the rate is Financ
   !/7\.5%|whtRate|withholdingRate/.test(supplierDocsSrc));
 ok("the overruled exclusion is kept in the comment rather than deleted, with the consequence named",
   /Saad overruled that on 12 Sep 2026/.test(supplierDocsSrc) && /carry an open line until somebody files/.test(supplierDocsSrc));
+
+console.log("\nR. which registration form — Saad, 16 Sep 2026 (option b)");
+const reg = (over: any) => missingSupplierDocs([], party(over)).map(g => g.key).filter(k => k.endsWith("registration"));
+ok("a team member on the annual contract owes no registration form at all",
+  reg({ partyKind: "individual", userEmail: "omaralabiad21@gmail.com" }).length === 0 && reg({ partyKind: "", userEmail: "x@y" }).length === 0);
+ok("an outside person owes the service provider form, not the vendor form", reg({ partyKind: "individual" }).join() === "sp-registration");
+ok("so does one we only buy from", reg({ partyKind: "individual", engageable: false }).join() === "sp-registration");
+ok("an organisation owes the vendor form", reg({ partyKind: "organisation" }).join() === "registration");
+ok("a party nobody has classified still owes the vendor form, as before", reg({ partyKind: "" }).join() === "registration");
+ok("the service provider form is answered by its own papers, and a vendor form does not answer it",
+  !missingSupplierDocs([{ category: "Service Provider Registration Form", partyId: "ven-1" }], party({ partyKind: "individual" })).some(g => g.key === "sp-registration")
+  && missingSupplierDocs([{ category: "Vendor Registration Form", partyId: "ven-1" }], party({ partyKind: "individual" })).some(g => g.key === "sp-registration"));
+ok("both labels speak Arabic", ["Vendor registration form", "Service provider registration form"].every(l => readFileSync(new URL("../src/i18n.ts", import.meta.url), "utf8").includes(`"${l}":`)));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
