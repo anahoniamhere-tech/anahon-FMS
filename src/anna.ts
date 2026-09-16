@@ -456,6 +456,39 @@ function byName<T extends { name: string }>(rows: T[], name: string, what: strin
 }
 const money = (n: unknown) => Math.round((Number(n) || 0) * 100) / 100;
 
+/* ── Words Deepgram should expect (plan: drafts/anna-learns-arabic-plan.md §A). Measured 16 Sep:
+   Arabic speech needs Arabic-spelled terms (Latin ones made it worse), English speech Latin ones. */
+export const ANNA_FIXED_TERMS: [string, string][] = [
+  ["AnaHon", "أنا هون"], ["iContent", "آي كونتنت"], ["Asfari", "عصفوري"], ["Haki Teghyir", "حكي تغيير"],
+  ["Ahali Al Madina", "أهالي المدينة"], ["Shu El Wade3", "شو الوضع"], ["Tripoli", "طرابلس"], ["Mina", "الميناء"],
+  ["Akkar", "عكار"], ["Halba", "حلبا"], ["Beirut", "بيروت"], ["quotation", "عرض سعر"], ["voucher", "سند"],
+  ["receipt", "إيصال"], ["desk", "مكتب"], ["project", "مشروع"], ["Anna", "آنا"],
+];
+const ANNA_AR_WORDS = ["شو", "هلق", "بدي", "كتير", "منيح", "يلا", "فيك", "عندي"];
+/** Deepgram allows 500 tokens of keyterms; these budgets stay well under it for each script. */
+export const KEYTERM_BUDGET = { en: 700, ar: 450 } as const;
+export type KeytermName = { latin: string; arabic?: string };
+/** Fixed terms first, then names in the order given (clients, projects, contacts, suppliers, team),
+ *  deduplicated and cut to the budget. Names only — nothing else from a record. */
+export function pickKeyterms(names: KeytermName[], spelled: Record<string, string>): { en: string[]; ar: string[] } {
+  const take = (list: string[], budget: number) => {
+    const out: string[] = []; const seen = new Set<string>(); let used = 0;
+    for (const raw of list) {
+      const t = String(raw || "").replace(/\s+/g, " ").trim();
+      if (t.length < 2 || t.length > 40 || seen.has(t.toLowerCase())) continue;
+      if (used + t.length + 1 > budget) break;
+      seen.add(t.toLowerCase()); out.push(t); used += t.length + 1;
+    }
+    return out;
+  };
+  const latin = names.map(n => n.latin).filter(x => !/[\u0600-\u06FF]/.test(x));
+  const arabic = names.map(n => n.arabic || spelled[n.latin] || "").filter(x => /[\u0600-\u06FF]/.test(x));
+  return {
+    en: take([...ANNA_FIXED_TERMS.map(f => f[0]), ...latin], KEYTERM_BUDGET.en),
+    ar: take([...ANNA_FIXED_TERMS.map(f => f[1]), ...ANNA_AR_WORDS, ...arabic], KEYTERM_BUDGET.ar),
+  };
+}
+
 /** Everyone a name could mean, from every people list the viewer's state holds (Saad, 17 Sep:
  *  "Zena" was a client all along, and search alone said no). Names and where only — no contact details. */
 export type PersonHit = { name: string; where: "client" | "supplier" | "contact" | "team"; id: string; close: boolean };

@@ -211,7 +211,8 @@ ok("the listen route exists and checks the owner first", /^[^\n]*\n  const me = 
 ok("without the key it says so and does nothing", /if \(!annaVoiceReady\(\)\) return res\.status\(503\)/.test(listen)
   && /const annaVoiceReady = \(\) => !!process\.env\.DEEPGRAM_API_KEY;/.test(server)
   && /state\.anna = \{ enabled: on, voice: annaVoiceReady\(\), speech: annaSpeechReady\(\), arabicVoice: annaArabicVoice\(\), spend \};/.test(server));
-ok("Deepgram Nova-3 with the training opt-out, and nothing else is called", /model=nova-3&language=\$\{DEEPGRAM_LANG\[l\]\}&smart_format=true&mip_opt_out=true/.test(listen)
+ok("Deepgram Nova-3 with the training opt-out, and nothing else is called", /new URLSearchParams\(\{ model: "nova-3", language: DEEPGRAM_LANG\[l\], smart_format: "true", mip_opt_out: "true" \}\)/.test(listen)
+  && /const url = `https:\/\/api\.deepgram\.com\/v1\/listen\?\$\{q\}`;/.test(listen)
   && (listen.match(/fetch\(/g) || []).length === 1 && !/gemini|anthropic|askJson/i.test(listen));
 ok("English is en (multi heard Spanish), Arabic is Lebanese (multi has no Arabic)", /const DEEPGRAM_LANG = \{ en: "en", ar: "ar-LB" \} as const;/.test(server)
   && /const lang: "en" \| "ar" = req\.body\?\.lang === "ar" \? "ar" : "en";/.test(listen));
@@ -339,6 +340,25 @@ ok("the phone never speaks an Arabic answer either; English still speaks", (() =
 })());
 ok("an Arabic answer in a talk: shown, said once in the status line, and she keeps listening",
   /setVoice\(\{ note: t\("Arabic answers are shown as text — no Arabic voice yet\."\) \}\);\s*\}?\s*next\(\);/.test(chat));
+console.log("\nK. names Deepgram should expect (plan §A; measured: Arabic speech needs Arabic spellings)");
+const { pickKeyterms, KEYTERM_BUDGET, ANNA_FIXED_TERMS } = await import("../src/anna.js");
+const kt = pickKeyterms([{ latin: "Zeina Hamoud" }, { latin: "Maroun Asmar" }, { latin: "Ayman Haddad", arabic: "أيمن حداد" }, { latin: "SKF" }, { latin: "zeina hamoud" },
+  ...Array.from({ length: 300 }, (_, i) => ({ latin: `Person Number ${i}` }))], { "Zeina Hamoud": "زينة حمود" });
+ok("English terms are Latin, Arabic terms are Arabic script", kt.en.every(t => !/[؀-ۿ]/.test(t)) && kt.ar.every(t => /[؀-ۿ]/.test(t)));
+ok("a name is boosted in Arabic from the record or from the stored spelling; none without one", kt.ar.includes("زينة حمود") && kt.ar.includes("أيمن حداد") && !kt.ar.some(t => /Maroun|مارون/.test(t)));
+ok("fixed terms come first, duplicates once, both lists within Deepgram's budget", kt.en[0] === ANNA_FIXED_TERMS[0][0] && kt.ar[0] === ANNA_FIXED_TERMS[0][1]
+  && kt.en.filter(t => t.toLowerCase() === "zeina hamoud").length === 1
+  && kt.en.join(" ").length <= KEYTERM_BUDGET.en && kt.ar.join(" ").length <= KEYTERM_BUDGET.ar && kt.en.length < 303);
+const kb = server.slice(server.indexOf("async function annaKeyterms("), server.indexOf('app.post("/api/anna/listen"'));
+ok("built from names only, once a day", /prisma\.client\.findMany\(\{ where: \{ active: true \}, select: \{ name: true \} \}\)/.test(kb)
+  && /prisma\.networkContact\.findMany\(\{ select: \{ name: true, nameAr: true \} \}\)/.test(kb) && !/email|phone|contact:|taxId|bank/i.test(kb.replace(/networkContact/g, ""))
+  && [...kb.matchAll(/prisma\.\w+\.findMany\(([^)]*)\)/g)].length === 5 && [...kb.matchAll(/prisma\.\w+\.findMany\(([^)]*)\)/g)].every(m => /select: \{ (name|code): true(, (name|nameAr): true)? \}/.test(m[1]))
+  && /if \(keytermCache\?\.day === day\) return keytermCache\.terms;/.test(kb));
+ok("only new names go to Haiku, paid-only, and the spellings are kept in the vault", /"low", "haiku", true\)/.test(kb) && /!n\.arabic && !spelled\[n\.latin\]/.test(kb)
+  && /const KEYTERM_FILE = path\.join\(VAULT_ROOT, "ANNA", "keyterms\.json"\);/.test(server));
+ok("each language's request carries its own list; a failure never blocks listening", /for \(const k of terms\[l\]\) q\.append\("keyterm", k\);/.test(listen)
+  && /const terms = await annaKeyterms\(\)\.catch\(\(\) => \(\{ en: \[\] as string\[\], ar: \[\] as string\[\] \}\)\);/.test(listen));
+
 ok("the player is unlocked by the tap that starts a talk (iOS)", /if \(listen\) unlockVoice\(\);/.test(desk) && /unlockVoice\(\); setTalk\(true\)/.test(chat));
 
 console.log("\nE. guided walkthroughs: Anna points, Saad presses");

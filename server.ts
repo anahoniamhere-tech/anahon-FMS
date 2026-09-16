@@ -55,7 +55,7 @@ import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } 
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, cutPoolFor, POOL_FIELD_KEYS, POOL_STATUSES, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy, poolAssessedAs } from "./src/personnelDocs.js";
 import { parseIcs } from "./src/ics.js";
-import { ANNA_PRICE, ANNA_CLIP_FACTOR, parseRollout, annaModelFor, annaDailyCap, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, DRAFT_TOOLS, REQUEST_URGENCIES, annaTools, annaSystem, clientAction, readTool, draftTool, cleanHistory, type ClientAction } from "./src/anna.js";
+import { ANNA_PRICE, ANNA_CLIP_FACTOR, pickKeyterms, type KeytermName, parseRollout, annaModelFor, annaDailyCap, ANNA_LIMITS, ANNA_TOOL_NAMES, CLIENT_TOOLS, DRAFT_TOOLS, REQUEST_URGENCIES, annaTools, annaSystem, clientAction, readTool, draftTool, cleanHistory, type ClientAction } from "./src/anna.js";
 
 dotenv.config();
 
@@ -1805,6 +1805,47 @@ const ANNA_CLIP_MAX = 1_000_000;
 const VOICE_SURE = 0.6, VOICE_MIN = 0.5;   // bytes; the panel stops at 30 s, well under this
 const annaVoiceReady = () => !!process.env.DEEPGRAM_API_KEY;
 
+/** Names Deepgram should expect, in both scripts (plan §A). Built from record names once a day; names
+ *  with no Arabic spelling are spelled once by Haiku (names only, paid terms) and kept in the vault. */
+const KEYTERM_FILE = path.join(VAULT_ROOT, "ANNA", "keyterms.json");
+let keytermCache: { day: string; terms: { en: string[]; ar: string[] } } | null = null;
+async function annaKeyterms(): Promise<{ en: string[]; ar: string[] }> {
+  const day = localDate();
+  if (keytermCache?.day === day) return keytermCache.terms;
+  const [clients, projects, contacts, vendors, users] = await Promise.all([
+    prisma.client.findMany({ where: { active: true }, select: { name: true } }),
+    prisma.project.findMany({ select: { code: true, name: true } }),
+    prisma.networkContact.findMany({ select: { name: true, nameAr: true } }),
+    prisma.vendor.findMany({ where: { active: true }, select: { name: true } }),
+    prisma.user.findMany({ where: { active: true }, select: { name: true } }),
+  ]);
+  const names: KeytermName[] = [
+    ...clients.map(c => ({ latin: c.name })),
+    ...projects.flatMap(p => [{ latin: p.code }, { latin: p.name }]),
+    ...contacts.map(c => ({ latin: c.name, arabic: c.nameAr || undefined })),
+    ...vendors.map(v => ({ latin: v.name })),
+    ...users.map(u => ({ latin: u.name })),
+  ];
+  let spelled: Record<string, string> = {};
+  try { spelled = JSON.parse(await fs.promises.readFile(KEYTERM_FILE, "utf8")); } catch { /* first run */ }
+  const missing = [...new Set(names.filter(n => !n.arabic && !spelled[n.latin] && /[a-z]/i.test(n.latin) && n.latin.length <= 40).map(n => n.latin))].slice(0, 150);
+  if (missing.length && anthropicKey()) {
+    try {
+      const raw = await askJson(
+        `Write each of these names the way a Lebanese person would spell it in Arabic script. Keep organisation acronyms and codes as they are said aloud in Lebanese Arabic. Answer only with the list.\n${missing.map(m => `- ${m}`).join("\n")}`,
+        { type: "object", properties: { items: { type: "array", items: { type: "object", properties: { latin: { type: "string" }, arabic: { type: "string" } }, required: ["latin", "arabic"], additionalProperties: false } } }, required: ["items"], additionalProperties: false },
+        undefined, "low", "haiku", true);
+      for (const it of JSON.parse(raw).items || []) if (missing.includes(it.latin) && /[\u0600-\u06FF]/.test(it.arabic)) spelled[it.latin] = String(it.arabic).slice(0, 60);
+      await fs.promises.mkdir(path.dirname(KEYTERM_FILE), { recursive: true });
+      await fs.promises.writeFile(KEYTERM_FILE, JSON.stringify(spelled, null, 1));
+      await createAuditLog("system", "Anna", "Anna Terms", `${missing.length} names spelled in Arabic${takeUsage()}`);
+    } catch { /* keep yesterday's spellings; a name without one is simply not boosted in Arabic */ }
+  }
+  const terms = pickKeyterms(names, spelled);
+  keytermCache = { day, terms };
+  return terms;
+}
+
 app.post("/api/anna/listen", async (req, res) => {
   const me = annaOwner(req);
   if (!me) return res.status(403).json({ error: "Anna is not switched on for this account." });
@@ -1819,8 +1860,11 @@ app.post("/api/anna/listen", async (req, res) => {
   if (audio.length > ANNA_CLIP_MAX) return res.status(413).json({ error: "That clip is too long. Keep it under 30 seconds." });
   const lang: "en" | "ar" = req.body?.lang === "ar" ? "ar" : "en";
   try {
+    const terms = await annaKeyterms().catch(() => ({ en: [] as string[], ar: [] as string[] }));
     const hear = async (l: "en" | "ar") => {
-      const url = `https://api.deepgram.com/v1/listen?model=nova-3&language=${DEEPGRAM_LANG[l]}&smart_format=true&mip_opt_out=true`;
+      const q = new URLSearchParams({ model: "nova-3", language: DEEPGRAM_LANG[l], smart_format: "true", mip_opt_out: "true" });
+      for (const k of terms[l]) q.append("keyterm", k);
+      const url = `https://api.deepgram.com/v1/listen?${q}`;
       const r = await fetch(url, {
         method: "POST", body: audio, signal: AbortSignal.timeout(15_000),
         headers: { Authorization: `Token ${process.env.DEEPGRAM_API_KEY}`, "Content-Type": mimeType.split(";")[0] },
