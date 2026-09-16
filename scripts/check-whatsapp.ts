@@ -83,6 +83,18 @@ for (const lang of ["en", "ar"]) {
   ok(`quotation (${lang}) with no validity date drops the clause`, !/valid until|صالح حتى|\{validUntil\}/.test(noDate) && !/,\s*\./.test(noDate), noDate);
 }
 ok("a date the code cannot read is shown as written, not guessed", Q("en", { validUntil: "end of month" }).includes("valid until end of month."));
+const URL = "https://icontent.studio/q/9d7cd729241220c537b610e3d7dd76c3.pdf";
+for (const lang of ["en", "ar"]) {
+  const withLink = Q(lang, { link: URL });
+  ok(`quotation (${lang}) carries the link, whole and untouched`, withLink.includes(URL) && !/[\u2066-\u2069]/.test(withLink.slice(withLink.indexOf(URL) - 1, withLink.indexOf(URL) + URL.length + 1)) && (withLink.match(/https:\/\//g) || []).length === 1, withLink);
+  ok(`quotation (${lang}) with a link still names no AnaHon`, !/AnaHon|أنا هون/i.test(withLink), withLink);
+  ok(`quotation (${lang}) with no link reads exactly as before`, Q(lang, { link: "" }) === Q(lang, {}), Q(lang, { link: "" }));
+  const noDateLink = Q(lang, { validUntil: "", link: URL });
+  ok(`quotation (${lang}) with a link and no date keeps the link and drops the date`, noDateLink.includes(URL) && !/valid until|صالح حتى/.test(noDateLink), noDateLink);
+  ok(`quotation (${lang}) never prints an empty link slot`, !/\{link\}|: \.|:\s*$/.test(Q(lang, {})) && !/\{link\}/.test(withLink));
+}
+ok("the English quotation with its link reads as agreed",
+  Q("en", { link: URL }) === `Hello Maroun, here is quotation 006/2026 for 750.00 USD, valid until 30 September 2026: ${URL}. Tell me if anything should change. — iContent Studio`, Q("en", { link: URL }));
 ok("the English quotation reads as agreed",
   Q("en", {}) === "Hello Maroun, here is quotation 006/2026 for 750.00 USD, valid until 30 September 2026. Tell me if anything should change. — iContent Studio", Q("en", {}));
 

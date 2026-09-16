@@ -132,6 +132,20 @@ const longDate = (iso: string, arabic: boolean) => {
 };
 const isArabic = (t: (s: string) => string) => /[\u0600-\u06FF]/.test(t("Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change."));
 
+/**
+ * The quotation message in its four shapes. No date → no validity clause; no link (every AnaHon
+ * quotation, and an iContent one not yet published) → the sentence reads exactly as it did before
+ * links existed, never with an empty slot.
+ */
+const QUOTE_SENTENCE: Record<string, string> = {
+  "date-nolink": "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}. Tell me if anything should change.",
+  "nodate-nolink": "Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change.",
+  "date-link": "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}: {link}. Tell me if anything should change.",
+  "nodate-link": "Hello {name}, here is quotation {ref} for {amount}: {link}. Tell me if anything should change.",
+};
+// The link is left bare, even in Arabic: an invisible direction mark touching a URL can be swallowed
+// into it by WhatsApp's link detection, and a URL is strongly left-to-right on its own.
+
 const signed = (text: string, issuedAs?: string) => {
   const arabic = /[\u0600-\u06FF]/.test(text);
   const who = issuedAs === "icontent" ? (arabic ? "\u2068iContent Studio\u2069" : "iContent Studio") : (arabic ? "أنا هون" : "AnaHon");
@@ -150,10 +164,8 @@ export const WA_TEMPLATES = {
     fill(t("Hello {name}, we have paid voucher {voucherNo}, {amount}, on {date}. Please confirm receipt. — AnaHon"), p),
   /** The quotation itself, delivered by this message. Projects & funding. No date → no validity clause. */
   "client-quotation": (t: (s: string) => string, p: { name: string; ref: string; amount: string; validUntil?: string; issuedAs?: string; link?: string }) =>
-    signed(fill(t(p.validUntil
-      ? "Hello {name}, here is quotation {ref} for {amount}, valid until {validUntil}. Tell me if anything should change."
-      : "Hello {name}, here is quotation {ref} for {amount}. Tell me if anything should change."),
-      { ...p, validUntil: longDate(p.validUntil || "", isArabic(t)) } as any), p.issuedAs),
+    signed(fill(t(QUOTE_SENTENCE[`${p.validUntil ? "date" : "nodate"}-${p.link ? "link" : "nolink"}`]),
+      { ...p, validUntil: longDate(p.validUntil || "", isArabic(t)), link: p.link || "" } as any), p.issuedAs),
   /** Money is still owed on it. Projects & funding. */
   "client-balance": (t: (s: string) => string, p: { name: string; amount: string; date: string; issuedAs?: string }) =>
     signed(fill(t("Hello {name}, a balance of {amount} is outstanding since {date}. Could you let us know when it will be settled?"), p as any), p.issuedAs),
