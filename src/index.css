@@ -250,8 +250,11 @@ body {
 /* The Virtual Office iframe (src/tabs/OfficeTab.tsx). Plain height: calc() with two
    declarations for a browser that has never seen a modern viewport unit to fall back on —
    a browser ignores a declaration it cannot parse and keeps the one before it, but a React
-   inline style object can only hold one `height` key, so this lives here instead. */
+   inline style object can only hold one `height` key, so this lives here instead.
+   svh, not dvh: dvh follows the iPhone toolbar as it slides, which resizes the frame — and the
+   village's WebGL canvas inside it — on every scroll, and WebKit leaks memory on each canvas
+   resize. svh is the steady small viewport; the frame stays put. */
 .office-frame {
   height: calc(100vh - 9rem);
-  height: calc(100dvh - 9rem);
+  height: calc(100svh - 9rem);
 }

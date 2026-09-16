@@ -44,5 +44,13 @@ ok("index.html is never cached", /filePath\.endsWith\(".html"\)\s*\?\s*"no-store
 ok("hashed assets are cached as immutable", /"public, max-age=31536000, immutable"/.test(staticBlock));
 ok("the catch-all (index.html for every other path) matches", /res\.setHeader\("Cache-Control", "no-store"\);\s*\n\s*res\.sendFile\(path\.join\(distPath, "index\.html"\)\);/.test(server));
 
+// iOS: a frame sized in dvh resizes with the sliding toolbar, and every resize of the WebGL
+// canvas inside leaks memory in WebKit. The frame is sized in svh, with a vh fallback.
+console.log("\nthe office frame holds still on an iPhone");
+const css = readFileSync(new URL("../src/index.css", import.meta.url), "utf8");
+const frame = css.slice(css.indexOf(".office-frame {"), css.indexOf("}", css.indexOf(".office-frame {")));
+ok("OfficeTab uses the office-frame class", /className="office-frame /.test(tab));
+ok("its height is svh, after a vh fallback, and never dvh", /height: calc\(100vh - 9rem\);\s*height: calc\(100svh - 9rem\);/.test(frame) && !/dvh/.test(frame));
+
 console.log(failed ? `\n${failed} FAILED\n` : "\nall green\n");
 process.exit(failed ? 1 : 0);
