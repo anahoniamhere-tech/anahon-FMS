@@ -105,3 +105,8 @@ export const splitExample = (text: string): { before: string; example: string } 
   const at = m.index + m[1].length;
   return { before: text.slice(0, at).trimEnd(), example: text.slice(at) };
 };
+
+/** The first deadline in a line ("within 5 working days", "by the last working day of the
+ *  month"), for a step's time chip. Amounts are not deadlines. */
+export const deadlineIn = (text: string): string | null =>
+  markPieces(text).find(p => p.mark === "fact" && /^(within|by the)\b/i.test(p.text))?.text ?? null;

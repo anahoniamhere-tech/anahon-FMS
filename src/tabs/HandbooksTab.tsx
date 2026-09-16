@@ -13,7 +13,7 @@ import {
   historyChaptersOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, type Topic } from "../policyReading";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, type Topic } from "../policyReading";
 
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
@@ -56,6 +56,7 @@ const HANDBOOK_ACCENT: Record<string, { badge: string; text: string; ring: strin
 };
 const STANDALONE_ACCENT = { badge: "bg-stone-700", text: "text-stone-800", ring: "border-stone-200" };
 const DEFAULT_ACCENT = { badge: "bg-[#6D1A1A]", text: "text-slate-600", ring: "border-slate-200" };
+type Accent = typeof DEFAULT_ACCENT;
 const accentFor = (heading: string, standalone?: boolean) =>
   standalone ? STANDALONE_ACCENT : HANDBOOK_ACCENT[heading] || DEFAULT_ACCENT;
 
@@ -91,7 +92,7 @@ const accentFor = (heading: string, standalone?: boolean) =>
  * a TOC entry, since it is not a peer of "1. Our commitments" the reader would jump to.
  */
 type BodyBlock =
-  | { kind: "h3"; id: string; num: string; title: string }
+  | { kind: "h3" | "h4"; id: string; num: string; title: string }
   | { kind: "label"; text: string }
   | { kind: "bullet" | "numbered" | "sub"; text: string }
   | { kind: "p"; text: string };
@@ -101,6 +102,8 @@ const isLabelText = (s: string) => s.length > 0 && s.length <= 60 && !/^\d/.test
 const isIntroNum = (num: string) => num === "0" || num.startsWith("0.");
 const H2_LINE = /^(\d+)\.\s+(.+)$/;
 const H3_LINE = /^(\d+\.\d+)\s+(.+)$/;
+// "4.4.1 Petty cash" — nine of these, all in P5, all short and unpunctuated.
+const H4_LINE = /^(\d+\.\d+\.\d+)\s+(.+)$/;
 // "\t•\t" everywhere, except P7 (Resources and Assets) which writes a bare "• ".
 const BULLET_LINE = /^(?:\t•\t|•\s+)(.+)$/;
 // "\t◦\t" is a sub-point of the bullet above it (P4's "Source Verification:" and friends).
@@ -133,6 +136,11 @@ function parseBody(body: string) {
       const id = `sec-${h3[1].replace(/\./g, "-")}`;
       push({ kind: "h3", id, num: h3[1], title: h3[2] });
       toc.push({ id, num: h3[1], title: h3[2], level: 3, parent: sections.length ? sections[sections.length - 1].id : id });
+      continue;
+    }
+    const h4 = H4_LINE.exec(raw);
+    if (h4 && isHeadingText(h4[2])) {
+      push({ kind: "h4", id: `sec-${h4[1].replace(/\./g, "-")}`, num: h4[1], title: h4[2] });
       continue;
     }
     const bullet = BULLET_LINE.exec(raw);
@@ -180,12 +188,12 @@ type ListItem = { text: string; subs: string[] };
 /** Subsections (2.1, 2.2 …) become cards: the heading row carries the subsection's own icon,
  *  and everything up to the next subsection sits inside. Text before the first subsection
  *  stays plain above them. */
-function renderBody(blocks: BodyBlock[], accentText: string, find: string) {
+function renderBody(blocks: BodyBlock[], accent: Accent, find: string) {
   const firstSub = blocks.findIndex(b => b.kind === "h3");
-  if (firstSub === -1) return renderFlat(blocks, accentText, find);
-  const nodes: ReactNode[] = [...renderFlat(blocks.slice(0, firstSub), accentText, find)];
+  if (firstSub === -1) return renderFlat(blocks, accent, find);
+  const nodes: ReactNode[] = [...renderFlat(blocks.slice(0, firstSub), accent, find)];
   for (let i = firstSub; i < blocks.length;) {
-    const h = blocks[i] as Extract<BodyBlock, { kind: "h3" }>;
+    const h = blocks[i] as { id: string; num: string; title: string };
     let end = i + 1;
     while (end < blocks.length && blocks[end].kind !== "h3") end++;
     const intro = isIntroNum(h.num);
@@ -193,11 +201,11 @@ function renderBody(blocks: BodyBlock[], accentText: string, find: string) {
       <div key={h.id} className="mt-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3.5 first:mt-0 md:p-4">
         <h3 id={h.id} className="flex items-start gap-2.5 text-[15px] font-bold leading-snug text-slate-800">
           {/* Only a specific topic earns an icon here: a row of identical neutral books said nothing. */}
-          {topicOf(h.title) !== "general" && ic(TOPIC_ICON[topicOf(h.title)], `mt-0.5 h-4 w-4 ${accentText}`)}
+          {topicOf(h.title) !== "general" && ic(TOPIC_ICON[topicOf(h.title)], `mt-0.5 h-4 w-4 ${accent.text}`)}
           {intro ? <span>{marked(h.title, find)}</span>
             : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{h.num}</span>{marked(h.title, find)}</span>}
         </h3>
-        {end > i + 1 && <div className="mt-2">{renderFlat(blocks.slice(i + 1, end), accentText, find)}</div>}
+        {end > i + 1 && <div className="mt-2">{renderFlat(blocks.slice(i + 1, end), accent, find)}</div>}
       </div>
     );
     i = end;
@@ -205,7 +213,7 @@ function renderBody(blocks: BodyBlock[], accentText: string, find: string) {
   return nodes;
 }
 
-function renderFlat(blocks: BodyBlock[], accentText: string, find: string) {
+function renderFlat(blocks: BodyBlock[], accent: Accent, find: string) {
   const nodes: ReactNode[] = [];
   let i = 0;
   const readList = () => {
@@ -222,9 +230,37 @@ function renderFlat(blocks: BodyBlock[], accentText: string, find: string) {
   };
   const isList = (k: BodyBlock["kind"]) => k === "bullet" || k === "numbered" || k === "sub";
   const list = (kind: "bullet" | "numbered", items: ListItem[], className: string, key?: string) => {
-    const Tag = kind === "numbered" ? "ol" : "ul";
+    // A numbered list is a real procedure in these handbooks (P1 §7.2, P3 §4.1, P8 §4.2 …):
+    // numbered circles on a line, each step's deadline as a chip above its text.
+    if (kind === "numbered") return (
+      <ol key={key} dir="auto" className={`text-[13px] leading-relaxed text-slate-800 ${className}`}>
+        {items.map((it, j) => {
+          const due = deadlineIn(it.text);
+          return (
+            <li key={j} className="relative flex gap-3 pb-4 last:pb-0">
+              {j < items.length - 1 && <span aria-hidden className="absolute bottom-0 start-[13px] top-7 w-0.5 rounded bg-slate-200" />}
+              <span className={`relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white ${accent.badge}`}>{j + 1}</span>
+              <div className="min-w-0 flex-1 pt-0.5">
+                {due && (
+                  <span className="mb-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                    {ic(Clock, "h-3 w-3")} {due}
+                  </span>
+                )}
+                <p className={isWarningLine(it.text) ? "font-semibold text-amber-900" : undefined}>{marked(it.text, find)}</p>
+                {it.subs.length > 0 && (
+                  <ul className="mt-1 list-[circle] space-y-1 ps-5">
+                    {it.subs.map((sub, k) => <li key={k}>{marked(sub, find)}</li>)}
+                  </ul>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    );
+    const Tag = "ul";
     return (
-      <Tag key={key} dir="auto" className={`space-y-1.5 ps-5 text-[13px] leading-relaxed ${kind === "numbered" ? "list-decimal" : "list-disc"} ${className}`}>
+      <Tag key={key} dir="auto" className={`list-disc space-y-1.5 ps-5 text-[13px] leading-relaxed ${className}`}>
         {items.map((it, j) => (
           <li key={j} className={isWarningLine(it.text) ? "font-semibold text-amber-900 marker:text-amber-600" : undefined}>
             {marked(it.text, find)}
@@ -253,7 +289,7 @@ function renderFlat(blocks: BodyBlock[], accentText: string, find: string) {
             <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {items.map((it, j) => (
                 <li key={j} className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-[13px] leading-relaxed text-slate-800">
-                  {ic(TOPIC_ICON[topicOf(it.text)], `mt-0.5 h-5 w-5 ${accentText}`)}
+                  {ic(TOPIC_ICON[topicOf(it.text)], `mt-0.5 h-5 w-5 ${accent.text}`)}
                   <span>{marked(it.text, find)}</span>
                 </li>
               ))}
@@ -274,6 +310,14 @@ function renderFlat(blocks: BodyBlock[], accentText: string, find: string) {
       const { kind, items } = readList();
       nodes.push(list(kind, items, "my-3 text-slate-800", `list-${i}`));
       continue;
+    }
+    if (b.kind === "h4") {
+      nodes.push(
+        <h4 key={i} id={b.id} dir="ltr" className="mt-4 text-[13px] font-bold text-slate-800 first:mt-0">
+          <span className="me-2 font-mono text-[12px] text-slate-400">{b.num}</span>{marked(b.title, find)}
+        </h4>
+      );
+      i++; continue;
     }
     if (b.kind === "p") {
       const warn = isWarningLine(b.text);
@@ -450,7 +494,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   const { lead, sections, toc } = useMemo(() => parseBody(selectedBody), [selectedBody]);
   // Each section's searchable text (title, subheadings, every line), built once per policy.
   const hay = useMemo(() => {
-    const text = (bs: BodyBlock[]) => bs.map(b => (b.kind === "h3" ? b.title : b.text)).join("\n");
+    const text = (bs: BodyBlock[]) => bs.map(b => ("title" in b ? b.title : b.text)).join("\n");
     return { lead: text(lead), sections: Object.fromEntries(sections.map(s => [s.id, `${s.title}\n${text(s.blocks)}`])) };
   }, [lead, sections]);
 
@@ -677,7 +721,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
               // the text's first letter, not dir="auto" — that skips children carrying their
               // own dir and resolved on the Arabic "Expand all" label instead (measured).
               <div dir={/^[^A-Za-z]*[؀-ۿ]/.test(selectedBody) ? "rtl" : "ltr"} className="mx-auto max-w-[70ch]">
-                {leadHit && renderBody(lead, accent.text, find)}
+                {leadHit && renderBody(lead, accent, find)}
                 {sections.length > 0 && !finding && (
                   <div className="mt-4 flex justify-end gap-1 border-b border-slate-100 pb-1">
                     <button onClick={() => setAll(true)} className="min-h-11 rounded-lg px-3 text-[12px] font-semibold text-slate-600 hover:bg-slate-100">{t("Expand all")}</button>
@@ -699,7 +743,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                           <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
                         </button>
                       </h2>
-                      {open && <div id={`${s.id}-body`} className="pb-5">{renderBody(s.blocks, accent.text, find)}</div>}
+                      {open && <div id={`${s.id}-body`} className="pb-5">{renderBody(s.blocks, accent, find)}</div>}
                     </section>
                   );
                 })}

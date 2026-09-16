@@ -7,7 +7,7 @@
 // "At a glance" lines where the rule order decides the answer. A new rule that shifts any of
 // these fails here before a reader sees a wrong icon.
 // Run: npx tsx scripts/check-policy-reading.ts
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample } from "../src/policyReading.js";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn } from "../src/policyReading.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -164,6 +164,12 @@ ok("P1 §2.1 splits at \"Examples:\"", !!ex && ex.before.endsWith("for AnaHon.")
 ok("a line that IS an example is all example", splitExample("Example: a gift of flowers.")?.before === "");
 ok("a lower-case \"for example\" mid-sentence stays put", splitExample("Costs, for example, travel, are coded.") === null);
 ok("\"Counterexamples:\" is not a marker", splitExample("See the counterexamples: none.") === null);
+
+// Step time chips, from the real P1 §7.2 steps.
+ok("P1 §7.2 step 1 carries its deadline", deadlineIn("Acknowledge within 5 working days, where the person can be reached, and give them the reference number.") === "within 5 working days");
+ok("P1 §7.2 step 3 carries its deadline", deadlineIn("Preliminary review within 15 working days: is there enough to look into?") === "within 15 working days");
+ok("an amount is not a deadline", deadlineIn("A cash payment above USD 150 needs approval.") === null);
+ok("a step with no time has no chip", deadlineIn("Decide and record the outcome in the register, with the reasons.") === null);
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nall policy reading rules hold");
