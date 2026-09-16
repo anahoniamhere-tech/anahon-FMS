@@ -13,7 +13,7 @@ import {
   historyChaptersOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, type Topic } from "../policyReading";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId, type Ref, type Topic } from "../policyReading";
 
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
@@ -172,8 +172,11 @@ const TOPIC_ICON: Record<Topic, LucideIcon> = {
   general: BookOpen,
 };
 
-/** Amounts and deadlines picked out inside the sentence, and the reader's search on top. */
 type Roles = Record<string, string>;
+/** What body text can link to: seat chips, and cross-references this reader can follow. */
+type BodyCtx = { roles: Roles; knows?: (r: Ref) => boolean; onRef?: (r: Ref) => void };
+const NO_BODY: BodyCtx = { roles: {} };
+const parentOf = (id: string) => id.split("-").slice(0, 2).join("-");
 
 /** A defined seat (ED, FO …) as a chip; a tap spells out the title in place — no popover to
  *  position, and it reads the same either way round. The hit area reaches past the chip. */
@@ -181,15 +184,21 @@ function RoleChip({ abbr, full }: { abbr: string; full: string }) {
   const [open, setOpen] = useState(false);
   return (
     <button type="button" onClick={() => setOpen(o => !o)} aria-expanded={open} title={full}
-      className="relative mx-px inline rounded bg-slate-200/80 px-1 font-semibold text-slate-900 before:absolute before:-inset-x-1 before:-inset-y-2.5 before:content-[''] hover:bg-slate-300/80">
+      className="relative mx-px inline rounded bg-slate-200/80 px-1 font-semibold text-slate-900 before:absolute before:-inset-x-1 before:-inset-y-3 before:content-[''] hover:bg-slate-300/80">
       {abbr}{open && <span className="font-normal"> · {full}</span>}
     </button>
   );
 }
 
-const marked = (text: string, find: string, facts = true, roles: Roles = {}) =>
-  markPieces(text, find, roles).map((p, k) =>
-    p.mark === "role" ? <span key={k}><RoleChip abbr={p.text} full={roles[p.text]} /></span> :
+/** Amounts and deadlines picked out inside the sentence, the reader's search on top, seats as
+ *  chips and followable references as links (body text only — titles pass NO_BODY). */
+const marked = (text: string, find: string, facts = true, body: BodyCtx = NO_BODY) =>
+  markPieces(text, find, body.roles).map((p, k) =>
+    p.mark === "role" ? <span key={k}><RoleChip abbr={p.text} full={body.roles[p.text]} /></span> :
+    p.mark === "ref" ? (body.onRef && body.knows?.(p.ref!)
+      ? <button key={k} type="button" onClick={() => body.onRef!(p.ref!)}
+          className="relative font-semibold text-[#6D1A1A] underline decoration-dotted underline-offset-2 before:absolute before:-inset-x-1 before:-inset-y-3 before:content-[''] hover:decoration-solid">{p.text}</button>
+      : p.text) :
     p.mark === "find" ? <mark key={k} className="rounded bg-yellow-300 px-0.5 text-slate-900 ring-1 ring-yellow-500">{p.text}</mark>
     : p.mark && facts ? <mark key={k} className="rounded bg-amber-100 px-1 font-semibold text-slate-900">{p.text}</mark>
     : p.text);
@@ -197,10 +206,10 @@ const marked = (text: string, find: string, facts = true, roles: Roles = {}) =>
 type ListItem = { text: string; subs: string[] };
 
 /** A "Label: detail" line with its label in bold; anything else just marked. */
-const leadIn = (text: string, find: string, facts = true, roles: Roles = {}) => {
+const leadIn = (text: string, find: string, facts = true, body: BodyCtx = NO_BODY) => {
   const sp = splitLabel(text);
-  if (!sp) return marked(text, find, facts, roles);
-  return <><strong className="font-bold text-slate-900">{marked(sp.label, find, facts)}:</strong> {marked(sp.detail, find, facts, roles)}</>;
+  if (!sp) return marked(text, find, facts, body);
+  return <><strong className="font-bold text-slate-900">{marked(sp.label, find, facts)}:</strong> {marked(sp.detail, find, facts, body)}</>;
 };
 
 /** Renders the classified blocks: consecutive bullet/numbered lines become one real
@@ -210,10 +219,10 @@ const leadIn = (text: string, find: string, facts = true, roles: Roles = {}) => 
 /** Subsections (2.1, 2.2 …) become cards: the heading row carries the subsection's own icon,
  *  and everything up to the next subsection sits inside. Text before the first subsection
  *  stays plain above them. */
-function renderBody(blocks: BodyBlock[], accent: Accent, find: string, roles: Roles) {
+function renderBody(blocks: BodyBlock[], accent: Accent, find: string, body: BodyCtx) {
   const firstSub = blocks.findIndex(b => b.kind === "h3");
-  if (firstSub === -1) return renderFlat(blocks, accent, find, roles);
-  const nodes: ReactNode[] = [...renderFlat(blocks.slice(0, firstSub), accent, find, roles)];
+  if (firstSub === -1) return renderFlat(blocks, accent, find, body);
+  const nodes: ReactNode[] = [...renderFlat(blocks.slice(0, firstSub), accent, find, body)];
   for (let i = firstSub; i < blocks.length;) {
     const h = blocks[i] as { id: string; num: string; title: string };
     let end = i + 1;
@@ -227,7 +236,7 @@ function renderBody(blocks: BodyBlock[], accent: Accent, find: string, roles: Ro
           {intro ? <span>{marked(h.title, find)}</span>
             : <span dir="ltr"><span className="me-2 font-mono text-[13px] text-slate-400">{h.num}</span>{marked(h.title, find)}</span>}
         </h3>
-        {end > i + 1 && <div className="mt-2">{renderFlat(blocks.slice(i + 1, end), accent, find, roles)}</div>}
+        {end > i + 1 && <div className="mt-2">{renderFlat(blocks.slice(i + 1, end), accent, find, body)}</div>}
       </div>
     );
     i = end;
@@ -235,7 +244,7 @@ function renderBody(blocks: BodyBlock[], accent: Accent, find: string, roles: Ro
   return nodes;
 }
 
-function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, roles: Roles) {
+function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: BodyCtx) {
   const nodes: ReactNode[] = [];
   let i = 0;
   const readList = () => {
@@ -269,10 +278,10 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, roles: Ro
                   </span>
                 )}
                 {/* With the deadline already in its chip, the sentence is not marked a second time. */}
-                <p className={isWarningLine(it.text) ? "font-semibold text-amber-900" : undefined}>{leadIn(it.text, find, !due, roles)}</p>
+                <p className={isWarningLine(it.text) ? "font-semibold text-amber-900" : undefined}>{leadIn(it.text, find, !due, body)}</p>
                 {it.subs.length > 0 && (
                   <ul className="mt-1 list-[circle] space-y-1 ps-5">
-                    {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, roles)}</li>)}
+                    {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, body)}</li>)}
                   </ul>
                 )}
               </div>
@@ -290,10 +299,10 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, roles: Ro
           return (
             <li key={j} className={`rounded-lg border bg-white p-3 ${warn ? "border-amber-300" : "border-slate-200"}`}>
               <p className={`text-[12px] font-bold ${warn ? "text-amber-900" : "text-slate-900"}`}>{marked(labels[j]!.label, find)}</p>
-              <p className="mt-0.5 text-slate-700">{marked(labels[j]!.detail, find, true, roles)}</p>
+              <p className="mt-0.5 text-slate-700">{marked(labels[j]!.detail, find, true, body)}</p>
               {it.subs.length > 0 && (
                 <ul className="mt-1 list-[circle] space-y-1 ps-5 text-slate-700">
-                  {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, roles)}</li>)}
+                  {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, body)}</li>)}
                 </ul>
               )}
             </li>
@@ -306,10 +315,10 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, roles: Ro
       <Tag key={key} dir="auto" className={`list-disc space-y-1.5 ps-5 text-[13px] leading-relaxed ${className}`}>
         {items.map((it, j) => (
           <li key={j} className={isWarningLine(it.text) ? "font-semibold text-amber-900 marker:text-amber-600" : undefined}>
-            {leadIn(it.text, find, true, roles)}
+            {leadIn(it.text, find, true, body)}
             {it.subs.length > 0 && (
               <ul className="mt-1 list-[circle] space-y-1 ps-5 font-normal text-slate-800">
-                {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, roles)}</li>)}
+                {it.subs.map((sub, k) => <li key={k}>{marked(sub, find, true, body)}</li>)}
               </ul>
             )}
           </li>
@@ -333,7 +342,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, roles: Ro
               {items.map((it, j) => (
                 <li key={j} className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-[13px] leading-relaxed text-slate-800">
                   {ic(TOPIC_ICON[topicOf(it.text)], `mt-0.5 h-5 w-5 ${accent.text}`)}
-                  <span>{leadIn(it.text, find, true, roles)}</span>
+                  <span>{leadIn(it.text, find, true, body)}</span>
                 </li>
               ))}
             </ul>
@@ -369,13 +378,13 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, roles: Ro
         <div key={i} dir="auto" className="mt-3 first:mt-0">
           {(!ex || ex.before) && (
             <p className={`text-[13px] leading-relaxed ${warn ? "border-s-2 border-amber-500 ps-3 font-semibold text-amber-900" : "text-slate-800"}`}>
-              {marked(ex ? ex.before : b.text, find, true, roles)}
+              {marked(ex ? ex.before : b.text, find, true, body)}
             </p>
           )}
           {ex && (
             <p className={`flex gap-2 rounded-lg border-s-4 border-slate-300 bg-slate-100/80 px-3 py-2 text-[13px] leading-relaxed text-slate-700 ${ex.before ? "mt-2" : ""}`}>
               {ic(Lightbulb, "mt-0.5 h-4 w-4 text-slate-500")}
-              <span>{marked(ex.example, find, true, roles)}</span>
+              <span>{marked(ex.example, find, true, body)}</span>
             </p>
           )}
         </div>
@@ -423,6 +432,9 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
   // of a mostly-folded policy the page is too short to bring its heading up to the bar.
   const pinned = useRef<{ sec: string; top: number } | null>(null);
   const [find, setFind] = useState("");
+  // A reference to another policy opens a preview here; "Open" lands on that section.
+  const [peek, setPeek] = useState<{ no: string; sec?: string } | null>(null);
+  const [pendingSec, setPendingSec] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLDivElement>(null);
@@ -453,8 +465,19 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     setCurrentSec(null);
     setFind("");
     setFindOpen(false);
+    setPeek(null);
     setSelected({ doc, no, title, chapters });
     await fetchText(doc);
+  };
+
+  /** Where a policy number lives: its governing document and its Index group. */
+  const locate = (no: string) => {
+    if (!parsed) return null;
+    const hb = parsed.handbooks.find(h => h.chapters.some(c => c.no === no));
+    const chapters = hb ? hb.chapters : parsed.standalone;
+    const c = chapters.find(c => c.no === no);
+    const doc = c && findHandbookDoc(hb ? hb.heading : c.no, liveDocs);
+    return c && doc ? { doc, chapters, no: c.no, title: c.title, heading: hb?.heading } : null;
   };
 
   // A citation clicked in the help desk ("Policy P5 §7.2") or a notification lands here
@@ -463,17 +486,8 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     if (!focusId || !parsed) return;
     const m = /^policy:(P\d{1,2}|\d{3})$/i.exec(focusId);
     if (!m) { return; }
-    const no = policyNo(m[1]);   // an old "policy:020" link still lands on P5
-    const hb = parsed.handbooks.find(h => h.chapters.some(c => c.no === no));
-    if (hb) {
-      const doc = findHandbookDoc(hb.heading, liveDocs);
-      const c = hb.chapters.find(c => c.no === no)!;
-      if (doc) openChapter(doc, hb.chapters, c.no, c.title);
-    } else {
-      const c = parsed.standalone.find(c => c.no === no);
-      const doc = c && findHandbookDoc(c.no, liveDocs);
-      if (c && doc) openChapter(doc, parsed.standalone, c.no, c.title);
-    }
+    const loc = locate(policyNo(m[1]));   // an old "policy:020" link still lands on P5
+    if (loc) openChapter(loc.doc, loc.chapters, loc.no, loc.title);
     setFocusId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId, parsed]);
@@ -542,6 +556,27 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     const text = (bs: BodyBlock[]) => bs.map(b => ("title" in b ? b.title : b.text)).join("\n");
     return { lead: text(lead), sections: Object.fromEntries(sections.map(s => [s.id, `${s.title}\n${text(s.blocks)}`])) };
   }, [lead, sections]);
+
+  // Opened from a preview: once the new policy's sections exist, open and land on the section.
+  useEffect(() => {
+    if (!pendingSec || !sections.some(s => s.id === parentOf(pendingSec))) return;
+    setOpenSecs(o => ({ ...o, [parentOf(pendingSec)]: true }));
+    setJumpTo({ id: pendingSec, sec: parentOf(pendingSec) });
+    setPendingSec(null);
+  }, [sections, pendingSec]);
+
+  const peekLoc = peek ? locate(peek.no) : null;
+  const peekText = peekLoc ? docText[peekLoc.doc.id] : undefined;
+  useEffect(() => {
+    if (peekLoc && peekText === undefined) fetchText(peekLoc.doc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [peek?.no]);
+  useEffect(() => {
+    if (!peek) return;
+    const close = (e: KeyboardEvent) => { if (e.key === "Escape") setPeek(null); };
+    document.addEventListener("keydown", close);
+    return () => document.removeEventListener("keydown", close);
+  }, [peek]);
 
   // While a policy is open, index.css tucks the floating help bubble and gaps pill away on a phone.
   useEffect(() => {
@@ -616,6 +651,46 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
       setSectionsOpen(false);
       setJumpTo({ id, sec: parent });
     };
+
+    // Every anchor in this policy (sections, subsections, 4.4.1-style headings), so a "§6.3"
+    // only becomes a link when there is somewhere to land.
+    const ids = new Set([...toc.map(e => e.id), ...sections.flatMap(x => x.blocks.flatMap(b => (b.kind === "h4" ? [b.id] : [])))]);
+    const bodyCtx: BodyCtx = {
+      roles,
+      knows: r => (!r.policy || r.policy === selected.no) ? !!r.sec && ids.has(secId(r.sec)) : !!locate(r.policy),
+      onRef: r => {
+        if (!r.policy || r.policy === selected.no) { if (r.sec) jump(secId(r.sec), parentOf(secId(r.sec))); return; }
+        setPeek({ no: r.policy, sec: r.sec });
+      },
+    };
+
+    // The preview: the referenced section of another policy (or its opening, for "(P7)"),
+    // read from that policy's own text. ponytail: re-parsed on each render while open; memoise
+    // if a large handbook ever makes the sheet feel slow.
+    const peekView = (() => {
+      if (!peek || !peekLoc || peekText === undefined) return null;
+      const anchors = chapterAnchors(peekText);
+      const missing = { heading: null as string | null, blocks: null as BodyBlock[] | null };
+      if (missingChapterText(peekLoc.chapters, anchors).some(c => c.no === peekLoc.no)) return missing;
+      const parsedPeek = parseBody(chapterSlice(peekText, peekLoc.no, anchors));
+      if (!peek.sec) return { heading: null, blocks: parsedPeek.lead.length ? parsedPeek.lead : parsedPeek.sections[0]?.blocks ?? [] };
+      const id = secId(peek.sec);
+      const top = parsedPeek.sections.find(x => x.id === parentOf(id));
+      if (!top) return missing;
+      if (top.id === id) return { heading: `${top.num}. ${top.title}`, blocks: top.blocks };
+      const at = top.blocks.findIndex(b => "id" in b && b.id === id);
+      if (at < 0) return missing;
+      const h = top.blocks[at] as { kind: "h3" | "h4"; num: string; title: string };
+      let end = at + 1;
+      while (end < top.blocks.length && top.blocks[end].kind !== "h3" && !(h.kind === "h4" && top.blocks[end].kind === "h4")) end++;
+      return { heading: `${h.num} ${h.title}`, blocks: top.blocks.slice(at + 1, end) };
+    })();
+    const openPeek = () => {
+      if (!peek || !peekLoc) return;
+      openChapter(peekLoc.doc, peekLoc.chapters, peekLoc.no, peekLoc.title);
+      if (peek.sec) setPendingSec(secId(peek.sec));
+    };
+    const peekRef = peek ? `${peek.no}${peek.sec ? ` §${peek.sec}` : ""}` : "";
 
     // Progress counts numbered sections by position; the intro (0) reads as "Introduction".
     const numbered = sections.filter(s => !isIntroNum(s.num));
@@ -766,7 +841,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
               // the text's first letter, not dir="auto" — that skips children carrying their
               // own dir and resolved on the Arabic "Expand all" label instead (measured).
               <div dir={/^[^A-Za-z]*[؀-ۿ]/.test(selectedBody) ? "rtl" : "ltr"} className="mx-auto max-w-[70ch]">
-                {leadHit && renderBody(lead, accent, find, roles)}
+                {leadHit && renderBody(lead, accent, find, bodyCtx)}
                 {sections.length > 0 && !finding && (
                   <div className="mt-4 flex justify-end gap-1 border-b border-slate-100 pb-1">
                     <button onClick={() => setAll(true)} className="min-h-11 rounded-lg px-3 text-[12px] font-semibold text-slate-600 hover:bg-slate-100">{t("Expand all")}</button>
@@ -798,7 +873,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                                 {who.map(a => <span key={a}><RoleChip abbr={a} full={roles[a]} /></span>)}
                               </p>
                             )}
-                            {renderBody(s.blocks, accent, find, roles)}
+                            {renderBody(s.blocks, accent, find, bodyCtx)}
                           </div>
                         );
                       })()}
@@ -816,6 +891,37 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
             </div>
           )}
         </div>
+
+        {peek && (
+          <>
+            <div className="fixed inset-0 z-[96] bg-black/30" onClick={() => setPeek(null)} />
+            <div role="dialog" aria-modal="true" aria-label={`${t("Policy")} ${peekRef}`}
+              className="fixed inset-x-0 bottom-0 z-[97] flex max-h-[75vh] flex-col rounded-t-2xl bg-white shadow-2xl md:inset-x-auto md:bottom-6 md:end-6 md:w-[30rem] md:rounded-2xl">
+              <div className="flex items-start gap-3 border-b border-slate-100 p-4">
+                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-mono text-sm font-bold text-white ${accentFor(peekLoc?.heading || "", !peekLoc?.heading).badge}`}>{peek.no}</span>
+                <div className="min-w-0 flex-1">
+                  <p dir="auto" className="font-bold leading-snug text-slate-900 [text-align:match-parent]">{peekLoc?.title || peek.no}</p>
+                  {peekView?.heading && <p dir="ltr" className="text-[13px] text-slate-500 [text-align:match-parent]">{peekView.heading}</p>}
+                </div>
+                <button onClick={() => setPeek(null)} aria-label={t("Close")} title={t("Close")}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100">
+                  {ic(X, "h-5 w-5")}
+                </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                {!peekView ? <p className="text-sm text-slate-500">{t("Reading the handbook…")}</p>
+                  : !peekView.blocks ? <p className="text-sm text-amber-800">{t("That section is not in the policy's current text.")}</p>
+                  : <div dir="ltr">{renderBody(peekView.blocks, accentFor(peekLoc?.heading || "", !peekLoc?.heading), "", { roles: roleDefs(peekText || "") })}</div>}
+              </div>
+              <div className="border-t border-slate-100 p-3">
+                <button onClick={openPeek} disabled={!peekLoc}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#6D1A1A] text-sm font-bold text-white hover:bg-[#4A1010] disabled:opacity-50">
+                  {t("Open")} <span dir="ltr">{peekRef}</span> <ArrowRight className="h-4 w-4 rtl:rotate-180" />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
 
         {history.length > 0 && (
           <div className="rounded-xl border border-slate-200 bg-white">

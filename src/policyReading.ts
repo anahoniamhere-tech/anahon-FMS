@@ -59,7 +59,10 @@ const MARK = new RegExp(
   "gi",
 );
 
-export type Piece = { text: string; mark: false | "fact" | "find" | "role" };
+/** A cross-reference: "P5 §0.3" → { policy: "P5", sec: "0.3" }; a bare "§6.3" has no policy
+ *  (it means the policy being read); "(P7)" or "Policy P6" has no section. */
+export type Ref = { policy?: string; sec?: string };
+export type Piece = { text: string; mark: false | "fact" | "find" | "role" | "ref"; ref?: Ref };
 
 /** Shortest search that filters and highlights; one letter would match nearly everything. */
 export const MIN_FIND = 2;
@@ -82,6 +85,24 @@ const splitFind = (p: Piece, q: string): Piece[] => {
   return out;
 };
 
+// "P5 §0.3", "Policy P6", "(P7)", "§6.3" — the forms the handbooks use (17 spellings counted,
+// all reduce to these). A section number never swallows a sentence's closing full stop.
+const REF = /\b(?:Policy\s)?P(\d{1,2})(?:\s§\s?(\d+(?:\.\d+)*))?\b|§\s?(\d+(?:\.\d+)*)/g;
+const splitRefs = (p: Piece): Piece[] => {
+  if (p.mark) return [p];
+  const out: Piece[] = [];
+  let at = 0;
+  for (const m of p.text.matchAll(REF)) {
+    // A quoted sample of how to cite ('"§7.2"' in P5 §0) is talking about references, not making one.
+    if (/["“'‘]/.test(p.text[m.index! - 1] ?? "")) continue;
+    if (m.index! > at) out.push({ text: p.text.slice(at, m.index), mark: false });
+    out.push({ text: m[0], mark: "ref", ref: m[1] ? { policy: `P${m[1]}`, sec: m[2] } : { sec: m[3] } });
+    at = m.index! + m[0].length;
+  }
+  if (at < p.text.length) out.push({ text: p.text.slice(at), mark: false });
+  return out;
+};
+
 /** The text cut into plain, "fact" (amount/deadline) and "find" (the reader's search) pieces,
  *  in order; joining them gives the text back. A search hit inside a fact wins that stretch. */
 export const markPieces = (text: string, find = "", roles: Record<string, string> = {}): Piece[] => {
@@ -93,7 +114,7 @@ export const markPieces = (text: string, find = "", roles: Record<string, string
     at = m.index! + m[0].length;
   }
   if (at < text.length) out.push({ text: text.slice(at), mark: false });
-  const found = isFinding(find) ? out.flatMap(p => splitFind(p, findKey(find))) : out;
+  const found = (isFinding(find) ? out.flatMap(p => splitFind(p, findKey(find))) : out).flatMap(splitRefs);
   const abbrs = Object.keys(roles);
   if (!abbrs.length) return found;
   // Keys come from roleDefs (2–4 capital letters), so they are safe inside a pattern.
@@ -135,6 +156,9 @@ export const splitLabel = (text: string): { label: string; detail: string } | nu
   if (!m || m[1].trim().split(/\s+/).length > 6) return null;
   return { label: m[1].trim(), detail: m[2] };
 };
+
+/** The anchor a section number lands on in the reading view: "6.3" → "sec-6-3". */
+export const secId = (sec: string) => `sec-${sec.replace(/\./g, "-")}`;
 
 /** The seats a handbook defines for itself — '"Executive Director" (ED)' — as ED → title.
  *  Read from the document, so a new seat (P11's "Digital Officer" (DO)) needs no code. */

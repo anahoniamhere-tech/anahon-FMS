@@ -490,6 +490,7 @@ export const AR: Record<string, string> = {
   "Search this policy…": "ابحث في هذه السياسة…",
   "Clear search": "مسح البحث",
   "Who": "من",
+  "That section is not in the policy's current text.": "هذا القسم غير موجود في النص الحالي للسياسة.",
   "{n} of {m} sections mention this": "الأقسام المطابقة: {n} من {m}",
   "Nothing in this policy mentions this.": "لا يرد هذا في أي موضع من هذه السياسة.",
   "Still to settle": "ما زال بحاجة إلى حسم",

@@ -7,7 +7,7 @@
 // "At a glance" lines where the rule order decides the answer. A new rule that shifts any of
 // these fails here before a reader sees a wrong icon.
 // Run: npx tsx scripts/check-policy-reading.ts
-import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn } from "../src/policyReading.js";
+import { topicOf, isWarningLine, markPieces, mentions, isFinding, splitExample, deadlineIn, splitLabel, roleDefs, rolesIn, secId } from "../src/policyReading.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -128,7 +128,7 @@ ok("a mid-sentence \"must\" is not", !isWarningLine("Every person must sign the 
 ok("\"Nevertheless …\" is not", !isWarningLine("Nevertheless, the register is kept."));
 
 // Marks: the phrases found in the live text, nothing else, and the text survives intact.
-const marked = (s: string) => markPieces(s).filter(p => p.mark).map(p => p.text);
+const marked = (s: string) => markPieces(s).filter(p => p.mark === "fact").map(p => p.text);
 const same = (a: string[], b: string[]) => JSON.stringify(a) === JSON.stringify(b);
 const cases: [string, string[]][] = [
   ["Purchases above USD 1,000 need three quotes; up to USD 150 is paid from the float.", ["USD 1,000", "USD 150"]],
@@ -187,6 +187,18 @@ ok("letters inside a word are not a seat (EDITOR, FOund, DOne)", rp("EDITOR FOun
 ok("a search hit wins over a chip", markPieces("the ED signs", "ed", DEFS).some(p => p.mark === "find" && p.text === "ED") && rp("the ED signs").length === 1);
 ok("no definitions, no chips", markPieces("the ED signs").every(p => p.mark !== "role"));
 ok("Who: full title or abbreviation both count", same(rolesIn("The Finance Officer checks; the ED approves.", DEFS), ["ED", "FO"]));
+
+// Cross-references, in the written forms the real handbooks use.
+const refs = (s: string) => markPieces(s).filter(p => p.mark === "ref").map(p => `${p.text}=${p.ref!.policy ?? "-"}:${p.ref!.sec ?? "-"}`);
+ok("\"(the independent recipient in §6.3)\" → this policy, 6.3", same(refs("otherwise the independent recipient in §6.3), and the file says so."), ["§6.3=-:6.3"]));
+ok("\"(P5 §0.3)\", \"Policy P6\", \"(P7)\" all resolve", same(refs("seats defined in P5 §0.3; see Policy P6 and (P7)."), ["P5 §0.3=P5:0.3", "Policy P6=P6:-", "P7=P7:-"]), JSON.stringify(refs("seats defined in P5 §0.3; see Policy P6 and (P7).")));
+ok("\"Policy P5 §7.2\" keeps both parts", same(refs("as Policy P5 §7.2 says"), ["Policy P5 §7.2=P5:7.2"]));
+ok("a closing full stop is not part of the section", same(refs("See §14."), ["§14=-:14"]));
+ok("\"P10\" is one policy, not P1", same(refs("the Strategic Plan (P10)"), ["P10=P10:-"]));
+ok("words that merely contain P and digits are not references (MP3, COP28, USD 150)", refs("an MP3 file at COP28 costs USD 150").length === 0);
+ok("an amount keeps its highlight next to a reference", markPieces("USD 150 (P5 §4.4)").map(p => p.mark || "-").join(",") === "fact,-,ref,-");
+ok("a quoted citation sample stays plain", refs('cite them as "Policy 4.4.2", "§7.2". Section numbers').length === 0);
+ok("secId", secId("4.4.2") === "sec-4-4-2" && secId("14") === "sec-14");
 
 if (failed) { console.error(`\n${failed} check(s) failed`); process.exit(1); }
 console.log("\nall policy reading rules hold");
