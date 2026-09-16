@@ -479,9 +479,8 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
   const [peek, setPeek] = useState<{ no: string; sec?: string } | null>(null);
   const [pendingSec, setPendingSec] = useState<string | null>(null);
   const [findOpen, setFindOpen] = useState(false);
-  // The text a policy is read in; null follows the app language.
-  const [textLang, setTextLang] = useState<"en" | "ar" | null>(null);
-  const wantAr = (textLang ?? lang) === "ar";
+  // The policy text follows the app's own language button (Saad, 16 Sep): no switch of its own.
+  const wantAr = lang === "ar";
   const barRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLDivElement>(null);
 
@@ -617,6 +616,15 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
     return { map, titles, text: Object.fromEntries(en.sections.map(x => [x.id, `${x.title}\n${x.blocks.map(b => ("title" in b ? b.title : b.text)).join("\n")}`])) };
   }, [enBody, lead, sections]);
   const enRoles = useMemo(() => roleDefs(enFull), [enFull]);
+
+  // The app language changed with a policy open: stay on the same § in the other text.
+  const langSeen = useRef(lang);
+  useEffect(() => {
+    if (langSeen.current === lang) return;
+    langSeen.current = lang;
+    if (selected && currentSec) setPendingSec(currentSec);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
 
   // The twin is read for English readers too: its status line says which text governs.
   useEffect(() => {
@@ -894,23 +902,9 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
           <h1 dir="auto" className="mt-1 text-3xl font-bold leading-tight text-slate-900 [text-align:match-parent]">{showAr && arRead?.title ? arRead.title : selected.title}</h1>
         </div>
 
-        {twin && (
-          <div className="flex flex-wrap items-center gap-2">
-            <div role="group" aria-label={t("Language of the text")} className="inline-flex rounded-lg border border-slate-300 bg-white p-0.5">
-              {(["en", "ar"] as const).map(l => {
-                const on = (showAr ? "ar" : "en") === l;
-                const governs = arRead?.gov?.governs === l;
-                return (
-                  <button key={l} type="button" aria-pressed={on}
-                    onClick={() => { if (on) return; setPendingSec(currentSec); setTextLang(l); }}
-                    className={`flex min-h-11 items-center gap-1.5 rounded-md px-3 text-[13px] font-semibold ${on ? "bg-[#6D1A1A] text-white" : "text-slate-600 hover:bg-slate-100"}`}>
-                    <span lang={l} dir={l === "ar" ? "rtl" : "ltr"}>{l === "ar" ? "العربية" : "English"}</span>
-                    {governs && <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${on ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800"}`}>{t("Governs")}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        {/* Which text governs, read from the twin's status line — shown on that text only. */}
+        {twin && arRead?.gov?.governs === (showAr ? "ar" : "en") && (
+          <span className="inline-flex rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-bold text-emerald-800">{t("Governs")}</span>
         )}
         {showAr && arRead?.gov && (
           <p dir="rtl" className="flex gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] leading-relaxed text-slate-700">
