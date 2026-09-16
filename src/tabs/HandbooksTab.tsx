@@ -21,6 +21,19 @@ const findHandbookDoc = (heading: string, live: AppDoc[]) => {
   return live.find(d => d.filename.toLowerCase().includes(keyword));
 };
 
+/** "formerly 020; merged with 003, approved 15 Sep 2026: accounts, ..." — the Index
+ *  always states the old number first. Whatever follows becomes the one-line summary;
+ *  a chapter with nothing past "formerly NNN" (Policy P4) shows no summary line rather
+ *  than an invented one. Presentation only: reads c.note exactly as the Index wrote it,
+ *  the parser and the document text are untouched. */
+const FORMERLY = /^formerly\s+(\d{3})\b[;,.]?\s*(.*)$/i;
+const splitNote = (note: string) => {
+  const m = FORMERLY.exec(note);
+  return m ? { former: m[1], summary: m[2] } : { former: null as string | null, summary: note };
+};
+
+/** One policy as a big tappable card — the same shape whether it sits in a handbook's
+ *  group or in a flat search-results list, so both read as one design. */
 type Selected = { doc: AppDoc; no: string; title: string; chapters: Chapter[] };
 
 export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, focusId, setFocusId }: SharedProps) {
@@ -95,6 +108,37 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
     setFocusId(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusId, parsed]);
+
+  /** One policy as a big tappable card — same shape whether it sits in a handbook's
+   *  group or a flat search-results list, so both read as one design. A plain function
+   *  returning JSX, not a <Tag/> component: this codebase's one precedent for a custom
+   *  component keyed in a .map() (ArchiveTab's Lane) has always failed tsc's "Property
+   *  'key' does not exist" check — pre-existing, harmless, but no reason to add three
+   *  more instances of it when key on the button itself, which has always type-checked
+   *  cleanly here, does the same job. */
+  const policyCard = (key: string, c: Chapter, heading: string, disabled: boolean, onOpen: () => void) => {
+    const { former, summary } = splitNote(c.note);
+    return (
+      <button
+        key={key}
+        disabled={disabled}
+        onClick={onOpen}
+        className="flex w-full items-start gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-start shadow-sm transition-colors hover:border-red-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#6D1A1A] font-mono text-lg font-bold text-white">
+          {c.no}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-base font-bold leading-snug text-slate-900">{c.title}</p>
+          {summary && <p className="mt-1 line-clamp-1 text-sm text-slate-600">{summary}</p>}
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
+            <span>{heading}</span>
+            {former && <span>· {t("formerly")} {former}</span>}
+          </div>
+        </div>
+      </button>
+    );
+  };
 
   const indexFaults = parsed ? findIndexFaults(parsed) : [];
 
@@ -210,73 +254,65 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
       </div>
 
       {query.trim() ? (
-        <div className="space-y-1.5">
+        <div className="space-y-3">
           {searchHits.length === 0 && <p className="text-sm text-slate-500">{t("No policy matches that.")}</p>}
-          {searchHits.map(c => (
-            <button key={`${c.heading}-${c.no}`}
-              onClick={() => {
+          {searchHits.length > 0 && (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {searchHits.map(c => {
                 const doc = c.standalone ? findHandbookDoc(c.title, liveDocs) : findHandbookDoc(c.heading, liveDocs);
                 const chapters = c.standalone ? parsed!.standalone : parsed!.handbooks.find(h => h.heading === c.heading)!.chapters;
-                if (doc) openChapter(doc, chapters, c.no, c.title);
-              }}
-              className="flex w-full items-start gap-3 rounded-lg border border-slate-200 bg-white p-3 text-start hover:border-red-300">
-              <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-500">{c.no}</span>
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-900">{c.title}</p>
-                <p className="text-[11px] text-slate-400">{c.heading}</p>
-              </div>
-            </button>
-          ))}
+                return (
+                  policyCard(`${c.heading}-${c.no}`, c, c.heading, !doc,
+                    () => { if (doc) openChapter(doc, chapters, c.no, c.title); })
+                );
+              })}
+            </div>
+          )}
         </div>
       ) : !parsed ? (
         <p className="text-sm text-slate-500">{t("Reading the Index…")}</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="space-y-8">
           {parsed.handbooks.map(h => {
             const doc = findHandbookDoc(h.heading, liveDocs);
             return (
-              <div key={h.heading} className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
+              <div key={h.heading}>
+                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-500">
                   {ic(BookOpen, "h-4 w-4")} {h.heading}
-                </p>
-                <div className="mt-2.5 space-y-1">
+                </h3>
+                <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {h.chapters.map(c => (
-                    <button key={c.no} disabled={!doc}
-                      onClick={() => doc && openChapter(doc, h.chapters, c.no, c.title)}
-                      className="flex w-full items-baseline gap-2 rounded-md p-1 text-start hover:bg-slate-50 disabled:opacity-50">
-                      <span className="shrink-0 font-mono text-[11px] text-slate-400">{c.no}</span>
-                      <span className="text-[12.5px] text-slate-700">{c.title}</span>
-                    </button>
+                    policyCard(c.no, c, h.heading, !doc,
+                      () => { if (doc) openChapter(doc, h.chapters, c.no, c.title); })
                   ))}
                 </div>
               </div>
             );
           })}
 
-          {indexDoc && (
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <p className="flex items-center gap-2 text-sm font-bold text-slate-900">{ic(BookOpen, "h-4 w-4")} {t("Index")}</p>
-              <div className="mt-2.5 space-y-1">
+          {parsed.standalone.length > 0 && (
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-500">
+                {ic(BookOpen, "h-4 w-4")} {t("Standing on its own")}
+              </h3>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {parsed.standalone.map(c => {
                   const doc = findHandbookDoc(c.title, liveDocs);
                   return (
-                    <button key={c.no} disabled={!doc}
-                      onClick={() => doc && openChapter(doc, parsed.standalone, c.no, c.title)}
-                      className="flex w-full items-baseline gap-2 rounded-md p-1 text-start hover:bg-slate-50 disabled:opacity-50">
-                      <span className="shrink-0 font-mono text-[11px] text-slate-400">{c.no}</span>
-                      <span className="text-[12.5px] text-slate-700">{c.title} <span className="text-slate-400">— {t("standing on its own")}</span></span>
-                    </button>
+                    policyCard(c.no, c, t("Standing on its own"), !doc,
+                      () => { if (doc) openChapter(doc, parsed.standalone, c.no, c.title); })
                   );
                 })}
               </div>
-              {parsed.stillToSettle.length > 0 && (
-                <div className="mt-3 border-t border-slate-100 pt-2.5">
-                  <p className="text-[11px] font-bold text-slate-500">{t("Still to settle")}</p>
-                  <ul className="mt-1 space-y-1 text-[11.5px] text-slate-500 list-disc ps-4">
-                    {parsed.stillToSettle.map((s, i) => <li key={i}>{s}</li>)}
-                  </ul>
-                </div>
-              )}
+            </div>
+          )}
+
+          {parsed.stillToSettle.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="text-[11px] font-bold text-slate-500">{t("Still to settle")}</p>
+              <ul className="mt-1 space-y-1 text-[11.5px] text-slate-500 list-disc ps-4">
+                {parsed.stillToSettle.map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
             </div>
           )}
         </div>

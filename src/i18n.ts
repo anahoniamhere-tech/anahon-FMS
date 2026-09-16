@@ -482,6 +482,8 @@ export const AR: Record<string, string> = {
   "Ask about this policy": "اسأل عن هذه السياسة",
   "Standing on its own": "قائمة بذاتها",
   "standing on its own": "قائمة بذاتها",
+  // 16 Sep — Policies redone as one big card per policy (task from Front desk)
+  "formerly": "سابقًا",
   "Still to settle": "ما زال بحاجة إلى حسم",
   "Index": "الفهرس",
   "The Index lists this chapter here, but the handbook's own text does not carry it yet.": "الفهرس يذكر هذا الفصل هنا، لكن نص الدليل نفسه لا يتضمنه بعد.",
