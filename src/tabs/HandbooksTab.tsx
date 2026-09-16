@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BookOpen, Search, ChevronDown, ChevronRight, History as HistoryIcon, MessageCircleQuestion, ArrowRight, AlertTriangle } from "lucide-react";
+import {
+  BookOpen, Search, ChevronDown, ChevronRight, History as HistoryIcon, MessageCircleQuestion, ArrowRight, AlertTriangle,
+  Bot, MessageSquareWarning, PenLine, UserSearch, Gift, Scale, ShieldCheck, Lock, Database, GraduationCap, BadgeCheck,
+  Plane, Clock, BarChart3, Archive, Package, Users, Wallet, Newspaper, ClipboardCheck, Info, type LucideIcon,
+} from "lucide-react";
 import { SharedProps } from "./shared";
 import { withTicket } from "../docTicket";
 import { isSupersededPointer, policyHeading } from "../helpBot";
@@ -9,6 +13,7 @@ import {
   historyChapterOf, POLICY_DOORS, policyNo, type ParsedIndex, type Chapter,
 } from "../handbooksIndex";
 import type { AppDoc } from "../types";
+import { topicOf, isWarningLine, markPieces, type Topic } from "../policyReading";
 
 /** The door's own label, the same list the sidebar draws from. */
 const doorLabel = (navKey: string) => NAV.flatMap(s => s.items).find(i => i.navKey === navKey)?.label || navKey;
@@ -87,7 +92,7 @@ const accentFor = (heading: string, standalone?: boolean) =>
 type BodyBlock =
   | { kind: "h3"; id: string; num: string; title: string }
   | { kind: "label"; text: string }
-  | { kind: "bullet" | "numbered"; text: string }
+  | { kind: "bullet" | "numbered" | "sub"; text: string }
   | { kind: "p"; text: string };
 
 const isHeadingText = (s: string) => s.length > 0 && s.length <= 70 && !/[.,;:]$/.test(s.trim());
@@ -95,7 +100,10 @@ const isLabelText = (s: string) => s.length > 0 && s.length <= 60 && !/^\d/.test
 const isIntroNum = (num: string) => num === "0" || num.startsWith("0.");
 const H2_LINE = /^(\d+)\.\s+(.+)$/;
 const H3_LINE = /^(\d+\.\d+)\s+(.+)$/;
-const BULLET_LINE = /^\t•\t(.+)$/;
+// "\t•\t" everywhere, except P7 (Resources and Assets) which writes a bare "• ".
+const BULLET_LINE = /^(?:\t•\t|•\s+)(.+)$/;
+// "\t◦\t" is a sub-point of the bullet above it (P4's "Source Verification:" and friends).
+const SUB_LINE = /^\t◦\t(.+)$/;
 const NUMBERED_LINE = /^\t\d+\.\t(.+)$/;
 
 type Section = { id: string; num: string; title: string; blocks: BodyBlock[] };
@@ -107,7 +115,8 @@ function parseBody(body: string) {
   const lead: BodyBlock[] = [];
   const sections: Section[] = [];
   const toc: { id: string; num: string; title: string; level: 2 | 3; parent: string }[] = [];
-  const push = (b: BodyBlock) => (sections.length ? sections[sections.length - 1].blocks : lead).push(b);
+  const target = () => (sections.length ? sections[sections.length - 1].blocks : lead);
+  const push = (b: BodyBlock) => target().push(b);
   const lines = body.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
@@ -129,6 +138,12 @@ function parseBody(body: string) {
     if (bullet) { push({ kind: "bullet", text: bullet[1] }); continue; }
     const numbered = NUMBERED_LINE.exec(raw);
     if (numbered) { push({ kind: "numbered", text: numbered[1] }); continue; }
+    const sub = SUB_LINE.exec(raw);
+    if (sub) {
+      const prev = target()[target().length - 1];
+      push({ kind: prev && (prev.kind === "bullet" || prev.kind === "numbered" || prev.kind === "sub") ? "sub" : "bullet", text: sub[1] });
+      continue;
+    }
     const next = lines[i + 1] || "";
     if (isLabelText(raw) && (BULLET_LINE.test(next) || NUMBERED_LINE.test(next))) {
       push({ kind: "label", text: raw });
@@ -142,45 +157,95 @@ function parseBody(body: string) {
 /** A jumped-to heading lands just under the phone bar (64px < bar bottom + 24, so it counts as current). */
 const JUMP_MARGIN = "scroll-mt-16 md:scroll-mt-4";
 
-/** Renders the classified blocks, grouping consecutive bullet/numbered lines into one
- *  real <ul>/<ol> rather than a run of stray <li>s, and a "label" block together with the
- *  list it introduces into one highlighted callout. */
-function renderBody(blocks: BodyBlock[]) {
+/** One icon per topic key from policyReading.ts; "general" is the neutral fallback. */
+const TOPIC_ICON: Record<Topic, LucideIcon> = {
+  ai: Bot, concern: MessageSquareWarning, alert: AlertTriangle, correction: PenLine, diligence: UserSearch,
+  gift: Gift, integrity: Scale, safety: ShieldCheck, privacy: Lock, data: Database, training: GraduationCap,
+  approval: BadgeCheck, travel: Plane, time: Clock, reporting: BarChart3, records: Archive,
+  equipment: Package, people: Users, money: Wallet, editorial: Newspaper, review: ClipboardCheck,
+  general: BookOpen,
+};
+
+/** Amounts and deadlines picked out inside the sentence, the rest untouched. */
+const marked = (text: string) =>
+  markPieces(text).map((p, k) => p.mark
+    ? <mark key={k} className="rounded bg-amber-100 px-1 font-semibold text-slate-900">{p.text}</mark>
+    : p.text);
+
+type ListItem = { text: string; subs: string[] };
+
+/** Renders the classified blocks: consecutive bullet/numbered lines become one real
+ *  <ul>/<ol> (with any "◦" sub-points nested under their bullet), "At a glance" becomes a
+ *  grid of cards with an icon each, any other label becomes a callout with its list, and a
+ *  line starting "Must / Never / Do not / Only" gets a quiet warning style. */
+function renderBody(blocks: BodyBlock[], accentText: string) {
   const nodes: ReactNode[] = [];
   let i = 0;
   const readList = () => {
-    const kind = blocks[i].kind as "bullet" | "numbered";
-    const items: string[] = [];
-    while (i < blocks.length && blocks[i].kind === kind) { items.push((blocks[i] as { text: string }).text); i++; }
+    const kind: "bullet" | "numbered" = blocks[i].kind === "numbered" ? "numbered" : "bullet";
+    const items: ListItem[] = [];
+    while (i < blocks.length) {
+      const b = blocks[i];
+      if (b.kind === kind || (b.kind === "sub" && !items.length)) items.push({ text: b.text, subs: [] });
+      else if (b.kind === "sub") items[items.length - 1].subs.push(b.text);
+      else break;
+      i++;
+    }
     return { kind, items };
+  };
+  const isList = (k: BodyBlock["kind"]) => k === "bullet" || k === "numbered" || k === "sub";
+  const list = (kind: "bullet" | "numbered", items: ListItem[], className: string, key?: string) => {
+    const Tag = kind === "numbered" ? "ol" : "ul";
+    return (
+      <Tag key={key} dir="auto" className={`space-y-1.5 ps-5 text-[13px] leading-relaxed ${kind === "numbered" ? "list-decimal" : "list-disc"} ${className}`}>
+        {items.map((it, j) => (
+          <li key={j} className={isWarningLine(it.text) ? "font-semibold text-amber-900 marker:text-amber-600" : undefined}>
+            {marked(it.text)}
+            {it.subs.length > 0 && (
+              <ul className="mt-1 list-[circle] space-y-1 ps-5 font-normal text-slate-800">
+                {it.subs.map((sub, k) => <li key={k}>{marked(sub)}</li>)}
+              </ul>
+            )}
+          </li>
+        ))}
+      </Tag>
+    );
   };
   while (i < blocks.length) {
     const b = blocks[i];
     if (b.kind === "label") {
       const label = b.text;
       i++;
-      const { kind, items } = i < blocks.length && (blocks[i].kind === "bullet" || blocks[i].kind === "numbered") ? readList() : { kind: "bullet" as const, items: [] };
-      const Tag = kind === "numbered" ? "ol" : "ul";
+      const { kind, items } = i < blocks.length && isList(blocks[i].kind) ? readList() : { kind: "bullet" as const, items: [] };
+      if (/^at a glance$/i.test(label.trim()) && kind === "bullet" && items.length > 0) {
+        // Cards stop at two columns: the reading column is ~70 characters wide, and a third
+        // column would leave each sentence about twenty characters a line.
+        nodes.push(
+          <div key={`glance-${i}`} dir="auto" className="my-5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
+            <ul className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {items.map((it, j) => (
+                <li key={j} className="flex gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 text-[13px] leading-relaxed text-slate-800">
+                  {ic(TOPIC_ICON[topicOf(it.text)], `mt-0.5 h-5 w-5 ${accentText}`)}
+                  <span>{marked(it.text)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+        continue;
+      }
       nodes.push(
         <div key={`label-${i}`} dir="auto" className="my-4 rounded-xl border border-amber-100 bg-amber-50/60 p-4">
           <p className="text-[13px] font-bold text-amber-900">{label}</p>
-          {items.length > 0 && (
-            <Tag className={`mt-2 space-y-1.5 ps-5 text-[13px] leading-relaxed text-amber-950 ${kind === "numbered" ? "list-decimal" : "list-disc"}`}>
-              {items.map((it, j) => <li key={j}>{it}</li>)}
-            </Tag>
-          )}
+          {items.length > 0 && list(kind, items, "mt-2 text-amber-950")}
         </div>
       );
       continue;
     }
-    if (b.kind === "bullet" || b.kind === "numbered") {
+    if (isList(b.kind)) {
       const { kind, items } = readList();
-      const Tag = kind === "numbered" ? "ol" : "ul";
-      nodes.push(
-        <Tag key={`list-${i}`} dir="auto" className={`my-3 space-y-1.5 ps-5 text-[13px] leading-relaxed text-slate-800 ${kind === "numbered" ? "list-decimal" : "list-disc"}`}>
-          {items.map((it, j) => <li key={j}>{it}</li>)}
-        </Tag>
-      );
+      nodes.push(list(kind, items, "my-3 text-slate-800", `list-${i}`));
       continue;
     }
     if (b.kind === "h3") {
@@ -192,7 +257,14 @@ function renderBody(blocks: BodyBlock[]) {
       );
       i++; continue;
     }
-    if (b.kind === "p") nodes.push(<p key={i} dir="auto" className="mt-3 text-[13px] leading-relaxed text-slate-800 first:mt-0">{b.text}</p>);
+    if (b.kind === "p") {
+      const warn = isWarningLine(b.text);
+      nodes.push(
+        <p key={i} dir="auto" className={`mt-3 text-[13px] leading-relaxed first:mt-0 ${warn ? "border-s-2 border-amber-500 ps-3 font-semibold text-amber-900" : "text-slate-800"}`}>
+          {marked(b.text)}
+        </p>
+      );
+    }
     i++;
   }
   return nodes;
@@ -499,7 +571,7 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
               // the text's first letter, not dir="auto" — that skips children carrying their
               // own dir and resolved on the Arabic "Expand all" label instead (measured).
               <div dir={/^[^A-Za-z]*[؀-ۿ]/.test(selectedBody) ? "rtl" : "ltr"} className="mx-auto max-w-[70ch]">
-                {renderBody(lead)}
+                {renderBody(lead, accent.text)}
                 {sections.length > 0 && (
                   <div className="mt-4 flex justify-end gap-1 border-b border-slate-100 pb-1">
                     <button onClick={() => setAll(true)} className="min-h-11 rounded-lg px-3 text-[12px] font-semibold text-slate-600 hover:bg-slate-100">{t("Expand all")}</button>
@@ -514,13 +586,14 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                         <button onClick={() => setOpenSecs(o => ({ ...o, [s.id]: !open }))}
                           aria-expanded={open} aria-controls={`${s.id}-body`}
                           className="flex min-h-11 w-full items-center gap-3 py-3 text-start hover:bg-slate-50/60">
+                          {isIntroNum(s.num) ? ic(Info, "h-5 w-5 text-slate-400") : ic(TOPIC_ICON[topicOf(s.title)], `h-5 w-5 ${accent.text}`)}
                           <span className={`min-w-0 flex-1 text-lg font-bold leading-snug ${isIntroNum(s.num) ? "text-slate-800" : accent.text}`}>
                             {numTitle(s.num, s.title, "text-base text-slate-400")}
                           </span>
                           <ChevronDown className={`h-5 w-5 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
                         </button>
                       </h2>
-                      {open && <div id={`${s.id}-body`} className="pb-5">{renderBody(s.blocks)}</div>}
+                      {open && <div id={`${s.id}-body`} className="pb-5">{renderBody(s.blocks, accent.text)}</div>}
                     </section>
                   );
                 })}
