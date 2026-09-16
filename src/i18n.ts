@@ -981,6 +981,7 @@ export const AR: Record<string, string> = {
   "Anna is speaking": "Anna تتكلّم",
   "Anna is opening a screen": "Anna تفتح شاشة",
   "Show me": "أرِني",
+  "Talk mode": "وضع المحادثة",
   "Anna's walkthrough": "جولة مع Anna",
   "That part is not on your screen right now.": "هذا الجزء غير ظاهر على شاشتك الآن.",
   "Anna — tap to talk, drag to move": "Anna — اضغط للتحدث، واسحب للتحريك",

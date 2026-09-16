@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
-import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, Volume2, VolumeX } from "lucide-react";
+import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, Volume2, VolumeX, AudioLines } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
 import AnnaGuide, { type Guide } from "./AnnaGuide";
 import { voiceSupported, record, clipBase64, speak, hush, type Recording } from "./annaVoice";
@@ -97,7 +97,7 @@ type AnnaAction = NavAction | { type: "proposal"; proposal: Proposal } | { type:
 type CardState = "open" | "saving" | "saved" | "gone" | { error: string };
 /** Where a saved draft lives, for the button after Confirm. */
 const DRAFT_DOOR: Record<string, string> = { quotation: "production", task: "mydesk", request: "help" };
-type AnnaMsg = { role: "user" | "assistant"; content: string; actions?: AnnaAction[]; usd?: number; error?: boolean; past?: boolean };
+type AnnaMsg = { role: "user" | "assistant"; content: string; actions?: AnnaAction[]; usd?: number; error?: boolean; past?: boolean; local?: boolean };
 type ChatRow = { id: string; title: string; updatedAt: string };
 /** The open chat survives closing the panel (the component unmounts), not a reload. */
 let openChatId = "";
@@ -107,14 +107,24 @@ const focusBox = (el: HTMLTextAreaElement | null) => { if (!window.matchMedia?.(
 let voiceLangPick: "en" | "ar" | "" = "";
 let readAloud = false;
 let listenHandled = 0;
+/** Talk mode: once Saad starts with the mic, answers are spoken and she listens again, like a call. */
+let talkPick: boolean | null = null;
+/** Saying one of these ends a talk (Anna still answers it). */
+const BYE = /\b(bye|goodbye|good night|that'?s all|thanks?,? anna|thank you,? anna)\b|باي|مع السلامة|شكرا(ً)?,? (يا )?(anna|آنا)/i;
+/** The line Anna opens with. Local and free: no API call. */
+const greeting = (lang: string, name: string) => {
+  const first = name.trim().split(/\s+/)[0] || "";
+  return lang === "ar" ? `أهلاً${first ? ` ${first}` : ""}، كيف بقدر ساعدك؟` : `Hi${first ? ` ${first}` : ""}, how can I help?`;
+};
 type VoiceState = "idle" | "listening" | "sending" | { note: string };
 const KIND_LABEL: Record<string, string> = {
   voucher: "Voucher", quotation: "Quotation", project: "Project", client: "Client",
   vendor: "Supplier", document: "Document", task: "Task", engagement: "Event",
 };
 
-function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
+function AnnaChat({ t, lang, userName, open, voiceReady, listenSignal, onMood, onGuide, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   t: (s: string) => string;
+  userName: string;
   /** The panel is showing. The chat stays mounted while it is closed, so an answer on its way still lands. */
   open: boolean;
   /** Bumped by the floating button's mic: start listening once per bump. */
@@ -148,30 +158,59 @@ function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, onGuide, do
   useEffect(() => { readAloud = aloud; if (!aloud) hush(); }, [aloud]);
   const [speaking, setSpeaking] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [talk, setTalk] = useState(false);
+  // Callbacks that fire later (a clip ends, a voice stops) call the newest render's functions
+  // through these, so a follow-up turn never sends an old conversation.
+  const talkRef = useRef(false);
+  const micRef = useRef<() => void>(() => {});
+  const sendRef = useRef<(s: string) => void>(() => {});
+  const turnId = useRef(0);   // bumped whenever a pending "listen after speaking" must not fire
+  useEffect(() => { talkRef.current = talk; }, [talk]);
+  const stopTalk = () => { setTalk(false); talkRef.current = false; turnId.current++; };
+  /** Speak, then (in talk mode) listen again. Without device voices she just listens. */
+  const sayThenListen = (text: string, listen: boolean) => {
+    const id = ++turnId.current;
+    const next = () => { if (listen && id === turnId.current && talkRef.current) micRef.current(); };
+    if (typeof speechSynthesis === "undefined") return next();
+    speak(text, on => { setSpeaking(on); if (!on) next(); });
+  };
+  const greet = (listen: boolean) => {
+    const line = greeting(lang, userName);
+    setMsgs(prev => (prev.length ? prev : [{ role: "assistant", content: line, local: true }]));
+    if (listen || readAloud) sayThenListen(line, listen);
+  };
   // A bump from the floating mic is acted on once, even if this chat is later remounted.
   useEffect(() => {
     if (!listenSignal || listenSignal === listenHandled) return;
     listenHandled = listenSignal;
-    void mic();
+    if (talkPick !== false) { setTalk(true); talkRef.current = true; }
+    if (!msgs.length && talkRef.current) greet(true); else void mic();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listenSignal]);
-  // Closing the panel ends a recording (nothing is sent) and any speech; so does leaving.
-  useEffect(() => { if (!open) { recRef.current?.cancel(); hush(); } else focusBox(inputRef.current); }, [open]);
+  // Closing the panel ends a recording (nothing is sent), any speech and the talk; opening greets.
+  useEffect(() => {
+    if (!open) { stopTalk(); recRef.current?.cancel(); hush(); return; }
+    focusBox(inputRef.current);
+    if (!msgs.length && listenSignal === listenHandled && !talkRef.current) greet(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   useEffect(() => () => { recRef.current?.cancel(); hush(); }, []);
   const mood: AnnaMood = voice === "listening" ? "listening" : busy || voice === "sending" ? "thinking" : opening ? "opening" : speaking ? "speaking" : "idle";
   useEffect(() => { onMood(mood, level); }, [mood, level, onMood]);
 
   /** Tap: start. Tap again: stop and send. The clip also ends itself when Saad goes quiet. */
-  const mic = async () => {
+  const mic = async (byHand = false) => {
     if (voice === "listening") { recRef.current?.stop(); return; }
     if (busy || voice === "sending") return;
+    if (byHand && talkPick !== false) { setTalk(true); talkRef.current = true; }
+    turnId.current++;
     if (!voiceReady) { setVoice({ note: t("Voice is not set up yet.") }); return; }
     if (!voiceSupported()) { setVoice({ note: t("Voice needs the secure address of the app (https) on a recent browser.") }); return; }
     hush();
     try {
       recRef.current = await record(setLevel, async clip => {
         recRef.current = null;
-        if (!clip) { setVoice({ note: t("I didn't hear anything.") }); return; }
+        if (!clip) { stopTalk(); setVoice({ note: t("I didn't hear anything.") }); return; }
         setVoice("sending");
         try {
           const r = await fetch("/api/anna/listen", {
@@ -181,10 +220,11 @@ function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, onGuide, do
           const d = await r.json().catch(() => ({}));
           if (!r.ok) throw new Error(d.error || t("I couldn't hear that. Try again."));
           const words = String(d.transcript || "").trim();
-          if (!words) { setVoice({ note: t("I didn't catch that. Try again.") }); return; }
+          if (!words) { stopTalk(); setVoice({ note: t("I didn't catch that. Try again.") }); return; }
           setVoice("idle");
-          send(words);
-        } catch (e: any) { setVoice({ note: e.message }); }
+          sendRef.current(words);
+          if (BYE.test(words)) stopTalk();   // she answers the goodbye, then stops listening
+        } catch (e: any) { stopTalk(); setVoice({ note: e.message }); }
       });
       setVoice("listening");
     } catch {
@@ -214,7 +254,7 @@ function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, onGuide, do
       setChatId(""); setMsgs([]); setList(null);
     }
   };
-  const newChat = () => { setMsgs([]); setCards({}); setQ(""); setChatId(""); setList(null); focusBox(inputRef.current); };
+  const newChat = () => { stopTalk(); hush(); setMsgs([]); setCards({}); setQ(""); setChatId(""); setList(null); focusBox(inputRef.current); };
   const remove = async (id: string | null) => {
     if (!window.confirm(id ? t("Delete this chat? This cannot be undone.") : t("Delete all your chats with Anna? This cannot be undone."))) return;
     try {
@@ -252,7 +292,8 @@ function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, onGuide, do
   const send = async (spoken?: string) => {
     const text = (spoken ?? q).trim();
     if (!text || busy) return;
-    const history = [...msgs.filter(m => !m.error), { role: "user" as const, content: text }];
+    const inTalk = talkRef.current;   // read before a goodbye ends the talk: the goodbye is still answered aloud
+    const history = [...msgs.filter(m => !m.error && !m.local), { role: "user" as const, content: text }];
     if (spoken === undefined) setQ("");
     setMsgs(prev => [...prev, { role: "user", content: text }]);
     setBusy(true);
@@ -265,18 +306,22 @@ function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, onGuide, do
       if (!r.ok) throw new Error(d.error || t("Anna could not answer just now."));
       const actions: AnnaAction[] = Array.isArray(d.actions) ? d.actions : [];
       if (d.chatId) setChatId(d.chatId);
-      if (readAloud && d.answer) speak(String(d.answer), setSpeaking);
+      if (d.answer && (inTalk || readAloud)) sayThenListen(String(d.answer), talkRef.current);
       setMsgs(prev => [...prev, { role: "assistant", content: String(d.answer || ""), actions, usd: d.usage?.usd }]);
       const navs = actions.filter(a => a.type === "open_door" || a.type === "open_record") as NavAction[];
       navs.forEach(run);
       if (navs.length) { setOpening(true); setTimeout(() => setOpening(false), 1200); }
     } catch (e: any) {
+      stopTalk();
       // A failed turn is shown but never sent back as history; the question stays so it can be retried.
       setMsgs(prev => [...prev.slice(0, -1), { ...prev[prev.length - 1], error: true }, { role: "assistant", content: e.message, error: true }]);
     } finally {
       setBusy(false);
     }
   };
+
+  micRef.current = () => void mic();
+  sendRef.current = s => void send(s);
 
   if (list) return (
     <>
@@ -402,6 +447,11 @@ function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, onGuide, do
           className={`inline-flex min-h-[28px] items-center gap-1 rounded-md px-1.5 font-bold ${aloud ? "text-[#6D1A1A]" : "text-slate-500"} hover:bg-slate-100`}>
           {aloud ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />} {t("Read answers aloud")}
         </button>
+        <button onClick={() => { if (talk) { talkPick = false; stopTalk(); recRef.current?.cancel(); hush(); } else { talkPick = true; setTalk(true); talkRef.current = true; } }}
+          aria-pressed={talk}
+          className={`inline-flex min-h-[28px] items-center gap-1 rounded-md px-1.5 font-bold ${talk ? "bg-[#6D1A1A] text-white" : "text-slate-500 hover:bg-slate-100"}`}>
+          <AudioLines className="h-3.5 w-3.5" /> {t("Talk mode")}
+        </button>
         <span role="status" className="min-w-0 flex-1 truncate text-end">
           {voice === "listening" ? t("Listening… tap to stop") : voice === "sending" ? t("Writing down what you said…") : typeof voice === "object" ? voice.note : ""}
         </span>
@@ -432,7 +482,7 @@ function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, onGuide, do
           className="min-h-[44px] flex-1 resize-none rounded-lg border border-slate-300 px-2.5 py-2 text-[13px] outline-none transition-colors focus:border-[#6D1A1A]"
         />
         <button
-          onClick={mic}
+          onClick={() => mic(true)}
           disabled={busy || voice === "sending"}
           aria-label={voice === "listening" ? t("Stop and send") : t("Speak to Anna")}
           aria-pressed={voice === "listening"}
@@ -461,7 +511,7 @@ function AnnaChat({ t, lang, open, voiceReady, listenSignal, onMood, onGuide, do
 }
 
 export default function HelpDesk({
-  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, onOpenRecord = () => {}, onEditDraft = () => {},
+  t, lang, rtl, doorLabel, onOpenDoor, openSignal, anna = false, annaVoice = false, userName = "", onOpenRecord = () => {}, onEditDraft = () => {},
 }: {
   t: (s: string) => string;
   lang: string;
@@ -476,6 +526,8 @@ export default function HelpDesk({
   anna?: boolean;
   /** Whether the server has its speech key (state.anna.voice). */
   annaVoice?: boolean;
+  /** For Anna's greeting. */
+  userName?: string;
   onOpenRecord?: (kind: string, id: string) => void;
   onEditDraft?: (kind: string, data: Record<string, any>) => void;
 }) {
@@ -682,7 +734,7 @@ export default function HelpDesk({
 
       {anna && (
         <div hidden={mode !== "anna"} className="flex min-h-0 flex-1 flex-col">
-          <AnnaChat t={t} lang={lang} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
+          <AnnaChat t={t} lang={lang} userName={userName} open={open && mode === "anna"} voiceReady={annaVoice} listenSignal={listenSignal} onMood={onMood} onGuide={startGuide}
             doorLabel={doorLabel} onOpenDoor={onOpenDoor} onOpenRecord={onOpenRecord} onEditDraft={onEditDraft} />
         </div>
       )}

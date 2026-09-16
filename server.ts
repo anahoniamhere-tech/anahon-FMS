@@ -1706,8 +1706,9 @@ const annaOwner = (req: any) => {
  * the words go back to the browser, which sends them as an ordinary turn — so the only copy is
  * Saad's own chat row. The audit line holds the length and the cost, never the words. Deepgram
  * with mip_opt_out, never the browser's Web Speech (audio to Google; broken in the home-screen app).
- * Nova-3's `multi` does not cover Arabic, so the mic carries a language switch. */
-const DEEPGRAM_LANG = { en: "multi", ar: "ar-LB" } as const;
+ * Nova-3's `multi` does not cover Arabic, so the mic carries a language switch; and EN is plain `en`,
+ * because `multi` heard Saad's English as Spanish on the first day ("¿Marthave?"). */
+const DEEPGRAM_LANG = { en: "en", ar: "ar-LB" } as const;
 const ANNA_CLIP_MAX = 1_000_000;   // bytes; the panel stops at 30 s, well under this
 const annaVoiceReady = () => !!process.env.DEEPGRAM_API_KEY;
 
@@ -1840,7 +1841,7 @@ app.post("/api/anna/turn", async (req, res) => {
           else { out = a; if (a.suggest?.length) actions.push({ type: "choice", options: a.suggest }); }
           await createAuditLog(viewer.id, viewer.name, "Anna Draft", `turn ${turn} · ${c.name}`);
         } else if (c.name === "policy_answer") {
-          const policies = await policyCorpus();
+          const policies = await policyCorpus(isArabicText(String(c.input?.question || "")) ? "ar" : "en");
           const raw = await askJson(
             helpPromptParts(String(c.input?.question || "").slice(0, 2000),
               { role, ownRole: viewer.role, doors, rows: [], today }, policies.text),

@@ -12,7 +12,7 @@ export const voiceSupported = () =>
 // 30 s cap or a tap. Swap in @ricky0123/vad-web if that happens in real use.
 const SPEECH_RMS = 0.02;
 const QUIET_MS = 1200;       // this long quiet after speech ends the clip
-const NOTHING_MS = 6000;     // no speech at all by then: nothing is sent
+const NOTHING_MS = 8000;     // no speech at all by then: nothing is sent (and talk mode ends)
 const CAP_MS = 30_000;       // the server refuses anything much longer
 
 export type Recording = { stop: () => void; cancel: () => void };

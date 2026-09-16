@@ -185,7 +185,7 @@ ok("a confirmed quotation is always a Draft", /const body = p\.kind === "quotati
 ok("only navigation runs on arrival; cards and name choices wait for a tap", /const navs = actions\.filter\(a => a\.type === "open_door" \|\| a\.type === "open_record"\) as NavAction\[\];\s*navs\.forEach\(run\);/.test(chat)
   && !/actions\.forEach\(/.test(chat));
 ok("only plain text turns are sent", /messages: history\.map\(m => \(\{ role: m\.role, content: m\.content \}\)\)/.test(chat));
-ok("a failed turn is never sent back", /msgs\.filter\(m => !m\.error\)/.test(chat));
+ok("a failed turn, and her local greeting, are never sent back", /msgs\.filter\(m => !m\.error && !m\.local\)/.test(chat));
 ok("a navigation action can only open a door or a record",
   /const run = \(a: NavAction\) => a\.type === "open_door" \? onOpenDoor\(a\.door\) : onOpenRecord\(a\.kind, a\.id\);/.test(chat)
   && /type NavAction = \{ type: "open_door"; door: string \} \| \{ type: "open_record"; kind: string; id: string \};/.test(desk));
@@ -201,21 +201,21 @@ ok("without the key it says so and does nothing", /if \(!annaVoiceReady\(\)\) re
   && /anna: \{ enabled: [^}]*, voice: annaVoiceReady\(\) \}/.test(server));
 ok("Deepgram Nova-3 with the training opt-out, and nothing else is called", /model=nova-3&language=\$\{DEEPGRAM_LANG\[lang\]\}&smart_format=true&mip_opt_out=true/.test(listen)
   && (listen.match(/fetch\(/g) || []).length === 1 && !/gemini|anthropic|askJson/i.test(listen));
-ok("English is multi, Arabic is Lebanese (multi has no Arabic)", /const DEEPGRAM_LANG = \{ en: "multi", ar: "ar-LB" \} as const;/.test(server)
+ok("English is en (multi heard Spanish), Arabic is Lebanese (multi has no Arabic)", /const DEEPGRAM_LANG = \{ en: "en", ar: "ar-LB" \} as const;/.test(server)
   && /const lang = req\.body\?\.lang === "ar" \? "ar" : "en";/.test(listen));
 ok("the clip is a sound file under the cap, held in memory only", /if \(audio\.length > ANNA_CLIP_MAX\) return res\.status\(413\)/.test(listen)
   && /ANNA_CLIP_MAX = 1_000_000;/.test(server) && /\^audio\\\//.test(listen) && !WRITE.test(listen) && !/vault|writeFile|tmp/i.test(listen));
 const heard = [...listen.matchAll(/createAuditLog\(([^;]*)\);/g)].map(m => m[1]);
 ok("its audit lines hold the length and cost, never the words", heard.length === 2 && heard.every(a => !/words|transcript|\bd\b|body|err\.message/.test(a)), heard.join(" | "));
 ok("the error never quotes Deepgram", !/err\.message|err\?\.message|r\.text\(\)/.test(listen));
-ok("the words go back to the device, then travel as an ordinary turn", /res\.json\(\{ transcript: words \}\)/.test(listen) && /setVoice\("idle"\);\s*send\(words\);/.test(chat));
+ok("the words go back to the device, then travel as an ordinary turn", /res\.json\(\{ transcript: words \}\)/.test(listen) && /setVoice\("idle"\);\s*sendRef\.current\(words\);/.test(chat) && /sendRef\.current = s => void send\(s\);/.test(chat));
 ok("gated, and a read-only POST", /"\/api\/anna\/listen": ANY/.test(read("../src/gates.ts")) && /READ_ONLY_POSTS = new Set\(\[[^\]]*"\/api\/anna\/listen"/.test(server));
 const allSrc = ["../src/HelpDesk.tsx", "../src/annaVoice.ts", "../src/App.tsx"].map(read).join("\n");
 ok("never the browser's speech recognition (audio to Google)", !/SpeechRecognition/.test(allSrc));
 ok("the recorder calls nothing and keeps nothing", !/fetch\(|localStorage|sessionStorage|indexedDB/.test(voiceSrc));
 ok("the mic is released when a clip ends", /rec\.onstop = \(\) => \{[\s\S]{0,80}stream\.getTracks\(\)\.forEach\(t => t\.stop\(\)\)/.test(voiceSrc));
 ok("a clip with no speech is not sent", /if \(!heard && now - started > NOTHING_MS\) \{ cancelled = true; stop\(\); \}/.test(voiceSrc)
-  && /onDone\(cancelled \|\| !chunks\.length \? null :/.test(voiceSrc) && /if \(!clip\) \{ setVoice/.test(chat));
+  && /onDone\(cancelled \|\| !chunks\.length \? null :/.test(voiceSrc) && /if \(!clip\) \{ stopTalk\(\); setVoice/.test(chat));
 ok("closing the panel cancels a recording", /useEffect\(\(\) => \(\) => \{ recRef\.current\?\.cancel\(\); hush\(\); \}, \[\]\);/.test(chat));
 ok("reading aloud is off until Saad turns it on, and uses the device's voices", /let readAloud = false;/.test(desk) && /new SpeechSynthesisUtterance\(/.test(voiceSrc));
 
@@ -229,7 +229,7 @@ ok("only Anna's people get the floating Anna; the help bubble stays where it was
 ok("a drag never opens the panel", /onClick=\{\(\) => \{ if \(drag\.current\?\.moved\) return;/.test(launcher));
 ok("her mic opens the panel already listening, and only once per tap", /onClick=\{\(\) => openPanel\(true\)\}/.test(launcher)
   && /if \(listen\) setListenSignal\(n => n \+ 1\);/.test(desk)
-  && /if \(!listenSignal \|\| listenSignal === listenHandled\) return;\s*listenHandled = listenSignal;\s*void mic\(\);/.test(chat));
+  && /if \(!listenSignal \|\| listenSignal === listenHandled\) return;\s*listenHandled = listenSignal;[\s\S]{0,120}if \(!msgs\.length && talkRef\.current\) greet\(true\); else void mic\(\);/.test(chat));
 ok("she is never left on the orange missing pill", /const at = clearOfPill\(orbAt\);/.test(launcher) && /if \(open \|\| !anna \|\| !orbAt \|\| drag\.current\) return;\s*const at = clearOfPill\(orbAt\);/.test(desk)
   && /document\.querySelector\('\[data-float="gaps"\]'\)/.test(desk));
 ok("the page does not scroll while she is dragged on a phone", /style=\{anna \? \{ touchAction: "none" \} : undefined\}/.test(launcher));
@@ -240,10 +240,31 @@ ok("the waveform is on the floating button and in the header", /\{anna \? <AnnaW
   && /\{mode === "anna" && <AnnaWave mood=\{mood\.mood\} level=\{mood\.level\} t=\{t\} \/>\}/.test(desk));
 ok("the bars stand still with reduced motion", /motion-reduce:animate-none/.test(desk) && /@keyframes anna-wave/.test(read("../src/index.css")));
 ok("it says its state to a screen reader", /role="img" aria-label=\{t\(MOOD_LABEL\[mood\]\)\}/.test(desk));
-ok("speaking is reported by the voice itself", /u\.onstart = \(\) => onSpeaking\(true\);\s*u\.onend = u\.onerror = \(\) => onSpeaking\(false\);/.test(voiceSrc) && /speak\(String\(d\.answer\), setSpeaking\)/.test(chat));
+ok("speaking is reported by the voice itself", /u\.onstart = \(\) => onSpeaking\(true\);\s*u\.onend = u\.onerror = \(\) => onSpeaking\(false\);/.test(voiceSrc) && /speak\(text, on => \{ setSpeaking\(on\); if \(!on\) next\(\); \}\);/.test(chat));
 ok("the chat stays mounted but hidden when the panel closes, so an answer on its way still lands",
   /<div\s+ref=\{boxRef\}\s+hidden=\{!open\}/.test(desk) && /<div hidden=\{mode !== "anna"\} className="flex min-h-0 flex-1 flex-col">\s*<AnnaChat /.test(desk));
-ok("closing still stops a recording and her voice", /useEffect\(\(\) => \{ if \(!open\) \{ recRef\.current\?\.cancel\(\); hush\(\); \}/.test(chat) && /open=\{open && mode === "anna"\}/.test(desk));
+ok("closing still stops a recording, her voice and the talk", /useEffect\(\(\) => \{\s*if \(!open\) \{ stopTalk\(\); recRef\.current\?\.cancel\(\); hush\(\); return; \}/.test(chat) && /open=\{open && mode === "anna"\}/.test(desk));
+
+const NOTHING_OK = /const NOTHING_MS = 8000;/.test(read("../src/annaVoice.ts"));
+const BYE_RE = new RegExp(...(() => { const m = read("../src/HelpDesk.tsx").match(/const BYE = \/(.+)\/(\w*);/)!; return [m[1], m[2]] as [string, string]; })());
+console.log("\nT. greeting and talk mode (Saad's first real use, 16 Sep)");
+const sys = annaSystem("Super Admin", "", "2026-09-16");
+ok("small talk gets a short answer with no tool", /Greetings, thanks and small talk get one short, warm sentence back, in his language, with no tool call\./.test(sys));
+ok("a reply made of text alone is returned (a greeting is never empty)", /if \(text\) said\.push\(text\);/.test(route) && /answer = \[\.\.\.said, answer\]\.filter\(Boolean\)\.join\("\\n\\n"\)/.test(route));
+ok("she greets by name when opened, from the page, for free", /const greeting = \(lang: string, name: string\) => \{/.test(desk)
+  && /`Hi\$\{first \? ` \$\{first\}` : ""\}, how can I help\?`/.test(desk) && /أهلاً/.test(desk)
+  && /if \(!msgs\.length && listenSignal === listenHandled && !talkRef\.current\) greet\(false\);/.test(chat) && /userName=\{currentUser\?\.name \|\| ""\}/.test(read("../src/App.tsx")));
+ok("the greeting is shown only, and spoken only when voice is on", /setMsgs\(prev => \(prev\.length \? prev : \[\{ role: "assistant", content: line, local: true \}\]\)\);\s*if \(listen \|\| readAloud\) sayThenListen\(line, listen\);/.test(chat));
+ok("starting with the mic starts a talk, unless he switched talk off", /if \(byHand && talkPick !== false\) \{ setTalk\(true\); talkRef\.current = true; \}/.test(chat) && /onClick=\{\(\) => mic\(true\)\}/.test(chat)
+  && /let talkPick: boolean \| null = null;/.test(desk));
+ok("in a talk every answer is spoken and she listens again when she stops", /if \(d\.answer && \(inTalk \|\| readAloud\)\) sayThenListen\(String\(d\.answer\), talkRef\.current\);/.test(chat)
+  && /const next = \(\) => \{ if \(listen && id === turnId\.current && talkRef\.current\) micRef\.current\(\); \};/.test(chat));
+ok("a stale 'listen again' never fires after a tap, a close or a new chat", /turnId\.current\+\+;/.test(chat.slice(chat.indexOf("const mic = async"))) && /const stopTalk = \(\) => \{ setTalk\(false\); talkRef\.current = false; turnId\.current\+\+; \};/.test(chat)
+  && /const newChat = \(\) => \{ stopTalk\(\); hush\(\);/.test(chat));
+ok("a talk ends on goodbye, on silence, on a failure and on the toggle", /if \(BYE\.test\(words\)\) stopTalk\(\);/.test(chat) && /if \(!words\) \{ stopTalk\(\);/.test(chat)
+  && /\} catch \(e: any\) \{ stopTalk\(\); setVoice/.test(chat) && /if \(talk\) \{ talkPick = false; stopTalk\(\);/.test(chat) && NOTHING_OK);
+ok("goodbye is heard in both languages", ["bye", "Thanks Anna", "thank you, Anna", "باي", "مع السلامة", "شكرا آنا"].every(w => BYE_RE.test(w)) && !["thanks for the list", "by the way"].some(w => BYE_RE.test(w)));
+ok("Arabic policy questions read the Arabic handbooks", /const policies = await policyCorpus\(isArabicText\(String\(c\.input\?\.question \|\| ""\)\) \? "ar" : "en"\);/.test(route));
 
 console.log("\nE. guided walkthroughs: Anna points, Saad presses");
 const { readdirSync } = await import("node:fs");
