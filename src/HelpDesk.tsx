@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw } from "lucide-react";
+import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2 } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
 
 /**
@@ -42,15 +42,19 @@ function rich(text: string, onOpenDoor: (navKey: string, focus?: string) => void
     i % 2 ? <strong key={i}>{citeLinks(part, onOpenDoor)}</strong> : <span key={i}>{citeLinks(part, onOpenDoor)}</span>);
 }
 
-/* ── Anna (src/anna.ts). The conversation lives in this component and nowhere else: the
-   server keeps nothing, and closing the panel keeps it only until New conversation or a
-   reload. Actions are navigation only — a door or a record — and run once on arrival. */
+/* ── Anna (src/anna.ts). Each finished turn is saved on the server in Saad's own chat
+   (decision B); the page keeps nothing in browser storage. Past chats open read-only for
+   their cards: a card's buttons belong to the turn that made it, so an old draft cannot be
+   confirmed twice. Actions are navigation only — a door or a record — and run once on arrival. */
 type NavAction = { type: "open_door"; door: string } | { type: "open_record"; kind: string; id: string };
 type AnnaAction = NavAction | { type: "proposal"; proposal: Proposal };
 type CardState = "open" | "saving" | "saved" | "gone" | { error: string };
 /** Where a saved draft lives, for the button after Confirm. */
 const DRAFT_DOOR: Record<string, string> = { quotation: "production", task: "mydesk", request: "help" };
-type AnnaMsg = { role: "user" | "assistant"; content: string; actions?: AnnaAction[]; usd?: number; error?: boolean };
+type AnnaMsg = { role: "user" | "assistant"; content: string; actions?: AnnaAction[]; usd?: number; error?: boolean; past?: boolean };
+type ChatRow = { id: string; title: string; updatedAt: string };
+/** The open chat survives closing the panel (the component unmounts), not a reload. */
+let openChatId = "";
 const KIND_LABEL: Record<string, string> = {
   voucher: "Voucher", quotation: "Quotation", project: "Project", client: "Client",
   vendor: "Supplier", document: "Document", task: "Task", engagement: "Event",
@@ -67,9 +71,48 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
   const [msgs, setMsgs] = useState<AnnaMsg[]>([]);
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
+  const [chatId, setChatId] = useState(openChatId);
+  const [list, setList] = useState<ChatRow[] | null>(null);   // null = the conversation, not the list
+  const [listErr, setListErr] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => { openChatId = chatId; }, [chatId]);
+  useEffect(() => { if (chatId) openChat(chatId); else inputRef.current?.focus(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const showList = async () => {
+    setListErr("");
+    try {
+      const r = await fetch("/api/anna/chats");
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setList(d.chats || []);
+    } catch (e: any) { setList([]); setListErr(e.message || t("Could not load past chats.")); }
+  };
+  const openChat = async (id: string) => {
+    try {
+      const r = await fetch(`/api/anna/chats/${encodeURIComponent(id)}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setMsgs((d.chat.messages || []).map((m: AnnaMsg) => ({ ...m, past: true })));
+      setCards({}); setChatId(id); setList(null);
+    } catch {
+      // A chat deleted elsewhere: start clean rather than show an error on open.
+      setChatId(""); setMsgs([]); setList(null);
+    }
+  };
+  const newChat = () => { setMsgs([]); setCards({}); setQ(""); setChatId(""); setList(null); inputRef.current?.focus(); };
+  const remove = async (id: string | null) => {
+    if (!window.confirm(id ? t("Delete this chat? This cannot be undone.") : t("Delete all your chats with Anna? This cannot be undone."))) return;
+    try {
+      const r = await fetch("/api/anna/chats/delete", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(id ? { id } : { all: true }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || t("Could not delete."));
+      if (!id || id === chatId) { setChatId(""); setMsgs([]); setCards({}); }
+      setList(l => (id ? (l || []).filter(c => c.id !== id) : []));
+    } catch (e: any) { setListErr(e.message); }
+  };
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [msgs, busy]);
 
   const run = (a: NavAction) => a.type === "open_door" ? onOpenDoor(a.door) : onOpenRecord(a.kind, a.id);
@@ -102,11 +145,12 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
     try {
       const r = await fetch("/api/anna/turn", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history.map(m => ({ role: m.role, content: m.content })) }),
+        body: JSON.stringify({ chatId, messages: history.map(m => ({ role: m.role, content: m.content })) }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || t("Anna could not answer just now."));
       const actions: AnnaAction[] = Array.isArray(d.actions) ? d.actions : [];
+      if (d.chatId) setChatId(d.chatId);
       setMsgs(prev => [...prev, { role: "assistant", content: String(d.answer || ""), actions, usd: d.usage?.usd }]);
       actions.forEach(a => { if (a.type !== "proposal") run(a); });
     } catch (e: any) {
@@ -116,6 +160,38 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
       setBusy(false);
     }
   };
+
+  if (list) return (
+    <>
+      <div className="flex-1 space-y-1 overflow-y-auto p-3">
+        <p className="pb-1 text-[12px] font-bold text-slate-700">{t("Past chats")}</p>
+        {listErr && <p className="text-[12px] text-red-700">{listErr}</p>}
+        {!list.length && !listErr && <p className="text-[12px] text-slate-500">{t("No saved chats yet.")}</p>}
+        {list.map(c => (
+          <div key={c.id} className={`flex items-center gap-1 rounded-lg ${c.id === chatId ? "bg-[#F88888]/15" : "hover:bg-slate-100"}`}>
+            <button onClick={() => openChat(c.id)} className="min-h-[44px] min-w-0 flex-1 px-2 text-start">
+              <span className="block truncate text-[13px] text-slate-900">{c.title || t("Untitled")}</span>
+              <span dir="ltr" className="block text-[10px] text-slate-400">{c.updatedAt.slice(0, 16).replace("T", " ")}</span>
+            </button>
+            <button onClick={() => remove(c.id)} title={t("Delete this chat")} aria-label={t("Delete this chat")}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-50 hover:text-red-700">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t border-slate-200 p-2">
+        <button onClick={() => setList(null)} className="min-h-[44px] rounded-lg px-3 text-[12px] font-bold text-[#6D1A1A] hover:bg-[#6D1A1A]/5">
+          {t("Back")}
+        </button>
+        {!!list.length && (
+          <button onClick={() => remove(null)} className="min-h-[44px] rounded-lg px-3 text-[12px] font-bold text-red-700 hover:bg-red-50">
+            {t("Delete all chats")}
+          </button>
+        )}
+      </div>
+    </>
+  );
 
   return (
     <>
@@ -138,7 +214,9 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
               return (
                 <div key={k} className="space-y-1.5 rounded-xl border border-[#E6D3CA] bg-white p-2.5">
                   {p.lines.map((l, n) => <p key={n} className={`text-[12px] leading-snug ${n ? "text-slate-600" : "font-bold text-slate-900"}`}>{l}</p>)}
-                  {st === "saved" ? (
+                  {m.past ? (
+                    <p className="text-[11px] text-slate-400">{t("From an earlier session — ask Anna again to act on it.")}</p>
+                  ) : st === "saved" ? (
                     <button onClick={() => onOpenDoor(DRAFT_DOOR[p.kind])}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-[11px] font-bold text-white">
                       {t("Saved")} · {t("Open")} {doorLabel(DRAFT_DOOR[p.kind])} <ArrowRight className="h-3 w-3 rtl:rotate-180" />
@@ -181,10 +259,17 @@ function AnnaChat({ t, doorLabel, onOpenDoor, onOpenRecord, onEditDraft }: {
 
       <div className="flex items-end gap-2 border-t border-slate-200 p-2">
         <button
-          onClick={() => { setMsgs([]); setCards({}); setQ(""); inputRef.current?.focus(); }}
+          onClick={showList} disabled={busy}
+          title={t("Past chats")} aria-label={t("Past chats")}
+          className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
+        >
+          <History className="h-4 w-4" />
+        </button>
+        <button
+          onClick={newChat}
           disabled={busy || !msgs.length}
           title={t("New conversation")} aria-label={t("New conversation")}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
+          className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 disabled:opacity-30"
         >
           <RotateCcw className="h-4 w-4" />
         </button>

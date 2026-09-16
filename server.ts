@@ -1660,11 +1660,66 @@ app.post("/api/help/ask", async (req, res) => {
 });
 
 /* ── Anna: Saad's typed assistant (src/anna.ts, drafts/anna-assistant-plan.md) ─────────────
- * Stateless: the browser sends the conversation, nothing about it is stored or logged — the
- * audit lines name the tool and the kind, never an id, a value or the question. Paid key only
- * (P11: record data goes to Anthropic under paid terms), never the Gemini free tier. This
- * handler writes nothing but audit lines; scripts/check-anna.ts reads it to keep it that way.
+ * The browser sends the conversation; the finished turn is kept in its owner's AnnaChat row
+ * (decision B) and nowhere else — the audit lines name the tool and the kind, never an id, a
+ * value or the question. Paid key only (P11: record data goes to Anthropic under paid terms),
+ * never the Gemini free tier. This handler writes audit lines and saveAnnaTurn, nothing more;
+ * scripts/check-anna.ts reads it to keep it that way.
  */
+type AnnaSaved = { role: "user" | "assistant"; content: string; actions?: ClientAction[]; usd?: number };
+const ANNA_CHAT_MAX = 200;   // messages per saved chat; the oldest go first
+
+/** Appends one finished turn to the owner's chat, or starts one. Scoped to the owner in every query. */
+async function saveAnnaTurn(userId: string, chatId: string, asked: string, reply: AnnaSaved): Promise<string> {
+  const now = new Date().toISOString();
+  const row = chatId ? await prisma.annaChat.findFirst({ where: { id: chatId, userId } }) : null;
+  const turn: AnnaSaved[] = [{ role: "user", content: asked }, reply];
+  if (!row) {
+    const id = `anna-${Date.now()}-${crypto.randomBytes(3).toString("hex")}`;
+    await prisma.annaChat.create({ data: { id, userId, title: asked.replace(/\s+/g, " ").trim().slice(0, 80), messages: JSON.stringify(turn), createdAt: now, updatedAt: now } });
+    return id;
+  }
+  let prev: AnnaSaved[] = [];
+  try { prev = JSON.parse(row.messages); } catch { /* a damaged row restarts its list */ }
+  await prisma.annaChat.updateMany({ where: { id: row.id, userId }, data: { messages: JSON.stringify([...prev, ...turn].slice(-ANNA_CHAT_MAX)), updatedAt: now } });
+  return row.id;
+}
+
+/** The real signed-in person, if Anna is theirs. Chats belong to the person, not to a seat worn. */
+const annaOwner = (req: any) => {
+  const me = req.dbUser;
+  return me?.active && ANNA_USERS.includes(me.id) ? me : null;
+};
+
+app.get("/api/anna/chats", async (req, res) => {
+  const me = annaOwner(req);
+  if (!me) return res.status(403).json({ error: "Anna is not switched on for this account." });
+  const rows = await prisma.annaChat.findMany({ where: { userId: me.id }, orderBy: { updatedAt: "desc" }, select: { id: true, title: true, updatedAt: true } });
+  res.json({ chats: rows });
+});
+
+app.get("/api/anna/chats/:id", async (req, res) => {
+  const me = annaOwner(req);
+  if (!me) return res.status(403).json({ error: "Anna is not switched on for this account." });
+  const row = await prisma.annaChat.findFirst({ where: { id: String(req.params.id), userId: me.id } });
+  if (!row) return res.status(404).json({ error: "No such chat." });
+  let messages: AnnaSaved[] = [];
+  try { messages = JSON.parse(row.messages); } catch { /* shown empty */ }
+  res.json({ chat: { id: row.id, title: row.title, updatedAt: row.updatedAt, messages } });
+});
+
+/** One chat, or all of them. Gone for good; the audit line holds only the count. */
+app.post("/api/anna/chats/delete", async (req, res) => {
+  const me = annaOwner(req);
+  if (!me) return res.status(403).json({ error: "Anna is not switched on for this account." });
+  const all = req.body?.all === true;
+  const id = String(req.body?.id || "");
+  if (!all && !id) return res.status(400).json({ error: "Which chat?" });
+  const { count } = await prisma.annaChat.deleteMany({ where: all ? { userId: me.id } : { id, userId: me.id } });
+  await createAuditLog(me.id, me.name, "Anna Chats Deleted", `${count} chat${count === 1 ? "" : "s"}${all ? " (all)" : ""}.`);
+  res.json({ success: true, count });
+});
+
 app.post("/api/anna/turn", async (req, res) => {
   const viewer = (req as any).dbUser;
   if (!ANNA_USERS.includes(viewer.id)) {
@@ -1675,6 +1730,7 @@ app.post("/api/anna/turn", async (req, res) => {
   if (!key) return res.status(503).json({ error: "Anna needs the server's Anthropic key." });
   const messages: any[] = cleanHistory(req.body?.messages);
   if (!messages.length) return res.status(400).json({ error: "Write a message first." });
+  const asked: string = messages[messages.length - 1].content;
   const turn = crypto.randomBytes(3).toString("hex");
   const started = Date.now();
   const actions: ClientAction[] = [];
@@ -1750,9 +1806,12 @@ app.post("/api/anna/turn", async (req, res) => {
     // Sonnet 5: $2/M in, $10/M out; the 1-hour cache writes at 2x and reads at a tenth.
     const usd = Math.round((usage.input * 2 + usage.written * 4 + usage.cached * 0.2 + usage.output * 10) / 10) / 100_000;
     await createAuditLog(viewer.id, viewer.name, "Anna Turn", `turn ${turn} · ${usage.calls} call${usage.calls === 1 ? "" : "s"} · ${ANNA_MODEL} ≈ $${usd.toFixed(4)}`);
-    res.json({ answer, actions, usage: { ...usage, usd } });
+    // Kept only if saving works; a failed save still returns the answer.
+    const chatId = await saveAnnaTurn(viewer.id, String(req.body?.chatId || ""), asked, { role: "assistant", content: answer, actions, usd })
+      .catch(async () => { await createAuditLog(viewer.id, viewer.name, "Anna Failed", `turn ${turn} · not saved`); return ""; });
+    res.json({ answer, actions, usage: { ...usage, usd }, chatId });
   } catch (err: any) {
-    // The status only: an SDK message can quote the request, and nothing of the chat is kept.
+    // The status only: an SDK message can quote the request, and the chat row is the only copy.
     const status = Number(err?.status) || 0;
     await createAuditLog(viewer.id, viewer.name, "Anna Failed", `turn ${turn} · ${status || "error"}`);
     res.status(502).json({ error: status === 429 ? "Anna is busy — try again in a minute." : `Anna could not answer just now (${status || "error"}).` });

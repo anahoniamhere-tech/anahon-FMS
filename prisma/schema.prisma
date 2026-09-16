@@ -512,6 +512,20 @@ model QuoteShare {
 
 /// Something someone needed the FMS to do and it could not (Anna plan §3, 16 Sep 2026).
 /// The rooms read the New and Triaged rows with scripts/feature-requests.ts; nothing pushes.
+/// Anna's saved conversations (Saad's decision B, 16 Sep 2026). One owner, read and deleted only
+/// by that owner through /api/anna/chats; never in loadState, never in the audit log. `messages` is
+/// JSON of what the panel showed: the typed questions and Anna's whitelisted answers and cards.
+model AnnaChat {
+  id        String @id
+  userId    String
+  title     String @default("")
+  messages  String @default("[]")
+  createdAt String
+  updatedAt String
+
+  @@index([userId])
+}
+
 model FeatureRequest {
   id          String  @id
   title       String

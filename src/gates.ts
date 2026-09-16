@@ -41,6 +41,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/materials/link": NEWSROOM,
   "/api/help/ask": ANY,
   "/api/anna/turn": ANY,
+  "/api/anna/chats/delete": ANY,                // Saad deleting his own saved chats; ANNA_USERS and the owner are checked in the route
   "/api/requests/save": ANY,                    // filing one's own feature request (Anna plan §3)
   "/api/requests/triage": ["Super Admin"],      // setting its status, room and note                        // Anna; ANNA_USERS (src/anna.ts) is enforced in the route                         // asking the help desk a question; the answer is scoped to the asker
   "/api/push/subscribe": ANY,                   // this device wants to be told when it is my turn

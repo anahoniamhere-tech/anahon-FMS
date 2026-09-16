@@ -1,7 +1,7 @@
 // Anna's rules, read from the code (drafts/anna-assistant-plan.md §4).
 //
 // 16 Sep 2026. Anna reads Saad's records with a paid model and opens his screens. What must
-// never regress: only Saad; never the free tier; nothing of the chat stored; no tool that
+// never regress: only Saad; never the free tier; the chat kept only in Saad's own row (decision B); no tool that
 // approves, pays, sends, shares, deletes, signs or publishes; the route writes only audit
 // lines; only whitelisted fields reach the model; pay as totals only (D3); no sealed sources.
 // Run: npx tsx scripts/check-anna.ts
@@ -41,14 +41,27 @@ ok("paid-only never falls through to Gemini", /if \(paidOnly \|\| !process\.env\
   && /if \(paidOnly && !key\) throw/.test(server));
 ok("every askJson in the route is paid-only", (route.match(/askJson\(/g) || []).length === (route.match(/"haiku", true\)/g) || []).length);
 
-console.log("\n3. nothing of the chat is kept");
+console.log("\n3. the chat is kept only in its owner's row (decision B), never in the log");
 const audits = [...route.matchAll(/createAuditLog\(([^;]*)\);/g)].map(m => m[1]);
 ok("the route writes audit lines", audits.length >= 5, String(audits.length));
 ok("no audit line carries the question, the answer, a tool input value or a result",
-  audits.every(a => !/\bmessages\b|\banswer\b|\bquestion\b|\bout\b|\btext\b|c\.input\?\.(id|query|question|door|text)|JSON/.test(a)), audits.find(a => /\bmessages\b|\banswer\b|\bquestion\b|\bout\b|\btext\b|c\.input\?\.(id|query|question|door|text)|JSON/.test(a)));
+  audits.every(a => !/\bmessages\b|\banswer\b|\bquestion\b|\basked\b|\bout\b|\btext\b|c\.input\?\.(id|query|question|door|text)|JSON/.test(a)), audits.find(a => /\bmessages\b|\banswer\b|\bquestion\b|\basked\b|\bout\b|\btext\b|c\.input\?\.(id|query|question|door|text)|JSON/.test(a)));
 ok("no console output in the route", !/console\./.test(route));
 ok("the error path reports a status, never the SDK message", !/err\.message|err\?\.message/.test(route));
-ok("no chat table", !/model Anna|model Chat/i.test(read("../prisma/schema.prisma")));
+const schema = read("../prisma/schema.prisma");
+ok("one chat table, owned by a user", /model AnnaChat \{[^}]*\buserId\s+String\b/.test(schema) && (schema.match(/^model \w*Chat\b/gm) || []).length === 1);
+const chatQueries = server.match(/prisma\.annaChat\.\w+\([^;]*/g) || [];
+ok("every chat query names the owner", chatQueries.length >= 5 && chatQueries.every(q => /userId/.test(q)), chatQueries.find(q => !/userId/.test(q)));
+const loadStateSrc = server.slice(server.indexOf("async function loadState("), server.indexOf("\n}\n", server.indexOf("async function loadState(")));
+ok("the chats never travel in the shared state", loadStateSrc.length > 500 && !/annaChat/i.test(loadStateSrc));
+const chatRoutes = ['app.get("/api/anna/chats"', 'app.get("/api/anna/chats/:id"', 'app.post("/api/anna/chats/delete"'].map(h => {
+  const a = server.indexOf(h); return a < 0 ? "" : server.slice(a, server.indexOf("\n});\n", a));
+});
+ok("the three chat routes check the owner first", chatRoutes.every(r => /^[^\n]*\n  const me = annaOwner\(req\);\n  if \(!me\) return res\.status\(403\)/.test(r)));
+ok("the owner is the real signed-in person on Anna's list", /const annaOwner = \(req: any\) => \{\s*const me = req\.dbUser;\s*return me\?\.active && ANNA_USERS\.includes\(me\.id\) \? me : null;/.test(server));
+ok("a delete is logged as a count only", /"Anna Chats Deleted", `\$\{count\} chat\$\{count === 1 \? "" : "s"\}\$\{all \? " \(all\)" : ""\}\.`/.test(chatRoutes[2]));
+ok("a turn is saved under the signed-in user, not the body's", /saveAnnaTurn\(viewer\.id, /.test(route) && !/saveAnnaTurn\(req\.body/.test(route));
+ok("what is saved is the question and Anna's reply, nothing from the tools", /saveAnnaTurn\(viewer\.id, String\(req\.body\?\.chatId \|\| ""\), asked, \{ role: "assistant", content: answer, actions, usd \}\)/.test(route));
 
 console.log("\n4. the tool list is closed");
 const tools = annaTools(["mydesk", "expenses"]);
@@ -63,9 +76,13 @@ ok("no tool name or description names a tier-3 act", tools.every(t => !FORBIDDEN
 ok("an unknown tool name is refused and logged", /if \(!ANNA_TOOL_NAMES\.includes\(c\.name\)\)[\s\S]{0,120}"No such tool\."[\s\S]{0,120}"Anna Refused"/.test(route));
 ok("open_door offers only the viewer's doors", JSON.stringify(tools[0].input_schema.properties.door.enum) === '["mydesk","expenses"]');
 
-console.log("\n5. the route writes nothing but audit lines");
+console.log("\n5. the route writes audit lines and its own chat, nothing else");
 const WRITE = /prisma\.\w+\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\b|\$executeRaw|fs\.(write|append|rm|unlink|rename)/;
 ok("no write in the route", !WRITE.test(route), route.match(WRITE)?.[0]);
+const saver = server.slice(server.indexOf("async function saveAnnaTurn("), server.indexOf("\n}\n", server.indexOf("async function saveAnnaTurn(")));
+ok("the only other write is saveAnnaTurn, and it writes chats only",
+  saver.length > 200 && [...saver.matchAll(/prisma\.(\w+)\.(create|update|updateMany|upsert|delete|deleteMany)\b/g)].every(m => m[1] === "annaChat")
+  && [...route.matchAll(/await (\w+)\(/g)].map(m => m[1]).filter(f => !["createAuditLog", "loadState", "import", "policyCorpus", "askJson"].includes(f)).every(f => f === "saveAnnaTurn"));
 ok("no write in src/anna.ts", !WRITE.test(annaSrc) && !/from "node:fs"|from "fs"|fetch\(/.test(annaSrc));
 ok("it is a read-only POST for the push filter", /READ_ONLY_POSTS = new Set\(\[[^\]]*"\/api\/anna\/turn"/.test(server));
 
@@ -151,12 +168,16 @@ ok("the screen still finds a voucher, a project and a bank line", ["VCH-1", "SKF
 ok("both read src/searchCore.ts", /from "\.\/searchCore"/.test(read("../src/globalSearch.tsx")) && /from "\.\/searchCore"/.test(annaSrc));
 ok("tool kinds are closed", CLIENT_TOOLS.length === 2 && READ_TOOLS.length === 7 && visibleRows("voucher", state).length === 1);
 
-console.log("\nP. the panel keeps nothing and only navigates");
+console.log("\nP. the panel keeps nothing in the browser and only navigates");
 const desk = read("../src/HelpDesk.tsx");
 const chat = desk.slice(desk.indexOf("function AnnaChat("), desk.indexOf("export default function HelpDesk("));
 ok("the panel exists", chat.length > 500);
 ok("no browser storage for the chat", !/localStorage|sessionStorage|indexedDB/.test(chat));
-ok("two calls: Anna's turn, and a confirm route", (chat.match(/fetch\(/g) || []).length === 2 && /fetch\("\/api\/anna\/turn"/.test(chat) && /fetch\(p\.confirmRoute,/.test(chat));
+const fetches = [...chat.matchAll(/fetch\(([^,)]+)/g)].map(m => m[1]);
+ok("five calls: Anna's turn, a confirm route, and her own chat list, chat and delete",
+  JSON.stringify(fetches) === JSON.stringify(['"/api/anna/chats"', '`/api/anna/chats/${encodeURIComponent(id', '"/api/anna/chats/delete"', "p.confirmRoute", '"/api/anna/turn"']), fetches.join(" "));
+ok("a card from a saved chat has no buttons", /\{m\.past \? \(\s*<p[^>]*>\{t\("From an earlier session/.test(chat) && /\(\{ \.\.\.m, past: true \}\)/.test(chat));
+ok("deleting asks first", (chat.match(/window\.confirm\(/g) || []).length === 1 && /if \(!window\.confirm\([^;]*\)\) return;\s*try \{\s*const r = await fetch\("\/api\/anna\/chats\/delete"/.test(chat));
 ok("the confirm route is checked against the closed list first, and a contract never posts",
   /if \(!\(CONFIRM_ROUTES as readonly string\[\]\)\.includes\(p\.confirmRoute\) \|\| p\.confirmRoute === "form:contract"\) return;\s*setCards/.test(chat));
 ok("a confirmed quotation is always a Draft", /const body = p\.kind === "quotation" \? \{ \.\.\.p\.data, status: "Draft" \} : p\.data;/.test(chat));
