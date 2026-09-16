@@ -494,10 +494,11 @@ export default function HandbooksTab({ state, t, openDoc, openDoor, askHelp, foc
                 <p>{t("The Index lists this chapter here, but the handbook's own text does not carry it yet.")}{chapterMeta?.note ? ` ${chapterMeta.note}.` : ""}</p>
               </div>
             ) : (
-              // dir="auto": the handbooks are written in English, so on the Arabic screen the
-              // document itself still lays out left-to-right (headings, chevrons, lists
-              // aligned with the paragraphs); the chrome around it stays RTL.
-              <div dir="auto" className="mx-auto max-w-[70ch]">
+              // The handbooks are written in English, so on the Arabic screen the document
+              // itself still lays out left-to-right; the chrome around it stays RTL. Set from
+              // the text's first letter, not dir="auto" — that skips children carrying their
+              // own dir and resolved on the Arabic "Expand all" label instead (measured).
+              <div dir={/^[^A-Za-z]*[؀-ۿ]/.test(selectedBody) ? "rtl" : "ltr"} className="mx-auto max-w-[70ch]">
                 {renderBody(lead)}
                 {sections.length > 0 && (
                   <div className="mt-4 flex justify-end gap-1 border-b border-slate-100 pb-1">
