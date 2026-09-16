@@ -135,11 +135,19 @@ export function helpPrompt(question: string, a: Asker, policies = ""): string {
   // each ingested whole — editor's notes included, since those are now simply part of the
   // document's own text rather than a separate excerpt. Quoted rather than paraphrased,
   // and it sits after the system's own tables — see RULES_FOR_THE_BOT.
+  return helpPromptParts(question, a, policies).join("\n\n");
+}
+
+/** The same prompt as [what every question shares, what this question adds]. The first
+ *  half is the model's cached prefix, so it must not carry anything about the asker. */
+export function helpPromptParts(question: string, a: Asker, policies = ""): [string, string] {
   const manual = policies.trim()
     ? `## The policies — AnaHon's live handbooks, in full\n${policies.trim()}`
     : "";
-  return [corpus(), manual, askerBlock(a), RULES_FOR_THE_BOT, `## The question\n${question}`]
-    .filter(Boolean).join("\n\n");
+  return [
+    [corpus(), manual].filter(Boolean).join("\n\n"),
+    [askerBlock(a), RULES_FOR_THE_BOT, `## The question\n${question}`].join("\n\n"),
+  ];
 }
 
 export const REPLY_SCHEMA = {

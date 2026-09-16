@@ -19,7 +19,7 @@ import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/a
 import { MANAGERS as MANAGERS_SEATS, DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, INTEGRITY_SUMMARY_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
 import { deskItems } from "./src/workflow.js";
 import {
-  helpPrompt, parseReply, safeRows, doorsFor, REPLY_SCHEMA,
+  helpPromptParts, parseReply, safeRows, doorsFor, REPLY_SCHEMA,
   isSupersededPointer, policyHeading,
 } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
@@ -1620,13 +1620,13 @@ app.post("/api/help/ask", async (req, res) => {
     const doors = doorsFor(role);
     const state = await loadState(viewer);
     const rows = safeRows(deskItems({ id: viewer.id, email: viewer.email, role }, state as any, localDate()));
-    // The free tier, on Saad's call (5 Sep 2026): both keys stay set on the NAS, but a
-    // staff question is not worth per-call spend. Google trains on free-tier input, which
-    // is exactly why safeRows() above sent no record — see src/helpBot.ts.
+    // The paid key on Haiku since 16 Sep 2026 (Saad, D5): the free tier's daily cap ran out
+    // at the desk. The handbooks are the cached prefix, so a question costs about half a cent.
+    // Gemini remains only as the fallback when Claude fails; safeRows() still sends no record.
     const policies = await policyCorpus();
     const raw = await askJson(
-      helpPrompt(question, { role, ownRole: viewer.role, doors, rows, today: localDate() }, policies.text),
-      REPLY_SCHEMA, undefined, "low", "gemini"
+      helpPromptParts(question, { role, ownRole: viewer.role, doors, rows, today: localDate() }, policies.text),
+      REPLY_SCHEMA, undefined, "low", "haiku"
     );
     res.json(parseReply(raw, doors));
   } catch (err: any) {
@@ -3680,14 +3680,26 @@ function anthropicKey(): string | undefined {
   return k;
 }
 
-/** Tokens and rough cost of the last model call, for the audit line. Opus 5 is
- *  $5/M in, $25/M out — the numbers that decide whether a feature is affordable. */
+/** The model each paid route runs on (Saad, D6, 16 Sep 2026). Readers and short
+ *  extraction run on Haiku; drafting and judgement on Sonnet. No route runs on Opus —
+ *  move one up only when its output has been shown to need it. scripts/check-ai-models.ts
+ *  pins which route gets which. */
+export const MODELS = { haiku: "claude-haiku-4-5", sonnet: "claude-sonnet-5" } as const;
+type Tier = keyof typeof MODELS;
+/** USD per million tokens, input / output — the numbers that decide whether a feature is affordable. */
+const PRICE: Record<string, [number, number]> = { "claude-haiku-4-5": [1, 5], "claude-sonnet-5": [2, 10] };
+
+/** Tokens and rough cost of the last model call, for the audit line. Cache reads bill at a
+ *  tenth of input, cache writes at 1.25x. */
 let lastUsage = "";
-function usageNote(u: any, model = "opus"): string {
+function usageNote(u: any, model: string): string {
   if (!u) return "";
+  const [pi, po] = PRICE[model] || [0, 0];
   const i = u.input_tokens || 0, o = u.output_tokens || 0;
-  const cost = model === "opus" ? (i * 5 + o * 25) / 1_000_000 : 0;
-  return ` [in ${(i / 1000).toFixed(1)}k · out ${(o / 1000).toFixed(1)}k${cost ? ` ≈ $${cost.toFixed(3)}` : ""}]`;
+  const cr = u.cache_read_input_tokens || 0, cw = u.cache_creation_input_tokens || 0;
+  const cost = (i * pi + cr * pi * 0.1 + cw * pi * 1.25 + o * po) / 1_000_000;
+  const cached = cr ? ` · cached ${(cr / 1000).toFixed(1)}k` : "";
+  return ` [${model} · in ${((i + cw) / 1000).toFixed(1)}k${cached} · out ${(o / 1000).toFixed(1)}k${cost ? ` ≈ $${cost.toFixed(3)}` : ""}]`;
 }
 /** Appended to the next audit line so spend is visible where the work is logged. */
 export function takeUsage(): string { const u = lastUsage; lastUsage = ""; return u; }
@@ -3711,15 +3723,18 @@ function parseModelJson(text: string): any {
 }
 
 async function askJson(
-  prompt: string, schema: Record<string, any>, file?: Attachment,
+  // A pair is [stable prefix, the rest]: the prefix is cached, so a long fixed context
+  // (the help desk's handbooks) is billed at a tenth after the first question.
+  prompt: string | [string, string], schema: Record<string, any>, file?: Attachment,
   effort: "low" | "medium" | "high" = "medium",
-  // Which provider to spend on. Default is Claude-first with the Gemini fallback below —
-  // every caller but one. "gemini" means the caller has chosen the free tier on purpose
-  // and would rather be told the answer is unavailable than be billed for it; Claude is
-  // not tried at all, so nothing falls through to a paid call by accident.
-  prefer: "claude" | "gemini" = "claude"
+  // Which provider to spend on. A Claude tier is Claude-first with the Gemini fallback
+  // below. "gemini" means the caller has chosen the free tier on purpose and would rather
+  // be told the answer is unavailable than be billed for it; Claude is not tried at all,
+  // so nothing falls through to a paid call by accident.
+  prefer: Tier | "gemini" = "sonnet"
 ): Promise<any> {
   const key = prefer === "gemini" ? undefined : anthropicKey();
+  const parts = typeof prompt === "string" ? [prompt] : prompt;
   if (key) {
     try {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
@@ -3731,20 +3746,24 @@ async function askJson(
         ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: file.base64 } }
         : { type: "image", source: { type: "base64", media_type: file.mimeType, data: file.base64 } });
     }
-    content.push({ type: "text", text: prompt });
+    parts.forEach((text, k) => content.push(
+      k === 0 && parts.length > 1 ? { type: "text", text, cache_control: { type: "ephemeral" } } : { type: "text", text }));
+    const model = MODELS[prefer as Tier];
+    // Haiku 4.5 takes neither adaptive thinking nor effort; it reads, it does not deliberate.
+    // On Sonnet, effort is the main cost dial: routine extraction runs cheap, drafting runs deep.
     const msg = await client.messages.create({
-      model: "claude-opus-5",
+      model,
       max_tokens: 16000,
-      thinking: { type: "adaptive" },
-      // Effort is the main cost dial: routine extraction runs cheap, drafting runs deep.
-      output_config: { format: { type: "json_schema", schema }, effort },
+      ...(prefer === "haiku"
+        ? { output_config: { format: { type: "json_schema", schema } } }
+        : { thinking: { type: "adaptive" }, output_config: { format: { type: "json_schema", schema }, effort } }),
       messages: [{ role: "user", content }]
-    });
+    } as any);
     if (msg.stop_reason === "refusal") throw new Error("The model declined this request.");
     // Truncated output would JSON.parse into a misleading "couldn't read the document" error.
     if (msg.stop_reason === "max_tokens") throw new Error("Response was cut off before completing (max_tokens).");
-    lastUsage = usageNote(msg.usage);
-    const text = msg.content.find(b => b.type === "text");
+    lastUsage = usageNote(msg.usage, model);
+    const text = (msg.content as any[]).find(b => b.type === "text");
     return JSON.parse((text && "text" in text ? text.text : "") || "{}");
     } catch (err: any) {
       // Out of credits, rate-limited, or provider down: fall through to Gemini
@@ -3755,12 +3774,12 @@ async function askJson(
   }
   if (process.env.GEMINI_API_KEY) {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const parts: any[] = [];
-    if (file) parts.push({ inlineData: { mimeType: file.mimeType, data: file.base64 } });
-    parts.push({ text: prompt });
+    const gparts: any[] = [];
+    if (file) gparts.push({ inlineData: { mimeType: file.mimeType, data: file.base64 } });
+    parts.forEach(text => gparts.push({ text }));
     const r = await ai.models.generateContent({
       model: "gemini-3.5-flash",
-      contents: [{ role: "user", parts }],
+      contents: [{ role: "user", parts: gparts }],
       config: {
         responseMimeType: "application/json",
         // The same schema Claude is given, in the field Gemini reads standard JSON Schema
@@ -3827,13 +3846,13 @@ async function askWithSearch(
   // iteration cap; re-send the assistant turn to let it continue.
   for (let hop = 0; hop < 4; hop++) {
     const msg = await client.messages.create({
-      model: "claude-opus-5",
+      model: MODELS.sonnet,
       max_tokens: 8000,
       thinking: { type: "adaptive" },
       tools,
       messages
     });
-    lastUsage = usageNote(msg.usage);
+    lastUsage = usageNote(msg.usage, MODELS.sonnet);
     const keep = (url?: string, title?: string) => {
       if (url && !sources.some(s => s.url === url)) {
         sources.push({ title: String(title || url).slice(0, 200), url: String(url) });
@@ -3861,15 +3880,15 @@ async function askText(prompt: string): Promise<string> {
   const key = anthropicKey();
   if (key) {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");
-    // The audit runs to ~8k tokens of prose and adaptive thinking is charged against the
-    // same budget — at 16k the thinking sometimes consumed all of it and returned no text.
-    // Streamed because a request this large can otherwise hit the SDK's non-streaming timeout.
+    // The compliance audit, its only caller, runs on Haiku (D6): ~8k tokens of prose, no
+    // thinking to eat the budget. Streamed because a request this large can otherwise hit
+    // the SDK's non-streaming timeout.
     const msg = await new Anthropic({ apiKey: key }).messages.stream({
-      model: "claude-opus-5",
+      model: MODELS.haiku,
       max_tokens: 32000,
-      thinking: { type: "adaptive" },
       messages: [{ role: "user", content: prompt }]
     }).finalMessage();
+    lastUsage = usageNote(msg.usage, MODELS.haiku);
     if (msg.stop_reason === "refusal") throw new Error("The model declined this request.");
     const out = msg.content.filter(b => b.type === "text").map(b => (b as any).text).join("\n");
     // An empty completion would render as a blank report, which reads like "nothing wrong".
@@ -6477,7 +6496,7 @@ app.post("/api/content/brainstorm", async (req, res) => {
     }, file, "high");
     res.json({
       reply: out.reply || "", ready: !!out.ready, draft: out.draft || null,
-      provider: anthropicKey() ? "Claude Opus 5" : "Gemini 3.5 Flash"
+      provider: anthropicKey() ? "Claude Sonnet 5" : "Gemini 3.5 Flash"
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -6610,7 +6629,7 @@ app.post("/api/content/produce", async (req, res) => {
       },
       required: ["reply", "draft"]
     }, undefined, "high");
-    res.json({ reply: out.reply || "", draft: out.draft || null, provider: anthropicKey() ? "Claude Opus 5" : "Gemini 3.5 Flash" });
+    res.json({ reply: out.reply || "", draft: out.draft || null, provider: anthropicKey() ? "Claude Sonnet 5" : "Gemini 3.5 Flash" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -6796,7 +6815,7 @@ app.post("/api/meetings/extract-topics", async (req, res) => {
         }
       },
       required: ["summary", "direction", "topics"]
-    }, undefined, "low");   // reading minutes needs care, not deliberation
+    }, undefined, "low", "haiku");   // reading minutes needs care, not deliberation
     const topics = cleanMeetingTopics(out.topics, team);
     const existing = await prisma.editorialMeeting.findUnique({ where: { kind_date: { kind: mtgKind, date } } });
     const data = {
@@ -10275,7 +10294,7 @@ Rules:
       },
       required: ["name", "brand", "model", "serialNumber", "specs", "kind", "confidence"], additionalProperties: false
     };
-    const readLabel = (prefer: "gemini" | "claude") => askJson(prompt, schema, { base64, mimeType }, "low", prefer);
+    const readLabel = (prefer: "gemini" | "haiku") => askJson(prompt, schema, { base64, mimeType }, "low", prefer);
     // The free tier answers "high demand" (503) or "slow down" (429) at busy hours. Anything
     // else — a refusal, a truncation, an unreadable photo — is a real failure, not a queue.
     const busy = (e: any) => /\b(503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand/i.test(String(e?.message));
@@ -10302,7 +10321,7 @@ Rules:
       } catch (second: any) {
         if (!busy(second)) return unreadable(second);
         try {
-          extracted = await readLabel("claude");
+          extracted = await readLabel("haiku");
           answeredBy = "paid reader, after the free one was busy twice";
         } catch (third: any) {
           if (!busy(third)) return unreadable(third);
@@ -12230,7 +12249,7 @@ Return exactly this JSON shape:
           warnings: { type: "array", items: { type: "string" } }
         },
         required: ["name", "category", "confidence"], additionalProperties: false
-      }, { base64, mimeType });
+      }, { base64, mimeType }, "low", "haiku");
     } catch (e: any) {
       return res.status(422).json({ error: `AI could not read supplier details from this scan (${e.message}). Fill the form manually.` });
     }
@@ -12305,7 +12324,7 @@ Return exactly this JSON shape:
           warnings: { type: "array", items: { type: "string" } }
         },
         required: ["title", "currency", "amount", "confidence"], additionalProperties: false
-      }, { base64, mimeType });
+      }, { base64, mimeType }, "low", "haiku");
     } catch (e: any) {
       return res.status(422).json({ error: `AI could not produce structured data from this scan (${e.message}). Fill the form manually.` });
     }

@@ -180,14 +180,13 @@ ok("the reply is validated against the asker's doors", /parseReply\(raw, doors\)
 ok("it says so instead of failing when no key is set", /The help desk needs an AI key/.test(server));
 ok("the route is gated", '/api/help/ask' in ROUTE_SEATS);
 // Saad kept both keys on the NAS and chose the free tier for staff questions (5 Sep 2026).
-// askJson is Claude-first, so without this argument the help desk would quietly bill per
-// question — and the safeRows stripping above exists precisely because Gemini is the one
-// that trains on what is sent. The two decisions have to move together.
-ok("the help desk asks for the free provider by name", /REPLY_SCHEMA, undefined, "low", "gemini"/.test(server));
-ok("and asking for it skips Claude rather than falling through to it",
+// Since 16 Sep 2026 (Saad, D5) the help desk is on the paid key, Haiku 4.5 — the free tier's
+// daily cap ran out at the desk. safeRows above still strips every record: Anthropic does not
+// train on API input, but the projection costs nothing and a fallback to Gemini still happens
+// when Claude fails. Per-route models are pinned in check-ai-models.ts.
+ok("the help desk asks for Haiku by name", /REPLY_SCHEMA, undefined, "low", "haiku"/.test(server));
+ok("asking for the free provider still skips Claude rather than falling through to it",
   /const key = prefer === "gemini" \? undefined : anthropicKey\(\)/.test(server));
-ok("every other caller is unchanged — the choice defaults to Claude",
-  /prefer: "claude" \| "gemini" = "claude"/.test(server));
 const bot = read("../src/HelpDesk.tsx");
 ok("the widget opens the door instead of describing it", /onOpenDoor\(turn\.reply!\.door!\)/.test(bot));
 // Bare English between JSX tags never reaches t() — the same rule the desk is held to.
