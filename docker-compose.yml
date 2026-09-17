@@ -17,9 +17,17 @@ services:
       # the office LAN and be a Firebase-authorized domain: the tailnet HTTPS door.
       ARCHIVE_DIR: /data/archive
       SITE_DIR: /data/site
+      ANNA_TRAIN_DIR: /data/anna-training
     volumes:
       - ${FMS_DATA:-/mnt/mainpool/anahon/fms}/db:/data/db
       - ${FMS_DATA:-/mnt/mainpool/anahon/fms}/vault:/data/vault
+      # Quotation share links. The FMS writes <token>.pdf here with its mtime set to
+      # the quotation's validity expiry, and deletes it to revoke. A syncer on the NAS
+      # host mirrors this directory to the VPS, so the FMS itself holds no deploy key
+      # and never runs ssh or rsync. See system/QUOTATION-LINKS.md.
+      - ${FMS_DATA:-/mnt/mainpool/anahon/fms}/quote-outbox:/data/quote-outbox
+      # Saad's test-set correction screen (Anna learns Arabic, plan §B2); separate from vault.
+      - ${ANNA_TRAIN_DATA:-/mnt/mainpool/anahon/anna-training}:/data/anna-training
       - ${FMS_DATA:-/mnt/mainpool/anahon/fms}/calendar-feed.json:/app/dist/.calendar-feed.json:ro
       # the archive is curated HERE now (3 Sep 2026): overrides are written, the library is rebuilt,
       # and the site's data folders receive the result. Site paths mirror the site repo layout.

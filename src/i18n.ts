@@ -996,6 +996,8 @@ export const AR: Record<string, string> = {
   "Registered as a client": "تم تسجيله كعميل",
   "Carry on with the quotation.": "كمّل بعرض السعر.",
   "Record my voice for Anna": "سجّل صوتي لـ Anna",
+  "Correct Anna's Arabic": "صحّح عربي Anna",
+  "Play this line": "شغّل هالسطر",
   "These recordings are my own voice. They are kept on AnaHon's NAS, used only to make Anna's Arabic voice, and never shared, sold or used for anyone else. I can delete them at any time.": "هذه التسجيلات بصوتي أنا. تُحفظ على خادم أنا هون، وتُستعمل فقط لصنع صوت Anna العربي، ولا تُشارك أو تُباع أو تُستعمل لأي أحد آخر. يمكنني حذفها في أي وقت.",
   "I agree": "أوافق",
   "Recorded": "تم التسجيل",

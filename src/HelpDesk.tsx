@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
-import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, MoreHorizontal } from "lucide-react";
+import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, MoreHorizontal, Check } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
 import AnnaGuide, { type Guide } from "./AnnaGuide";
 import AnnaRecorder from "./AnnaRecorder";
+import AnnaCorrect from "./AnnaCorrect";
 import { voiceSupported, record, clipBase64, speak, hush, unlockVoice, type Recording } from "./annaVoice";
 
 /**
@@ -160,6 +161,7 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, voiceBank, spen
   const [vLang, setVLang] = useState<"en" | "ar">(voiceLangPick || (lang === "ar" ? "ar" : "en"));
   const [menu, setMenu] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
   const [about, setAbout] = useState("");
   const recRef = useRef<Recording | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -482,6 +484,7 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, voiceBank, spen
         </div>
       )}
       {recording && <AnnaRecorder t={t} lang={lang} onClose={() => setRecording(false)} />}
+      {correcting && <AnnaCorrect t={t} lang={lang} onClose={() => setCorrecting(false)} />}
       <div className="relative flex items-end gap-2 border-t border-slate-200 p-2">
         <button onClick={() => setMenu(m => !m)} aria-label={t("More")} aria-expanded={menu} title={t("More")}
           className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100">
@@ -502,6 +505,12 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, voiceBank, spen
               <button role="menuitem" onClick={() => { setMenu(false); stopTalk(); hush(); setRecording(true); }}
                 className="flex min-h-[40px] w-full items-center gap-2 rounded-lg px-2 text-start text-slate-800 hover:bg-slate-100">
                 <Mic className="h-4 w-4 text-slate-500" /> {t("Record my voice for Anna")}
+              </button>
+            )}
+            {voiceBank && (
+              <button role="menuitem" onClick={() => { setMenu(false); stopTalk(); hush(); setCorrecting(true); }}
+                className="flex min-h-[40px] w-full items-center gap-2 rounded-lg px-2 text-start text-slate-800 hover:bg-slate-100">
+                <Check className="h-4 w-4 text-slate-500" /> {t("Correct Anna's Arabic")}
               </button>
             )}
             <div className="flex min-h-[40px] items-center justify-between gap-2 px-2">

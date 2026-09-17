@@ -262,7 +262,7 @@ const UNAUTHENTICATED_POSTS = new Set(["/api/auth/sync"]);
  *  CONFIRM_ROUTES). It only labels the audit line; the person saving is still the signed-in user. */
 const draftedBy = (req: any) => req.get?.("X-Drafted-By") === "anna" ? " (drafted by Anna)" : "";
 
-const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/anna/turn", "/api/anna/listen", "/api/anna/say", "/api/anna/voicebank/take", "/api/anna/voicebank/consent", "/api/anna/voicebank/delete", "/api/reminders/plan", "/api/push/unsubscribe"]);
+const READ_ONLY_POSTS = new Set(["/api/help/ask", "/api/anna/turn", "/api/anna/listen", "/api/anna/say", "/api/anna/voicebank/take", "/api/anna/voicebank/consent", "/api/anna/voicebank/delete", "/api/anna/train/save", "/api/reminders/plan", "/api/push/unsubscribe"]);
 app.use((req, res, next) => {
   if (req.method === "POST" && req.path.startsWith("/api/") && !READ_ONLY_POSTS.has(req.path)) {
     res.on("finish", () => { if (res.statusCode < 400) schedulePush(); });
@@ -1850,6 +1850,92 @@ async function annaKeyterms(): Promise<{ en: string[]; ar: string[] }> {
 /* ── Saad's own voice: the recording bank (plan §C). Files on the NAS vault, never the database;
  * Saad only, as himself (not through a seat he stands in); consent first; audit lines count, never
  * content. Takes are WAVs the page made (22.05 kHz mono 16-bit), checked again here. */
+/* ── Test-set correction (plan §B2): the first 15 minutes of each transcribed podcast, so Saad can
+ * correct Deepgram's Arabic against the audio, no technical skill needed. Reads/writes plain files
+ * on the NAS training folder; the Deepgram originals are never touched, only a sibling
+ * "<episode>-corrected.srt". Saad only, same gate as the voice bank (defined just below); no new
+ * DB table. Kept ahead of the voice-bank section so that section's own routes/audits stay countable. */
+const ANNA_TRAIN_DIR = process.env.ANNA_TRAIN_DIR || path.join(os.homedir(), "Downloads", "AnaHon_Anna_Training");
+const ANNA_TRAIN_SLICE_S = 900; // first 15 minutes of each episode
+const ANNA_TRAIN_EPISODES = [
+  { id: "sew-01-elsy-moufarrej", label: "Shu El Wade3 #1 · Elsy Moufarrej" },
+  { id: "haki-2023-sarah-sharif", label: "Haki Teghyir · Sarah Sharif" },
+  { id: "sew-02-camille-habib", label: "Shu El Wade3 #2 · Camille Habib" },
+  { id: "sew-03-mohamad-najem", label: "Shu El Wade3 #3 · Mohamad Najem" },
+];
+type SrtLine = { i: number; start: number; end: number; text: string };
+function parseSrt(text: string): SrtLine[] {
+  const toSec = (t: string) => { const [h, m, s] = t.replace(",", ".").split(":"); return Number(h) * 3600 + Number(m) * 60 + Number(s); };
+  return text.trim().split(/\r?\n\r?\n/).map(block => {
+    const lines = block.split(/\r?\n/);
+    const m = lines[1]?.match(/(\d\d:\d\d:\d\d,\d+) --> (\d\d:\d\d:\d\d,\d+)/);
+    return m ? { i: Number(lines[0]), start: toSec(m[1]), end: toSec(m[2]), text: lines.slice(2).join(" ") } : null;
+  }).filter((x): x is SrtLine => !!x);
+}
+function writeSrt(lines: SrtLine[]): string {
+  const ts = (s: number) => { const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = (s % 60).toFixed(3).padStart(6, "0").replace(".", ","); return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${x}`; };
+  return lines.map(l => `${l.i}\n${ts(l.start)} --> ${ts(l.end)}\n${l.text}\n`).join("\n");
+}
+const correctedFile = (id: string) => path.join(ANNA_TRAIN_DIR, "labels", `${id}-corrected.srt`);
+async function correctedIds(id: string): Promise<Set<number>> {
+  const raw = await fs.promises.readFile(correctedFile(id), "utf8").catch(() => "");
+  return new Set(parseSrt(raw).map(l => l.i));
+}
+/** The first-15-minutes slice, with any of Saad's corrections already merged in. */
+async function trainSlice(id: string): Promise<SrtLine[] | null> {
+  if (!ANNA_TRAIN_EPISODES.some(e => e.id === id)) return null;
+  const orig = await fs.promises.readFile(path.join(ANNA_TRAIN_DIR, "labels", `${id}.srt`), "utf8").catch(() => null);
+  if (orig === null) return null;
+  const slice = parseSrt(orig).filter(l => l.start < ANNA_TRAIN_SLICE_S);
+  const raw = await fs.promises.readFile(correctedFile(id), "utf8").catch(() => "");
+  const corrected = new Map(parseSrt(raw).map(l => [l.i, l.text]));
+  return slice.map(l => ({ ...l, text: corrected.get(l.i) ?? l.text }));
+}
+
+app.get("/api/anna/train", async (req, res) => {
+  if (!voiceOwner(req)) return res.status(403).json({ error: "This is Saad's own correction space." });
+  const episodes = await Promise.all(ANNA_TRAIN_EPISODES.map(async ep => {
+    const lines = await trainSlice(ep.id);
+    const done = await correctedIds(ep.id);
+    return { id: ep.id, label: ep.label, lines: lines?.length || 0, done: lines ? lines.filter(l => done.has(l.i)).length : 0 };
+  }));
+  res.json({ episodes });
+});
+
+app.get("/api/anna/train/:id/lines", async (req, res) => {
+  if (!voiceOwner(req)) return res.status(403).json({ error: "This is Saad's own correction space." });
+  const lines = await trainSlice(req.params.id);
+  if (!lines) return res.status(404).json({ error: "No such episode." });
+  const done = await correctedIds(req.params.id);
+  res.json({ lines: lines.map(l => ({ ...l, corrected: done.has(l.i) })) });
+});
+
+// A plain <audio> tag cannot send an Authorization header, so this rides the same document-ticket
+// query param the vault's byte routes use (?t=..., minted by the existing /api/document/ticket).
+app.get("/api/anna/train-audio/:id", async (req, res) => {
+  if (!voiceOwner(req)) return res.status(403).json({ error: "This is Saad's own correction space." });
+  const ep = ANNA_TRAIN_EPISODES.find(e => e.id === req.params.id);
+  if (!ep) return res.status(404).json({ error: "No such episode." });
+  const file = path.join(ANNA_TRAIN_DIR, "audio", `${ep.id}.flac`);
+  if (!fs.existsSync(file)) return res.status(404).json({ error: "Audio not found." });
+  res.sendFile(file);
+});
+
+app.post("/api/anna/train/save", async (req, res) => {
+  const me = voiceOwner(req);
+  if (!me) return res.status(403).json({ error: "This is Saad's own correction space." });
+  const episode = String(req.body?.episode || "");
+  const i = Number(req.body?.i);
+  const text = String(req.body?.text ?? "");
+  const lines = await trainSlice(episode);
+  const at = lines?.find(l => l.i === i);
+  if (!lines || !at) return res.status(400).json({ error: "No such line." });
+  at.text = text.trim();
+  await fs.promises.writeFile(correctedFile(episode), writeSrt(lines));
+  await createAuditLog(me.id, me.name, "Anna Training", `corrected line ${i} of ${episode}`);
+  res.json({ success: true });
+});
+
 const VOICE_BANK = path.join(VAULT_ROOT, "ANNA-VOICE-SAAD");
 const voiceOwner = (req: any) => {
   const me = annaOwner(req);

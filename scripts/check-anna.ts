@@ -580,5 +580,19 @@ ok("a filed request always starts New, under the signed-in user", /status: "New"
 ok("only the master account triages", /"\/api\/requests\/triage": \["Super Admin"\]/.test(read("../src/gates.ts"))
   && /if \(user\?\.role !== "Super Admin"\) return res\.status\(403\)/.test(server.slice(server.indexOf('app.post("/api/requests/triage"'))));
 
+console.log("\nY. Saad's test-set correction screen (plan §B2, 17 Sep)");
+const tr = server.slice(server.indexOf("const ANNA_TRAIN_DIR ="), server.indexOf("const VOICE_BANK = "));
+ok("four routes, all gated to Saad as himself, like the voice bank", [...tr.matchAll(/app\.(get|post)\("(\/api\/anna\/train[^"]*)"/g)].map(m => m[2]).join(",")
+  === "/api/anna/train,/api/anna/train/:id/lines,/api/anna/train-audio/:id,/api/anna/train/save"
+  && (tr.match(/if \(!(voiceOwner\(req\)|me)\) return res\.status\(403\)/g) || []).length === 4);
+ok("only a fixed 15-minute slice, never the whole episode", /const ANNA_TRAIN_SLICE_S = 900;/.test(server) && /l\.start < ANNA_TRAIN_SLICE_S/.test(tr));
+ok("saves go to a sibling -corrected.srt, the Deepgram originals are never opened for writing", /const correctedFile = \(id: string\) => path\.join\(ANNA_TRAIN_DIR, "labels", `\$\{id\}-corrected\.srt`\);/.test(tr)
+  && !/writeFile\(path\.join\(ANNA_TRAIN_DIR, "labels", `\$\{.*?\}\.srt`\)/.test(tr));
+const trAudits = [...tr.matchAll(/createAuditLog\(([^;]*)\);/g)].map(m => m[1]);
+ok("its audit line names the line number and episode, never the corrected sentence", trAudits.length === 1 && !/\btext\b/.test(trAudits[0]) && /corrected line \$\{i\} of \$\{episode\}/.test(trAudits[0]));
+ok("the save route is gated in src/gates.ts, and it's the only POST", /"\/api\/anna\/train\/save": \["Super Admin"\]/.test(read("../src/gates.ts"))
+  && (tr.match(/app\.post\(/g) || []).length === 1);
+ok("the audio route rides a document ticket, never a bearer-only header (an <audio> tag can't send one)", /app\.get\("\/api\/anna\/train-audio\/:id"/.test(tr));
+
 console.log(failed ? `\n${failed} FAILED` : "\nall ok");
 process.exit(failed ? 1 : 0);

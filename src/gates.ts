@@ -44,6 +44,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/anna/voicebank/consent": ["Super Admin"], // Saad's own voice recordings; checked as himself in the route
   "/api/anna/voicebank/take": ["Super Admin"],
   "/api/anna/voicebank/delete": ["Super Admin"],
+  "/api/anna/train/save": ["Super Admin"], // Saad correcting his own test-set transcripts
   "/api/anna/say": ANY,                         // Anna's voice for Saad; the owner is checked in the route
   "/api/anna/listen": ANY,                      // Saad's voice clip to words; ANNA_USERS is checked in the route
   "/api/anna/chats/delete": ANY,                // Saad deleting his own saved chats; ANNA_USERS and the owner are checked in the route
