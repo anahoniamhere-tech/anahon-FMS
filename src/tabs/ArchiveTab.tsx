@@ -31,6 +31,7 @@ export default function ArchiveTab({ currentUser, triggerToast, lang }: SharedPr
   const [view, setView] = useState<"items" | "schema">("items");
   const [collection, setCollection] = useState<"anahon" | "icontent">("anahon");
   const [items, setItems] = useState<Item[]>([]);
+  const [webVideo, setWebVideo] = useState<any>(null);
   const [schema, setSchema] = useState<Schema>({});
   const [loading, setLoading] = useState(false);
   const canEdit = EDIT_ROLES.includes(currentUser?.role);
@@ -40,7 +41,7 @@ export default function ArchiveTab({ currentUser, triggerToast, lang }: SharedPr
     setLoading(true);
     try {
       const [a, s] = await Promise.all([fetch(`/api/archive/items?collection=${collection}`).then(r => r.json()), fetch("/api/archive/schema").then(r => r.json())]);
-      setItems(a.items || []); setSchema(s || {});
+      setItems(a.items || []); setWebVideo(a.webVideo || null); setSchema(s || {});
     } catch (e: any) { triggerToast(`Archive failed to load: ${e.message}`, "error"); }
     setLoading(false);
   };
@@ -87,6 +88,7 @@ export default function ArchiveTab({ currentUser, triggerToast, lang }: SharedPr
         )}
       </div>
       {lastPublish && <p className="text-xs text-emerald-700">Last publish {lastPublish}</p>}
+      {webVideo && <WebVideoLine w={webVideo} />}
       {loading ? <p className="text-sm text-slate-500">Loading the archive…</p>
         : view === "items" ? <ItemsView items={items} setItems={setItems} collection={collection} facetOf={facetOf} knownTags={knownTags} canEdit={canEdit} triggerToast={triggerToast} /> : <SchemaView schema={schema} setSchema={setSchema} items={items} collection={collection} canEdit={canPublish} triggerToast={triggerToast} />}
       <datalist id="archive-tags">{knownTags.map(t => <option key={t} value={t} />)}</datalist>
@@ -95,6 +97,21 @@ export default function ArchiveTab({ currentUser, triggerToast, lang }: SharedPr
 }
 
 // ====================================================================== items
+// website copies of published videos (website/scripts/web-video.mjs); at 90% the Publish stops adding new ones
+function WebVideoLine({ w }: { w: any }) {
+  const gb = (b: number) => (b / 1e9).toFixed(1);
+  const pct = w.disk?.usedPct;
+  const tone = pct >= 90 ? "text-red-700 font-bold" : pct >= 80 ? "text-amber-700 font-bold" : "text-slate-500";
+  return (
+    <p className={`text-xs ${tone}`}>
+      Website video: {w.count} files, {gb(w.totalBytes)} GB
+      {w.disk ? ` · VPS disk ${gb(w.disk.size - w.disk.used)} GB free of ${gb(w.disk.size)} (${pct}% used)` : " · VPS disk not measured yet"}
+      {pct >= 90 ? " · new videos paused" : ""}
+      {w.verified && !w.verified.ok ? ` · last check failed: ${w.verified.problems[0]}` : ""}
+    </p>
+  );
+}
+
 function ItemsView({ items, setItems, collection, facetOf, knownTags, canEdit, triggerToast }: any) {
   const [q, setQ] = useState(""); const [tag, setTag] = useState(""); const [platform, setPlatform] = useState("");
   const [show, setShow] = useState<"published" | "unpublished" | "all">("published");

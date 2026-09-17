@@ -6037,7 +6037,8 @@ app.get("/api/archive/items", (req, res) => {
       tags: i.tags || [], series: i.series || "", url: i.url, duration: i.duration ?? null,
       local: own ? mediaKind(own) : null,
     };
-  }) });
+  }), webVideo: (({ files = [], totalBytes = 0, disk = null, verified = null }: any) => ({ count: files.length, totalBytes, disk, verified }))(
+    readJsonFile(path.join(SITE_DIR, "src/data/web-video.json"), {})) });
 });
 
 // The bytes of that copy, streamed straight out of the export zip (stored entries, so an offset),
