@@ -105,5 +105,18 @@ ok("the ledger is written only if it actually reached a device", /if \(delivered
 ok("nothing nightly — a change is the trigger", /res\.on\("finish", \(\) => \{ if \(res\.statusCode < 400\) schedulePush\(\); \}\)/.test(server)
   && !/nightlyPush|setInterval\([^)]*push/i.test(server));
 
+console.log("\nE. two overlapping runs never crash the write");
+// 17 Sep 2026: two overlapping pushTurnsFor runs (the debounce still in flight when another
+// write retriggers it) both saw a row missing and both tried to create it — a real crash in
+// the log ("Unique constraint (userId,itemId,channel)"). A create is a one-shot write that
+// fails the second time; an upsert reaches the same row from either run without erroring, so
+// this is fixed at the one place the row is written, not by guarding every caller of it.
+ok("the push ledger row is written once, in a shared helper", (server.match(/const pushRow = \(/g) || []).length === 1);
+ok("both writers in pushTurnsFor call it, and neither still creates the row directly",
+  (server.match(/await pushRow\(viewer\.id, c\.itemId, c\.title, c\.whenDate, now\);/g) || []).length === 2
+  && !/prisma\.reminder\.create\([^)]*channel: "push"/.test(server));
+ok("the write is an upsert, not a create — a second run reaches the same row instead of erroring",
+  /const pushRow = \([^)]*\) =>\s*prisma\.reminder\.upsert\(\{\s*where: \{ userId_itemId_channel: \{ userId, itemId, channel: "push" \} \}/.test(server));
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

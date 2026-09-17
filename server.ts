@@ -2282,6 +2282,19 @@ app.post("/api/push/unsubscribe", async (req, res) => {
  * Nothing is cancelled on the device: a notification already delivered cannot be
  * recalled, and the ledger row is closed silently so it is not sent again.
  */
+/** The one place a push reminder row is written. An upsert, not a create: the seeding pass
+ *  and a delivered-notification pass can otherwise race on the same (userId, itemId, channel)
+ *  row — two overlapping runs of pushTurnsFor (e.g. the debounced run still in flight when
+ *  another write retriggers it) both see the row missing and both try to create it, and the
+ *  second fails the unique constraint. Racing to the same end state is harmless; racing to
+ *  create the same row is not. */
+const pushRow = (userId: string, itemId: string, title: string, whenDate: string, now: string) =>
+  prisma.reminder.upsert({
+    where: { userId_itemId_channel: { userId, itemId, channel: "push" } },
+    create: { id: `rp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, userId, itemId, channel: "push", googleEventId: null, title, whenDate, state: "active", createdAt: now, updatedAt: now },
+    update: { title, whenDate, state: "active", updatedAt: now },
+  });
+
 async function pushTurnsFor(viewer: any) {
   const subs = await prisma.pushSubscription.findMany({ where: { userId: viewer.id } });
   if (!subs.length) return { sent: 0, closed: 0, dead: 0, seeded: 0 };
@@ -2316,13 +2329,7 @@ async function pushTurnsFor(viewer: any) {
     const item = byId.get(c.itemId);
     if (!item) continue;
     if (firstRun) {
-      await prisma.reminder.create({
-        data: {
-          id: `rp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          userId: viewer.id, itemId: c.itemId, channel: "push", googleEventId: null,
-          title: c.title, whenDate: c.whenDate, state: "active", createdAt: now, updatedAt: now,
-        },
-      });
+      await pushRow(viewer.id, c.itemId, c.title, c.whenDate, now);
       seeded++;
       continue;
     }
@@ -2350,13 +2357,7 @@ async function pushTurnsFor(viewer: any) {
     // Only write the ledger row if it actually reached a device; otherwise the next run
     // would think this person had already been told.
     if (delivered) {
-      await prisma.reminder.create({
-        data: {
-          id: `rp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          userId: viewer.id, itemId: c.itemId, channel: "push", googleEventId: null,
-          title: c.title, whenDate: c.whenDate, state: "active", createdAt: now, updatedAt: now,
-        },
-      });
+      await pushRow(viewer.id, c.itemId, c.title, c.whenDate, now);
       sent++;
     }
   }
