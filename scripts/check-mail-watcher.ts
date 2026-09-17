@@ -90,26 +90,27 @@ console.log("\nthe routes are gated");
 ok("both mail routes are declared", /"\/api\/mail\/poll":/.test(gates) && /"\/api\/mail\/settle":/.test(gates));
 ok("polling is a director's", /"\/api\/mail\/poll": DIRECTORS/.test(gates));
 
-console.log("\nthe desk rule handed to Home & desk actually works");
+console.log("\nthe desk rule handed to Home & desk has landed, and still works");
 {
-  // The one line they add. Proved here against the real engine so the handoff is not a guess.
-  const proposed: Rule = {
-    kind: "mailHits" as any, status: "Pending", seat: ["Super Admin", "Program Director"],
-    person: "assigneeUserId", when: "receivedAt", door: "mydesk", verb: "Look at this mail",
-  };
-  const before = deskItems({ id: "u-1", email: "a@b.c", role: "Super Admin" },
-    { mailHits: [{ id: "mail-x", status: "Pending", assigneeUserId: "u-1", receivedAt: "2026-09-12", subject: "Test", sender: "x@y.z" }] } as any, "2026-09-12");
-  ok("without the rule, a MailHit is on nobody's desk", before.length === 0);
-  RULES.push(proposed);                                   // this process only; workflow.ts is untouched
+  // 17 Sep 2026: this used to push a *proposed* rule (the handoff was still a guess); the real
+  // one now lives in workflow.ts's RULES, so this proves it directly — removing it from the
+  // live array (this process only) and putting it back, rather than reverting to a guess.
+  const state = { mailHits: [{ id: "mail-x", status: "Pending", assigneeUserId: "u-1", receivedAt: "2026-09-12", subject: "Test", sender: "x@y.z" }] } as any;
+  const i = RULES.findIndex(r => r.kind === "mailHits");
+  ok("the real rule is in RULES: seated on directors, keyed to the assignee, opening My Desk",
+    i >= 0 && RULES[i].status === "Pending" && RULES[i].person === "assigneeUserId" && RULES[i].when === "receivedAt"
+    && RULES[i].door === "mydesk" && RULES[i].verb === "Look at this mail" && Array.isArray(RULES[i].seat) && RULES[i].seat!.length > 0);
+  const [mailRule] = i >= 0 ? RULES.splice(i, 1) : [undefined as unknown as Rule];
   try {
-    const rows = deskItems({ id: "u-1", email: "a@b.c", role: "Super Admin" },
-      { mailHits: [{ id: "mail-x", status: "Pending", assigneeUserId: "u-1", receivedAt: "2026-09-12", subject: "Test", sender: "x@y.z" }] } as any, "2026-09-12");
-    ok("with it, the row lands on the named person's desk", rows.length === 1 && rows[0].group === "mine", JSON.stringify(rows));
-    ok("and it opens My Desk", rows[0]?.door === "mydesk");
-    const other = deskItems({ id: "u-9", email: "z@z.z", role: "Finance Officer" },
-      { mailHits: [{ id: "mail-x", status: "Pending", assigneeUserId: "u-1", receivedAt: "2026-09-12", subject: "Test", sender: "x@y.z" }] } as any, "2026-09-12");
-    ok("and nobody else's", other.every(r => r.group !== "mine"));
-  } finally { RULES.pop(); }
+    const before = deskItems({ id: "u-1", email: "a@b.c", role: "Super Admin" }, state, "2026-09-12");
+    ok("without the rule, a MailHit is on nobody's desk", before.length === 0);
+  } finally { if (mailRule) RULES.splice(i, 0, mailRule); }   // workflow.ts itself was never touched
+  const rows = deskItems({ id: "u-1", email: "a@b.c", role: "Super Admin" }, state, "2026-09-12");
+  ok("with it, the row lands on the named person's desk", rows.length === 1 && rows[0].group === "mine", JSON.stringify(rows));
+  ok("and it opens My Desk, reading the sender and subject, not the raw id",
+    rows[0]?.door === "mydesk" && rows[0]?.title === "x@y.z · Test");
+  const other = deskItems({ id: "u-9", email: "z@z.z", role: "Finance Officer" }, state, "2026-09-12");
+  ok("and nobody else's", other.every(r => r.group !== "mine"));
 }
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");

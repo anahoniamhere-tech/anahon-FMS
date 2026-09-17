@@ -122,6 +122,10 @@ export const RULES: Rule[] = [
   { kind: "complianceTasks", status: "Done",    seat: null, door: "mydesk", verb: "" },
   // AI spend past 80% of the monthly limit (Anna plan §10d); the server sends it to the master account only.
   { kind: "annaSpendAlerts", status: "Near limit", seat: MASTER, door: "help", verb: "Raise the API limit, or lower the staff cap" },
+  // Mail watcher (Admin, 12 Sep 2026) — a matched message waits on the person MAIL_WATCH_ASSIGNEE
+  // names (a director by convention). Settling it just marks the row Done; the mail itself is
+  // read in Gmail, never here.
+  { kind: "mailHits", status: "Pending", seat: DIRECTORS, person: "assigneeUserId", when: "receivedAt", door: "mydesk", verb: "Look at this mail" },
   // A feature request waits on the master account until it is triaged (Anna plan §3).
   { kind: "featureRequests", status: "New",      seat: MASTER, door: "help", verb: "Triage the request" },
   { kind: "featureRequests", status: "Triaged",  seat: null, door: "help", verb: "" },
@@ -176,6 +180,7 @@ export const TITLES: Partial<Record<Kind, (r: any, s: State) => string>> = {
   opportunities:     r => r.title,
   quotations:        r => `${r.quoteNo} · ${r.title}`,
   complianceTasks:   r => r.title,
+  mailHits:          r => `${r.sender} · ${r.subject}`,
   featureRequests:   r => r.title,
   annaSpendAlerts:   r => r.title,
   subscriptions:     r => r.name,

@@ -1128,6 +1128,7 @@ export const AR: Record<string, string> = {
   "Link the deposit": "اربط الإيداع",
   "Settle": "سوِّ",
   "Triage the request": "صنّف الطلب",
+  "Look at this mail": "اطّلع على هذه الرسالة",
   "Confirm": "تأكيد",
   "Discard": "تجاهل",
   "Discarded": "تم التجاهل",

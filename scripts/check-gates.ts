@@ -61,6 +61,7 @@ const DESK_ROUTES: Record<string, string> = {
   "contentItems|Editorial Review": "/api/content/approve", "contentItems|Approved": "/api/content/publish",
   "contentItems|Fact-Check": "/api/content/factcheck-pass",
   "complianceTasks|Pending": "/api/compliance/complete",
+  "mailHits|Pending": "/api/mail/settle",
   "subscriptions|Active": "/api/subscriptions/roll",
   "tools|In use": "/api/tools/save", "networkContacts|New": "/api/contacts/save",
   "opportunities|Prospect": "/api/opportunities/save", "quotations|Sent": "/api/quotations/save",
