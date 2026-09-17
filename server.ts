@@ -508,7 +508,7 @@ const DEFAULT_DATABASE = {
   ],
   orgSettings: {
     profileName: "AnaHon Media Platform",
-    legalEntity: "Lebanese Civil Partnership / Civil Company",
+    legalEntity: "Lebanese civil company (general partnership) — civil company no. 90/2023, First Instance Chamber North, Tripoli, 12/10/2023 · MoF no. 3893185",
     vesselCode: "Tripoli-A109",
     baseCurrency: "USD",
     fiscalYearEnd: "12-31",
@@ -4202,7 +4202,7 @@ async function anahonBrainContext(): Promise<string> {
     published.map(c => `• "${c.title}" — ${c.contentType}${c.stream ? `, ${c.stream}` : ""}${c.publishedAt ? `, ${c.publishedAt.slice(0, 10)}` : ""}`).join("\n"));
 
   const context = [
-    `ORGANIZATION: AnaHon Media Platform — Lebanese Civil Company 90/2023, registered 12 Oct 2023, Commercial Register Tripoli, MoF no. 3893185. Based in Tripoli, Lebanon. Independent media organization; small team (~4 staff plus per-deliverable contractors). AnaHon is always the sole applicant and implementing body.`,
+    `ORGANIZATION: AnaHon Media Platform — Lebanese civil company (general partnership), civil company no. 90/2023, registered at the First Instance Chamber North, Tripoli, 12 Oct 2023, MoF no. 3893185. It is a civil company, never a commercial one — never describe it otherwise. Based in Tripoli, Lebanon. Independent media organization; small team (~4 staff plus per-deliverable contractors). AnaHon is always the sole applicant and implementing body.`,
     `PROGRAMS AND TRACK RECORD (real, from the financial system):`,
     ...Object.entries(STREAM_BRIEFS).map(([s, brief]) =>
       `• ${s}: ${brief}\n  Projects: ${(byStream[s] || ["none yet"]).join("; ")}`),

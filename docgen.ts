@@ -637,7 +637,7 @@ export function proposalHtml(o: {
   return page(`Proposal — ${o.title}`, `
 <h1 style="margin-bottom:0">ANAHON MEDIA PLATFORM</h1>
 <h2>Project Proposal — internal master (adapt to the donor's template)</h2>
-<p style="font-size:11px;color:#555">Applicant & implementing body: AnaHon (Lebanese Civil Company 90/2023, registered 12-Oct-2023, Commercial Register Tripoli · MOF 3893185)<br>
+<p style="font-size:11px;color:#555">Applicant &amp; implementing body: AnaHon (Lebanese civil company (general partnership), civil company no. 90/2023, First Instance Chamber North, Tripoli, 12/10/2023 · MoF 3893185)<br>
 Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor, Tripoli · +961 81 408 171 · info@anahon.org</p>
 <table>
   <caption>Application overview</caption>
@@ -691,7 +691,7 @@ export function providerInvoiceHtml(o: {
   <caption>Parties</caption>
   <tbody>
   <tr><th scope="row">Service provider</th><td><strong>${esc(v.name)}</strong>${contact ? `<br>${esc(contact)}` : ""}${hasTaxId ? `<br>MoF / Tax ID: ${esc(v.taxId)}` : "<br><em>Not registered with the Ministry of Finance</em>"}</td></tr>
-  <tr><th scope="row">Billed to</th><td>AnaHon Media Platform — Lebanese Civil Company 90/2023, Tripoli · MoF 3893185</td></tr>
+  <tr><th scope="row">Billed to</th><td>AnaHon Media Platform — Lebanese civil company (general partnership), civil company no. 90/2023, Tripoli · MoF 3893185</td></tr>
   ${p ? `<tr><th scope="row">Project</th><td>${esc(p.code)} — ${esc(p.name)}</td></tr>` : ""}
   <tr><th scope="row">Date</th><td>${longDate(e.paid_at || e.created_at)}</td></tr>
   </tbody>

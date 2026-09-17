@@ -369,5 +369,22 @@ ok("changing initials cannot disturb the parent lookup, which compares months",
     free.includes('<span class="alt"><span dir="ltr" class="num">Production Team Leader &amp; iContent Programme Manager</span> — التاريخ والتوقيع</span>'));
   ok("an English position word is never loose inside the Arabic signature line",
     !/<span class="alt">[A-Za-z][^<]*— التاريخ والتوقيع/.test(known + free)); }
+console.log("\nL. what the papers say AnaHon is (Front desk / Saad, 18 Sep 2026)");
+// AnaHon is a CIVIL company (general partnership), civil company no. 90/2023, First Instance Chamber
+// North, Tripoli, 12/10/2023 — it is not on the commercial register, and generated documents said it was.
+{
+  const server = readFileSync(new URL("../server.ts", import.meta.url), "utf8");
+  const docgen = readFileSync(new URL("../docgen.ts", import.meta.url), "utf8");
+  const claim = /Commercial Regist(er|ry)/i;
+  // The supplier document rule legitimately asks a COMPANY for its own commercial registration;
+  // that is about counterparties, not about AnaHon, and lives in src/supplierDocs.ts.
+  ok("no generated document calls AnaHon commercially registered", !claim.test(docgen));
+  ok("nor does the proposal brain's grounding", !claim.test(server.slice(server.indexOf("ORGANIZATION: AnaHon"), server.indexOf("ORGANIZATION: AnaHon") + 600)));
+  ok("the proposal footer names the civil company and the chamber that registered it",
+    /civil company \(general partnership\), civil company no\. 90\/2023, First Instance Chamber North, Tripoli, 12\/10\/2023/.test(docgen));
+  ok("the provider invoice bills from the civil company", /Billed to[\s\S]{0,120}civil company \(general partnership\), civil company no\. 90\/2023/.test(docgen));
+  ok("the registration number and MoF number are unchanged", (docgen.match(/90\/2023/g) || []).length >= 2 && docgen.includes("3893185"));
+}
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
