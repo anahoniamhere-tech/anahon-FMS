@@ -5914,6 +5914,25 @@ const readJsonFile = (p: string, fallback: any) => { try { return JSON.parse(fs.
 const libraryFile = (collection: string) => path.join(SITE_DIR, "src/data", collection === "icontent" ? "icontent-library.json" : "library.json");
 const cleanTag = (t: any) => String(t).trim().toLowerCase().replace(/\s+/g, "-");
 
+// Thumbnails for the Media archive door. The Facebook/Instagram scrape stores images under the
+// site's public/images/* (already bind-mounted into this container for the live editor), and a
+// plain <img> tag cannot carry the sign-in header. Reuses the exact ticket the vault's byte
+// routes already mint (?t=..., /api/document/ticket) — one ticket opens both, nothing new to
+// build or lose. Claims the whole /images/* prefix so a bad or missing path 404s here, never
+// the SPA catch-all — which is what silently stood in for every archive thumbnail as HTTP 200
+// text/html until now.
+const IMAGES_ROOT = path.join(SITE_DIR, "public/images");
+app.get("/images/*", async (req, res) => {
+  if (!(await viewerIdFromReq(req))) return res.status(401).end();
+  let file: string;
+  try { file = path.join(SITE_DIR, "public", path.normalize(decodeURIComponent(req.path))); } catch { return res.status(404).end(); }
+  if (!file.startsWith(IMAGES_ROOT + path.sep) || !/\.(jpe?g|png|webp|gif)$/i.test(file) || !fs.existsSync(file)) {
+    return res.status(404).end();
+  }
+  res.setHeader("Cache-Control", "private, max-age=300");
+  res.sendFile(file);
+});
+
 app.get("/api/archive/items", (req, res) => {
   const items = readJsonFile(libraryFile(String(req.query.collection || "")), []);
   res.json({ items: items.map((i: any) => ({

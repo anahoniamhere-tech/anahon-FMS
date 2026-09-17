@@ -4,6 +4,7 @@ import { Archive as ArchiveIcon } from "lucide-react";
 import { SharedProps } from "./shared";
 import Info from "../Info";
 import { ARCHIVE_EDITORS, SITE_EDITORS } from "../roles";
+import { withTicket } from "../docTicket";
 
 /**
  * Archive — the whole media archive, curated here; the website takes only what is chosen.
@@ -147,7 +148,8 @@ function ItemsView({ items, setItems, collection, facetOf, knownTags, canEdit, t
           const on = i.tags.includes(ONSITE); const isEditing = editing === i.id;
           return (
             <div key={i.id} className={`flex gap-3 rounded-lg border p-2 text-xs ${on ? "border-emerald-300 bg-emerald-50/40" : "border-slate-200 bg-white"}`}>
-              {i.thumb ? <img src={i.thumb} alt="" className="h-20 w-28 flex-none rounded object-cover" loading="lazy" /> : <div className="h-20 w-28 flex-none rounded bg-slate-100" />}
+              {/* /images/* is this door's own byte route (server.ts) and needs the ticket a bare <img> can't carry; an external thumbnail (e.g. YouTube) already loads on its own. */}
+              {i.thumb ? <img src={i.thumb.startsWith("/images/") ? withTicket(i.thumb) : i.thumb} alt="" className="h-20 w-28 flex-none rounded object-cover" loading="lazy" /> : <div className="h-20 w-28 flex-none rounded bg-slate-100" />}
               <div className="min-w-0 flex-1 space-y-1">
                 {isEditing ? <input value={draftTitle} onChange={e => setDraftTitle(e.target.value)} dir="auto" className="w-full rounded border border-slate-300 px-1 py-0.5 font-bold" />
                   : <p className="truncate font-bold text-slate-900" dir="auto" title={i.title}>{i.title}</p>}
