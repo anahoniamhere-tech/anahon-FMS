@@ -16,7 +16,7 @@ import { withTicket } from "../docTicket";
  * is curated here too; the website's widgets moved to the Live editor's panel.
  * "Publish to website" rebuilds the whole library.
  */
-type Item = { id: string; platform: string; kind: string; title: string; thumb: string; date: string; tags: string[]; series: string; url: string; duration: number | null };
+type Item = { id: string; platform: string; kind: string; title: string; thumb: string; date: string; tags: string[]; series: string; url: string; duration: number | null; local: "video" | "image" | null };
 type Schema = { formats?: string[]; topics_extra?: string[]; topics_icontent?: string[]; suppressed?: string[]; order?: string[]; facets?: Record<string, string> };
 
 const PAGE = 60;
@@ -100,6 +100,7 @@ function ItemsView({ items, setItems, collection, facetOf, knownTags, canEdit, t
   const [show, setShow] = useState<"published" | "unpublished" | "all">("published");
   const [page, setPage] = useState(0);
   const [editing, setEditing] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Item | null>(null);
   const [draftTags, setDraftTags] = useState<string[]>([]); const [draftTitle, setDraftTitle] = useState(""); const [newTag, setNewTag] = useState("");
   const platforms = useMemo(() => [...new Set(items.map((i: Item) => i.platform))].sort(), [items]);
   const filtered = useMemo(() => {
@@ -149,7 +150,10 @@ function ItemsView({ items, setItems, collection, facetOf, knownTags, canEdit, t
           return (
             <div key={i.id} className={`flex gap-3 rounded-lg border p-2 text-xs ${on ? "border-emerald-300 bg-emerald-50/40" : "border-slate-200 bg-white"}`}>
               {/* /images/* is this door's own byte route (server.ts) and needs the ticket a bare <img> can't carry; an external thumbnail (e.g. YouTube) already loads on its own. */}
-              {i.thumb ? <img src={i.thumb.startsWith("/images/") ? withTicket(i.thumb) : i.thumb} alt="" className="h-20 w-28 flex-none rounded object-cover" loading="lazy" /> : <div className="h-20 w-28 flex-none rounded bg-slate-100" />}
+              <button type="button" onClick={() => setPreview(i)} title={i.local ? "Open our copy" : "Preview"} className="relative h-20 w-28 flex-none overflow-hidden rounded bg-slate-100">
+                {i.thumb && <img src={i.thumb.startsWith("/images/") ? withTicket(i.thumb) : i.thumb} alt="" className="h-full w-full object-cover" loading="lazy" />}
+                {i.local === "video" && <span className="absolute inset-0 m-auto flex h-8 w-8 items-center justify-center rounded-full bg-black/60 text-white" aria-hidden="true">▶</span>}
+              </button>
               <div className="min-w-0 flex-1 space-y-1">
                 {isEditing ? <input value={draftTitle} onChange={e => setDraftTitle(e.target.value)} dir="auto" className="w-full rounded border border-slate-300 px-1 py-0.5 font-bold" />
                   : <p className="truncate font-bold text-slate-900" dir="auto" title={i.title}>{i.title}</p>}
@@ -179,7 +183,38 @@ function ItemsView({ items, setItems, collection, facetOf, knownTags, canEdit, t
           );
         })}
       </div>
+      {preview && <Preview item={preview} collection={collection} onClose={() => setPreview(null)} />}
     </>
+  );
+}
+
+// Our own copy, from the Meta exports on the NAS (server.ts /api/archive/media/:id, byte ranges
+// so a video seeks). Nothing held → say so, and keep the way to the original.
+function Preview({ item, collection, onClose }: { item: Item; collection: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const src = withTicket(`/api/archive/media/${encodeURIComponent(item.id)}?collection=${collection}`);
+  return (
+    <div role="dialog" aria-modal="true" aria-label={item.title} onClick={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+      <div onClick={e => e.stopPropagation()} className="flex max-h-full w-full max-w-4xl flex-col gap-3 rounded-2xl bg-white p-4">
+        <div className="flex items-start gap-3">
+          <p className="min-w-0 flex-1 font-bold text-slate-900" dir="auto">{item.title}</p>
+          <button onClick={onClose} className="rounded border px-2 py-0.5 text-sm" aria-label="Close">✕</button>
+        </div>
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-xl bg-slate-950">
+          {item.local === "video" ? <video key={item.id} src={src} controls autoPlay preload="metadata" className="max-h-[75vh] w-full" />
+            : item.local === "image" ? <img src={src} alt={item.title} className="max-h-[75vh] w-auto object-contain" />
+            : <p className="p-10 text-center text-sm text-slate-300">Not in our archive yet — <a href={item.url} target="_blank" rel="noopener" className="font-bold text-white underline">open the original ↗</a></p>}
+        </div>
+        <p className="flex text-xs text-slate-500">
+          <span>{item.platform} · {item.kind} · {item.date}{item.local ? " · our copy" : ""}</span>
+          <a href={item.url} target="_blank" rel="noopener" className="ms-auto underline">original ↗</a>
+        </p>
+      </div>
+    </div>
   );
 }
 

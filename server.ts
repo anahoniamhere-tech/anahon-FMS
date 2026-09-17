@@ -25,6 +25,7 @@ import {
   isSupersededPointer, policyHeading,
 } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
+import { buildMediaIndex, mediaForItem, mediaKind, mediaType, dataOffset, parseRange, type ZipMedia } from "./src/archiveMedia.js";
 import { QUOTE_ISSUERS, quoteTotals, discountBlocker } from "./src/quoteTotals.js";
 import { freezeSubmission, submissionBlocker, inReportCurrency, usdEquivalent } from "./src/lateCosts.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
@@ -6019,12 +6020,48 @@ app.get("/images/*", async (req, res) => {
   res.sendFile(file);
 });
 
+// Our own copy of an archive item (src/archiveMedia.ts): the file inside the Meta exports on the
+// NAS, found by the platform media id the item already carries. Built on first use, kept for the
+// life of the process. ponytail: a new export needs a container restart to be picked up.
+let mediaIndex: Map<string, ZipMedia> | null = null;
+const archiveMediaIndex = () => (mediaIndex ??= buildMediaIndex(path.join(ARCHIVE_DIR, "archive/raw")));
+
 app.get("/api/archive/items", (req, res) => {
   const items = readJsonFile(libraryFile(String(req.query.collection || "")), []);
-  res.json({ items: items.map((i: any) => ({
-    id: i.id, platform: i.platform, kind: i.kind, title: i.title, thumb: i.thumb, date: i.date,
-    tags: i.tags || [], series: i.series || "", url: i.url, duration: i.duration ?? null
-  })) });
+  const index = archiveMediaIndex();
+  res.json({ items: items.map((i: any) => {
+    const own = mediaForItem(i, index);
+    return {
+      id: i.id, platform: i.platform, kind: i.kind, title: i.title, thumb: i.thumb, date: i.date,
+      tags: i.tags || [], series: i.series || "", url: i.url, duration: i.duration ?? null,
+      local: own ? mediaKind(own) : null,
+    };
+  }) });
+});
+
+// The bytes of that copy, streamed straight out of the export zip (stored entries, so an offset),
+// with byte ranges so a video seeks. Only an item in the library can be asked for, so nothing else
+// in the export (messages, other private folders) is reachable. Signed-in only, like every
+// /api GET; an <img>/<video> brings the document ticket (?t=).
+app.get("/api/archive/media/:id", (req, res) => {
+  const item = readJsonFile(libraryFile(String(req.query.collection || "")), []).find((i: any) => i.id === req.params.id);
+  const own = item && mediaForItem(item, archiveMediaIndex());
+  if (!own) return res.status(404).json({ error: "Not in our archive yet." });
+  let start: number;
+  try { start = dataOffset(own); } catch { return res.status(404).json({ error: "The archive copy could not be read." }); }
+  const range = parseRange(req.get("range"), own.size);
+  if (range === null) { res.setHeader("Content-Range", `bytes */${own.size}`); return res.status(416).end(); }
+  const [from, to] = range || [0, own.size - 1];
+  res.status(range ? 206 : 200);
+  res.setHeader("Content-Type", mediaType(own));
+  res.setHeader("Accept-Ranges", "bytes");
+  res.setHeader("Content-Length", String(to - from + 1));
+  if (range) res.setHeader("Content-Range", `bytes ${from}-${to}/${own.size}`);
+  res.setHeader("Cache-Control", "private, max-age=3600");
+  const stream = fs.createReadStream(own.zip, { start: start + from, end: start + to });
+  stream.on("error", () => res.destroy());
+  req.on("close", () => stream.destroy());
+  stream.pipe(res);
 });
 app.get("/api/archive/schema", (_req, res) => res.json(readJsonFile(path.join(SITE_DIR, "src/data/formats.json"), {})));
 
