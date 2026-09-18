@@ -16,6 +16,28 @@ type Shelf = {
 const day = (iso: string) => (iso || "").slice(0, 10);
 
 /**
+ * A filename, shown in the order the file is actually named.
+ *
+ * Several of these papers carry Arabic inside a Latin name —
+ * `2023_Constitutive_Statute_النظام_التأسيسي_Arabic_11pg.pdf`. With the whole string in one run,
+ * the underscores between the Arabic words join them into a single right-to-left run, so the two
+ * words come out swapped: measured in the browser, التأسيسي rendered at x=262 and النظام at x=343,
+ * the reverse of the filename. `dir="ltr"` does not help — it sets the base direction, which was
+ * never the problem — and neither does one `<bdi>` around the whole thing.
+ *
+ * Isolating each underscore-separated part does: each part keeps its place in the sequence while
+ * its own letters still shape right-to-left (النظام at 262, التأسيسي at 325). So someone comparing
+ * the screen against the vault reads the same name in the same order.
+ */
+const FileName = ({ name, className }: { name: string; className?: string }) => (
+  <span dir="ltr" className={className}>
+    {name.split("_").map((part, i) => (
+      <span key={i}>{i > 0 && "_"}<bdi>{part}</bdi></span>
+    ))}
+  </span>
+);
+
+/**
  * The organisation's own papers, and the filed PDFs of the policies.
  *
  * Two things this screen refuses to do. It never offers a button for a file we do not hold —
@@ -95,7 +117,7 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
           <p className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600">
             {ic(AlertTriangle, "h-3.5 w-3.5")} {t("Record only — the file is missing")}
           </p>
-          {filename && <p dir="ltr" className="mt-0.5 break-all font-mono text-[10px] text-slate-500">{filename}</p>}
+          {filename && <FileName name={filename} className="mt-0.5 block break-all font-mono text-[10px] text-slate-500" />}
         </div>
       );
     }
@@ -179,8 +201,10 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
                 <span className="font-mono text-[10.5px] text-slate-400">{r.ref}</span>
                 <span className="min-w-0 flex-1">
                   {/* The note is what the row says it is; the filename is only where it lives. */}
-                  <span dir="auto" className="block text-[12.5px] leading-snug text-slate-800 [text-align:match-parent]">{r.note || r.filename}</span>
-                  {r.note && <span dir="ltr" className="mt-0.5 block truncate font-mono text-[10px] text-slate-400">{r.filename}</span>}
+                  {r.note
+                    ? <span dir="auto" className="block text-[12.5px] leading-snug text-slate-800 [text-align:match-parent]">{r.note}</span>
+                    : <FileName name={r.filename} className="block text-[12.5px] leading-snug text-slate-800" />}
+                  {r.note && <FileName name={r.filename} className="mt-0.5 block truncate font-mono text-[10px] text-slate-400" />}
                 </span>
                 {r.held ? (
                   <span className="flex gap-1.5">

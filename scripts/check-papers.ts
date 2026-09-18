@@ -146,8 +146,17 @@ ok("they are never sent as links — no id of theirs can be", (() => {
   const block = shelfSrc.slice(shelfSrc.indexOf("export const SHAREABLE_IDS"), shelfSrc.indexOf("export const PAPER_IDS"));
   return !block.includes("READING") && /PAPERS\.map\(p => p\.id\), \.\.\.POLICY_PDFS\.map\(p => p\.id\)/.test(block);
 })());
+// Measured in a browser, not reasoned about: with the whole name in one run the two Arabic words
+// of the statute's filename render in reverse order (التأسيسي at x=262, النظام at x=343). Isolating
+// each underscore-separated part restores the filename's own order (262 then 325).
+ok("an Arabic-bearing filename is shown part by part, each isolated",
+  /name\.split\("_"\)\.map\(\(part, i\) =>[\s\S]{0,120}?<bdi>\{part\}<\/bdi>/.test(shelf));
+ok("and every place a filename is printed uses it, not a bare string",
+  !/\{filename\}<\/p>/.test(shelf) && !/className="[^"]*font-mono[^"]*">\{r\.filename\}</.test(shelf)
+  && (shelf.match(/<FileName name=/g) || []).length === 3);
 ok("a reading row leads with its note, not its filename — 'Draft_Letter_to_Lawyer' does not say it was never sent",
-  /note: d\.note \|\| ""/.test(server) && /\{r\.note \|\| r\.filename\}/.test(shelf));
+  /note: d\.note \|\| ""/.test(server) && /\{r\.note\s*\n?\s*\?\s*<span[\s\S]{0,160}?\{r\.note\}/.test(shelf)
+  && shelf.indexOf("{r.note\n") < shelf.indexOf("<FileName name={r.filename}"));
 ok("the reading is not a card in the papers groups", !PAPERS.some(p => String(p.id).includes("reading")) && READING_CATEGORY === "Official_Papers_Reading");
 
 console.log("\nthe papers outbox is not the quotation one");
