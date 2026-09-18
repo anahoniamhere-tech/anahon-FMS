@@ -52,10 +52,10 @@ import { CONSULTANT_REVIEW_CATEGORY, isMonth, monthBounds, packExcludes, reconci
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { periodMonths, workplanFromActivities, workplanBlocker, type Workplan } from "./src/workplan.js";
 import { shareBlocker, shareExpiry, shareUrl, outboxName, printedChange, SHAREABLE_STATUSES } from "./src/quoteShare.js";
-import { SHARE_ORIGIN } from "./src/quoteShare.js";
 import {
   PAPERS, PAPERS_ZIP, POLICY_PDFS, PAPER_IDS, SHAREABLE_IDS,
-  mayOpenPapers, PAPERS_REFUSAL, paperLinkExpiry, paperLinkName, PAPER_LINK_DAYS,
+  mayOpenPapers, PAPERS_REFUSAL, paperLinkExpiry, PAPER_LINK_DAYS,
+  paperOutboxDir, paperShareUrl, writePaperPdf, deletePaperPdf, PAPER_LINKS_UNSET,
 } from "./src/officialPapers.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
@@ -9300,6 +9300,13 @@ app.post("/api/quotations/share/revoke", async (req, res) => {
  * share copy itself, which is deleted when the link is revoked or replaced.
  */
 
+/** Both settings present, and the directory actually writable. Nothing is issued otherwise. */
+function paperLinksReady(): boolean {
+  const dir = paperOutboxDir();
+  if (!dir || !process.env.PAPER_SHARE_ORIGIN) return false;
+  try { fs.accessSync(dir, fs.constants.W_OK); return fs.statSync(dir).isDirectory(); } catch { return false; }
+}
+
 /**
  * When a filed document was last written, as an instant. Used to ask whether a filed policy PDF
  * still says what the policy says: the PDF's own moment against the live handbook's.
@@ -9316,8 +9323,6 @@ function fileMoment(doc: any): number {
 /** The day a moment fell on where the organisation works, which is the only day a reader means. */
 const beirutDay = (ms: number) => (ms ? new Date(ms).toLocaleDateString("en-CA", { timeZone: "Asia/Beirut" }) : "");
 
-const paperLinkUrl = (token: string, ref: string) => `${SHARE_ORIGIN}/q/${token}/${paperLinkName(ref)}`;
-
 /** Issue a link to one paper, retiring any link that paper already has. */
 async function issuePaperShare(doc: any, ref: string, who: { id: string; name: string }) {
   const now = new Date();
@@ -9325,11 +9330,11 @@ async function issuePaperShare(doc: any, ref: string, who: { id: string; name: s
   const token = crypto.randomBytes(16).toString("hex");
   const vp = vaultPathFromPointer(doc.base64 || "");
   if (!vp || !fs.existsSync(vp)) throw new Error(`There is a record of ${ref} but no file — nothing to send.`);
-  writeSharePdf(token, fs.readFileSync(vp), expiresAt);
+  writePaperPdf(fs, paperOutboxDir(), token, fs.readFileSync(vp), expiresAt);
   // The old link goes only once the new file exists, so a failed write leaves the live one alone.
   await revokePaperShares(doc.id, "replaced by a new link", who);
   const row = await prisma.paperShare.create({ data: {
-    token, docId: doc.id, url: paperLinkUrl(token, ref), createdAt: now.toISOString(),
+    token, docId: doc.id, url: paperShareUrl(token, ref), createdAt: now.toISOString(),
     createdById: who.id, createdByName: who.name, expiresAt: expiresAt.toISOString(),
   } });
   await createAuditLog(who.id, who.name, "Paper Link Issued",
@@ -9338,9 +9343,11 @@ async function issuePaperShare(doc: any, ref: string, who: { id: string; name: s
 }
 
 async function revokePaperShares(docId: string, reason: string, who: { id?: string; name?: string } | null): Promise<number> {
+  // Strictly the tokens this table issued, one by one. The directory is never listed, so a paper
+  // revoke cannot reach a file it did not write — Admin's rule for a shared outbox.
   const rows = await prisma.paperShare.findMany({ where: { docId, revokedAt: null } });
   for (const r of rows) {
-    deleteSharePdf(r.token);
+    deletePaperPdf(fs, paperOutboxDir(), r.token);
     await prisma.paperShare.update({ where: { token: r.token }, data: { revokedAt: new Date().toISOString(), revokeReason: reason } });
     await createAuditLog(who?.id, who?.name || "System", "Paper Link Revoked", `Link ${r.token.slice(0, 8)}… for document ${docId}: ${reason}.`);
   }
@@ -9371,6 +9378,7 @@ app.get("/api/papers/shelf", async (req, res) => {
       // every stale card on its own — there is no date here for anyone to remember to update.
       packDate: beirutDay(Math.max(0, ...POLICY_PDFS.map(p => fileMoment(by.get(p.id))))),
       linkDays: PAPER_LINK_DAYS,
+      linksReady: paperLinksReady(),
       policyPdfs: POLICY_PDFS.map(p => {
         const filed = fileMoment(by.get(p.id));
         const changed = fileMoment(by.get(p.governs));
@@ -9396,7 +9404,7 @@ app.post("/api/papers/share", async (req, res) => {
     if (!/pdf/i.test(String(doc.mimeType || "")) && !/\.pdf$/i.test(String(doc.filename || ""))) {
       return res.status(400).json({ error: "A link carries a PDF — this file is not one." });
     }
-    if (!quoteOutboxReady()) return res.status(503).json({ error: QUOTE_LINK_UNSET });
+    if (!paperLinksReady()) return res.status(503).json({ error: PAPER_LINKS_UNSET });
     const ref = [...PAPERS, ...POLICY_PDFS].find(p => p.id === id)?.ref || doc.refNo;
     res.json({ success: true, share: await issuePaperShare(doc, ref, who) });
   } catch (err: any) {

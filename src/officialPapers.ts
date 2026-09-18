@@ -165,6 +165,35 @@ export function mayOpenPapers(viewer: { role?: string; active?: boolean } | null
 export const PAPERS_REFUSAL =
   "The organisation's official papers are opened by the Executive Director or the Finance Officer, as themselves.";
 
+/* ---- The outbox a paper link is written into --------------------------------------------
+ *
+ * Its OWN directory and its OWN address, never the quotation outbox on icontent.studio. Two
+ * reasons, both Admin's (18 Sep 2026). Client-facing iContent material never names AnaHon, and
+ * "icontent.studio/…/AnaHon-ANH-DOC-00814.pdf" puts an AnaHon legal document on the client-facing
+ * iContent domain — the inverse of the rule already written into QUOTATION-LINKS.md. And the
+ * sensitivity is not the same: a leaked quotation is embarrassing, while the statute, registration,
+ * MoF certificate and lease are the set someone would want in order to impersonate AnaHon to a bank
+ * or a ministry, and an unguessable token is the only control on this route.
+ *
+ * So both settings are required and neither has a default. **With either unset no link can be
+ * issued at all** — the shelf says so and the button is not drawn. That is deliberate: until Saad
+ * settles the host, and whether a public-token link is acceptable for statutory papers in the first
+ * place, the unsafe thing is impossible rather than merely unused.
+ */
+export const paperOutboxDir = () => process.env.PAPER_OUTBOX || "";
+export const paperShareOrigin = () => process.env.PAPER_SHARE_ORIGIN || "";
+export const PAPER_LINKS_UNSET =
+  "Links for official papers are not set up on this server yet — they need their own AnaHon address, not the quotation one.";
+
+/** The address a recipient is sent. `/p/`, never the quotation route's `/q/`, so one token
+ *  namespace can never be asked to serve two brands. */
+export function paperShareUrl(token: string, ref: string): string {
+  if (!/^[0-9a-f]{32}$/.test(token)) throw new Error("Not a share token.");
+  const origin = paperShareOrigin();
+  if (!origin) throw new Error(PAPER_LINKS_UNSET);
+  return `${origin.replace(/\/+$/, "")}/p/${token}/${paperLinkName(ref)}`;
+}
+
 /** How long a link lives. A paper has no validity date of its own, so it gets one number. */
 export const PAPER_LINK_DAYS = 7;
 export function paperLinkExpiry(now: Date): Date {
@@ -181,4 +210,31 @@ export function paperLinkName(ref: string): string {
   const name = `AnaHon-${String(ref || "").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/\.{2,}/g, "-").replace(/^[-.]+|[-.]+$/g, "")}.pdf`;
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/.test(name)) throw new Error("Not a display name.");
   return name;
+}
+
+/* ---- Writing and removing the file ------------------------------------------------------
+ *
+ * Both take a token, and the token is the whole filename. Neither ever lists the directory, so
+ * this side cannot delete a file it did not write — Admin's standing rule for a shared outbox,
+ * where a "tidy up what I don't recognise" pass would take a client's live quotation with it.
+ */
+export const paperOutboxName = (token: string) => {
+  if (!/^[0-9a-f]{32}$/.test(token)) throw new Error("Not a share token.");
+  return `${token}.pdf`;
+};
+
+/** Write it under a dot-name and rename, so a syncer never mirrors half a PDF. The mtime IS the
+ *  expiry, set before the file becomes visible. */
+export function writePaperPdf(fsMod: typeof import("node:fs"), dir: string, token: string, pdf: Buffer, expiresAt: Date): void {
+  if (!dir) throw new Error(PAPER_LINKS_UNSET);
+  const name = paperOutboxName(token);
+  const part = `${dir}/.${name}.part`;
+  fsMod.writeFileSync(part, pdf, { mode: 0o640 });
+  fsMod.utimesSync(part, expiresAt, expiresAt);
+  fsMod.renameSync(part, `${dir}/${name}`);
+}
+
+export function deletePaperPdf(fsMod: typeof import("node:fs"), dir: string, token: string): void {
+  if (!dir) return;
+  fsMod.rmSync(`${dir}/${paperOutboxName(token)}`, { force: true });
 }

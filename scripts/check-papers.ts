@@ -6,10 +6,14 @@
 // Finance Officer, on every route that can serve them, including a borrowed seat. And a filed
 // policy PDF must never be presented as current when the policy behind it has moved on.
 // Run: npx tsx scripts/check-papers.ts
-import { readFileSync } from "node:fs";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+const { readFileSync } = fs;
 import {
   PAPERS, PAPERS_ZIP, POLICY_PDFS, PAPER_IDS, SHAREABLE_IDS, PAPER_GROUPS,
   mayOpenPapers, paperLinkExpiry, paperLinkName, PAPER_LINK_DAYS, policyPdfsFor,
+  writePaperPdf, deletePaperPdf, paperOutboxName, paperShareUrl, PAPER_LINKS_UNSET,
 } from "../src/officialPapers.js";
 
 let failed = 0;
@@ -92,8 +96,55 @@ ok("issuing and revoking a link is too",
   /createAuditLog\([^)]*"Paper Link Issued"/.test(server) && /createAuditLog\([^)]*"Paper Link Revoked"/.test(server));
 ok("a new link retires the old one, and only after the new file exists",
   server.indexOf("writeSharePdf(token, fs.readFileSync(vp), expiresAt)") < server.indexOf('revokePaperShares(doc.id, "replaced by a new link"'));
-ok("revoking deletes the file from the outbox", /revokePaperShares[\s\S]{0,400}?deleteSharePdf\(r\.token\)/.test(server));
 ok("a paper we do not hold cannot be sent", /no file — nothing to send/.test(server));
+
+console.log("\nthe papers outbox is not the quotation one");
+// Admin, 18 Sep 2026: client-facing iContent material never names AnaHon, and a statute is not a
+// quotation. The paper code must not be able to reach the quotation outbox even by accident.
+const paperBlock = server.slice(server.indexOf("/* ---- Official papers, and the filed PDFs"), server.indexOf('app.get("/api/quotations/:id/pdf"'));
+ok("the paper code never writes to or deletes from the quotation outbox",
+  !/QUOTE_OUTBOX|writeSharePdf|deleteSharePdf|quoteOutboxReady/.test(paperBlock));
+ok("and never borrows the quotation address", !/(?<![A-Z_])SHARE_ORIGIN/.test(paperBlock));
+ok("a paper link is served from /p/, not the quotation /q/", (() => {
+  process.env.PAPER_SHARE_ORIGIN = "https://papers.example";
+  const u = paperShareUrl("a".repeat(32), "ANH-DOC-00814");
+  delete process.env.PAPER_SHARE_ORIGIN;
+  return u === "https://papers.example/p/" + "a".repeat(32) + "/AnaHon-ANH-DOC-00814.pdf";
+})());
+ok("with no address set, no link can be built", (() => {
+  delete process.env.PAPER_SHARE_ORIGIN;
+  try { paperShareUrl("a".repeat(32), "ANH-DOC-00814"); return false; } catch { return true; }
+})());
+ok("with no outbox set, nothing is written — and it refuses for that reason, not by accident", (() => {
+  // Asserting the message, not merely that it threw: a silent fallback to some other directory
+  // would also throw here (that path does not exist on this machine) and would have passed.
+  try { writePaperPdf(fs, "", "a".repeat(32), Buffer.from("x"), new Date()); return false; }
+  catch (e: any) { return String(e.message) === PAPER_LINKS_UNSET; }
+})());
+ok("and the route refuses before it tries", /if \(!paperLinksReady\(\)\) return res\.status\(503\)/.test(server));
+ok("both settings are required, and neither has a default",
+  /const dir = paperOutboxDir\(\);\s*\n\s*if \(!dir \|\| !process\.env\.PAPER_SHARE_ORIGIN\) return false;/.test(server)
+  && /process\.env\.PAPER_OUTBOX \|\| ""/.test(readFileSync(new URL("../src/officialPapers.ts", import.meta.url), "utf8")));
+ok("a revoke deletes only tokens this table issued, and never lists the directory",
+  /deletePaperPdf\(fs, paperOutboxDir\(\), r\.token\)/.test(server) && !/readdirSync|globSync/.test(paperBlock));
+
+console.log("\nthe file contract, written and removed for real");
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "paper-outbox-"));
+  const token = "b".repeat(32);
+  const expires = new Date("2026-09-25T20:59:59.000Z");
+  writePaperPdf(fs, dir, token, Buffer.from("%PDF-1.4 test"), expires);
+  const file = path.join(dir, `${token}.pdf`);
+  ok("the file lands under the token's name", fs.existsSync(file));
+  ok("its mtime IS the expiry", Math.abs(fs.statSync(file).mtimeMs - expires.getTime()) < 1000, String(fs.statSync(file).mtime));
+  ok("no half-written .part is left behind", fs.readdirSync(dir).length === 1, fs.readdirSync(dir).join(","));
+  deletePaperPdf(fs, dir, token);
+  ok("revoking removes it", !fs.existsSync(file) && fs.readdirSync(dir).length === 0);
+  ok("a token that is not one cannot name a file", (() => {
+    try { paperOutboxName("../../etc/passwd"); return false; } catch { return true; }
+  })());
+  fs.rmSync(dir, { recursive: true, force: true });
+}
 
 console.log("\nwhat the shelf shows");
 ok("a missing file gets the record-only strip, never a download",
@@ -108,6 +159,8 @@ ok("and compares their moments, not their days — the change that found this wa
   /stale: Boolean\(filed && changed && changed > filed\)/.test(server));
 ok("the day a reader is shown is the Beirut day, not UTC",
   /toLocaleDateString\("en-CA", \{ timeZone: "Asia\/Beirut" \}\)/.test(server));
+ok("with links not set up, the Send button is not drawn at all",
+  /\{!row\.share && shelf\.linksReady && \(/.test(shelf) && /linksReady: paperLinksReady\(\)/.test(server));
 ok("the shelf is not drawn for anyone else",
   /const mayOpen = \["Super Admin", "Finance Officer"\]\.includes/.test(shelf) && /if \(!mayOpen \|\| !shelf\) return null;/.test(shelf));
 

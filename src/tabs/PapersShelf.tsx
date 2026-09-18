@@ -9,7 +9,7 @@ type PaperRow = { id: string; ref: string; title: string; date: string; proves: 
 type PolicyRow = { id: string; ref: string; label: string; policies: string[]; lang: "en" | "ar"; held: boolean; share: Share; filedOn: string; changedOn: string; stale: boolean };
 type Shelf = {
   papers: PaperRow[]; zip: { id: string; ref: string; date: string; held: boolean };
-  packDate: string; linkDays: number; policyPdfs: PolicyRow[];
+  packDate: string; linkDays: number; linksReady: boolean; policyPdfs: PolicyRow[];
 };
 
 const day = (iso: string) => (iso || "").slice(0, 10);
@@ -109,7 +109,7 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
             className="inline-flex items-center gap-1 rounded bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-300">
             {ic(Download, "h-3 w-3")} {t("Download")}
           </a>
-          {!row.share && (
+          {!row.share && shelf.linksReady && (
             <button disabled={busy === row.id} onClick={() => call("/api/papers/share", row.id, t("Link created"))}
               className="inline-flex items-center gap-1 rounded bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-800 ring-1 ring-emerald-300 disabled:opacity-50">
               {ic(Link2, "h-3 w-3")} {t("Send a link")}
@@ -131,7 +131,9 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
         <div>
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">{ic(FileText, "h-5 w-5")} {t("Official papers")}</h2>
           <p className="mt-0.5 text-[11.5px] text-slate-500">
-            {t("The organisation's own papers. Opened by the Executive Director and the Finance Officer; a link lasts")} {shelf.linkDays} {t("days.")}
+            {shelf.linksReady
+              ? `${t("The organisation's own papers. Opened by the Executive Director and the Finance Officer; a link lasts")} ${shelf.linkDays} ${t("days.")}`
+              : t("The organisation's own papers. Opened by the Executive Director and the Finance Officer. Sending one as a link is not switched on — these papers need an AnaHon address of their own, which is with Saad.")}
           </p>
         </div>
         {shelf.zip.held && (
