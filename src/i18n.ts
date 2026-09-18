@@ -3,6 +3,8 @@
 // records stay in the language they were entered in.
 export const AR: Record<string, string> = {
   // the official papers shelf
+  "The reading behind the papers": "القراءة خلف الأوراق",
+  "What was read out of the papers and written down: the statute article by article, the facts, the alignment work, the letters. Working documents — they are not sent as links.": "ما قُرئ من الأوراق ودُوِّن: النظام التأسيسي مادة مادة، والوقائع، وأعمال المطابقة، والرسائل. مستندات عمل — لا تُرسَل بروابط.",
   "This paper is not sent as a link — attach the file to the email yourself.": "لا تُرسَل هذه الورقة برابط — أرفق الملف بالبريد بنفسك.",
   "A one-time link for this paper is not switched on yet: the server that hands it out cannot yet remove it after the first download, and a link that keeps working is not what was agreed.": "الرابط لمرة واحدة لهذه الورقة غير مفعَّل بعد: الخادم الذي يسلّمه لا يستطيع بعد حذفه بعد أول تنزيل، ورابط يظل يعمل ليس ما اتُّفق عليه.",
   "Official papers": "الأوراق الرسمية",

@@ -166,6 +166,23 @@ export const SHAREABLE_IDS: ReadonlySet<string> = new Set(
 export const PAPER_IDS: ReadonlySet<string> = new Set([...PAPERS.map(p => p.id), PAPERS_ZIP.id]);
 
 /**
+ * The reading behind the papers — the statute transcription, the facts report, the alignment work,
+ * the letters to the lawyer and the accountant. Working documents, not papers the company issues on
+ * demand, so they are NOT in PAPERS and never appear as cards in its groups.
+ *
+ * Gated by CATEGORY rather than by a list of ids, and deliberately so: the rule then exists before
+ * the rows do, so a document is covered the instant it is filed. Gating by id would mean filing
+ * first and gating second, and in that gap anyone on the documents seat could open them — document
+ * URLs are guessable, which is why the check lives in docOnDisk in the first place.
+ *
+ * They need the same gate as the papers: they state that FY2024 and FY2025 are unfiled, that the
+ * only proof of the 2023 filing is lost, and that the supervision-delegate seat conflicts with a
+ * paid role. None of that belongs on the documents seat. They are never sent as links either —
+ * SHAREABLE_IDS is a list of ids and these are not on it.
+ */
+export const READING_CATEGORY = "Official_Papers_Reading";
+
+/**
  * Who opens an official paper, and who sends one out: the Executive Director and the Finance
  * Officer, **as themselves**. Assuming the seat from another account does not open the statute —
  * the same rule a sealed source file follows (`maySealedRead`), for the same reason: these papers

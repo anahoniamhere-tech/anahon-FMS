@@ -55,7 +55,7 @@ import { shareBlocker, shareExpiry, shareUrl, outboxName, printedChange, SHAREAB
 import {
   PAPERS, PAPERS_ZIP, POLICY_PDFS, PAPER_IDS, SHAREABLE_IDS,
   mayOpenPapers, PAPERS_REFUSAL, paperLinkExpiry, LINK_DAYS, POLICY_LINK_CLASS, linkBlocker, linkOnceEnforced, type LinkClass,
-  paperOutboxDir, paperShareUrl, writePaperPdf, deletePaperPdf, PAPER_LINKS_UNSET,
+  paperOutboxDir, paperShareUrl, writePaperPdf, deletePaperPdf, PAPER_LINKS_UNSET, READING_CATEGORY,
 } from "./src/officialPapers.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
@@ -9376,6 +9376,9 @@ app.get("/api/papers/shelf", async (req, res) => {
       return r ? { token: r.token, url: r.url, expiresAt: r.expiresAt, by: r.createdByName, at: r.createdAt } : null;
     };
     res.json({
+      // Whatever is filed under the reading category, in reference order. No list to keep in step.
+      reading: (await prisma.appDoc.findMany({ where: { category: READING_CATEGORY }, orderBy: { refNo: "asc" } }))
+        .map(d => ({ id: d.id, ref: d.refNo, filename: d.filename, held: held(d.id) })),
       papers: PAPERS.map(p => ({ ...p, held: held(p.id), filename: by.get(p.id)?.filename || "", share: live(p.id), noLink: linkBlocker(p.link) })),
       zip: { ...PAPERS_ZIP, held: held(PAPERS_ZIP.id) },
       // The pack's date is read from the filed PDFs themselves, so re-rendering the pack settles
@@ -12493,7 +12496,9 @@ async function integrityBlocked(doc: any, uid: string): Promise<boolean> {
  * because a document URL is guessable and hiding a card hides nothing.
  */
 async function officialPaperBlocked(doc: any, uid: string, actingAs: string): Promise<boolean> {
-  if (!PAPER_IDS.has(String(doc?.id || ""))) return false;
+  // By id for the papers themselves, by category for the reading behind them — so a working
+  // document is covered the moment it is filed, with no window where it is readable by everyone.
+  if (!PAPER_IDS.has(String(doc?.id || "")) && String(doc?.category || "") !== READING_CATEGORY) return false;
   const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
   return !mayOpenPapers(viewer, actingAs);
 }

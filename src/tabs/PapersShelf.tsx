@@ -7,9 +7,10 @@ import { PAPER_GROUPS, type PaperGroup } from "../officialPapers";
 type Share = { token: string; url: string; expiresAt: string; by: string; at: string } | null;
 type PaperRow = { id: string; ref: string; title: string; date: string; proves: string; group: PaperGroup; held: boolean; filename: string; share: Share; noLink: string };
 type PolicyRow = { id: string; ref: string; label: string; policies: string[]; lang: "en" | "ar"; held: boolean; share: Share; noLink: string; filedOn: string; changedOn: string; stale: boolean };
+type ReadingRow = { id: string; ref: string; filename: string; held: boolean };
 type Shelf = {
   papers: PaperRow[]; zip: { id: string; ref: string; date: string; held: boolean };
-  packDate: string; linkDays: number; linksReady: boolean; onceEnforced: boolean; policyPdfs: PolicyRow[];
+  packDate: string; linkDays: number; linksReady: boolean; onceEnforced: boolean; policyPdfs: PolicyRow[]; reading: ReadingRow[];
 };
 
 const day = (iso: string) => (iso || "").slice(0, 10);
@@ -165,6 +166,37 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
           </div>
         );
       })}
+
+      {shelf.reading.length > 0 && (
+        <div className="border-t border-slate-200 pt-6">
+          <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{t("The reading behind the papers")}</h3>
+          <p className="mt-1 text-[11.5px] text-slate-500">
+            {t("What was read out of the papers and written down: the statute article by article, the facts, the alignment work, the letters. Working documents — they are not sent as links.")}
+          </p>
+          <div className="mt-3 divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+            {shelf.reading.map(r => (
+              <div key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 p-3">
+                <span className="font-mono text-[10.5px] text-slate-400">{r.ref}</span>
+                <span dir="auto" className="min-w-0 flex-1 truncate text-[12.5px] text-slate-800">{r.filename}</span>
+                {r.held ? (
+                  <span className="flex gap-1.5">
+                    <button onClick={() => openDoc({ id: r.id, filename: r.filename })}
+                      className="inline-flex items-center gap-1 rounded bg-slate-900 px-2 py-1 text-[11px] font-bold text-white">
+                      {ic(Eye, "h-3 w-3")} {t("Preview")}
+                    </button>
+                    <a href={withTicket(`/api/document/content/${r.id}`)} download={r.filename}
+                      className="inline-flex items-center gap-1 rounded bg-white px-2 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-300">
+                      {ic(Download, "h-3 w-3")} {t("Download")}
+                    </a>
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-bold text-slate-500">{t("Record only — the file is missing")}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="border-t border-slate-200 pt-6">
         <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{t("The policies, as PDFs to send")}</h3>

@@ -13,7 +13,7 @@ const { readFileSync } = fs;
 import {
   PAPERS, PAPERS_ZIP, POLICY_PDFS, PAPER_IDS, SHAREABLE_IDS, PAPER_GROUPS,
   mayOpenPapers, paperLinkExpiry, paperLinkName, LINK_DAYS, POLICY_LINK_CLASS, linkBlocker, policyPdfsFor,
-  writePaperPdf, deletePaperPdf, paperOutboxName, paperShareUrl, PAPER_LINKS_UNSET,
+  writePaperPdf, deletePaperPdf, paperOutboxName, paperShareUrl, PAPER_LINKS_UNSET, READING_CATEGORY,
 } from "../src/officialPapers.js";
 
 let failed = 0;
@@ -129,6 +129,24 @@ ok("issuing and revoking a link is too",
 ok("a new link retires the old one, and only after the new file exists",
   server.indexOf("writeSharePdf(token, fs.readFileSync(vp), expiresAt)") < server.indexOf('revokePaperShares(doc.id, "replaced by a new link"'));
 ok("a paper we do not hold cannot be sent", /no file — nothing to send/.test(server));
+
+console.log("\nthe reading behind the papers");
+// Gated by category, not by a list of ids, so the rule exists BEFORE the rows are filed. With an
+// id list there is a window between filing and gating where the documents seat can read them —
+// and these say FY2024/25 are unfiled and the 2023 proof is lost.
+ok("the gate covers the reading category, not only the listed papers",
+  /String\(doc\?\.category \|\| ""\) !== READING_CATEGORY/.test(server));
+ok("and the refusal is the same one the papers get",
+  /officialPaperBlocked[\s\S]{0,600}?return !mayOpenPapers\(viewer, actingAs\)/.test(server));
+ok("the shelf lists whatever is filed there, with no second list to keep in step",
+  /where: \{ category: READING_CATEGORY \}/.test(server));
+ok("they are never sent as links — no id of theirs can be", (() => {
+  // SHAREABLE_IDS is built from PAPERS and POLICY_PDFS only; a reading document is in neither.
+  const shelfSrc = readFileSync(new URL("../src/officialPapers.ts", import.meta.url), "utf8");
+  const block = shelfSrc.slice(shelfSrc.indexOf("export const SHAREABLE_IDS"), shelfSrc.indexOf("export const PAPER_IDS"));
+  return !block.includes("READING") && /PAPERS\.map\(p => p\.id\), \.\.\.POLICY_PDFS\.map\(p => p\.id\)/.test(block);
+})());
+ok("the reading is not a card in the papers groups", !PAPERS.some(p => String(p.id).includes("reading")) && READING_CATEGORY === "Official_Papers_Reading");
 
 console.log("\nthe papers outbox is not the quotation one");
 // Admin, 18 Sep 2026: client-facing iContent material never names AnaHon, and a statute is not a
