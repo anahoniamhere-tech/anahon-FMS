@@ -112,8 +112,10 @@ export const PAPERS_ZIP = { id: "doc-1789656185824", ref: "ANH-DOC-00824", date:
  *
  * The pack is by handbook, not by policy — P1 and P2 travel together, P5 to P7 together. The
  * card says so, because a recipient asked for "the finance policy" receives three.
+ *
+ * When it was rendered is not written down here: the shelf reads it from the filed PDFs
+ * themselves, so re-rendering the pack is the only thing anyone has to remember to do.
  */
-export const POLICY_PACK_DATE = "2026-09-17";
 export type PolicyPdf = {
   id: string; ref: string; label: string; policies: string[]; lang: "en" | "ar";
   /** The live handbook this PDF was rendered from. Its file's date on disk says whether the

@@ -102,8 +102,12 @@ ok("the Download link is only reachable past that guard",
   shelf.indexOf("Record only — the file is missing") < shelf.indexOf('href={withTicket(`/api/document/content/${row.id}`)}'));
 ok("a stale policy PDF says so, with both dates",
   /rows\.some\(r => r\.stale\)/.test(shelf) && /the policy changed on/.test(shelf));
-ok("staleness is read from the live handbook's own file, not from an edition number",
-  /function liveChangedOn[\s\S]{0,300}?statSync\(vp\)\.mtime/.test(server));
+ok("staleness is read from the two files themselves, not from a date anyone has to remember",
+  /function fileMoment[\s\S]{0,200}?statSync\(vp\)\.mtimeMs/.test(server) && !/POLICY_PACK_DATE/.test(server));
+ok("and compares their moments, not their days — the change that found this was 11 hours after the pack",
+  /stale: Boolean\(filed && changed && changed > filed\)/.test(server));
+ok("the day a reader is shown is the Beirut day, not UTC",
+  /toLocaleDateString\("en-CA", \{ timeZone: "Asia\/Beirut" \}\)/.test(server));
 ok("the shelf is not drawn for anyone else",
   /const mayOpen = \["Super Admin", "Finance Officer"\]\.includes/.test(shelf) && /if \(!mayOpen \|\| !shelf\) return null;/.test(shelf));
 

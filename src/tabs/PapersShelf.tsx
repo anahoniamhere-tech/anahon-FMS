@@ -6,7 +6,7 @@ import { PAPER_GROUPS, type PaperGroup } from "../officialPapers";
 
 type Share = { token: string; url: string; expiresAt: string; by: string; at: string } | null;
 type PaperRow = { id: string; ref: string; title: string; date: string; proves: string; group: PaperGroup; held: boolean; filename: string; share: Share };
-type PolicyRow = { id: string; ref: string; label: string; policies: string[]; lang: "en" | "ar"; held: boolean; share: Share; changed: string; stale: boolean };
+type PolicyRow = { id: string; ref: string; label: string; policies: string[]; lang: "en" | "ar"; held: boolean; share: Share; filedOn: string; changedOn: string; stale: boolean };
 type Shelf = {
   papers: PaperRow[]; zip: { id: string; ref: string; date: string; held: boolean };
   packDate: string; linkDays: number; policyPdfs: PolicyRow[];
@@ -177,7 +177,7 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
               {rows.some(r => r.stale) && (
                 <p className="mt-2 flex items-start gap-1.5 rounded bg-amber-50 p-2 text-[11px] font-bold text-amber-800">
                   {ic(AlertTriangle, "h-3.5 w-3.5 shrink-0")}
-                  {t("This PDF is from")} {shelf.packDate}; {t("the policy changed on")} {rows.find(r => r.stale)?.changed}. {t("Render the pack again before sending it.")}
+                  {t("This PDF is from")} {rows.find(r => r.stale)?.filedOn}; {t("the policy changed on")} {rows.find(r => r.stale)?.changedOn}. {t("Render the pack again before sending it.")}
                 </p>
               )}
               {rows.map(r => (

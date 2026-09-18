@@ -54,7 +54,7 @@ import { periodMonths, workplanFromActivities, workplanBlocker, type Workplan } 
 import { shareBlocker, shareExpiry, shareUrl, outboxName, printedChange, SHAREABLE_STATUSES } from "./src/quoteShare.js";
 import { SHARE_ORIGIN } from "./src/quoteShare.js";
 import {
-  PAPERS, PAPERS_ZIP, POLICY_PDFS, PAPER_IDS, SHAREABLE_IDS, POLICY_PACK_DATE,
+  PAPERS, PAPERS_ZIP, POLICY_PDFS, PAPER_IDS, SHAREABLE_IDS,
   mayOpenPapers, PAPERS_REFUSAL, paperLinkExpiry, paperLinkName, PAPER_LINK_DAYS,
 } from "./src/officialPapers.js";
 import { mayCall, seatsFor } from "./src/gates.js";
@@ -9300,11 +9300,21 @@ app.post("/api/quotations/share/revoke", async (req, res) => {
  * share copy itself, which is deleted when the link is revoked or replaced.
  */
 
-/** When the live handbook behind a filed policy PDF last changed, as a date, or "" if unknown. */
-function liveChangedOn(doc: any): string {
+/**
+ * When a filed document was last written, as an instant. Used to ask whether a filed policy PDF
+ * still says what the policy says: the PDF's own moment against the live handbook's.
+ *
+ * Instants, not dates, and for a reason found the first time this ran: the pack was rendered on
+ * 17 Sep at 12:15 UTC and the handbooks were amended the same 17 Sep at 23:33 UTC. Comparing
+ * days would have called four stale PDFs current — and comparing UTC days would also have put
+ * that 23:33 change on the wrong day, since in Beirut it was already the 18th.
+ */
+function fileMoment(doc: any): number {
   const vp = vaultPathFromPointer(doc?.base64 || "");
-  try { return vp ? new Date(fs.statSync(vp).mtime).toISOString().slice(0, 10) : ""; } catch { return ""; }
+  try { return vp ? fs.statSync(vp).mtimeMs : 0; } catch { return 0; }
 }
+/** The day a moment fell on where the organisation works, which is the only day a reader means. */
+const beirutDay = (ms: number) => (ms ? new Date(ms).toLocaleDateString("en-CA", { timeZone: "Asia/Beirut" }) : "");
 
 const paperLinkUrl = (token: string, ref: string) => `${SHARE_ORIGIN}/q/${token}/${paperLinkName(ref)}`;
 
@@ -9357,13 +9367,18 @@ app.get("/api/papers/shelf", async (req, res) => {
     res.json({
       papers: PAPERS.map(p => ({ ...p, held: held(p.id), filename: by.get(p.id)?.filename || "", share: live(p.id) })),
       zip: { ...PAPERS_ZIP, held: held(PAPERS_ZIP.id) },
-      packDate: POLICY_PACK_DATE,
+      // The pack's date is read from the filed PDFs themselves, so re-rendering the pack settles
+      // every stale card on its own — there is no date here for anyone to remember to update.
+      packDate: beirutDay(Math.max(0, ...POLICY_PDFS.map(p => fileMoment(by.get(p.id))))),
       linkDays: PAPER_LINK_DAYS,
-      // "changed" is the live handbook's own file date: the honest answer to whether the filed
-      // snapshot still says what the policy says, and it needs no edition number to be kept in step.
       policyPdfs: POLICY_PDFS.map(p => {
-        const changed = liveChangedOn(by.get(p.governs));
-        return { ...p, held: held(p.id), share: live(p.id), changed, stale: Boolean(changed && changed > POLICY_PACK_DATE) };
+        const filed = fileMoment(by.get(p.id));
+        const changed = fileMoment(by.get(p.governs));
+        return {
+          ...p, held: held(p.id), share: live(p.id),
+          filedOn: beirutDay(filed), changedOn: beirutDay(changed),
+          stale: Boolean(filed && changed && changed > filed),
+        };
       }),
     });
   } catch (err: any) {
