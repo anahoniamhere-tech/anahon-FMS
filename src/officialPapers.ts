@@ -94,9 +94,9 @@ export const PAPERS: Paper[] = [
   { id: "doc-1789647217623-7a9a", ref: "ANH-DOC-00794", date: "2023-11-02", group: "Registration & identity", link: "none",
     title: "Constitutive statute, certified true copy — page 1 only",
     proves: "The first page of the statute as a separate certified copy, for when only the front page is asked for." },
-  { id: "doc-1789647217634-8145", ref: "ANH-DOC-00798", date: "2022-11-13", group: "Registration & identity", link: "none", // NOT classified by Saad — defaulted to no link until he places it
+  { id: "doc-1789647217634-8145", ref: "ANH-DOC-00798", date: "2022-10-13", group: "Registration & identity", link: "none", // NOT classified by Saad — defaulted to no link until he places it
     title: "ANAHON S.A.R.L — articles of association, single partner (2022)",
-    proves: "An earlier attempt with a lawyer to set up a separate limited company: notarised on 13 November 2022, capital deposited at BLOM, then cancelled before registration. AnaHon was registered instead as a civil company in 2023. No registration or closure paper is on file, and the capital deposit has not been shown as released." },
+    proves: "An earlier attempt with a lawyer to set up a separate limited company, notarised on 13 October 2022 and cancelled before registration. AnaHon was registered instead as a civil company in 2023." },
   { id: "doc-reg-cert-ar", ref: "ANH-DOC-00309", date: "2023-10-30", group: "Registration & identity", link: "once",
     title: "Ministry of Finance registration certificate 3893185 (Arabic)",
     proves: "The Ministry of Finance certificate carrying AnaHon's tax number, 3893185." },

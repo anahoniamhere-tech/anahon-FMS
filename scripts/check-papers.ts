@@ -151,9 +151,18 @@ ok("every folded paper carries the sentence its holder will show, written for th
 ok("the four lines read from the papers are on their cards, and 00372 is still blank",
   ["ANH-DOC-00311", "ANH-DOC-00798", "ANH-DOC-00818", "ANH-DOC-00819"].every(r => (PAPERS.find(p => p.ref === r)?.proves || "").length > 60)
   && !PAPERS.find(p => p.ref === "ANH-DOC-00372")?.proves);
-ok("the S.A.R.L. line records Saad's account without claiming a paper we do not hold", (() => {
+// Saad closed this thread on 18 Sep: cancelled before registration, no bank account, not to be
+// pursued. The line says that and stops — no deposit, no closure paperwork, nothing that would
+// read as an open errand to whoever picks the card up next.
+ok("the S.A.R.L. line records Saad's account and raises nothing he has closed", (() => {
   const t = PAPERS.find(p => p.ref === "ANH-DOC-00798")?.proves || "";
-  return /cancelled before registration/.test(t) && /No registration or closure paper is on file/.test(t);
+  return /cancelled before registration/.test(t) && !/(deposit|BLOM|closure|register extract)/i.test(t);
+})());
+// The notary page reads تشرين الأول — October, not November — and says Thursday: 13 Oct 2022 was a
+// Thursday, 13 Nov a Sunday. The filename says 2022-11-13, which is what the wrong date came from.
+ok("the S.A.R.L. is dated from the notary page, not from its filename", (() => {
+  const p = PAPERS.find(x => x.ref === "ANH-DOC-00798");
+  return p?.date === "2022-10-13" && /13 October 2022/.test(p?.proves || "");
 })());
 ok("the one-page certified extract is not folded away — it is a different paper",
   !PAPERS.find(p => p.ref === "ANH-DOC-00794")?.heldAs);
