@@ -18,7 +18,9 @@ export function searchMatches(query: string, state: any): Match[] {
     ...take("Voucher", state.expenses, e => e.voucherNo + " " + e.title + " " + e.purpose, 4),
     ...take("Project", state.projects, p => p.code + " " + p.name, 3),
     ...take("Vendor", state.vendors, v => v.name, 3),
-    ...take("Document", state.documents, d => d.filename, 3),
+    // By reference number as well as filename: ANH-DOC numbers are how every other screen, every
+    // audit line and every person here names a document, and until now searching one found nothing.
+    ...take("Document", state.documents, d => (d.refNo || "") + " " + d.filename, 3),
     ...take("Bank", state.bankTransactions, t => t.description, 3),
     ...take("Team member", state.employees, emp => emp.name, 2),
   ];

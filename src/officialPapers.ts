@@ -39,6 +39,16 @@ export type Paper = {
   proves: string;
   group: PaperGroup;
   link: LinkClass;
+  /**
+   * Another paper on this shelf that holds the same instrument, where this one's file is lost.
+   * The card then folds into that paper's, which names the loss in a sentence.
+   *
+   * NOT the superseded mechanism, on purpose: that one means "an older edition, replaced by a
+   * newer one of ours", and it works by moving the file into a /Superseded/ folder — impossible
+   * here, since the file is what is missing. Calling a lost file superseded would turn a loss
+   * into a tidy replacement in the one register where that must never happen.
+   */
+  heldAs?: string;
 };
 
 export const PAPER_GROUPS = ["Registration & identity", "Premises", "Website registration", "Tax"] as const;
@@ -69,9 +79,8 @@ export const PAPERS: Paper[] = [
   { id: "doc-1789652359601", ref: "ANH-DOC-00814", date: "2023-09-30", group: "Registration & identity", link: "none",
     title: "Constitutive statute, certified true copy (Arabic, 11 pages)",
     proves: "The complete certified true copy of the founding statute — use this one." },
-  { id: "doc-statute-ar", ref: "ANH-DOC-00395", date: "2023", group: "Registration & identity", link: "none",
-    title: "Constitutive statute (Arabic, 11 pages)",
-    proves: "The founding statute: what the company is, who manages it, how money is decided. The certified true copy above carries the same text." },
+  { id: "doc-statute-ar", ref: "ANH-DOC-00395", date: "2023", group: "Registration & identity", link: "none", heldAs: "ANH-DOC-00814",     title: "Constitutive statute (Arabic, 11 pages)",
+    proves: "The founding statute: what the company is, who manages it, how money is decided." },
   { id: "doc-1789647217623-7a9a", ref: "ANH-DOC-00794", date: "2023-11-02", group: "Registration & identity", link: "none",
     title: "Constitutive statute, certified true copy — page 1 only",
     proves: "The first page of the statute as a separate certified copy, for when only the front page is asked for." },

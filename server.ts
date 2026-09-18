@@ -9381,7 +9381,17 @@ app.get("/api/papers/shelf", async (req, res) => {
       // and a reader who assumes otherwise about a letter to a lawyer assumes something serious.
       reading: (await prisma.appDoc.findMany({ where: { category: READING_CATEGORY }, orderBy: { refNo: "asc" } }))
         .map(d => ({ id: d.id, ref: d.refNo, filename: d.filename, note: d.note || "", held: held(d.id) })),
-      papers: PAPERS.map(p => ({ ...p, held: held(p.id), filename: by.get(p.id)?.filename || "", share: live(p.id), noLink: linkBlocker(p.link) })),
+      // A paper whose file is lost and which we hold in better form folds into that paper's card,
+      // which names the loss. Only while the holder is really on disk — if that one ever goes
+      // missing too, the lost original comes back as its own record-only card rather than both
+      // quietly disappearing. The row itself is never touched: nothing is hidden from the record,
+      // only from this shelf.
+      papers: PAPERS
+        .filter(p => !(p.heldAs && !held(p.id) && held(PAPERS.find(q => q.ref === p.heldAs)?.id || "")))
+        .map(p => ({
+          ...p, held: held(p.id), filename: by.get(p.id)?.filename || "", share: live(p.id), noLink: linkBlocker(p.link),
+          holdsFor: PAPERS.filter(q => q.heldAs === p.ref && !held(q.id)).map(q => q.ref),
+        })),
       zip: { ...PAPERS_ZIP, held: held(PAPERS_ZIP.id) },
       // The pack's date is read from the filed PDFs themselves, so re-rendering the pack settles
       // every stale card on its own — there is no date here for anyone to remember to update.

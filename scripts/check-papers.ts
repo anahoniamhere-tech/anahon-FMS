@@ -130,6 +130,27 @@ ok("a new link retires the old one, and only after the new file exists",
   server.indexOf("writeSharePdf(token, fs.readFileSync(vp), expiresAt)") < server.indexOf('revokePaperShares(doc.id, "replaced by a new link"'));
 ok("a paper we do not hold cannot be sent", /no file — nothing to send/.test(server));
 
+console.log("\na paper we hold in better form");
+ok("the lost statute scan points at the certified copy that holds it", (() => {
+  const lost = PAPERS.find(p => p.ref === "ANH-DOC-00395");
+  return lost?.heldAs === "ANH-DOC-00814" && PAPERS.some(p => p.ref === "ANH-DOC-00814");
+})());
+ok("the one-page certified extract is not folded away — it is a different paper",
+  !PAPERS.find(p => p.ref === "ANH-DOC-00794")?.heldAs);
+ok("the three tax records are NOT folded away: we hold them in no other form",
+  ["ANH-DOC-00371", "ANH-DOC-00372", "ANH-DOC-00383"].every(r => !PAPERS.find(p => p.ref === r)?.heldAs));
+ok("folding happens only while the paper that holds it is really on disk",
+  /!\(p\.heldAs && !held\(p\.id\) && held\(PAPERS\.find\(q => q\.ref === p\.heldAs\)\?\.id \|\| ""\)\)/.test(server),
+  "a lost original must come back as its own card if its holder goes missing too");
+ok("and the card that holds it names the loss", /holdsFor: PAPERS\.filter\(q => q\.heldAs === p\.ref && !held\(q\.id\)\)/.test(server)
+  && /was lost; this certified copy carries the same text/.test(shelf));
+ok("nothing is hidden from the record — only from this shelf",
+  !/superseded/i.test(readFileSync(new URL("../src/officialPapers.ts", import.meta.url), "utf8").split("heldAs?:")[1]?.slice(0, 400) || "x")
+  || /NOT the superseded mechanism/.test(readFileSync(new URL("../src/officialPapers.ts", import.meta.url), "utf8")));
+ok("a document is findable by its reference number, not only its filename",
+  /take\("Document", state\.documents, d => \(d\.refNo \|\| ""\) \+ " " \+ d\.filename/.test(
+    readFileSync(new URL("../src/searchCore.ts", import.meta.url), "utf8")));
+
 console.log("\nthe reading behind the papers");
 // Gated by category, not by a list of ids, so the rule exists BEFORE the rows are filed. With an
 // id list there is a window between filing and gating where the documents seat can read them —

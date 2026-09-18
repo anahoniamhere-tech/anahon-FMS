@@ -5,7 +5,7 @@ import { ic } from "../nav";
 import { PAPER_GROUPS, type PaperGroup } from "../officialPapers";
 
 type Share = { token: string; url: string; expiresAt: string; by: string; at: string } | null;
-type PaperRow = { id: string; ref: string; title: string; date: string; proves: string; group: PaperGroup; held: boolean; filename: string; share: Share; noLink: string };
+type PaperRow = { id: string; ref: string; title: string; date: string; proves: string; group: PaperGroup; held: boolean; filename: string; share: Share; noLink: string; holdsFor: string[] };
 type PolicyRow = { id: string; ref: string; label: string; policies: string[]; lang: "en" | "ar"; held: boolean; share: Share; noLink: string; filedOn: string; changedOn: string; stale: boolean };
 type ReadingRow = { id: string; ref: string; filename: string; note: string; held: boolean };
 type Shelf = {
@@ -181,6 +181,13 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
                   <p dir="auto" className="text-sm font-bold leading-snug text-slate-900 [text-align:match-parent]">{p.title}</p>
                   <p className="mt-1 font-mono text-[10.5px] text-slate-400">{p.ref}{p.date && ` · ${p.date}`}</p>
                   {p.proves && <p dir="auto" className="mt-1.5 text-[12px] leading-relaxed text-slate-600 [text-align:match-parent]">{p.proves}</p>}
+                  {/* The lost original is named here rather than left as a card of its own, so the
+                      loss is still on the screen and not quietly tidied away. */}
+                  {p.holdsFor.map(ref => (
+                    <p key={ref} className="mt-1.5 text-[11.5px] leading-relaxed text-amber-800">
+                      {t("The original scan")} ({ref}) {t("was lost; this certified copy carries the same text.")}
+                    </p>
+                  ))}
                   {actions(p, p.filename, `${p.title} (${p.ref})`)}
                 </div>
               ))}

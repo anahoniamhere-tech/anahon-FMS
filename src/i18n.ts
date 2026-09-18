@@ -3,6 +3,8 @@
 // records stay in the language they were entered in.
 export const AR: Record<string, string> = {
   // the official papers shelf
+  "The original scan": "المسح الأصلي",
+  "was lost; this certified copy carries the same text.": "فُقد؛ وهذه النسخة المصدّقة تحمل النص نفسه.",
   "The reading behind the papers": "القراءة خلف الأوراق",
   "What was read out of the papers and written down: the statute article by article, the facts, the alignment work, the letters. Working documents — they are not sent as links.": "ما قُرئ من الأوراق ودُوِّن: النظام التأسيسي مادة مادة، والوقائع، وأعمال المطابقة، والرسائل. مستندات عمل — لا تُرسَل بروابط.",
   "This paper is not sent as a link — attach the file to the email yourself.": "لا تُرسَل هذه الورقة برابط — أرفق الملف بالبريد بنفسك.",
