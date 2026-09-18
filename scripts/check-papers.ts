@@ -160,6 +160,12 @@ ok("the S.A.R.L. line records Saad's account and raises nothing he has closed", 
 })());
 // The notary page reads تشرين الأول — October, not November — and says Thursday: 13 Oct 2022 was a
 // Thursday, 13 Nov a Sunday. The filename says 2022-11-13, which is what the wrong date came from.
+// Two facts the alignment plan calls a live risk, and which a tidier sentence would lose: the
+// lease is not the company's and it has already expired. The card must keep saying both.
+ok("the lease card says whose name it is in and that it has run out", (() => {
+  const t = PAPERS.find(p => p.ref === "ANH-DOC-00815")?.proves || "";
+  return /personal name, not the company's/.test(t) && /ran out on 14 July 2026/.test(t);
+})());
 ok("the S.A.R.L. is dated from the notary page, not from its filename", (() => {
   const p = PAPERS.find(x => x.ref === "ANH-DOC-00798");
   return p?.date === "2022-10-13" && /13 October 2022/.test(p?.proves || "");

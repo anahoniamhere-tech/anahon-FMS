@@ -107,7 +107,7 @@ export const PAPERS: Paper[] = [
   // ---- Premises ---------------------------------------------------------------
   { id: "doc-1789652819324", ref: "ANH-DOC-00815", date: "2025-07-15", group: "Premises", link: "week",
     title: "Office lease, Tal 730/11 — Arabic original and certified translation",
-    proves: "The lease on the office: USD 6,000 a year, from 15 July 2025." },
+    proves: "The lease on the Tal office, USD 6,000 a year. Signed in Saad's personal name, not the company's, and it ran out on 14 July 2026 — no renewal is on file." },
   { id: "doc-1789653708168", ref: "ANH-DOC-00818", date: "2023-09-30", group: "Premises", link: "week",
     title: "Permission to occupy the office, notary 6083/2023",
     proves: "Kariman Ahmad Kaddour's irrevocable declaration letting AnaHon occupy the premises free of charge and for no fixed period, and use them as its registered address — the paper the registration relied on." },
