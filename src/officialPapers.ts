@@ -40,8 +40,10 @@ export type Paper = {
   group: PaperGroup;
   link: LinkClass;
   /**
-   * Another paper on this shelf that holds the same instrument, where this one's file is lost.
-   * The card then folds into that paper's, which names the loss in a sentence.
+   * Another paper on this shelf that carries the same instrument. This one's card folds into that
+   * one's, which names it in `foldNote` — either because this one's file is lost (00395), or
+   * because the same paper is genuinely on file twice and the other copy is the fuller one
+   * (00311, the Arabic-only announcement, against 00822, which carries the certified English).
    *
    * NOT the superseded mechanism, on purpose: that one means "an older edition, replaced by a
    * newer one of ours", and it works by moving the file into a /Superseded/ folder — impossible
@@ -49,6 +51,10 @@ export type Paper = {
    * into a tidy replacement in the one register where that must never happen.
    */
   heldAs?: string;
+  /** The sentence the holding card shows. Written per pair, because "the original was lost" and
+   *  "the same paper is also on file" are different facts and neither should be guessed from the
+   *  other. */
+  foldNote?: string;
 };
 
 export const PAPER_GROUPS = ["Registration & identity", "Premises", "Website registration", "Tax"] as const;
@@ -71,21 +77,26 @@ export const PAPERS: Paper[] = [
   { id: "doc-1789647217629-c047", ref: "ANH-DOC-00796", date: "2023-10-13", group: "Registration & identity", link: "once",
     title: "Civil company registration notice and certificate (Arabic, 2 pages)",
     proves: "The registration notice and certificate issued the day after the court entry." },
-  { id: "doc-civil-license", ref: "ANH-DOC-00311", date: "", group: "Registration & identity", link: "once",
-    title: "Civil company licence", proves: "" },
+  { id: "doc-civil-license", ref: "ANH-DOC-00311", date: "2023-09-30", group: "Registration & identity", link: "once",
+    heldAs: "ANH-DOC-00822",
+    foldNote: "The same announcement is also on file as ANH-DOC-00311, Arabic only; this copy carries the certified English.",
+    title: "Civil announcement 14712/2023 — the company's registration, made public (Arabic certified copy)",
+    proves: "The official announcement that AnaHon was registered as a civil company taking the form of a general partnership — naming its office, its five purposes, and Saad Matar as manager and sole authorised signatory." },
   { id: "doc-1789654507974", ref: "ANH-DOC-00822", date: "2023-11-02", group: "Registration & identity", link: "once",
-    title: "Civil publication 14712/2023 and civil company licence — Arabic and certified English",
-    proves: "The official publication of the registration, number 14712/2023 — proof it was published, not only filed." },
+    title: "Civil announcement 14712/2023 — the company's registration, made public (Arabic and certified English)",
+    proves: "The official announcement that AnaHon was registered as a civil company taking the form of a general partnership — naming its office, its five purposes, and Saad Matar as manager and sole authorised signatory. Proof the registration was published, not only filed." },
   { id: "doc-1789652359601", ref: "ANH-DOC-00814", date: "2023-09-30", group: "Registration & identity", link: "none",
     title: "Constitutive statute, certified true copy (Arabic, 11 pages)",
     proves: "The complete certified true copy of the founding statute — use this one." },
-  { id: "doc-statute-ar", ref: "ANH-DOC-00395", date: "2023", group: "Registration & identity", link: "none", heldAs: "ANH-DOC-00814",     title: "Constitutive statute (Arabic, 11 pages)",
+  { id: "doc-statute-ar", ref: "ANH-DOC-00395", date: "2023", group: "Registration & identity", link: "none", heldAs: "ANH-DOC-00814",
+    foldNote: "The original scan (ANH-DOC-00395) was lost; this certified copy carries the same text.",     title: "Constitutive statute (Arabic, 11 pages)",
     proves: "The founding statute: what the company is, who manages it, how money is decided." },
   { id: "doc-1789647217623-7a9a", ref: "ANH-DOC-00794", date: "2023-11-02", group: "Registration & identity", link: "none",
     title: "Constitutive statute, certified true copy — page 1 only",
     proves: "The first page of the statute as a separate certified copy, for when only the front page is asked for." },
   { id: "doc-1789647217634-8145", ref: "ANH-DOC-00798", date: "2022-11-13", group: "Registration & identity", link: "none", // NOT classified by Saad — defaulted to no link until he places it
-    title: "ANAHON SARL incorporation bundle (Arabic)", proves: "" },
+    title: "ANAHON S.A.R.L — articles of association, single partner (2022)",
+    proves: "An earlier attempt with a lawyer to set up a separate limited company: notarised on 13 November 2022, capital deposited at BLOM, then cancelled before registration. AnaHon was registered instead as a civil company in 2023. No registration or closure paper is on file, and the capital deposit has not been shown as released." },
   { id: "doc-reg-cert-ar", ref: "ANH-DOC-00309", date: "2023-10-30", group: "Registration & identity", link: "once",
     title: "Ministry of Finance registration certificate 3893185 (Arabic)",
     proves: "The Ministry of Finance certificate carrying AnaHon's tax number, 3893185." },
@@ -98,9 +109,11 @@ export const PAPERS: Paper[] = [
     title: "Office lease, Tal 730/11 — Arabic original and certified translation",
     proves: "The lease on the office: USD 6,000 a year, from 15 July 2025." },
   { id: "doc-1789653708168", ref: "ANH-DOC-00818", date: "2023-09-30", group: "Premises", link: "week",
-    title: "Premises use declaration, notary 6083/2023", proves: "" },
+    title: "Permission to occupy the office, notary 6083/2023",
+    proves: "Kariman Ahmad Kaddour's irrevocable declaration letting AnaHon occupy the premises free of charge and for no fixed period, and use them as its registered address — the paper the registration relied on." },
   { id: "doc-1789653708218", ref: "ANH-DOC-00819", date: "2005-05-10", group: "Premises", link: "week",
-    title: "Property title, Basatin Tripoli 554/E/11", proves: "" },
+    title: "Land registry certificate, property 554/E/11 Basatin Tripoli",
+    proves: "The land registry's certificate that Kariman Ahmad Kaddour owns that division outright, which is what stands behind her permission for AnaHon to sit there." },
 
   // ---- Website registration ---------------------------------------------------
   { id: "doc-1789647217629-5234", ref: "ANH-DOC-00797", date: "2022-06-13", group: "Website registration", link: "week",

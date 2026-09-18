@@ -183,10 +183,8 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
                   {p.proves && <p dir="auto" className="mt-1.5 text-[12px] leading-relaxed text-slate-600 [text-align:match-parent]">{p.proves}</p>}
                   {/* The lost original is named here rather than left as a card of its own, so the
                       loss is still on the screen and not quietly tidied away. */}
-                  {p.holdsFor.map(ref => (
-                    <p key={ref} className="mt-1.5 text-[11.5px] leading-relaxed text-amber-800">
-                      {t("The original scan")} ({ref}) {t("was lost; this certified copy carries the same text.")}
-                    </p>
+                  {p.holdsFor.map(note => (
+                    <p key={note} dir="auto" className="mt-1.5 text-[11.5px] leading-relaxed text-amber-800 [text-align:match-parent]">{t(note)}</p>
                   ))}
                   {actions(p, p.filename, `${p.title} (${p.ref})`)}
                 </div>

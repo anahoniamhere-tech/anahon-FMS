@@ -30,8 +30,10 @@ ok("every paper names a document id and a reference number",
   PAPERS.filter(p => !/^doc-/.test(p.id) || !/^ANH-DOC-\d{5}$/.test(p.ref)).map(p => p.ref).join(", "));
 ok("no paper is listed twice", new Set(PAPERS.map(p => p.id)).size === PAPERS.length);
 ok("every paper sits in one of the shelf's groups", PAPERS.every(p => (PAPER_GROUPS as readonly string[]).includes(p.group)));
-ok("the five unconfirmed lines are left empty, not guessed",
-  PAPERS.filter(p => !p.proves).map(p => p.ref).join(",") === "ANH-DOC-00311,ANH-DOC-00798,ANH-DOC-00818,ANH-DOC-00819,ANH-DOC-00372",
+// Four of the original five blanks were filled on 18 Sep by reading the papers themselves. The
+// fifth stays blank because its file is lost and nobody — Saad included — can read it.
+ok("the only paper with no line is the one nobody can read",
+  PAPERS.filter(p => !p.proves).map(p => p.ref).join(",") === "ANH-DOC-00372",
   PAPERS.filter(p => !p.proves).map(p => p.ref).join(","));
 ok("P1 to P11 each have a filed PDF in both languages",
   Array.from({ length: 11 }, (_, i) => `P${i + 1}`).every(no => {
@@ -135,15 +137,34 @@ ok("the lost statute scan points at the certified copy that holds it", (() => {
   const lost = PAPERS.find(p => p.ref === "ANH-DOC-00395");
   return lost?.heldAs === "ANH-DOC-00814" && PAPERS.some(p => p.ref === "ANH-DOC-00814");
 })());
+// Read from the papers 18 Sep: 00311 is not a licence, it is the civil announcement 14712/2023 —
+// the same instrument as 00822, which also carries the certified English.
+ok("the Arabic-only announcement folds into the bilingual copy of the same announcement", (() => {
+  const a = PAPERS.find(p => p.ref === "ANH-DOC-00311");
+  return a?.heldAs === "ANH-DOC-00822" && /also on file as ANH-DOC-00311/.test(a?.foldNote || "");
+})());
+ok("neither announcement card still calls it a licence",
+  !["ANH-DOC-00311", "ANH-DOC-00822"].some(r => /licen[cs]e/i.test(PAPERS.find(p => p.ref === r)?.title || "")));
+ok("every folded paper carries the sentence its holder will show, written for that pair",
+  PAPERS.filter(p => p.heldAs).every(p => (p.foldNote || "").includes(p.ref)),
+  PAPERS.filter(p => p.heldAs && !(p.foldNote || "").includes(p.ref)).map(p => p.ref).join(","));
+ok("the four lines read from the papers are on their cards, and 00372 is still blank",
+  ["ANH-DOC-00311", "ANH-DOC-00798", "ANH-DOC-00818", "ANH-DOC-00819"].every(r => (PAPERS.find(p => p.ref === r)?.proves || "").length > 60)
+  && !PAPERS.find(p => p.ref === "ANH-DOC-00372")?.proves);
+ok("the S.A.R.L. line records Saad's account without claiming a paper we do not hold", (() => {
+  const t = PAPERS.find(p => p.ref === "ANH-DOC-00798")?.proves || "";
+  return /cancelled before registration/.test(t) && /No registration or closure paper is on file/.test(t);
+})());
 ok("the one-page certified extract is not folded away — it is a different paper",
   !PAPERS.find(p => p.ref === "ANH-DOC-00794")?.heldAs);
 ok("the three tax records are NOT folded away: we hold them in no other form",
   ["ANH-DOC-00371", "ANH-DOC-00372", "ANH-DOC-00383"].every(r => !PAPERS.find(p => p.ref === r)?.heldAs));
 ok("folding happens only while the paper that holds it is really on disk",
-  /!\(p\.heldAs && !held\(p\.id\) && held\(PAPERS\.find\(q => q\.ref === p\.heldAs\)\?\.id \|\| ""\)\)/.test(server),
-  "a lost original must come back as its own card if its holder goes missing too");
-ok("and the card that holds it names the loss", /holdsFor: PAPERS\.filter\(q => q\.heldAs === p\.ref && !held\(q\.id\)\)/.test(server)
-  && /was lost; this certified copy carries the same text/.test(shelf));
+  /!\(p\.heldAs && held\(PAPERS\.find\(q => q\.ref === p\.heldAs\)\?\.id \|\| ""\)\)/.test(server),
+  "a folded paper must come back as its own card if its holder goes missing");
+ok("and the holding card shows the pair's own sentence, not a generic one",
+  /holdsFor: PAPERS\.filter\(q => q\.heldAs === p\.ref && q\.foldNote\)\.map\(q => q\.foldNote as string\)/.test(server)
+  && /\{p\.holdsFor\.map\(note =>/.test(shelf));
 ok("nothing is hidden from the record — only from this shelf",
   !/superseded/i.test(readFileSync(new URL("../src/officialPapers.ts", import.meta.url), "utf8").split("heldAs?:")[1]?.slice(0, 400) || "x")
   || /NOT the superseded mechanism/.test(readFileSync(new URL("../src/officialPapers.ts", import.meta.url), "utf8")));
