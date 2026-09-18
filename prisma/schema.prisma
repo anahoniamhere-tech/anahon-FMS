@@ -495,6 +495,23 @@ model Quotation {
 }
 
 // A quotation share link (src/quoteShare.ts). Token = the file name on the VPS; never reused.
+/// A private link to one official paper or one filed policy PDF. Same machinery as QuoteShare
+/// (a token, a file in the outbox whose mtime is the expiry), kept in its own table because the
+/// quotation code reads QuoteShare and a row that is not a quotation would leak into it.
+model PaperShare {
+  token         String  @id
+  docId         String
+  url           String
+  createdAt     String
+  createdById   String
+  createdByName String
+  expiresAt     String
+  revokedAt     String?
+  revokeReason  String  @default("")
+
+  @@index([docId])
+}
+
 model QuoteShare {
   token         String  @id
   quotationId   String

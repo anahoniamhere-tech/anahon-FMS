@@ -5,6 +5,7 @@ import {
   Plane, Clock, BarChart3, Archive, Package, Users, Wallet, Newspaper, ClipboardCheck, Info, X, Lightbulb, type LucideIcon,
 } from "lucide-react";
 import { SharedProps } from "./shared";
+import PapersShelf from "./PapersShelf";
 import { withTicket } from "../docTicket";
 import { isSupersededDoc, policyHeading } from "../helpBot";
 import { NAV, ic } from "../nav";
@@ -437,7 +438,7 @@ function renderFlat(blocks: BodyBlock[], accent: Accent, find: string, body: Bod
 
 type Selected = { doc: AppDoc; no: string; title: string; chapters: Chapter[] };
 
-export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHelp, focusId, setFocusId }: SharedProps) {
+export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHelp, focusId, setFocusId, currentUser, triggerToast }: SharedProps) {
   const liveDocs = useMemo(
     () => state.documents.filter(d => d.category === "Handbook" && !isSupersededDoc(d)),
     [state.documents]
@@ -1207,6 +1208,8 @@ export default function HandbooksTab({ state, t, lang, openDoc, openDoor, askHel
               </div>
             </div>
           )}
+
+          <PapersShelf t={t} currentUser={currentUser} triggerToast={triggerToast} openDoc={openDoc} />
 
           {parsed.stillToSettle.length > 0 && (
             <div className="rounded-xl border border-slate-200 bg-white p-4">

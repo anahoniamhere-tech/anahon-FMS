@@ -145,6 +145,12 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/quotations/generate-doc": MANAGERS,
   "/api/quotations/share": MANAGERS,                  // a client link on the VPS (QUOTATION-LINKS.md)
   "/api/quotations/share/revoke": MANAGERS,
+  // The organisation's own papers and the filed policy PDFs: read and sent by the Executive
+  // Director and the Finance Officer. The routes ask again whether it is really them, or a seat
+  // borrowed through Act as — see officialPapers.mayOpenPapers.
+  "/api/papers/shelf": FINANCE,
+  "/api/papers/share": FINANCE,
+  "/api/papers/share/revoke": FINANCE,
   "/api/quotations/issue-receipt": FINANCE,
   "/api/quotations/link-payment": FINANCE,
 

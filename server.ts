@@ -52,6 +52,11 @@ import { CONSULTANT_REVIEW_CATEGORY, isMonth, monthBounds, packExcludes, reconci
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { periodMonths, workplanFromActivities, workplanBlocker, type Workplan } from "./src/workplan.js";
 import { shareBlocker, shareExpiry, shareUrl, outboxName, printedChange, SHAREABLE_STATUSES } from "./src/quoteShare.js";
+import { SHARE_ORIGIN } from "./src/quoteShare.js";
+import {
+  PAPERS, PAPERS_ZIP, POLICY_PDFS, PAPER_IDS, SHAREABLE_IDS, POLICY_PACK_DATE,
+  mayOpenPapers, PAPERS_REFUSAL, paperLinkExpiry, paperLinkName, PAPER_LINK_DAYS,
+} from "./src/officialPapers.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
 import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
@@ -2874,6 +2879,8 @@ const INTEGRITY_KINDS_WHEN_IT_TOUCHES_ED = ["referred-outside", "note"];
  * opening and every refusal is a line; the writes log what changed by field name, never the value —
  * the audit log is read by more seats than the file is. None of it enters loadState.
  */
+/** The seat this request is borrowing, or "" for someone acting as themselves. */
+const actingSeat = (req: any) => String(req.get("X-Acting-As") || "");
 const sealedReader = (req: any) => (maySealedRead((req as any).dbUser, String(req.get("X-Acting-As") || "")) ? (req as any).dbUser : null);
 const sealedView = (f: any) => ({ ...f, docs: (() => { try { return (JSON.parse(f.docsJson || "[]") as SealedDoc[]).map(({ path: _p, ...d }) => d); } catch { return []; } })(), docsJson: undefined });
 
@@ -9285,6 +9292,114 @@ app.post("/api/quotations/share/revoke", async (req, res) => {
   }
 });
 
+/* ---- Official papers, and the filed PDFs of the policies ---------------------------------
+ *
+ * The same outbox a quotation link uses: a token, one PDF whose mtime is its expiry, Admin's
+ * syncer doing the rest. Nothing is re-rendered — the recipient opens the very bytes on file.
+ * A paper is not turned into a record here and nothing is copied out of the vault except the
+ * share copy itself, which is deleted when the link is revoked or replaced.
+ */
+
+/** When the live handbook behind a filed policy PDF last changed, as a date, or "" if unknown. */
+function liveChangedOn(doc: any): string {
+  const vp = vaultPathFromPointer(doc?.base64 || "");
+  try { return vp ? new Date(fs.statSync(vp).mtime).toISOString().slice(0, 10) : ""; } catch { return ""; }
+}
+
+const paperLinkUrl = (token: string, ref: string) => `${SHARE_ORIGIN}/q/${token}/${paperLinkName(ref)}`;
+
+/** Issue a link to one paper, retiring any link that paper already has. */
+async function issuePaperShare(doc: any, ref: string, who: { id: string; name: string }) {
+  const now = new Date();
+  const expiresAt = paperLinkExpiry(now);
+  const token = crypto.randomBytes(16).toString("hex");
+  const vp = vaultPathFromPointer(doc.base64 || "");
+  if (!vp || !fs.existsSync(vp)) throw new Error(`There is a record of ${ref} but no file — nothing to send.`);
+  writeSharePdf(token, fs.readFileSync(vp), expiresAt);
+  // The old link goes only once the new file exists, so a failed write leaves the live one alone.
+  await revokePaperShares(doc.id, "replaced by a new link", who);
+  const row = await prisma.paperShare.create({ data: {
+    token, docId: doc.id, url: paperLinkUrl(token, ref), createdAt: now.toISOString(),
+    createdById: who.id, createdByName: who.name, expiresAt: expiresAt.toISOString(),
+  } });
+  await createAuditLog(who.id, who.name, "Paper Link Issued",
+    `Link ${token.slice(0, 8)}… for ${ref} (${doc.filename}), live until ${row.expiresAt}.`);
+  return row;
+}
+
+async function revokePaperShares(docId: string, reason: string, who: { id?: string; name?: string } | null): Promise<number> {
+  const rows = await prisma.paperShare.findMany({ where: { docId, revokedAt: null } });
+  for (const r of rows) {
+    deleteSharePdf(r.token);
+    await prisma.paperShare.update({ where: { token: r.token }, data: { revokedAt: new Date().toISOString(), revokeReason: reason } });
+    await createAuditLog(who?.id, who?.name || "System", "Paper Link Revoked", `Link ${r.token.slice(0, 8)}… for document ${docId}: ${reason}.`);
+  }
+  return rows.length;
+}
+
+/** Everything the shelf draws: what we hold, what is missing, and which links are live. */
+app.get("/api/papers/shelf", async (req, res) => {
+  try {
+    const ids = [...PAPERS.map(p => p.id), PAPERS_ZIP.id, ...POLICY_PDFS.map(p => p.id), ...POLICY_PDFS.map(p => p.governs)];
+    const rows = await prisma.appDoc.findMany({ where: { id: { in: ids } } });
+    const by = new Map(rows.map(r => [r.id, r]));
+    const held = (id: string) => {
+      const d = by.get(id); if (!d) return false;
+      const vp = vaultPathFromPointer(d.base64 || "");
+      return vp ? fs.existsSync(vp) : Boolean(d.base64);
+    };
+    const shares = await prisma.paperShare.findMany({ where: { revokedAt: null, docId: { in: ids } } });
+    const now = new Date().toISOString();
+    const live = (id: string) => {
+      const r = shares.filter(x => x.docId === id && x.expiresAt > now).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+      return r ? { token: r.token, url: r.url, expiresAt: r.expiresAt, by: r.createdByName, at: r.createdAt } : null;
+    };
+    res.json({
+      papers: PAPERS.map(p => ({ ...p, held: held(p.id), filename: by.get(p.id)?.filename || "", share: live(p.id) })),
+      zip: { ...PAPERS_ZIP, held: held(PAPERS_ZIP.id) },
+      packDate: POLICY_PACK_DATE,
+      linkDays: PAPER_LINK_DAYS,
+      // "changed" is the live handbook's own file date: the honest answer to whether the filed
+      // snapshot still says what the policy says, and it needs no edition number to be kept in step.
+      policyPdfs: POLICY_PDFS.map(p => {
+        const changed = liveChangedOn(by.get(p.governs));
+        return { ...p, held: held(p.id), share: live(p.id), changed, stale: Boolean(changed && changed > POLICY_PACK_DATE) };
+      }),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/papers/share", async (req, res) => {
+  try {
+    const who = (req as any).dbUser;
+    const id = String(req.body?.id || "");
+    if (!SHAREABLE_IDS.has(id)) return res.status(400).json({ error: "Only an official paper or a filed policy PDF can be sent as a link." });
+    const doc = await prisma.appDoc.findUnique({ where: { id } });
+    if (!doc) return res.status(404).json({ error: "Document not found." });
+    if (!/pdf/i.test(String(doc.mimeType || "")) && !/\.pdf$/i.test(String(doc.filename || ""))) {
+      return res.status(400).json({ error: "A link carries a PDF — this file is not one." });
+    }
+    if (!quoteOutboxReady()) return res.status(503).json({ error: QUOTE_LINK_UNSET });
+    const ref = [...PAPERS, ...POLICY_PDFS].find(p => p.id === id)?.ref || doc.refNo;
+    res.json({ success: true, share: await issuePaperShare(doc, ref, who) });
+  } catch (err: any) {
+    res.status(500).json({ error: `The link was not created: ${err.message}` });
+  }
+});
+
+app.post("/api/papers/share/revoke", async (req, res) => {
+  try {
+    const who = (req as any).dbUser;
+    const id = String(req.body?.id || "");
+    if (!SHAREABLE_IDS.has(id)) return res.status(400).json({ error: "Not a paper this door issues links for." });
+    res.json({ success: true, revoked: await revokePaperShares(id, "revoked from the papers shelf", who) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // The client-facing PDF. Rendered from the same quotationHtml the vault copy uses, so the
 // paper the client signs and the paper on file can never diverge. Reuses htmlToPdf (the
 // report pipeline) rather than introducing a second PDF path.
@@ -12287,10 +12402,11 @@ app.get("/api/document/:id/pdf", async (req, res) => {
     if (await personnelBlocked(doc, viewerId)) {
       return res.status(403).json({ error: "This document is part of a personnel file." });
     }
+    if (await officialPaperBlocked(doc, viewerId, actingSeat(req))) return res.status(403).json({ error: PAPERS_REFUSAL });
     if (!/\.html?$/i.test(doc.filename)) {
       return res.status(400).json({ error: "Only HTML documents can be rendered to PDF. Download this one as it is." });
     }
-    const { file, cleanup } = await docOnDisk(doc.id, await viewerIdFromReq(req));
+    const { file, cleanup } = await docOnDisk(doc.id, await viewerIdFromReq(req), actingSeat(req));
     let pdf: Buffer;
     try { pdf = await htmlToPdf(fs.readFileSync(file, "utf8")); } finally { cleanup(); }
     res.setHeader("Content-Type", "application/pdf");
@@ -12309,6 +12425,7 @@ app.get("/api/document/content/:id", async (req, res) => {
     if (await personnelBlocked(doc, await viewerIdFromReq(req))) {
       return res.status(403).json({ error: "This document is part of a personnel file." });
     }
+    if (await officialPaperBlocked(doc, await viewerIdFromReq(req), actingSeat(req))) return res.status(403).json({ error: PAPERS_REFUSAL });
 
     res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
     res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(doc.filename)}"`);
@@ -12339,6 +12456,17 @@ async function integrityBlocked(doc: any, uid: string): Promise<boolean> {
   return !(viewer && viewer.active && viewer.role === "Super Admin");
 }
 
+/**
+ * The organisation's own papers — statute, registration, lease, tax filings — are read by the
+ * Executive Director and the Finance Officer, as themselves. Asked here rather than in the door,
+ * because a document URL is guessable and hiding a card hides nothing.
+ */
+async function officialPaperBlocked(doc: any, uid: string, actingAs: string): Promise<boolean> {
+  if (!PAPER_IDS.has(String(doc?.id || ""))) return false;
+  const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
+  return !mayOpenPapers(viewer, actingAs);
+}
+
 async function personnelBlocked(doc: any, uid: string): Promise<boolean> {
   if (!isPersonnelDoc(doc)) return false;
   const viewer = uid ? await prisma.user.findUnique({ where: { id: uid } }) : null;
@@ -12351,10 +12479,11 @@ async function personnelBlocked(doc: any, uid: string): Promise<boolean> {
 
 /** Locate a document on disk. Legacy inline-base64 rows are spilled to a temp file so
  *  PyMuPDF can read them; the caller gets back a cleanup to run when it's done. */
-async function docOnDisk(id: string, uid = ""): Promise<{ file: string; cleanup: () => void; doc: any }> {
+async function docOnDisk(id: string, uid = "", actingAs = ""): Promise<{ file: string; cleanup: () => void; doc: any }> {
   const doc = await prisma.appDoc.findUnique({ where: { id } });
   if (!doc) throw Object.assign(new Error("Document not found."), { status: 404 });
   if (await integrityBlocked(doc, uid)) throw Object.assign(new Error("That document belongs to the integrity register."), { status: 403 });
+  if (await officialPaperBlocked(doc, uid, actingAs)) throw Object.assign(new Error(PAPERS_REFUSAL), { status: 403 });
   if (await personnelBlocked(doc, uid)) throw Object.assign(new Error("This document is part of a personnel file."), { status: 403 });
   const vaultPath = vaultPathFromPointer(doc.base64 || "");
   if (vaultPath) {
@@ -12379,7 +12508,7 @@ const py = async (script: string, args: string[], binary = false): Promise<any> 
 app.get("/api/document/pages/:id", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req));
+    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req), actingSeat(req));
     cleanup = d.cleanup;
     const out = await py("import sys,fitz;print(fitz.open(sys.argv[1]).page_count)", [d.file]);
     res.json({ pages: parseInt(String(out).trim(), 10) || 0 });
@@ -12393,7 +12522,7 @@ app.get("/api/document/pages/:id", async (req, res) => {
 app.get("/api/document/page/:id/:n", async (req, res) => {
   let cleanup = () => { };
   try {
-    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req));
+    const d = await docOnDisk(req.params.id, await viewerIdFromReq(req), actingSeat(req));
     cleanup = d.cleanup;
     const png: Buffer = await py(
       "import sys,fitz;d=fitz.open(sys.argv[1]);sys.stdout.buffer.write(" +
@@ -12428,8 +12557,8 @@ const DOCX_TO_TEXT =
   "print(re.sub(r'\\n{3,}', '\\n\\n', x).strip())";
 const PDF_TO_TEXT = "import sys,fitz; d=fitz.open(sys.argv[1]); print('\\n'.join(p.get_text() for p in d))";
 
-async function documentText(id: string, uid = ""): Promise<string> {
-  const d = await docOnDisk(id, uid);
+async function documentText(id: string, uid = "", actingAs = ""): Promise<string> {
+  const d = await docOnDisk(id, uid, actingAs);
   try {
     const isPdf = String(d.doc.mimeType || "").includes("pdf") || /\.pdf$/i.test(String(d.doc.filename || ""));
     return String(await py(isPdf ? PDF_TO_TEXT : DOCX_TO_TEXT, [d.file]));
@@ -12438,7 +12567,7 @@ async function documentText(id: string, uid = ""): Promise<string> {
 
 app.get("/api/document/docx-text/:id", async (req, res) => {
   try {
-    res.type("text/plain; charset=utf-8").send(await documentText(req.params.id, await viewerIdFromReq(req)));
+    res.type("text/plain; charset=utf-8").send(await documentText(req.params.id, await viewerIdFromReq(req), actingSeat(req)));
   } catch (err: any) {
     res.status(err.status || 500).json({ error: err.message });
   }
