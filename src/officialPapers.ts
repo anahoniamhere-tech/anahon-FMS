@@ -16,6 +16,18 @@
  */
 
 /** A paper the organisation has to be able to produce on demand. */
+/**
+ * How much protection a link to this paper gets — Saad's decision, 18 Sep 2026, by class of paper.
+ *
+ * "none" is the statute: he attaches the file to an email himself. The certified true copy is the
+ * one paper where "here is a link" is worse for us than "here is the file".
+ * "once" is the registration and tax set — the papers that prove AnaHon is AnaHon, and the set
+ * someone would want in order to impersonate it: opened once, then the file is gone, 24 hours.
+ * "week" is everything else: premises, the website set, and the filed policy PDFs.
+ */
+export type LinkClass = "none" | "once" | "week";
+export const LINK_DAYS: Record<Exclude<LinkClass, "none">, number> = { once: 1, week: 7 };
+
 export type Paper = {
   /** The document id already in the vault. Never a filename match — filenames repeat. */
   id: string;
@@ -26,6 +38,7 @@ export type Paper = {
   /** What this paper proves, in one line. Empty = awaiting Saad; the card shows nothing. */
   proves: string;
   group: PaperGroup;
+  link: LinkClass;
 };
 
 export const PAPER_GROUPS = ["Registration & identity", "Premises", "Website registration", "Tax"] as const;
@@ -33,71 +46,71 @@ export type PaperGroup = (typeof PAPER_GROUPS)[number];
 
 export const PAPERS: Paper[] = [
   // ---- Registration & identity ------------------------------------------------
-  { id: "doc-court-cert-ar", ref: "ANH-DOC-00394", date: "2023-10-12", group: "Registration & identity",
+  { id: "doc-court-cert-ar", ref: "ANH-DOC-00394", date: "2023-10-12", group: "Registration & identity", link: "once",
     title: "Court registration certificate 90/2023 (Arabic)",
     proves: "The court's own Arabic certificate that AnaHon is registered as civil company 90/2023." },
-  { id: "doc-reg-cert-en", ref: "ANH-DOC-00310", date: "2023-10-12", group: "Registration & identity",
+  { id: "doc-reg-cert-en", ref: "ANH-DOC-00310", date: "2023-10-12", group: "Registration & identity", link: "once",
     title: "Registration certificate 90/2023, certified English",
     proves: "The certified English certificate of the company's registration — the one to give a donor or a foreign bank." },
-  { id: "doc-1789654293478", ref: "ANH-DOC-00821", date: "2023-10-12", group: "Registration & identity",
+  { id: "doc-1789654293478", ref: "ANH-DOC-00821", date: "2023-10-12", group: "Registration & identity", link: "once",
     title: "Court registration certificate 90/2023 — Arabic and certified English",
     proves: "The bilingual certified copy — Arabic original and sworn English translation in one file." },
-  { id: "doc-1789653353157", ref: "ANH-DOC-00817", date: "2023-10-12", group: "Registration & identity",
+  { id: "doc-1789653353157", ref: "ANH-DOC-00817", date: "2023-10-12", group: "Registration & identity", link: "once",
     title: "Court registration request, civil partnership 90/2023 — Arabic and certified English",
     proves: "The application AnaHon filed to be registered, showing what was declared to the court." },
-  { id: "doc-1789647217629-c047", ref: "ANH-DOC-00796", date: "2023-10-13", group: "Registration & identity",
+  { id: "doc-1789647217629-c047", ref: "ANH-DOC-00796", date: "2023-10-13", group: "Registration & identity", link: "once",
     title: "Civil company registration notice and certificate (Arabic, 2 pages)",
     proves: "The registration notice and certificate issued the day after the court entry." },
-  { id: "doc-civil-license", ref: "ANH-DOC-00311", date: "", group: "Registration & identity",
+  { id: "doc-civil-license", ref: "ANH-DOC-00311", date: "", group: "Registration & identity", link: "once",
     title: "Civil company licence", proves: "" },
-  { id: "doc-1789654507974", ref: "ANH-DOC-00822", date: "2023-11-02", group: "Registration & identity",
+  { id: "doc-1789654507974", ref: "ANH-DOC-00822", date: "2023-11-02", group: "Registration & identity", link: "once",
     title: "Civil publication 14712/2023 and civil company licence — Arabic and certified English",
     proves: "The official publication of the registration, number 14712/2023 — proof it was published, not only filed." },
-  { id: "doc-1789652359601", ref: "ANH-DOC-00814", date: "2023-09-30", group: "Registration & identity",
+  { id: "doc-1789652359601", ref: "ANH-DOC-00814", date: "2023-09-30", group: "Registration & identity", link: "none",
     title: "Constitutive statute, certified true copy (Arabic, 11 pages)",
     proves: "The complete certified true copy of the founding statute — use this one." },
-  { id: "doc-statute-ar", ref: "ANH-DOC-00395", date: "2023", group: "Registration & identity",
+  { id: "doc-statute-ar", ref: "ANH-DOC-00395", date: "2023", group: "Registration & identity", link: "none",
     title: "Constitutive statute (Arabic, 11 pages)",
     proves: "The founding statute: what the company is, who manages it, how money is decided. The certified true copy above carries the same text." },
-  { id: "doc-1789647217623-7a9a", ref: "ANH-DOC-00794", date: "2023-11-02", group: "Registration & identity",
+  { id: "doc-1789647217623-7a9a", ref: "ANH-DOC-00794", date: "2023-11-02", group: "Registration & identity", link: "none",
     title: "Constitutive statute, certified true copy — page 1 only",
     proves: "The first page of the statute as a separate certified copy, for when only the front page is asked for." },
-  { id: "doc-1789647217634-8145", ref: "ANH-DOC-00798", date: "2022-11-13", group: "Registration & identity",
+  { id: "doc-1789647217634-8145", ref: "ANH-DOC-00798", date: "2022-11-13", group: "Registration & identity", link: "none", // NOT classified by Saad — defaulted to no link until he places it
     title: "ANAHON SARL incorporation bundle (Arabic)", proves: "" },
-  { id: "doc-reg-cert-ar", ref: "ANH-DOC-00309", date: "2023-10-30", group: "Registration & identity",
+  { id: "doc-reg-cert-ar", ref: "ANH-DOC-00309", date: "2023-10-30", group: "Registration & identity", link: "once",
     title: "Ministry of Finance registration certificate 3893185 (Arabic)",
     proves: "The Ministry of Finance certificate carrying AnaHon's tax number, 3893185." },
-  { id: "doc-1789653177476", ref: "ANH-DOC-00816", date: "2023-10-30", group: "Registration & identity",
+  { id: "doc-1789653177476", ref: "ANH-DOC-00816", date: "2023-10-30", group: "Registration & identity", link: "once",
     title: "Ministry of Finance certificate 3893185 — Arabic and certified English",
     proves: "The bilingual certified copy of the tax-number certificate." },
 
   // ---- Premises ---------------------------------------------------------------
-  { id: "doc-1789652819324", ref: "ANH-DOC-00815", date: "2025-07-15", group: "Premises",
+  { id: "doc-1789652819324", ref: "ANH-DOC-00815", date: "2025-07-15", group: "Premises", link: "week",
     title: "Office lease, Tal 730/11 — Arabic original and certified translation",
     proves: "The lease on the office: USD 6,000 a year, from 15 July 2025." },
-  { id: "doc-1789653708168", ref: "ANH-DOC-00818", date: "2023-09-30", group: "Premises",
+  { id: "doc-1789653708168", ref: "ANH-DOC-00818", date: "2023-09-30", group: "Premises", link: "week",
     title: "Premises use declaration, notary 6083/2023", proves: "" },
-  { id: "doc-1789653708218", ref: "ANH-DOC-00819", date: "2005-05-10", group: "Premises",
+  { id: "doc-1789653708218", ref: "ANH-DOC-00819", date: "2005-05-10", group: "Premises", link: "week",
     title: "Property title, Basatin Tripoli 554/E/11", proves: "" },
 
   // ---- Website registration ---------------------------------------------------
-  { id: "doc-1789647217629-5234", ref: "ANH-DOC-00797", date: "2022-06-13", group: "Website registration",
+  { id: "doc-1789647217629-5234", ref: "ANH-DOC-00797", date: "2022-06-13", group: "Website registration", link: "week",
     title: "Website registration form (إستمارة علم وخبر)",
     proves: "The form filed to register anahon.org as a publication." },
-  { id: "doc-1789647217627-160c", ref: "ANH-DOC-00795", date: "2022-08-05", group: "Website registration",
+  { id: "doc-1789647217627-160c", ref: "ANH-DOC-00795", date: "2022-08-05", group: "Website registration", link: "week",
     title: "Website registration statement (افادة علم وخبر)",
     proves: "The statement issued on that filing." },
-  { id: "doc-1789654115613", ref: "ANH-DOC-00820", date: "2022-08-05", group: "Website registration",
+  { id: "doc-1789654115613", ref: "ANH-DOC-00820", date: "2022-08-05", group: "Website registration", link: "week",
     title: "Website notice certificate NAC 97, anahon.org — Arabic and certified English",
     proves: "The certificate, number NAC 97, that anahon.org is a registered publication — the paper a press body asks for." },
 
   // ---- Tax --------------------------------------------------------------------
-  { id: "doc-a-general-tax-regularization-2023-income-tax-declaration-filed-receipts-24", ref: "ANH-DOC-00371", date: "2024-07-18", group: "Tax",
+  { id: "doc-a-general-tax-regularization-2023-income-tax-declaration-filed-receipts-24", ref: "ANH-DOC-00371", date: "2024-07-18", group: "Tax", link: "once",
     title: "2023 income tax declaration, as filed (receipts 245019055, LibanPost)",
     proves: "The 2023 income tax return as filed, with the LibanPost receipt proving the date it was lodged." },
-  { id: "doc-a-general-tax-regularization-jad-maaliki-paid-audit-invoice-pdf", ref: "ANH-DOC-00372", date: "", group: "Tax",
+  { id: "doc-a-general-tax-regularization-jad-maaliki-paid-audit-invoice-pdf", ref: "ANH-DOC-00372", date: "", group: "Tax", link: "once",
     title: "Auditor's invoice, paid (Jad Maaliki)", proves: "" },
-  { id: "doc-regpack-2026", ref: "ANH-DOC-00383", date: "2026-07-31", group: "Tax",
+  { id: "doc-regpack-2026", ref: "ANH-DOC-00383", date: "2026-07-31", group: "Tax", link: "once",
     title: "Tax regularisation evidence pack, FY2023–2026",
     proves: "Everything assembled for the tax regularisation: what was filed, what was paid, what is still open." },
 ];
@@ -194,12 +207,40 @@ export function paperShareUrl(token: string, ref: string): string {
   return `${origin.replace(/\/+$/, "")}/p/${token}/${paperLinkName(ref)}`;
 }
 
-/** How long a link lives. A paper has no validity date of its own, so it gets one number. */
-export const PAPER_LINK_DAYS = 7;
-export function paperLinkExpiry(now: Date): Date {
-  const day = new Date(now.getTime() + PAPER_LINK_DAYS * 86_400_000).toISOString().slice(0, 10);
-  // End of the Beirut day, as a quotation link does — see quoteShare.shareExpiry.
+/** The filed policy PDFs travel with everything else: a week. */
+export const POLICY_LINK_CLASS: LinkClass = "week";
+
+/**
+ * When a link dies. A week runs to the end of its Beirut day, as a quotation link does; a
+ * one-time link is 24 hours from the moment it was made, because rounding it to the end of a day
+ * would sometimes hand out nearly two.
+ */
+export function paperLinkExpiry(now: Date, cls: Exclude<LinkClass, "none">): Date {
+  if (cls === "once") return new Date(now.getTime() + 86_400_000);
+  const day = new Date(now.getTime() + LINK_DAYS.week * 86_400_000).toISOString().slice(0, 10);
   return new Date(`${day}T23:59:59+02:00`);
+}
+
+/**
+ * Whether the serving side can actually take a one-time link down after its first fetch.
+ *
+ * The FMS writes a file into an outbox and something else mirrors and serves it; **nothing tells
+ * the FMS the file was fetched**, so this side cannot make a link one-time on its own. Admin sets
+ * `PAPER_LINK_ONCE=1` only once their side removes the file on first successful download.
+ *
+ * Until then a "once" paper gets **no link at all** rather than a plain 24-hour one. Saad approved
+ * one-time for the registration and tax set; handing him a reusable link instead — one that keeps
+ * working every time it is forwarded — would be quietly giving him something weaker than what he
+ * agreed to, which is worse than making him wait.
+ */
+export const linkOnceEnforced = () => process.env.PAPER_LINK_ONCE === "1";
+
+/** Why this paper cannot be sent as a link right now, or "" if it can. */
+export function linkBlocker(cls: LinkClass): string {
+  if (cls === "none") return "This paper is not sent as a link — attach the file to the email yourself.";
+  if (cls === "once" && !linkOnceEnforced())
+    return "A one-time link for this paper is not switched on yet: the server that hands it out cannot yet remove it after the first download, and a link that keeps working is not what was agreed.";
+  return "";
 }
 
 /** The name the recipient's browser saves it under. Built from the reference number, so a file

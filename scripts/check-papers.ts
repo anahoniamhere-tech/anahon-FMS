@@ -12,7 +12,7 @@ import * as path from "node:path";
 const { readFileSync } = fs;
 import {
   PAPERS, PAPERS_ZIP, POLICY_PDFS, PAPER_IDS, SHAREABLE_IDS, PAPER_GROUPS,
-  mayOpenPapers, paperLinkExpiry, paperLinkName, PAPER_LINK_DAYS, policyPdfsFor,
+  mayOpenPapers, paperLinkExpiry, paperLinkName, LINK_DAYS, POLICY_LINK_CLASS, linkBlocker, policyPdfsFor,
   writePaperPdf, deletePaperPdf, paperOutboxName, paperShareUrl, PAPER_LINKS_UNSET,
 } from "../src/officialPapers.js";
 
@@ -55,11 +55,43 @@ ok("a reference number that starts with a path loses it",
   paperLinkName("../../etc/passwd") === "AnaHon-etc-passwd.pdf", paperLinkName("../../etc/passwd"));
 ok("and one with a path buried in the middle does too",
   !/\.\./.test(paperLinkName("a/../b")), paperLinkName("a/../b"));
-ok(`a link lasts ${PAPER_LINK_DAYS} days`, (() => {
+ok("an everyday link lasts 7 days", (() => {
   const now = new Date("2026-09-18T09:00:00Z");
-  const days = (paperLinkExpiry(now).getTime() - now.getTime()) / 86_400_000;
-  return days > PAPER_LINK_DAYS - 0.2 && days < PAPER_LINK_DAYS + 1;
+  const days = (paperLinkExpiry(now, "week").getTime() - now.getTime()) / 86_400_000;
+  return days > LINK_DAYS.week - 0.2 && days < LINK_DAYS.week + 1;
 })());
+ok("a one-time link lasts 24 hours from the moment it is made, not to the end of a day", (() => {
+  const now = new Date("2026-09-18T09:00:00Z");
+  return paperLinkExpiry(now, "once").getTime() - now.getTime() === 86_400_000;
+})());
+
+console.log("\nSaad's classes, 18 Sep 2026");
+const ofRef = (r: string) => PAPERS.find(p => p.ref === r)?.link;
+ok("the statute is never sent as a link", ["ANH-DOC-00814", "ANH-DOC-00794", "ANH-DOC-00395"].every(r => ofRef(r) === "none"));
+ok("the registration and tax set is one-time",
+  ["ANH-DOC-00309","ANH-DOC-00310","ANH-DOC-00311","ANH-DOC-00394","ANH-DOC-00796","ANH-DOC-00817","ANH-DOC-00821","ANH-DOC-00822","ANH-DOC-00816","ANH-DOC-00371","ANH-DOC-00372","ANH-DOC-00383"].every(r => ofRef(r) === "once"));
+ok("premises and the website set are a week",
+  ["ANH-DOC-00815","ANH-DOC-00818","ANH-DOC-00819","ANH-DOC-00795","ANH-DOC-00797","ANH-DOC-00820"].every(r => ofRef(r) === "week"));
+ok("the one paper Saad did not classify is not offered as a link", ofRef("ANH-DOC-00798") === "none");
+ok("every paper has a class, and the policy PDFs travel as a week",
+  PAPERS.every(p => ["none", "once", "week"].includes(p.link)) && POLICY_LINK_CLASS === "week");
+ok("a 'none' paper is refused with a reason a reader can act on", /attach the file to the email yourself/.test(linkBlocker("none")));
+ok("a one-time link is refused while the serving side cannot take it down", (() => {
+  delete process.env.PAPER_LINK_ONCE;
+  return linkBlocker("once").includes("not switched on yet");
+})());
+ok("and allowed once it can", (() => {
+  process.env.PAPER_LINK_ONCE = "1";
+  const r = linkBlocker("once") === "";
+  delete process.env.PAPER_LINK_ONCE;
+  return r;
+})());
+ok("a week link is never blocked", linkBlocker("week") === "");
+ok("the route asks the class before it writes anything", (() => {
+  const i = server.indexOf("const blocked = linkBlocker(cls);");
+  return i > 0 && i < server.indexOf("issuePaperShare(doc, ref");
+})());
+ok("and the card says why there is no button", /!row\.share && row\.noLink && <p/.test(shelf));
 
 console.log("\nwho may open a paper");
 const SA = { role: "Super Admin", active: true }, FO = { role: "Finance Officer", active: true };
@@ -160,7 +192,7 @@ ok("and compares their moments, not their days — the change that found this wa
 ok("the day a reader is shown is the Beirut day, not UTC",
   /toLocaleDateString\("en-CA", \{ timeZone: "Asia\/Beirut" \}\)/.test(server));
 ok("with links not set up, the Send button is not drawn at all",
-  /\{!row\.share && shelf\.linksReady && \(/.test(shelf) && /linksReady: paperLinksReady\(\)/.test(server));
+  /\{!row\.share && shelf\.linksReady && !row\.noLink && \(/.test(shelf) && /linksReady: paperLinksReady\(\)/.test(server));
 ok("the shelf is not drawn for anyone else",
   /const mayOpen = \["Super Admin", "Finance Officer"\]\.includes/.test(shelf) && /if \(!mayOpen \|\| !shelf\) return null;/.test(shelf));
 

@@ -54,7 +54,7 @@ import { periodMonths, workplanFromActivities, workplanBlocker, type Workplan } 
 import { shareBlocker, shareExpiry, shareUrl, outboxName, printedChange, SHAREABLE_STATUSES } from "./src/quoteShare.js";
 import {
   PAPERS, PAPERS_ZIP, POLICY_PDFS, PAPER_IDS, SHAREABLE_IDS,
-  mayOpenPapers, PAPERS_REFUSAL, paperLinkExpiry, PAPER_LINK_DAYS,
+  mayOpenPapers, PAPERS_REFUSAL, paperLinkExpiry, LINK_DAYS, POLICY_LINK_CLASS, linkBlocker, linkOnceEnforced, type LinkClass,
   paperOutboxDir, paperShareUrl, writePaperPdf, deletePaperPdf, PAPER_LINKS_UNSET,
 } from "./src/officialPapers.js";
 import { mayCall, seatsFor } from "./src/gates.js";
@@ -9300,6 +9300,10 @@ app.post("/api/quotations/share/revoke", async (req, res) => {
  * share copy itself, which is deleted when the link is revoked or replaced.
  */
 
+/** Saad's class for this paper; anything not on the shelf's own list is not sent as a link. */
+const linkClassOf = (id: string): LinkClass =>
+  PAPERS.find(p => p.id === id)?.link ?? (POLICY_PDFS.some(p => p.id === id) ? POLICY_LINK_CLASS : "none");
+
 /** Both settings present, and the directory actually writable. Nothing is issued otherwise. */
 function paperLinksReady(): boolean {
   const dir = paperOutboxDir();
@@ -9324,9 +9328,9 @@ function fileMoment(doc: any): number {
 const beirutDay = (ms: number) => (ms ? new Date(ms).toLocaleDateString("en-CA", { timeZone: "Asia/Beirut" }) : "");
 
 /** Issue a link to one paper, retiring any link that paper already has. */
-async function issuePaperShare(doc: any, ref: string, who: { id: string; name: string }) {
+async function issuePaperShare(doc: any, ref: string, cls: Exclude<LinkClass, "none">, who: { id: string; name: string }) {
   const now = new Date();
-  const expiresAt = paperLinkExpiry(now);
+  const expiresAt = paperLinkExpiry(now, cls);
   const token = crypto.randomBytes(16).toString("hex");
   const vp = vaultPathFromPointer(doc.base64 || "");
   if (!vp || !fs.existsSync(vp)) throw new Error(`There is a record of ${ref} but no file — nothing to send.`);
@@ -9338,7 +9342,7 @@ async function issuePaperShare(doc: any, ref: string, who: { id: string; name: s
     createdById: who.id, createdByName: who.name, expiresAt: expiresAt.toISOString(),
   } });
   await createAuditLog(who.id, who.name, "Paper Link Issued",
-    `Link ${token.slice(0, 8)}… for ${ref} (${doc.filename}), live until ${row.expiresAt}.`);
+    `Link ${token.slice(0, 8)}… for ${ref} (${doc.filename}), ${cls === "once" ? "one-time, " : ""}live until ${row.expiresAt}.`);
   return row;
 }
 
@@ -9372,18 +9376,19 @@ app.get("/api/papers/shelf", async (req, res) => {
       return r ? { token: r.token, url: r.url, expiresAt: r.expiresAt, by: r.createdByName, at: r.createdAt } : null;
     };
     res.json({
-      papers: PAPERS.map(p => ({ ...p, held: held(p.id), filename: by.get(p.id)?.filename || "", share: live(p.id) })),
+      papers: PAPERS.map(p => ({ ...p, held: held(p.id), filename: by.get(p.id)?.filename || "", share: live(p.id), noLink: linkBlocker(p.link) })),
       zip: { ...PAPERS_ZIP, held: held(PAPERS_ZIP.id) },
       // The pack's date is read from the filed PDFs themselves, so re-rendering the pack settles
       // every stale card on its own — there is no date here for anyone to remember to update.
       packDate: beirutDay(Math.max(0, ...POLICY_PDFS.map(p => fileMoment(by.get(p.id))))),
-      linkDays: PAPER_LINK_DAYS,
+      linkDays: LINK_DAYS.week,
       linksReady: paperLinksReady(),
+      onceEnforced: linkOnceEnforced(),
       policyPdfs: POLICY_PDFS.map(p => {
         const filed = fileMoment(by.get(p.id));
         const changed = fileMoment(by.get(p.governs));
         return {
-          ...p, held: held(p.id), share: live(p.id),
+          ...p, held: held(p.id), share: live(p.id), noLink: linkBlocker(POLICY_LINK_CLASS),
           filedOn: beirutDay(filed), changedOn: beirutDay(changed),
           stale: Boolean(filed && changed && changed > filed),
         };
@@ -9405,8 +9410,11 @@ app.post("/api/papers/share", async (req, res) => {
       return res.status(400).json({ error: "A link carries a PDF — this file is not one." });
     }
     if (!paperLinksReady()) return res.status(503).json({ error: PAPER_LINKS_UNSET });
+    const cls = linkClassOf(id);
+    const blocked = linkBlocker(cls);
+    if (blocked) return res.status(400).json({ error: blocked });
     const ref = [...PAPERS, ...POLICY_PDFS].find(p => p.id === id)?.ref || doc.refNo;
-    res.json({ success: true, share: await issuePaperShare(doc, ref, who) });
+    res.json({ success: true, share: await issuePaperShare(doc, ref, cls as Exclude<LinkClass, "none">, who) });
   } catch (err: any) {
     res.status(500).json({ error: `The link was not created: ${err.message}` });
   }

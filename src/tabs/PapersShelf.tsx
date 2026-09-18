@@ -5,11 +5,11 @@ import { ic } from "../nav";
 import { PAPER_GROUPS, type PaperGroup } from "../officialPapers";
 
 type Share = { token: string; url: string; expiresAt: string; by: string; at: string } | null;
-type PaperRow = { id: string; ref: string; title: string; date: string; proves: string; group: PaperGroup; held: boolean; filename: string; share: Share };
-type PolicyRow = { id: string; ref: string; label: string; policies: string[]; lang: "en" | "ar"; held: boolean; share: Share; filedOn: string; changedOn: string; stale: boolean };
+type PaperRow = { id: string; ref: string; title: string; date: string; proves: string; group: PaperGroup; held: boolean; filename: string; share: Share; noLink: string };
+type PolicyRow = { id: string; ref: string; label: string; policies: string[]; lang: "en" | "ar"; held: boolean; share: Share; noLink: string; filedOn: string; changedOn: string; stale: boolean };
 type Shelf = {
   papers: PaperRow[]; zip: { id: string; ref: string; date: string; held: boolean };
-  packDate: string; linkDays: number; linksReady: boolean; policyPdfs: PolicyRow[];
+  packDate: string; linkDays: number; linksReady: boolean; onceEnforced: boolean; policyPdfs: PolicyRow[];
 };
 
 const day = (iso: string) => (iso || "").slice(0, 10);
@@ -87,7 +87,7 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
   };
 
   /** Preview / Download / Share — or, for a paper we do not hold, an honest grey strip. */
-  const actions = (row: { id: string; held: boolean; share: Share }, filename: string, what: string) => {
+  const actions = (row: { id: string; held: boolean; share: Share; noLink: string }, filename: string, what: string) => {
     if (!row.held) {
       return (
         <div className="mt-3 rounded-lg bg-slate-100 p-2.5">
@@ -109,7 +109,7 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
             className="inline-flex items-center gap-1 rounded bg-white px-2.5 py-1 text-[11px] font-bold text-slate-700 ring-1 ring-slate-300">
             {ic(Download, "h-3 w-3")} {t("Download")}
           </a>
-          {!row.share && shelf.linksReady && (
+          {!row.share && shelf.linksReady && !row.noLink && (
             <button disabled={busy === row.id} onClick={() => call("/api/papers/share", row.id, t("Link created"))}
               className="inline-flex items-center gap-1 rounded bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-800 ring-1 ring-emerald-300 disabled:opacity-50">
               {ic(Link2, "h-3 w-3")} {t("Send a link")}
@@ -117,6 +117,8 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
           )}
         </div>
         {row.share && shareBox(row.share, what, row.id)}
+        {/* Why there is no button, in a sentence. A card that simply lacks one reads as a bug. */}
+        {!row.share && row.noLink && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{t(row.noLink)}</p>}
       </>
     );
   };
