@@ -7,7 +7,7 @@ import { PAPER_GROUPS, type PaperGroup } from "../officialPapers";
 type Share = { token: string; url: string; expiresAt: string; by: string; at: string } | null;
 type PaperRow = { id: string; ref: string; title: string; date: string; proves: string; group: PaperGroup; held: boolean; filename: string; share: Share; noLink: string };
 type PolicyRow = { id: string; ref: string; label: string; policies: string[]; lang: "en" | "ar"; held: boolean; share: Share; noLink: string; filedOn: string; changedOn: string; stale: boolean };
-type ReadingRow = { id: string; ref: string; filename: string; held: boolean };
+type ReadingRow = { id: string; ref: string; filename: string; note: string; held: boolean };
 type Shelf = {
   papers: PaperRow[]; zip: { id: string; ref: string; date: string; held: boolean };
   packDate: string; linkDays: number; linksReady: boolean; onceEnforced: boolean; policyPdfs: PolicyRow[]; reading: ReadingRow[];
@@ -177,7 +177,11 @@ export default function PapersShelf({ t, currentUser, triggerToast, openDoc }: {
             {shelf.reading.map(r => (
               <div key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 p-3">
                 <span className="font-mono text-[10.5px] text-slate-400">{r.ref}</span>
-                <span dir="auto" className="min-w-0 flex-1 truncate text-[12.5px] text-slate-800">{r.filename}</span>
+                <span className="min-w-0 flex-1">
+                  {/* The note is what the row says it is; the filename is only where it lives. */}
+                  <span dir="auto" className="block text-[12.5px] leading-snug text-slate-800 [text-align:match-parent]">{r.note || r.filename}</span>
+                  {r.note && <span dir="ltr" className="mt-0.5 block truncate font-mono text-[10px] text-slate-400">{r.filename}</span>}
+                </span>
                 {r.held ? (
                   <span className="flex gap-1.5">
                     <button onClick={() => openDoc({ id: r.id, filename: r.filename })}

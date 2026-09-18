@@ -146,6 +146,8 @@ ok("they are never sent as links — no id of theirs can be", (() => {
   const block = shelfSrc.slice(shelfSrc.indexOf("export const SHAREABLE_IDS"), shelfSrc.indexOf("export const PAPER_IDS"));
   return !block.includes("READING") && /PAPERS\.map\(p => p\.id\), \.\.\.POLICY_PDFS\.map\(p => p\.id\)/.test(block);
 })());
+ok("a reading row leads with its note, not its filename — 'Draft_Letter_to_Lawyer' does not say it was never sent",
+  /note: d\.note \|\| ""/.test(server) && /\{r\.note \|\| r\.filename\}/.test(shelf));
 ok("the reading is not a card in the papers groups", !PAPERS.some(p => String(p.id).includes("reading")) && READING_CATEGORY === "Official_Papers_Reading");
 
 console.log("\nthe papers outbox is not the quotation one");

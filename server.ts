@@ -9377,8 +9377,10 @@ app.get("/api/papers/shelf", async (req, res) => {
     };
     res.json({
       // Whatever is filed under the reading category, in reference order. No list to keep in step.
+      // The note travels with the row: "Draft_Letter_to_Lawyer" does not say it was never sent,
+      // and a reader who assumes otherwise about a letter to a lawyer assumes something serious.
       reading: (await prisma.appDoc.findMany({ where: { category: READING_CATEGORY }, orderBy: { refNo: "asc" } }))
-        .map(d => ({ id: d.id, ref: d.refNo, filename: d.filename, held: held(d.id) })),
+        .map(d => ({ id: d.id, ref: d.refNo, filename: d.filename, note: d.note || "", held: held(d.id) })),
       papers: PAPERS.map(p => ({ ...p, held: held(p.id), filename: by.get(p.id)?.filename || "", share: live(p.id), noLink: linkBlocker(p.link) })),
       zip: { ...PAPERS_ZIP, held: held(PAPERS_ZIP.id) },
       // The pack's date is read from the filed PDFs themselves, so re-rendering the pack settles
