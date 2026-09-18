@@ -12,7 +12,7 @@ import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { evidenceOf, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATION_SIGNED } from "./src/declarations.js";
 import { teamMemberFlag } from "./src/supplierDocs.js";
 import { CONFIDENTIAL_PURPOSE, nextSourceCode, maySealedRead, SEALED_REFUSAL, confidentialRaiseBlocker, SANCTIONS_RESULTS, SEALED_DOC_KINDS, hasSealedReceipt, reviewDue, type SealedDoc } from "./src/sources.js";
-import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, workplanHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
+import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, workplanHtml, instalmentRequestHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory, isContentLabel, LABEL_WORDS } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { itemOpenFacts } from "./src/fillMarkers.js";
@@ -51,6 +51,7 @@ import { pairFxLegs, isFxReversal, FX_PATTERN } from "./src/fxPairs.js";
 import { CONSULTANT_REVIEW_CATEGORY, isMonth, monthBounds, packExcludes, reconcileMarkBlocker, legsOf, trialBalance, openItems, paymentDate, lateRecords, safeName, type Recorded } from "./src/consultantPack.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { periodMonths, workplanFromActivities, workplanBlocker, type Workplan } from "./src/workplan.js";
+import { requestRef, instalmentNo, nextInstalment, instalmentBlocker, type Instalment, type PayeeBank } from "./src/instalments.js";
 import { shareBlocker, shareExpiry, shareUrl, outboxName, printedChange, SHAREABLE_STATUSES } from "./src/quoteShare.js";
 import {
   PAPERS, PAPERS_ZIP, POLICY_PDFS, PAPER_IDS, SHAREABLE_IDS,
@@ -4101,46 +4102,49 @@ app.post("/api/opportunities/proposal-doc", async (req, res) => {
 // An awarded opportunity whose money has not landed is not a Project yet — the rule that a
 // project exists only once a deposit proves it stands — so it carries its plan on the
 // opportunity (proposalJson.workplan) and prints exactly the same paper.
+/**
+ * Where a project's plan lives. A registered project keeps it in its own activity rows; an awarded
+ * opportunity whose money has not landed keeps it on the opportunity (proposalJson.workplan), because
+ * a project exists in this system only once a deposit proves it. Both produce the same documents.
+ */
+async function workplanSource(projectId?: string, opportunityId?: string): Promise<any> {
+  if (projectId) {
+    const p = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!p) return { error: "Project not found.", status: 404 };
+    const rows = await prisma.projectActivity.findMany({ where: { projectId: p.id } });
+    const meta: any = await workplanMeta(p.id);
+    return {
+      name: p.name, code: p.code, donorId: p.donorId,
+      currency: p.currency || "USD", amount: p.budgetNative || p.budgetUSD,
+      startDate: p.startDate, endDate: p.endDate,
+      agreementNo: meta.agreementNo || "", summary: meta.summary || "",
+      plan: workplanFromActivities(rows, p.startDate, p.endDate, meta.results || []),
+      meta, vaultCode: p.code, recordType: "project", recordId: p.id,
+    };
+  }
+  if (opportunityId) {
+    const o = await prisma.opportunity.findUnique({ where: { id: opportunityId } });
+    if (!o) return { error: "Opportunity not found.", status: 404 };
+    if (o.stage !== "Awarded") return { error: `A workplan is for an awarded project — this opportunity is still at stage ${o.stage}.`, status: 400 };
+    const w = JSON.parse(o.proposalJson || "{}").workplan;
+    if (!w) return { error: "This opportunity carries no workplan yet.", status: 400 };
+    return {
+      name: w.projectName || o.title, code: w.projectCode || "", donorId: o.donorId,
+      currency: o.currency, amount: o.amount,
+      startDate: w.startDate || "", endDate: w.endDate || "",
+      agreementNo: w.agreementNo || "", summary: w.summary || "",
+      plan: { pillars: w.pillars || [], milestones: w.milestones || [], results: w.results || [] },
+      meta: w, vaultCode: w.vaultCode || "GENERAL", recordType: "opportunity", recordId: o.id,
+    };
+  }
+  return { error: "Name the project (or the awarded opportunity) the document is for.", status: 400 };
+}
+
 app.post("/api/projects/workplan-doc", async (req, res) => {
   try {
     const { projectId, opportunityId, user } = req.body;
-    let src: {
-      name: string; code: string; donorId: string; currency: string; amount: number;
-      startDate: string; endDate: string; agreementNo: string; summary: string;
-      plan: Workplan; vaultCode: string; recordType: string; recordId: string;
-    };
-
-    if (projectId) {
-      const p = await prisma.project.findUnique({ where: { id: projectId } });
-      if (!p) return res.status(404).json({ error: "Project not found." });
-      const rows = await prisma.projectActivity.findMany({ where: { projectId: p.id } });
-      const meta = { agreementNo: "", summary: "", results: [] as string[], ...(await workplanMeta(p.id)) };
-      src = {
-        name: p.name, code: p.code, donorId: p.donorId,
-        currency: p.currency || "USD", amount: p.budgetNative || p.budgetUSD,
-        startDate: p.startDate, endDate: p.endDate,
-        agreementNo: meta.agreementNo, summary: meta.summary,
-        plan: workplanFromActivities(rows, p.startDate, p.endDate, meta.results),
-        vaultCode: p.code, recordType: "project", recordId: p.id,
-      };
-    } else if (opportunityId) {
-      const o = await prisma.opportunity.findUnique({ where: { id: opportunityId } });
-      if (!o) return res.status(404).json({ error: "Opportunity not found." });
-      if (o.stage !== "Awarded") return res.status(400).json({ error: "A workplan is for an awarded project — this opportunity is still at stage " + o.stage + "." });
-      const kept = JSON.parse(o.proposalJson || "{}");
-      const w = kept.workplan;
-      if (!w) return res.status(400).json({ error: "This opportunity carries no workplan yet." });
-      src = {
-        name: w.projectName || o.title, code: w.projectCode || "", donorId: o.donorId,
-        currency: o.currency, amount: o.amount,
-        startDate: w.startDate || "", endDate: w.endDate || "",
-        agreementNo: w.agreementNo || "", summary: w.summary || "",
-        plan: { pillars: w.pillars || [], milestones: w.milestones || [], results: w.results || [] },
-        vaultCode: w.vaultCode || "GENERAL", recordType: "opportunity", recordId: o.id,
-      };
-    } else {
-      return res.status(400).json({ error: "Name the project (or the awarded opportunity) the workplan is for." });
-    }
+    const src = await workplanSource(projectId, opportunityId);
+    if ("error" in src) return res.status(src.status).json({ error: src.error });
 
     const blocked = workplanBlocker(src.plan, src.startDate, src.endDate);
     if (blocked) return res.status(400).json({ error: blocked });
@@ -4164,6 +4168,52 @@ app.post("/api/projects/workplan-doc", async (req, res) => {
     await createAuditLog(user?.id, user?.name, "Workplan Document Generated",
       `Rendered the workplan for ${src.code || src.name} (${donor?.name || "no donor"}, ${src.currency} ${src.amount}, ${months.length} months) → vault ${src.vaultCode}/Workplan/${filename}.`);
     res.json({ success: true, docId, filename, mimeType: "text/html" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The letter that asks a donor for an instalment (Saad, 18 Sep 2026). Same shape as the workplan:
+// generated from the record, filed with its own reference, and available to any project or awarded
+// opportunity. Filed under "Instalment Requests" beside the project's Receipts, so what we asked for
+// and what came back sit next to each other.
+app.post("/api/projects/instalment-request", async (req, res) => {
+  try {
+    const { projectId, opportunityId, no, user } = req.body;
+    const wanted = Number(no) || 0;
+    const src = await workplanSource(projectId, opportunityId);
+    if ("error" in src) return res.status(src.status).json({ error: src.error });
+
+    const meta = src.meta;
+    const schedule: Instalment[] = meta.instalments || [];
+    const bank: PayeeBank | null = meta.bank || null;
+    const pick = wanted || nextInstalment(schedule)?.no || 0;
+    const blocked = instalmentBlocker(schedule, pick, src.amount, bank);
+    if (blocked) return res.status(400).json({ error: blocked });
+    const one = instalmentNo(schedule, pick)!;
+
+    const donor = src.donorId ? await prisma.donor.findUnique({ where: { id: src.donorId } }) : null;
+    const ref = requestRef(src.code, one.no);
+    const html = instalmentRequestHtml({
+      ref, date: localDate(), projectName: src.name, projectCode: src.code, agreementNo: src.agreementNo,
+      donorName: donor?.name || meta.donorName || "", attention: meta.attention, donorAddress: meta.donorAddress, cc: meta.cc,
+      currency: src.currency, grantAmount: src.amount, instalment: one, schedule, bank: bank!,
+      basis: meta.basis || [], preparedBy: user?.name || "Saad Matar",
+      preparedByTitle: user?.role === "Super Admin" ? "Executive Director" : (user?.role || "Executive Director"),
+      // In-app signing is for AnaHon's own paper but is not built yet, so the letter carries a
+      // signature line for the ED to sign the printed copy.
+      signatureNote: "Signed copy to follow on request.",
+    });
+
+    const docId = `doc-instreq-${src.recordId}-${one.no}`;
+    const filename = `${localDate().slice(0, 4)}_REQUEST_${src.code.replace(/[^\w]+/g, "-")}_INST-${one.no}.html`;
+    await archive(prisma, {
+      docId, projectCode: src.vaultCode, category: "Instalment Requests", filename, html,
+      linkedRecordType: src.recordType, linkedRecordId: src.recordId,
+    });
+    await createAuditLog(user?.id, user?.name, "Instalment Request Generated",
+      `Requested instalment ${one.no} of ${schedule.length} for ${src.code} (${donor?.name || "no donor"}): ${src.currency} ${one.amount}${one.percent ? ` (${one.percent}%)` : ""}, ref ${ref} → vault ${src.vaultCode}/Instalment Requests/${filename}.`);
+    res.json({ success: true, docId, filename, mimeType: "text/html", ref });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

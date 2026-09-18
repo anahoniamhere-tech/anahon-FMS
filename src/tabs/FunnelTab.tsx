@@ -111,6 +111,23 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
     }
   };
 
+  /** The instalment request letter. With no number it asks for the next one the record has not seen. */
+  const generateInstalmentRequest = async (body: { opportunityId?: string; projectId?: string; no?: number }, label: string) => {
+    try {
+      const res = await fetch("/api/projects/instalment-request", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate the payment request");
+      openDoc({ id: data.docId, filename: data.filename, mimeType: data.mimeType });
+      triggerToast(`${t("Payment request filed to the vault")}: ${data.ref} — ${label}`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
   // ── Proposal workspace handlers ───────────────────────────────────────────
   const saveProposal = async (thenGenerate: boolean) => {
     if (!propForm?.id) return;
@@ -775,10 +792,19 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                                     awarded opportunity prints the same paper a registered project does
                                     (src/workplan.ts). The plan is kept on the record until the project exists. */}
                                 {o.stage === "Awarded" && MANAGERS.includes(currentUser.role) && (o.proposal as any)?.workplan && (
-                                  <button onClick={() => generateWorkplan({ opportunityId: o.id }, o.title)}
-                                    className="mt-1 w-full rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-200">
-                                    📄 {t("Workplan document")}
-                                  </button>
+                                  <div className="mt-1 flex gap-1">
+                                    <button onClick={() => generateWorkplan({ opportunityId: o.id }, o.title)}
+                                      className="flex-1 rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-200">
+                                      📄 {t("Workplan document")}
+                                    </button>
+                                    {/* The letter that asks for the next tranche the agreement provides for. */}
+                                    {!!(o.proposal as any).workplan.instalments?.length && (
+                                      <button onClick={() => generateInstalmentRequest({ opportunityId: o.id }, o.title)}
+                                        className="flex-1 rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-200">
+                                        💶 {t("Payment request")}
+                                      </button>
+                                    )}
+                                  </div>
                                 )}
                                 {MANAGERS.includes(currentUser.role) && (
                                   <div className="flex items-center gap-1 mt-2">

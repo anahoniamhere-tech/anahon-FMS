@@ -62,6 +62,32 @@ export const SKF_FSTP_WORKPLAN = {
     { date: "2027-03-31", title: "Final narrative and financial reports, with invoice and supporting documents, to SKF", kind: "Report" },
     { date: "2027-03-31", title: "Third instalment, 20% (EUR 2,400), on acceptance of the final reports", kind: "Payment" },
   ],
+  // Who the money is asked from, and the account it is paid into — copied from the signed agreement
+  // SKF-AN-31/2026 (vault SKF-2026-FSTP/Agreement, ANH-DOC-00829), never retyped from memory.
+  donorName: "Samir Kassir Foundation",
+  attention: "Jihane Abdallah, Finance Manager",
+  donorAddress: "Riverside Bloc C, 6th floor, Charles Helou Street, Sin el-Fil, Metn — Lebanon",
+  cc: "Nadine Moubarak",
+  bank: {
+    accountName: "ANA HON - CIVIL COMPANY",
+    bankName: "BLOM BANK SAL",
+    branch: "Tripoli, Tell",
+    accountNo: "2343794",
+    iban: "LB 10 0014 0000 0402 3532 3437 9417",
+    swift: "BLOMLBBX",
+    source: "agreement SKF-AN-31/2026, Recipient Bank Account Details (ANH-DOC-00829)",
+  },
+  // Section 4.01 of the agreement, in its own terms.
+  instalments: [
+    { no: 1, percent: 30, amount: 3600, condition: "on signature of the agreement and SKF's approval of the technical and financial proposal (Annex 1) and of the submitted workplan (Article 4.01.a)", dueDate: "2026-09-10" },
+    { no: 2, percent: 50, amount: 6000, condition: "on submission of the interim narrative and financial reports as proof of having spent 75% of the first instalment, with an invoice and supporting documents (Article 4.01.b)", dueDate: "2026-12-20" },
+    { no: 3, percent: 20, amount: 2400, condition: "on submission of the final narrative and financial reports, with an invoice and supporting documents (Article 4.01.c)", dueDate: "2027-03-31" },
+  ],
+  basis: [
+    "the agreement SKF-AN-31/2026, countersigned and on file (ANH-DOC-00829)",
+    "the technical and financial proposal approved by the Selection Committee (revised version of 4 September 2026)",
+    "the project workplan submitted with this request (ANH-DOC-00830)",
+  ],
   results: [
     "A costed business development strategy and service catalogue in active use, with at least 3 paid service engagements signed and at least EUR 3,000 in new earned-income commitments by project end.",
     "At least two existing partnerships converted into paid or co-funded engagements.",

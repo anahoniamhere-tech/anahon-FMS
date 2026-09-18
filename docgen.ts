@@ -12,6 +12,7 @@ import { QUOTE_REVISION_CLAUSE, QUOTE_REVISION_CLAUSE_AR, QUOTE_REVISION_CLAUSE_
 import { quoteTotals, DEFAULT_DISCOUNT_LABEL } from "./src/quoteTotals.js";
 import { ICONTENT_FONT_FACES } from "./src/brandFonts.js";
 import { runsIn, type Workplan, type WorkplanActivity } from "./src/workplan.js";
+import { type Instalment, type PayeeBank } from "./src/instalments.js";
 import { AR } from "./src/i18n.js";
 import { ALL_ROLES } from "./src/roles.js";
 import path from "path";
@@ -728,6 +729,69 @@ h2.sub{margin-top:6px;font-size:12.5px;color:#4A1010}
 .tl td.no,.tl th.no{width:34px;white-space:nowrap;font-weight:700}
 .tl tr.grp th{background:#EFEFEF;text-align:left;letter-spacing:.5px;text-transform:uppercase;font-size:10.5px}
 .tl td .d{display:block;color:#666;font-size:10px;margin-top:2px}`
+  });
+}
+
+/**
+ * The letter that asks a donor for an instalment (Saad, 18 Sep 2026): AnaHon's own paper, filed with
+ * its own reference, never a paragraph in an email. Amounts, conditions and the account come from
+ * the record (src/instalments.ts) — the account exactly as the signed agreement writes it, with the
+ * agreement named underneath.
+ */
+export function instalmentRequestHtml(o: {
+  ref: string; date: string; projectName: string; projectCode: string; agreementNo?: string;
+  donorName: string; attention?: string; donorAddress?: string; cc?: string;
+  currency: string; grantAmount: number; instalment: Instalment; schedule: Instalment[];
+  bank: PayeeBank; basis: string[]; preparedBy: string; preparedByTitle: string;
+  signatureNote?: string;
+}) {
+  const money = (n: number) => `<span dir="ltr">${esc(o.currency)} ${(Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`;
+  const row = (i: Instalment) => `<tr${i.no === o.instalment.no ? ' class="this"' : ""}>
+    <td class="r">${i.no}</td>
+    <td class="r">${i.percent ? `${i.percent}%` : "&mdash;"}</td>
+    <td class="r">${money(i.amount)}</td>
+    <td>${esc(i.condition)}${i.dueDate ? ` (${longDate(i.dueDate)})` : ""}</td>
+    <td>${i.no === o.instalment.no ? "<strong>requested by this letter</strong>" : i.status === "received" ? "received" : i.status === "requested" ? "requested" : "to follow"}</td>
+  </tr>`;
+
+  return page(`Instalment request ${o.ref}`, `
+<h1>REQUEST FOR PAYMENT</h1>
+<h2 class="sub">Instalment ${o.instalment.no} of ${o.schedule.length} &middot; ${esc(o.projectName)}</h2>
+<p style="font-size:11px;color:#555">AnaHon Media Platform — Lebanese civil company (general partnership), civil company no. 90/2023, First Instance Chamber North, Tripoli, 12/10/2023 · MoF 3893185<br>
+Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor, Tripoli · +961 81 408 171 · info@anahon.org</p>
+<table>
+  <tr><th scope="row">Our reference</th><td><strong>${esc(o.ref)}</strong></td></tr>
+  <tr><th scope="row">Date</th><td>${longDate(o.date)}</td></tr>
+  <tr><th scope="row">To</th><td>${esc(o.donorName)}${o.attention ? `<br>For the attention of ${esc(o.attention)}` : ""}${o.donorAddress ? `<br>${esc(o.donorAddress)}` : ""}${o.cc ? `<br><span style="color:#555">cc: ${esc(o.cc)}</span>` : ""}</td></tr>
+  ${o.agreementNo ? `<tr><th scope="row">Agreement</th><td>${esc(o.agreementNo)}</td></tr>` : ""}
+  <tr><th scope="row">Project</th><td>${esc(o.projectName)} (${esc(o.projectCode)})</td></tr>
+  <tr><th scope="row">Amount requested</th><td class="amt"><strong>${money(o.instalment.amount)}</strong>${o.instalment.percent ? ` — ${o.instalment.percent}% of ${money(o.grantAmount)}` : ""}</td></tr>
+</table>
+<p>Dear ${esc(o.attention ? o.attention.split(",")[0] : o.donorName)},</p>
+<p>We request payment of the ${o.instalment.no === 1 ? "first" : o.instalment.no === 2 ? "second" : o.instalment.no === 3 ? "third" : `${o.instalment.no}th`} instalment under ${esc(o.agreementNo || "our agreement")}, ${money(o.instalment.amount)}${o.instalment.percent ? ` (${o.instalment.percent}% of the grant)` : ""}, payable ${esc(o.instalment.condition)}.</p>
+${o.basis.length ? `<p>This request is made against:</p><ul style="margin:0 0 12px;padding-left:18px">${o.basis.map(b => `<li>${esc(b)}</li>`).join("")}</ul>` : ""}
+<h3 style="font-size:13px;letter-spacing:1px;margin:18px 0 6px">PAYMENT SCHEDULE</h3>
+<table class="sched">
+  <thead><tr><th class="r">#</th><th class="r">Share</th><th class="r">Amount</th><th>Payable</th><th>Status</th></tr></thead>
+  <tbody>${o.schedule.map(row).join("")}</tbody>
+</table>
+<h3 style="font-size:13px;letter-spacing:1px;margin:18px 0 6px">PAYMENT DETAILS</h3>
+<table>
+  <tr><th scope="row">Account name</th><td>${esc(o.bank.accountName)}</td></tr>
+  <tr><th scope="row">Bank</th><td>${esc(o.bank.bankName)}${o.bank.branch ? ` — ${esc(o.bank.branch)}` : ""}</td></tr>
+  ${o.bank.accountNo ? `<tr><th scope="row">Account number</th><td><span dir="ltr">${esc(o.bank.accountNo)}</span></td></tr>` : ""}
+  ${o.bank.iban ? `<tr><th scope="row">IBAN</th><td><span dir="ltr">${esc(o.bank.iban)}</span></td></tr>` : ""}
+  ${o.bank.swift ? `<tr><th scope="row">SWIFT</th><td><span dir="ltr">${esc(o.bank.swift)}</span></td></tr>` : ""}
+</table>
+<p class="note">Account details as recorded in ${esc(o.bank.source)}.</p>
+<p>We remain available for any document or clarification you may need.</p>
+<p style="margin-bottom:0">Yours sincerely,</p>
+<div class="sig"><div>${esc(o.preparedBy)}<br>${esc(o.preparedByTitle)}<br>AnaHon Media Platform</div></div>
+${o.signatureNote ? `<p class="note">${esc(o.signatureNote)}</p>` : ""}`, {
+    style: `
+h2.sub{margin-top:6px;font-size:12.5px;color:#4A1010}
+.sched td,.sched th{font-size:12px}
+.sched tr.this td{background:#FBF4F2;font-weight:600}`
   });
 }
 
