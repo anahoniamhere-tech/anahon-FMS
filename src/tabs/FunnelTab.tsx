@@ -93,6 +93,24 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
     }
   };
 
+  /** The workplan document — generated from the record, filed in the vault, opened for reading. */
+  const generateWorkplan = async (body: { opportunityId?: string; projectId?: string }, label: string) => {
+    try {
+      const res = await fetch("/api/projects/workplan-doc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...body, user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate the workplan");
+      openDoc({ id: data.docId, filename: data.filename, mimeType: data.mimeType });
+      triggerToast(`${t("Workplan filed to the vault")}: ${label}`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
   // ── Proposal workspace handlers ───────────────────────────────────────────
   const saveProposal = async (thenGenerate: boolean) => {
     if (!propForm?.id) return;
@@ -752,6 +770,15 @@ export default function FunnelTab({ currentUser, formatUSD, handleNavClick, open
                                   <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2 py-1 mt-1">
                                     ✓ Awarded — once the deposit is on an imported statement, register the project in Donors & Projects with that deposit as proof.
                                   </p>
+                                )}
+                                {/* The donor reads the workplan before it releases the first instalment, so an
+                                    awarded opportunity prints the same paper a registered project does
+                                    (src/workplan.ts). The plan is kept on the record until the project exists. */}
+                                {o.stage === "Awarded" && MANAGERS.includes(currentUser.role) && (o.proposal as any)?.workplan && (
+                                  <button onClick={() => generateWorkplan({ opportunityId: o.id }, o.title)}
+                                    className="mt-1 w-full rounded bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-200">
+                                    📄 {t("Workplan document")}
+                                  </button>
                                 )}
                                 {MANAGERS.includes(currentUser.role) && (
                                   <div className="flex items-center gap-1 mt-2">

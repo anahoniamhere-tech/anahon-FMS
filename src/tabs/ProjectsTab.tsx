@@ -276,6 +276,23 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
   const [reconMonth, setReconMonth] = useState<string>("2026-05");
 
   // The workspace notebook: where the project stands, its papers, its money, the report.
+  /** The workplan document for a registered project: generated from its activity rows, filed, opened. */
+  const generateWorkplan = async (projectId: string, label: string) => {
+    try {
+      const res = await fetch("/api/projects/workplan-doc", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, user: currentUser })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate the workplan");
+      openDoc({ id: data.docId, filename: data.filename, mimeType: data.mimeType });
+      triggerToast(`${t("Workplan filed to the vault")}: ${label}`);
+      refreshState();
+    } catch (err: any) {
+      triggerToast(err.message, "error");
+    }
+  };
+
   const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<WorkspaceTab>("overview");
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -1265,6 +1282,15 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                         to scroll. The sections themselves are untouched. */}
                       {projectWorkspaceTab === "overview" && (
                         <div className="space-y-6">
+                        {/* The workplan on AnaHon's letterhead — the activities, their months and the
+                            milestones as the record holds them (src/workplan.ts). Donors ask for it
+                            before they release money; every project prints the same format. */}
+                        {MANAGERS.includes(currentUser.role) && (
+                          <button onClick={() => generateWorkplan(selectedProjectId!, activeProject?.code || "")}
+                            className="rounded border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                            📄 {t("Workplan document")} <span className="font-normal text-slate-400">— {t("activities, timeline and milestones")}</span>
+                          </button>
+                        )}
                         {/* ── Donor reporting obligations ───────────────────
                             Read out of the signed agreement, each row naming the file it came
                             from. Where the agreement is missing the row says the deadline is

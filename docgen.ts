@@ -11,6 +11,7 @@ import fs from "fs";
 import { QUOTE_REVISION_CLAUSE, QUOTE_REVISION_CLAUSE_AR, QUOTE_REVISION_CLAUSE_ICONTENT, QUOTE_REVISION_CLAUSE_ICONTENT_AR, ICONTENT_PHONE, ICONTENT_EMAIL } from "./src/constants.js";
 import { quoteTotals, DEFAULT_DISCOUNT_LABEL } from "./src/quoteTotals.js";
 import { ICONTENT_FONT_FACES } from "./src/brandFonts.js";
+import { runsIn, type Workplan, type WorkplanActivity } from "./src/workplan.js";
 import { AR } from "./src/i18n.js";
 import { ALL_ROLES } from "./src/roles.js";
 import path from "path";
@@ -664,6 +665,70 @@ ${budget.length ? `<h3 style="font-size:13px;letter-spacing:1px;margin:18px 0 4p
 <tbody>${budget.map(r => `<tr><td>${esc(r.line)}</td><td>${esc(r.description)}</td><td class="r">${esc(o.currency)} ${(Number(r.amount) || 0).toLocaleString()}</td></tr>`).join("")}
 <tr><td colspan="2" class="r"><strong>TOTAL</strong></td><td class="r amt">${esc(o.currency)} ${budgetTotal.toLocaleString()}</td></tr></tbody></table>` : ""}
 <p class="note">Internal working document — figures are indicative until the donor's budget format is completed. Not a signed instrument.</p>`);
+}
+
+/**
+ * The project workplan a donor asks for before it releases money, on AnaHon's letterhead
+ * (Saad, 18 Sep 2026: the same format for every project). Everything here comes from the record —
+ * src/workplan.ts turns the project's own activity rows into the pillars, the month grid and the
+ * milestones, so the paper and the Projects screen can never disagree.
+ */
+export function workplanHtml(o: {
+  projectName: string; projectCode: string; donorName: string; agreementNo?: string;
+  currency: string; amount: number; startDate: string; endDate: string; preparedBy: string;
+  summary?: string; notes?: string;
+  months: { n: number; label: string }[];
+  plan: Workplan;
+}) {
+  const { months, plan } = o;
+  const grid = (a: WorkplanActivity) => months.map(m =>
+    `<td class="m">${runsIn(a, m.n) ? '<span class="on"></span>' : ""}</td>`).join("");
+
+  const pillarRows = plan.pillars.map(p => `
+  <tr class="grp"><th colspan="${months.length + 2}">${esc(p.code ? `${p.code}. ${p.title}` : p.title)}</th></tr>
+  ${p.activities.map(a => `<tr>
+    <td class="no">${esc(a.code || "")}</td>
+    <td>${esc(a.title)}${a.detail ? `<span class="d">${esc(a.detail)}</span>` : ""}</td>
+    ${grid(a)}
+  </tr>`).join("")}`).join("");
+
+  return page(`Workplan — ${o.projectName}`, `
+<h1>PROJECT WORKPLAN</h1>
+<h2 class="sub">${esc(o.projectName)}</h2>
+<p style="font-size:11px;color:#555">AnaHon Media Platform — Lebanese civil company (general partnership), civil company no. 90/2023, First Instance Chamber North, Tripoli, 12/10/2023 · MoF 3893185<br>
+Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor, Tripoli · +961 81 408 171 · info@anahon.org</p>
+<table>
+  <caption>The project</caption>
+  <tr><th scope="row">Donor</th><td>${esc(o.donorName || "\u2014")}</td></tr>
+  ${o.agreementNo ? `<tr><th scope="row">Agreement</th><td>${esc(o.agreementNo)}</td></tr>` : ""}
+  <tr><th scope="row">Project code</th><td>${esc(o.projectCode)}</td></tr>
+  <tr><th scope="row">Grant amount</th><td><span dir="ltr">${esc(o.currency)} ${(Number(o.amount) || 0).toLocaleString()}</span></td></tr>
+  <tr><th scope="row">Implementation period</th><td>${longDate(o.startDate)} &ndash; ${longDate(o.endDate)} (${months.length} months)</td></tr>
+  <tr><th scope="row">Prepared by</th><td>${esc(o.preparedBy)}</td></tr>
+  <tr><th scope="row">Date</th><td>${longDate(new Date().toLocaleDateString("en-CA"))}</td></tr>
+</table>
+${o.summary ? `<h3 style="font-size:13px;letter-spacing:1px;margin:18px 0 4px">THE PLAN IN SHORT</h3><p style="margin:0;white-space:pre-wrap">${esc(o.summary)}</p>` : ""}
+<h3 style="font-size:13px;letter-spacing:1px;margin:18px 0 6px">ACTIVITIES AND TIMELINE</h3>
+<table class="tl">
+  <thead><tr><th class="no">#</th><th>Activity</th>${months.map(m => `<th class="m">${esc(m.label)}</th>`).join("")}</tr></thead>
+  <tbody>${pillarRows}</tbody>
+</table>
+${plan.milestones.length ? `<h3 style="font-size:13px;letter-spacing:1px;margin:18px 0 6px">MILESTONES AND REPORTING</h3>
+<table><thead><tr><th>Date</th><th>Milestone</th><th>Type</th></tr></thead>
+<tbody>${plan.milestones.map(m => `<tr><td>${longDate(m.date)}</td><td>${esc(m.title)}</td><td>${esc(m.kind || "Milestone")}</td></tr>`).join("")}</tbody></table>` : ""}
+${plan.results.length ? `<h3 style="font-size:13px;letter-spacing:1px;margin:18px 0 6px">WHAT THE PROJECT COMMITS TO</h3>
+<ul style="margin:0;padding-left:18px">${plan.results.map(r => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+${o.notes ? `<p class="note">${esc(o.notes)}</p>` : ""}
+<div class="sig"><div>${esc(o.preparedBy)}<br>AnaHon Media Platform</div></div>`, {
+    style: `
+h2.sub{margin-top:6px;font-size:12.5px;color:#4A1010}
+.tl{table-layout:auto;font-size:11px}
+.tl th.m,.tl td.m{width:34px;text-align:center;padding:4px 2px;font-size:9.5px;letter-spacing:0}
+.tl td.m span.on{display:block;height:8px;border-radius:2px;background:#8C2B20}
+.tl td.no,.tl th.no{width:34px;white-space:nowrap;font-weight:700}
+.tl tr.grp th{background:#EFEFEF;text-align:left;letter-spacing:.5px;text-transform:uppercase;font-size:10.5px}
+.tl td .d{display:block;color:#666;font-size:10px;margin-top:2px}`
+  });
 }
 
 /** Service invoice + payment receipt for an engaged provider, built from the voucher's

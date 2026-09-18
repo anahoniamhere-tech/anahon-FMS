@@ -12,7 +12,7 @@ import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { evidenceOf, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATION_SIGNED } from "./src/declarations.js";
 import { teamMemberFlag } from "./src/supplierDocs.js";
 import { CONFIDENTIAL_PURPOSE, nextSourceCode, maySealedRead, SEALED_REFUSAL, confidentialRaiseBlocker, SANCTIONS_RESULTS, SEALED_DOC_KINDS, hasSealedReceipt, reviewDue, type SealedDoc } from "./src/sources.js";
-import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
+import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, workplanHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory, isContentLabel, LABEL_WORDS } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { itemOpenFacts } from "./src/fillMarkers.js";
@@ -50,6 +50,7 @@ import { isFloat as isFloatAccount } from "./src/pettyCash.js";
 import { pairFxLegs, isFxReversal, FX_PATTERN } from "./src/fxPairs.js";
 import { CONSULTANT_REVIEW_CATEGORY, isMonth, monthBounds, packExcludes, reconcileMarkBlocker, legsOf, trialBalance, openItems, paymentDate, lateRecords, safeName, type Recorded } from "./src/consultantPack.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
+import { periodMonths, workplanFromActivities, workplanBlocker, type Workplan } from "./src/workplan.js";
 import { shareBlocker, shareExpiry, shareUrl, outboxName, printedChange, SHAREABLE_STATUSES } from "./src/quoteShare.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
@@ -4086,6 +4087,88 @@ app.post("/api/opportunities/proposal-doc", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ── The project workplan ────────────────────────────────────────────────────
+// The document a donor asks for before it releases money, and the shape every AnaHon project's
+// plan takes (Saad, 18 Sep 2026). Generated from the record: the activity rows are the plan.
+// An awarded opportunity whose money has not landed is not a Project yet — the rule that a
+// project exists only once a deposit proves it stands — so it carries its plan on the
+// opportunity (proposalJson.workplan) and prints exactly the same paper.
+app.post("/api/projects/workplan-doc", async (req, res) => {
+  try {
+    const { projectId, opportunityId, user } = req.body;
+    let src: {
+      name: string; code: string; donorId: string; currency: string; amount: number;
+      startDate: string; endDate: string; agreementNo: string; summary: string;
+      plan: Workplan; vaultCode: string; recordType: string; recordId: string;
+    };
+
+    if (projectId) {
+      const p = await prisma.project.findUnique({ where: { id: projectId } });
+      if (!p) return res.status(404).json({ error: "Project not found." });
+      const rows = await prisma.projectActivity.findMany({ where: { projectId: p.id } });
+      const meta = { agreementNo: "", summary: "", results: [] as string[], ...(await workplanMeta(p.id)) };
+      src = {
+        name: p.name, code: p.code, donorId: p.donorId,
+        currency: p.currency || "USD", amount: p.budgetNative || p.budgetUSD,
+        startDate: p.startDate, endDate: p.endDate,
+        agreementNo: meta.agreementNo, summary: meta.summary,
+        plan: workplanFromActivities(rows, p.startDate, p.endDate, meta.results),
+        vaultCode: p.code, recordType: "project", recordId: p.id,
+      };
+    } else if (opportunityId) {
+      const o = await prisma.opportunity.findUnique({ where: { id: opportunityId } });
+      if (!o) return res.status(404).json({ error: "Opportunity not found." });
+      if (o.stage !== "Awarded") return res.status(400).json({ error: "A workplan is for an awarded project — this opportunity is still at stage " + o.stage + "." });
+      const kept = JSON.parse(o.proposalJson || "{}");
+      const w = kept.workplan;
+      if (!w) return res.status(400).json({ error: "This opportunity carries no workplan yet." });
+      src = {
+        name: w.projectName || o.title, code: w.projectCode || "", donorId: o.donorId,
+        currency: o.currency, amount: o.amount,
+        startDate: w.startDate || "", endDate: w.endDate || "",
+        agreementNo: w.agreementNo || "", summary: w.summary || "",
+        plan: { pillars: w.pillars || [], milestones: w.milestones || [], results: w.results || [] },
+        vaultCode: w.vaultCode || "GENERAL", recordType: "opportunity", recordId: o.id,
+      };
+    } else {
+      return res.status(400).json({ error: "Name the project (or the awarded opportunity) the workplan is for." });
+    }
+
+    const blocked = workplanBlocker(src.plan, src.startDate, src.endDate);
+    if (blocked) return res.status(400).json({ error: blocked });
+
+    const donor = src.donorId ? await prisma.donor.findUnique({ where: { id: src.donorId } }) : null;
+    const months = periodMonths(src.startDate, src.endDate);
+    const html = workplanHtml({
+      projectName: src.name, projectCode: src.code, donorName: donor?.name || "",
+      agreementNo: src.agreementNo, currency: src.currency, amount: src.amount,
+      startDate: src.startDate, endDate: src.endDate,
+      preparedBy: `${user?.name || "Saad Matar"} — ${user?.role === "Super Admin" ? "Executive Director" : (user?.role || "Executive Director")}`,
+      summary: src.summary, months, plan: src.plan,
+    });
+
+    const docId = `doc-workplan-${src.recordId}`;
+    const filename = `${src.startDate.slice(0, 4)}_WORKPLAN_${(src.code || src.name).replace(/[^\w]+/g, "-").slice(0, 40)}.html`;
+    await archive(prisma, {
+      docId, projectCode: src.vaultCode, category: "Workplan", filename, html,
+      linkedRecordType: src.recordType, linkedRecordId: src.recordId,
+    });
+    await createAuditLog(user?.id, user?.name, "Workplan Document Generated",
+      `Rendered the workplan for ${src.code || src.name} (${donor?.name || "no donor"}, ${src.currency} ${src.amount}, ${months.length} months) → vault ${src.vaultCode}/Workplan/${filename}.`);
+    res.json({ success: true, docId, filename, mimeType: "text/html" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/** A project's workplan cover text: the agreement number, the summary and the committed results.
+ *  Kept beside the activities rather than invented at render time. */
+async function workplanMeta(projectId: string): Promise<{ agreementNo?: string; summary?: string; results?: string[] }> {
+  const row = await prisma.projectActivity.findFirst({ where: { projectId, kind: "Workplan" } });
+  if (!row) return {};
+  try { return JSON.parse(row.detail || "{}"); } catch { return {}; }
+}
 
 // ── AI proposal assist ──────────────────────────────────────────────────────
 // The app is "the brain": the model is grounded in AnaHon's REAL identity and
