@@ -117,11 +117,20 @@ ok("docOnDisk itself asks, so a new route inherits the refusal",
   /async function docOnDisk[\s\S]{0,700}?officialPaperBlocked/.test(server));
 ok("and it is handed the seat the caller is borrowing",
   /async function docOnDisk\(id: string, uid = "", actingAs = ""\)/.test(server));
-ok("the three shelf routes are gated", ['"/api/papers/shelf"', '"/api/papers/share"', '"/api/papers/share/revoke"'].every(r => gates.includes(r)));
-ok("to the Executive Director and the Finance Officer", (() => {
-  const seg = gates.slice(gates.indexOf('"/api/papers/shelf"'), gates.indexOf('"/api/papers/share/revoke"') + 60);
-  return (seg.match(/FINANCE/g) || []).length === 3;
-})());
+ok("the two POST routes are gated in the seats table", ['"/api/papers/share"', '"/api/papers/share/revoke"'].every(r => gates.includes(r))
+  && (gates.slice(gates.indexOf('"/api/papers/share"'), gates.indexOf('"/api/papers/share/revoke"') + 60).match(/FINANCE/g) || []).length === 2);
+// Anna's room, 21 Sep: the shelf is a GET, the gate middleware returns early on anything that is
+// not a POST, and ROUTE_SEATS is collected from app.post — so an entry for this GET looked like
+// protection and did nothing. It must NOT be in the table, and the route must ask for itself.
+ok("the shelf GET is NOT in the POST-only seats table", !gates.includes('"/api/papers/shelf"'));
+ok("and the shelf route refuses in the route, before it reads anything", (() => {
+  const start = server.indexOf('app.get("/api/papers/shelf"');
+  const body = start < 0 ? "" : server.slice(start, server.indexOf("\n});", start));
+  const guard = body.indexOf("mayOpenPapers");
+  return guard > 0 && guard < body.indexOf("prisma.appDoc.findMany");
+})(), "a listing must not be read before the caller is checked");
+ok("the gate middleware really is POST-only, which is why that matters",
+  /if \(req\.method !== "POST" \|\| !req\.path\.startsWith\("\/api\/"\)\) return next\(\);/.test(server));
 ok("opening a document is written to the audit log", (() => {
   const seg = server.slice(server.indexOf("const READ_AUDIT"), server.indexOf("];", server.indexOf("const READ_AUDIT")));
   return ["document\\/content", "document\\/pages", "\\/pdf"].every(p => seg.includes(p.replace(/\\\\/g, "\\")));

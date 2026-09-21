@@ -149,7 +149,9 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // The organisation's own papers and the filed policy PDFs: read and sent by the Executive
   // Director and the Finance Officer. The routes ask again whether it is really them, or a seat
   // borrowed through Act as — see officialPapers.mayOpenPapers.
-  "/api/papers/shelf": FINANCE,
+  // The shelf itself is a GET and is NOT listed here: this table is POST-only (the middleware
+  // returns early on anything else), so an entry for a GET would read as protection and do
+  // nothing. /api/papers/shelf asks mayOpenPapers in the route.
   "/api/papers/share": FINANCE,
   "/api/papers/share/revoke": FINANCE,
   "/api/quotations/issue-receipt": FINANCE,

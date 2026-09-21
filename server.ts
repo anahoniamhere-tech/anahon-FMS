@@ -9408,9 +9408,21 @@ async function revokePaperShares(docId: string, reason: string, who: { id?: stri
   return rows.length;
 }
 
-/** Everything the shelf draws: what we hold, what is missing, and which links are live. */
+/**
+ * Everything the shelf draws: what we hold, what is missing, and which links are live.
+ *
+ * **The route asks who is calling, itself.** A seats entry would not have done it: the gate
+ * middleware returns early on anything that is not a POST, and ROUTE_SEATS is a POST-only table
+ * by construction (check-gates collects `app.post` and nothing else). Listing this GET there put
+ * a line in the table that did nothing at runtime while looking like protection — found by Anna's
+ * room on 21 Sep, through the count mismatch it caused in check-gates. The sealed source routes
+ * ask for themselves for the same reason; so does this one.
+ */
 app.get("/api/papers/shelf", async (req, res) => {
   try {
+    const vid = await viewerIdFromReq(req);
+    const viewer = vid ? await prisma.user.findUnique({ where: { id: vid } }) : null;
+    if (!mayOpenPapers(viewer, actingSeat(req))) return res.status(403).json({ error: PAPERS_REFUSAL });
     const ids = [...PAPERS.map(p => p.id), PAPERS_ZIP.id, ...POLICY_PDFS.map(p => p.id), ...POLICY_PDFS.map(p => p.governs)];
     const rows = await prisma.appDoc.findMany({ where: { id: { in: ids } } });
     const by = new Map(rows.map(r => [r.id, r]));
