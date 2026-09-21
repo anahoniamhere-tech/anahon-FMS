@@ -302,6 +302,11 @@ ok("the main row is ⋯, the box, the mic and send (plus the chip's ✕) — not
   (mainRow.match(/<button\b/g) || []).length === 4 && (mainRow.match(/<textarea\b/g) || []).length === 1 && /aria-label=\{t\("Remove"\)\}/.test(mainRow), String((mainRow.match(/<button\b/g) || []).length));
 ok("history, new chat, voice language and spend live in the menu", /role="menu"[\s\S]*t\("Past chats"\)[\s\S]*t\("New conversation"\)[\s\S]*t\("Voice language"\)[\s\S]*data-anna-spend[\s\S]*<\/>\)\}/.test(footer)
   && (chat.match(/data-anna-spend/g) || []).length === 1);
+ok("the menu is drawn on the page, not inside the clipped panel: a fresh chat's panel (~205 px) is shorter than the menu (~258 px), so 'Record my voice for Anna' was unreachable",
+  /createPortal\(\s*<div ref=\{menuRef\} role="menu" data-anna-menu/.test(chat) && /position: "fixed", bottom: menuPos\.bottom/.test(chat) && !/absolute bottom-full/.test(chat));
+ok("and it keeps its keyboard: Escape closes only the menu, focus goes in on open, Tab and arrows cycle inside, direction follows the panel",
+  /document\.addEventListener\("keydown", esc, true\)/.test(chat) && /onKeyDown=\{menuKeys\}/.test(chat) && /if \(menu && menuPos\) menuRef\.current\?\.querySelector/.test(chat)
+  && /getComputedStyle\(btn\)\.direction === "rtl"/.test(chat) && /menuPos\.rtl \? \{ right: menuPos\.inline \} : \{ left: menuPos\.inline \}/.test(chat));
 ok("no truncated status: it wraps, on its own line", /role="status" className="border-t border-slate-200 px-3 pt-1\.5 text-center text-\[11px\] leading-snug text-slate-600"/.test(chat) && !/role="status"[^>]*truncate/.test(chat));
 ok("'Ask about this policy' is a chip, not text in the box", /setAbout\(prefill\.text\.replace\(/.test(chat) && !/setQ\(prev => prev \|\| prefill/.test(chat)
   && /\{t\("About"\)\}: \{about\}/.test(chat) && /const text = about \? `\$\{about\}: \$\{typed\}` : typed;/.test(chat));

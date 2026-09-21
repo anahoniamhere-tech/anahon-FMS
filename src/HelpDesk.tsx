@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type PointerEvent, type KeyboardEvent as ReactKeyEvent } from "react";
+import { createPortal } from "react-dom";
 import { MessageCircleQuestion, X, CornerDownLeft, ArrowRight, RotateCcw, History, Trash2, Mic, Square, MoreHorizontal, Check } from "lucide-react";
 import { CONFIRM_ROUTES, type Proposal } from "./anna";
 import AnnaGuide, { type Guide } from "./AnnaGuide";
@@ -160,6 +161,11 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, voiceBank, spen
   const [level, setLevel] = useState(0);
   const [vLang, setVLang] = useState<"en" | "ar">(voiceLangPick || (lang === "ar" ? "ar" : "en"));
   const [menu, setMenu] = useState(false);
+  // The ⋯ menu is portaled to the page (a fresh chat's ~180 px panel clipped its ~260 px); z-[95] like the panel, later in the DOM, so above it yet under the drawer's dim.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ rtl: boolean; inline: number; bottom: number; maxH: number } | null>(null);
   const [recording, setRecording] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const [about, setAbout] = useState("");
@@ -168,6 +174,41 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, voiceBank, spen
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { openChatId = chatId; }, [chatId]);
   useEffect(() => { voiceLangPick = vLang; }, [vLang]);
+  // Place the open menu from the input row's viewport rect (bottom edge 4 px above the row, aligned to the
+  // ⋯ button's start edge), in the panel's own direction, kept inside the viewport.
+  useLayoutEffect(() => {
+    if (!menu) { setMenuPos(null); return; }
+    const place = () => {
+      const row = rowRef.current, btn = menuBtnRef.current;
+      if (!row || !btn) return;
+      const rr = row.getBoundingClientRect(), br = btn.getBoundingClientRect();
+      const rtl = getComputedStyle(btn).direction === "rtl";
+      const vw = document.documentElement.clientWidth, vh = window.innerHeight, W = 256, M = 8;
+      const start = rtl ? vw - br.right : br.left;
+      setMenuPos({ rtl, inline: Math.max(M, Math.min(start, vw - W - M)), bottom: vh - rr.top + 4, maxH: Math.max(120, rr.top - M) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [menu]);
+  // Open: focus the first item. Escape closes just the menu (the panel's own Escape would close everything).
+  useEffect(() => { if (menu && menuPos) menuRef.current?.querySelector<HTMLElement>("button:not([disabled])")?.focus(); }, [menu, !!menuPos]);
+  useEffect(() => {
+    if (!menu) return;
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setMenu(false); menuBtnRef.current?.focus(); } };
+    document.addEventListener("keydown", esc, true);
+    return () => document.removeEventListener("keydown", esc, true);
+  }, [menu]);
+  useEffect(() => { if (!open) setMenu(false); }, [open]);
+  // The menu is no longer next to the ⋯ button in the DOM, so Tab and the arrows cycle inside it.
+  const menuKeys = (e: ReactKeyEvent<HTMLDivElement>) => {
+    if (e.key !== "Tab" && e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const items = Array.from(e.currentTarget.querySelectorAll("button:not([disabled])")) as HTMLElement[];
+    if (!items.length) return;
+    e.preventDefault();
+    const step = e.key === "ArrowUp" || (e.key === "Tab" && e.shiftKey) ? -1 : 1;
+    items[(items.indexOf(document.activeElement as HTMLElement) + step + items.length) % items.length].focus();
+  };
   const [speaking, setSpeaking] = useState(false);
   const [opening, setOpening] = useState(false);
   const [talk, setTalk] = useState(false);
@@ -485,14 +526,17 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, voiceBank, spen
       )}
       {recording && <AnnaRecorder t={t} lang={lang} onClose={() => setRecording(false)} />}
       {correcting && <AnnaCorrect t={t} lang={lang} onClose={() => setCorrecting(false)} />}
-      <div className="relative flex items-end gap-2 border-t border-slate-200 p-2">
-        <button onClick={() => setMenu(m => !m)} aria-label={t("More")} aria-expanded={menu} title={t("More")}
+      <div ref={rowRef} className="relative flex items-end gap-2 border-t border-slate-200 p-2">
+        <button ref={menuBtnRef} onClick={() => setMenu(m => !m)} aria-label={t("More")} aria-haspopup="menu" aria-expanded={menu} title={t("More")}
           className="flex h-11 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100">
           <MoreHorizontal className="h-5 w-5" />
         </button>
         {menu && (<>
           <button aria-hidden tabIndex={-1} onClick={() => setMenu(false)} className="fixed inset-0 cursor-default" />
-          <div role="menu" data-anna-menu className="absolute bottom-full start-2 mb-1 w-64 space-y-1 rounded-xl border border-[#E6D3CA] bg-white p-1.5 text-[12px] shadow-xl">
+          {menuPos && createPortal(
+          <div ref={menuRef} role="menu" data-anna-menu dir={menuPos.rtl ? "rtl" : "ltr"} onKeyDown={menuKeys}
+            style={{ position: "fixed", bottom: menuPos.bottom, maxHeight: menuPos.maxH, ...(menuPos.rtl ? { right: menuPos.inline } : { left: menuPos.inline }) }}
+            className="z-[95] w-64 space-y-1 overflow-y-auto rounded-xl border border-[#E6D3CA] bg-white p-1.5 text-[12px] shadow-xl">
             <button role="menuitem" onClick={() => { setMenu(false); void showList(); }} disabled={busy}
               className="flex min-h-[40px] w-full items-center gap-2 rounded-lg px-2 text-start text-slate-800 hover:bg-slate-100 disabled:opacity-40">
               <History className="h-4 w-4 text-slate-500" /> {t("Past chats")}
@@ -530,7 +574,7 @@ function AnnaChat({ t, lang, userName, speechReady, arabicVoice, voiceBank, spen
                 {typeof spend.speechChars === "number" && spend.speechLimit ? <> · voice {Math.round(spend.speechChars / 1000)}k of {Math.round(spend.speechLimit / 1000)}k free chars</> : null}
               </p>
             )}
-          </div>
+          </div>, document.body)}
         </>)}
         <textarea
           ref={inputRef}

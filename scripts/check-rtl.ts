@@ -349,7 +349,7 @@ for (const [at, where] of [["", "on a phone"], ["md:", "on a wide screen"]]) {
 ok("it is placed against the content column, so it cannot cover the sidebar", bubbleCls.startsWith("absolute "));
 const dim = Number(app.match(/fixed inset-0 bg-black\/50 z-\[(\d+)\]/)?.[1]);
 const zs = [...bot.matchAll(/className="[^"]*?(?<![\w:-])z-\[(\d+)\]/g)].map(m => Number(m[1]));
-ok("it and its panel stay under the missing-documents drawer's dim", zs.length === 2 && zs.every(z => z < dim), `${zs.join(", ")} vs ${dim}`);
+ok("it, its panel and the \u22EF menu (portaled to the page) all stay under the missing-documents drawer's dim", zs.length === 3 && zs.every(z => z < dim), `${zs.join(", ")} vs ${dim}`);
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
