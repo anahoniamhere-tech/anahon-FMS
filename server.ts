@@ -7059,6 +7059,28 @@ app.get("/api/website/library", (_req, res) => {
   out.sort((a, b) => b.mtime - a.mtime);
   res.json(out);
 });
+// Hide/show one nav item without deleting the page (Saad, 22 Sep 2026: Programs, Transparency
+// and Library off the menu, reversibly, from the live editor rather than a one-off file edit).
+// Keyed on href, not label — the editor can rename a label and the toggle still finds the item.
+// The page itself is unaffected: it still builds, still answers at its address, still in the
+// sitemap. Header.astro and Footer.astro filter on the flag; this route only sets it.
+app.post("/api/website/nav", async (req, res) => {
+  try {
+    const { lang, href, hidden, user } = req.body;
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
+    if (!["en", "ar"].includes(lang)) return res.status(400).json({ error: "lang must be en or ar" });
+    if (typeof href !== "string" || !href) return res.status(400).json({ error: "href required" });
+    const p = path.join(SITE_DIR, "src/data", WEBSITE_FILES.i18n);
+    const doc = readJsonFile(p, null);
+    const item = doc?.ui?.[lang]?.nav?.find((i: any) => i.href === href);
+    if (!item) return res.status(404).json({ error: `No nav item with href "${href}" in ${lang}.` });
+    if (hidden) item.hidden = true; else delete item.hidden;
+    fs.writeFileSync(p, JSON.stringify(doc, null, 1) + "\n");
+    await createAuditLog(user?.id, user?.name, hidden ? "Website Nav Item Hidden" : "Website Nav Item Shown",
+      `${lang} nav "${item.label}" (${href}) ${hidden ? "hidden from" : "restored to"} the header and footer.`);
+    res.json({ success: true, refreshed: await siteRefresh() });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
 // Publish: the site builds itself to dist/ and runs its DEPLOY_CMD (see the site's .env).
 app.post("/api/website/build", async (req, res) => {
   try {

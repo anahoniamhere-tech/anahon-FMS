@@ -164,3 +164,56 @@ export function SectionsPanel({ canEdit, t, triggerToast, siteUrl, focus, onWidg
     </>
   );
 }
+
+type NavItem = { label: string; href: string; hidden?: boolean };
+
+/**
+ * Show/hide a nav tab — reversible, from the live editor (Saad, 22 Sep 2026), rather than
+ * deleting the entry in the Sections form and having to retype it to bring it back. Keyed on
+ * href (POST /api/website/nav): a hidden item stays listed, marked, so nothing is forgotten.
+ *
+ * This does not touch the page itself — only the header and footer links to it. The page keeps
+ * building and answering at its address; taking a page down is a separate, undecided mechanism.
+ */
+export function NavPanel({ canEdit, t, triggerToast }: { canEdit: boolean; t: T; triggerToast: (m: string, k?: "success" | "error") => void }) {
+  const [nav, setNav] = useState<{ en: NavItem[]; ar: NavItem[] }>({ en: [], ar: [] });
+  const [busy, setBusy] = useState("");
+  useEffect(() => { fetch("/api/website/content").then(r => r.json()).then(j => setNav({ en: j.i18n?.ui?.en?.nav || [], ar: j.i18n?.ui?.ar?.nav || [] })); }, []);
+  const toggle = async (lang: "en" | "ar", item: NavItem) => {
+    const key = lang + item.href;
+    setBusy(key);
+    const r = await post("/api/website/nav", { lang, href: item.href, hidden: !item.hidden });
+    setBusy("");
+    if (r.success) {
+      setNav(n => ({ ...n, [lang]: n[lang].map(i => i.href === item.href ? { ...i, hidden: !item.hidden } : i) }));
+      triggerToast(t(item.hidden ? "Back in the navigation" : "Hidden from the navigation"));
+    } else triggerToast(r.error || t("Not saved"), "error");
+  };
+  return (
+    <div className="flex-1 overflow-y-auto p-2 text-xs">
+      <p className="mb-2 text-[11px] text-slate-500">{t("Hides a tab from the header and the footer's quick links. The page itself keeps working at its own address.")}</p>
+      {(["en", "ar"] as const).map(lang => (
+        <div key={lang} className="mb-3">
+          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{lang === "en" ? "English" : "العربية"}</p>
+          <div className="space-y-1">
+            {nav[lang].map(item => (
+              <div key={item.href} className="flex items-center gap-2 rounded border border-slate-200 px-2 py-1">
+                <span className={`min-w-0 flex-1 truncate ${item.hidden ? "text-slate-400 line-through" : ""}`} dir={lang === "ar" ? "rtl" : "ltr"}>
+                  {item.label}
+                  {item.hidden && <span className="ms-1.5 rounded bg-slate-200 px-1 py-0.5 text-[9px] font-bold uppercase text-slate-500 no-underline">{t("Hidden")}</span>}
+                </span>
+                {canEdit && (
+                  <button onClick={() => toggle(lang, item)} disabled={busy === lang + item.href}
+                    className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold disabled:opacity-40 ${item.hidden ? "bg-slate-200 text-slate-700" : "bg-red-700 text-white"}`}>
+                    {busy === lang + item.href ? "…" : item.hidden ? t("Show") : t("Hide")}
+                  </button>
+                )}
+              </div>
+            ))}
+            {!nav[lang].length && <p className="text-slate-400">{t("Loading…")}</p>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

@@ -1600,5 +1600,14 @@ export const AR: Record<string, string> = {
   "Counted": "المعدود",
   "Difference": "الفرق",
   "without notice": "دون إشعار",
+
+  // Live editor — hide/show a nav tab (22 Sep 2026)
+  "Navigation": "التنقّل",
+  "Hides a tab from the header and the footer's quick links. The page itself keeps working at its own address.": "يخفي علامة تبويب من الرأس ومن روابط التذييل السريعة. الصفحة نفسها تبقى تعمل على عنوانها.",
+  "Hidden": "مخفي",
+  "Show": "إظهار",
+  "Hide": "إخفاء",
+  "Hidden from the navigation": "أُخفي من التنقّل",
+  "Back in the navigation": "عاد إلى التنقّل",
 };
 export const tr = (lang: string, s: string) => (lang === "ar" ? (AR[s] || s) : s);

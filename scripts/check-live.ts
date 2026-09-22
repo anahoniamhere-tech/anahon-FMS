@@ -69,13 +69,23 @@ ok("the Live editor labels it", /podcastsPage: "Podcasts page"/.test(widget));
 console.log("\none website editor: the page in front, the section beside it");
 ok("the Site content door is gone from the sidebar", !/navKey: "website"/.test(nav) && !/WebsiteTab/.test(app));
 ok("SitePanel exports the form and the panel", /export function Field\(/.test(web) && /export function SectionsPanel\(/.test(web));
-ok("the Live editor mounts it as the Section tab", /import \{ SectionsPanel, Focus \} from "\.\/SitePanel"/.test(live) && /panel === "section" && \(focusWidget/.test(live) && /: <SectionsPanel canEdit/.test(live));
+ok("the Live editor mounts it as the Section tab", /import \{ SectionsPanel, NavPanel, Focus \} from "\.\/SitePanel"/.test(live) && /panel === "section" && \(focusWidget/.test(live) && /: <SectionsPanel canEdit/.test(live));
 ok("a click on the page reports what was clicked", /send\(\{ type: 'select', text: norm\(n\.nodeValue\), lang/.test(script));
 ok("the server answers where it lives, without writing", /app\.post\("\/api\/website\/locate"/.test(server) && /res\.json\(\{ paths: findInContent\("text", want, lang\) \}\)/.test(server) && !/writeFileSync/.test(server.slice(server.indexOf('app.post("/api/website/locate"'), server.indexOf('app.post("/api/website/edit"'))));
 ok("edit and locate share one walker", /const hits = findInContent\(kind, want, lang, to\);/.test(server));
 ok("the gate knows the route", /"\/api\/website\/locate": SITE_EDITORS/.test(gates));
 ok("the panel opens that section", /d\.type === "select"/.test(live) && /setFocus\(\{ file, section \}\); setPanel\("section"\)/.test(live) && /if \(focus && content\[focus\.file\]\?\.\[focus\.section\] !== undefined\)/.test(web));
 ok("desktop / tablet / phone preview widths", /\["desktop", "tablet", "phone"\] as const/.test(live) && /maxWidth: device === "tablet" \? 768 : device === "phone" \? 390/.test(live));
+
+console.log("\nhide a nav tab without deleting it (Saad, 22 Sep 2026)");
+ok("the route is gated inline, same as the other website routes", /app\.post\("\/api\/website\/nav"/.test(server) && /if \(!SITE_EDITOR_ROLES\.includes\(user\?\.role\)\) return res\.status\(403\)\.json\(\{ error: "Editing the website needs an editor role\." \}\)/.test(server.slice(server.indexOf('app.post("/api/website/nav"'))));
+ok("the gate table knows the route too", /"\/api\/website\/nav": SITE_EDITORS,/.test(gates));
+ok("it finds the item by href, not by label — a renamed label still hides the right one", /doc\?\.ui\?\.\[lang\]\?\.nav\?\.find\(\(i: any\) => i\.href === href\)/.test(server));
+ok("hiding sets a flag; it never removes the item, so it can always come back", /if \(hidden\) item\.hidden = true; else delete item\.hidden;/.test(server));
+ok("NavPanel exists and is mounted as its own tab", /export function NavPanel\(/.test(web) && /import \{ SectionsPanel, NavPanel, Focus \} from "\.\/SitePanel"/.test(live) && /panel === "nav" && <NavPanel canEdit/.test(live));
+ok("a hidden item stays listed, marked, not deleted from the list", /\{item\.hidden && <span[^}]*>\{t\("Hidden"\)\}<\/span>\}/.test(web));
+ok("the site filters on the same flag, header and footer both", /t\.nav\.filter\(\(item\) => !item\.hidden\)/.test(site("src/components/Header.astro")) && /!i\.hidden/.test(site("src/components/Footer.astro")));
+ok("hiding a tab is not the same as removing the page — no page-deletion mechanism exists here", !/unlink|rmSync|delete.*dist\//.test(server.slice(server.indexOf('app.post("/api/website/nav"'), server.indexOf('app.post("/api/website/build"'))));
 
 console.log("\nevery widget is a list in the panel");
 ok("a click inside a widget reports its entries in page order, not an inline edit", /const wf = e\.target\.closest && e\.target\.closest\('\[data-widget-frame\]'\);\s*if \(wf\) \{ sendWidget\(wf\); return; \}/.test(script) && /items: \[\.\.\.f\.querySelectorAll\('\[data-item\]'\)\]\.map\(\(n\) => n\.dataset\.item\)/.test(script));
