@@ -62,17 +62,22 @@ export function field(a: Article, key: string): string {
   return unquote(a.lines.find(l => l.key === key)?.raw ?? "");
 }
 
+/** Front-matter keys whose value is an inline list of strings. */
+export const LIST_FIELDS = ["tags", "corrections"];
+
 /** `tags: ["a", "b"]` → ["a","b"]; an absent or empty list → []. */
-export function tagsOf(a: Article): string[] {
-  const raw = (a.lines.find(l => l.key === "tags")?.raw ?? "").trim();
+export function listOf(a: Article, key: string): string[] {
+  const raw = (a.lines.find(l => l.key === key)?.raw ?? "").trim();
   if (!raw || raw === "[]") return [];
   const inner = /^\[(.*)\]$/.exec(raw);
   if (!inner) return [];
-  return inner[1].split(",").map(t => unquote(t)).filter(Boolean);
+  // Split on commas that sit between quoted items, so a comma inside a correction survives.
+  return (inner[1].match(/"(?:[^"\\]|\\.)*"|'[^']*'|[^,]+/g) || []).map(t => unquote(t)).filter(Boolean);
 }
+export const tagsOf = (a: Article) => listOf(a, "tags");
 
 const encode = (key: string, value: string | string[]): string =>
-  key === "tags"
+  LIST_FIELDS.includes(key)
     ? `[${(Array.isArray(value) ? value : [value]).filter(Boolean).map(v => JSON.stringify(String(v))).join(", ")}]`
     // A date stays bare (Astro coerces it); everything else is quoted, so a colon or a # in a
     // title cannot break the document.

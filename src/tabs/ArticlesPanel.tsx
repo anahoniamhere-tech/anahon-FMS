@@ -16,8 +16,8 @@ import { ARTICLE_TYPES } from "../articleFile";
  * decides that, not this screen — the button only says so first.
  */
 const post = (p: string, b: any) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then(r => r.json());
-type Row = { file: string; lang: string; title: string; slug: string; date: string; articleType: string; category: string; contentLabel: string; tags: string[]; updated: string; correction: string; fmsId: string };
-type Loaded = { fields: Record<string, any>; body: string; others: { key: string; value: string }[] };
+type Row = { file: string; lang: string; title: string; slug: string; date: string; articleType: string; category: string; contentLabel: string; tags: string[]; updated: string; corrections: string[]; fmsId: string };
+type Loaded = { fields: Record<string, any>; body: string; others: { key: string; value: string }[]; corrections: string[] };
 
 export default function ArticlesPanel({ currentUser, t, triggerToast }: { currentUser: any; t: (s: string) => string; triggerToast: (m: string, k?: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -94,7 +94,7 @@ export default function ArticlesPanel({ currentUser, t, triggerToast }: { curren
                     {r.category && <span className="text-slate-500">{r.category}</span>}
                     {r.contentLabel && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] text-emerald-800">{r.contentLabel}</span>}
                     {r.tags.slice(0, 3).map(tg => <span key={tg} className="text-slate-400">#{tg}</span>)}
-                    {r.correction && <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800">{ic(TriangleAlert, "h-3 w-3")}{t("corrected")}</span>}
+                    {r.corrections?.length > 0 && <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800">{ic(TriangleAlert, "h-3 w-3")}{t("corrected")}</span>}
                     <span className="ms-auto font-mono text-slate-400" dir="ltr">{r.date?.slice(0, 10)}</span>
                   </button>
                 ))}
@@ -148,10 +148,11 @@ export default function ArticlesPanel({ currentUser, t, triggerToast }: { curren
                   {t("Kept as they are, not edited here")}: {doc.others.map(o => `${o.key}=${o.value}`).join(" · ")}
                 </p>
               )}
-              {sel.correction && (
-                <p className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900" dir="auto">
-                  <b>{t("Corrections on the record")}:</b> {sel.correction}
-                </p>
+              {doc.corrections?.length > 0 && (
+                <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900" dir="auto">
+                  <b>{t("Corrections on the record")}</b>
+                  <ul className="list-disc ms-4">{doc.corrections.map((c, i) => <li key={i}>{c}</li>)}</ul>
+                </div>
               )}
 
               {changed.length > 0 && (

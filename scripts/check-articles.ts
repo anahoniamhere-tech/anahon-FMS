@@ -2,7 +2,7 @@
 // Run: npx tsx scripts/check-articles.ts
 import assert from "node:assert";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
-import { parseArticle, writeArticle, field, tagsOf, changedText, correctionBlocker, EDITABLE, TEXT_FIELDS } from "../src/articleFile";
+import { parseArticle, writeArticle, field, tagsOf, listOf, changedText, correctionBlocker, EDITABLE, TEXT_FIELDS } from "../src/articleFile";
 
 const SAMPLE = `---
 title: "A title: with a colon"
@@ -74,4 +74,17 @@ if (existsSync(root)) {
   assert.ok(n >= 14, `all ${n} live articles checked`);
   console.log(`check-articles: ${n} live article files round-trip unchanged`);
 }
+// --- corrections are a LIST, because P4 wants "a public record of ALL corrections made, including
+// the date and details" — one page across every article, which a growing single string cannot feed.
+const c1 = writeArticle(SAMPLE, { corrections: ["2026-09-22: Was Ali; is Ali Hassan."] });
+assert.deepStrictEqual(listOf(parseArticle(c1), "corrections"), ["2026-09-22: Was Ali; is Ali Hassan."]);
+const c2 = writeArticle(c1, { corrections: [...listOf(parseArticle(c1), "corrections"), "2026-09-23: Second one."] });
+assert.deepStrictEqual(listOf(parseArticle(c2), "corrections").length, 2, "a later correction is appended, never overwritten (P3 §8 permanence)");
+assert.match(listOf(parseArticle(c2), "corrections")[0], /^2026-09-22: /, "each entry carries its own date");
+// A comma inside the text must not split the entry — the obvious way this breaks.
+const c3 = writeArticle(SAMPLE, { corrections: ["2026-09-22: Was 3,000; is 2,500."] });
+assert.deepStrictEqual(listOf(parseArticle(c3), "corrections"), ["2026-09-22: Was 3,000; is 2,500."], "a comma inside a correction survives");
+assert.deepStrictEqual(tagsOf(parseArticle(writeArticle(SAMPLE, { tags: ["a, b", "c"] }))), ["a, b", "c"], "…and inside a tag");
+assert.ok(!(EDITABLE as readonly string[]).includes("corrections"), "the screen never submits corrections; the server writes them");
+
 console.log("check-articles: all asserts passed");
