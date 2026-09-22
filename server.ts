@@ -16,7 +16,7 @@ import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, workpl
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory, isContentLabel, LABEL_WORDS } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { itemOpenFacts } from "./src/fillMarkers.js";
-import { parseArticle, writeArticle, field, tagsOf, unquote, changedText, correctionBlocker, EDITABLE, ARTICLE_TYPES } from "./src/articleFile.js";
+import { parseArticle, writeArticle, field, tagsOf, listOf, unquote, changedText, correctionBlocker, EDITABLE, ARTICLE_TYPES } from "./src/articleFile.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { MANAGERS as MANAGERS_SEATS, DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, INTEGRITY_SUMMARY_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
@@ -6319,7 +6319,7 @@ app.get("/api/articles", (req: any, res) => {
         title: field(a, "title"), slug: field(a, "slug"), date: field(a, "date"),
         articleType: field(a, "articleType") || "news", category: field(a, "category"),
         contentLabel: field(a, "contentLabel"), tags: tagsOf(a),
-        updated: field(a, "updated"), correction: field(a, "correction"), fmsId: field(a, "fmsId"),
+        updated: field(a, "updated"), corrections: listOf(a, "corrections"), fmsId: field(a, "fmsId"),
       });
     }
   }
@@ -6334,10 +6334,11 @@ app.get("/api/articles/one", (req: any, res) => {
     const a = parseArticle(text);
     const fields: Record<string, string | string[]> = { tags: tagsOf(a) };
     for (const k of EDITABLE) if (k !== "tags") fields[k] = field(a, k);
+    const corrections = listOf(a, "corrections");
     // Every other key in the file, shown read-only so nobody wonders where it went.
-    const others = a.lines.filter(l => l.key && !(EDITABLE as readonly string[]).includes(l.key))
+    const others = a.lines.filter(l => l.key && l.key !== "corrections" && !(EDITABLE as readonly string[]).includes(l.key))
       .map(l => ({ key: l.key, value: unquote(l.raw) }));
-    res.json({ ok: true, fields, body: a.body, others });
+    res.json({ ok: true, fields, body: a.body, others, corrections });
   } catch (e: any) { res.status(404).json({ error: e.message }); }
 });
 
@@ -6372,8 +6373,9 @@ app.post("/api/articles/save", async (req, res) => {
       const today = localDate();
       updates.updated = today;
       // Kept with its date, permanently: a later correction is appended, never overwritten.
-      const previous = field(current, "correction");
-      updates.correction = `${previous ? previous + " · " : ""}${today}: ${String(correctionNote).trim()}`;
+      // A list, not one growing string: P4 asks for "a public record of ALL corrections made,
+      // including the date and details", which the site aggregates across articles into one page.
+      updates.corrections = [...listOf(current, "corrections"), `${today}: ${String(correctionNote).trim()}`];
     }
     // The FMS does not write the site's article files, and must not: /data/site/src/content is
     // mounted read-only on purpose, and the site is the writer for its own content (that is what
@@ -7047,10 +7049,11 @@ if (!process.env.VERCEL && process.env.SOCIAL_QUEUE !== "off") {
 // i18n.json: navigation, footer, labels). The desk edits sections and the site
 // re-reads on /__refresh. Programs/mission/register (programs.json) join later.
 /**
- * Is this GET's caller a site editor? POST routes read `req.body.user.role`, which the gate
- * middleware fills in — but that middleware returns early on anything that is not a POST, so on a
- * GET `req.body.user` does not exist and `SITE_EDITOR_ROLES.includes(user?.role)` silently passes
- * `undefined`. A GET has to resolve the viewer itself, the way /images/* does.
+ * Is this GET's caller a site editor? POST routes read `req.body.user.role`, which the POST-only gate
+ * middleware fills in — on a GET that object does not exist, so copying that idiom tests `undefined`
+ * and passes. A GET is not viewerless, though: the GET middleware above requires sign-in and sets
+ * `req.dbUser`, so `req.dbUser?.role` would do just as well. This resolves the viewer explicitly, the
+ * way /images/* does; either is correct, and what these two routes actually had was neither.
  *
  * Found 22 Sep 2026 by Website & systems while checking their own feature: `/api/website/content`
  * and `/api/website/library` required only a signed-in account despite `ROUTE_SEATS` naming
