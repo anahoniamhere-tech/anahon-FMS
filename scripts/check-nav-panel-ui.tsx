@@ -3,6 +3,14 @@
 // never sign in as him, so this is the strongest proof available short of his own first click:
 // the real component tree, a real click event, a real re-render, the real fetch call it makes.
 //
+// Pairing (22 Sep 2026): one row per key, one click hides both languages. Tested here:
+// About Us specifically — its Arabic slug (/ar/من-نحن/) does not match its English one
+// (/about-us/), the exact case href-pairing would have broken — and Investigations, English
+// only, which must render and toggle as a single-language row, not error or grow a phantom
+// Arabic entry. A pre-diverged row (one language already hidden, the other not — the shape a
+// single-language override, or a stale flag from before the rework, would leave) must be shown
+// as a mismatch, not silently resolved into one state.
+//
 // Only fetch is mocked (there is no live server to hit in isolation); NavPanel itself, its
 // event handlers and React's own reconciliation all run for real.
 // Run: npx tsx scripts/check-nav-panel-ui.tsx
@@ -28,8 +36,22 @@ const waitFor = async (pred: () => boolean, ms = 1000) => {
   while (!pred()) { if (Date.now() - start > ms) throw new Error("timed out waiting for the UI to update"); await new Promise((r) => setTimeout(r, 10)); }
 };
 
-const NAV_EN = [{ label: "Home", href: "/" }, { label: "Programs", href: "/programs/" }, { label: "Transparency", href: "/transparency/" }];
-const NAV_AR = [{ label: "الرئيسية", href: "/ar/" }, { label: "برامجنا", href: "/ar/programs/" }, { label: "الشفافية", href: "/ar/transparency/" }];
+const NAV_EN = [
+  { label: "Home", href: "/", key: "home" },
+  { label: "About Us", href: "/about-us/", key: "about" },
+  { label: "Transparency", href: "/transparency/", key: "transparency" },
+  { label: "Investigations", href: "/investigations/", key: "investigations" },
+  // pre-diverged, on purpose: a state a single-language override (or a leftover from before
+  // pairing existed) could leave. English hidden, Arabic not.
+  { label: "Podcasts", href: "/podcasts/", key: "podcasts", hidden: true },
+];
+const NAV_AR = [
+  { label: "الرئيسية", href: "/ar/", key: "home" },
+  { label: "من نحن", href: "/ar/من-نحن/", key: "about" }, // deliberately NOT /ar/about-us/ — the mismatch href-pairing would have hit
+  { label: "الشفافية", href: "/ar/transparency/", key: "transparency" },
+  // no "investigations" entry — English-only, on purpose
+  { label: "بودكاست", href: "/ar/بودكاست/", key: "podcasts" }, // not hidden — the other half of the divergence
+];
 
 let calls: { url: string; body: any }[] = [];
 (globalThis as any).fetch = async (url: string, opts?: any) => {
@@ -37,7 +59,7 @@ let calls: { url: string; body: any }[] = [];
   if (url === "/api/website/nav") {
     const body = JSON.parse(opts.body);
     calls.push({ url, body });
-    return { json: async () => ({ success: true, refreshed: { invalidated: 1 } }) } as any;
+    return { json: async () => ({ success: true, touched: [], refreshed: { invalidated: 1 } }) } as any;
   }
   throw new Error(`unmocked fetch: ${url}`);
 };
@@ -46,38 +68,61 @@ const toasts: [string, string?][] = [];
 const container = document.createElement("div");
 document.body.appendChild(container);
 const root = createRoot(container);
-const findRow = (label: string) => [...container.querySelectorAll("button")].find((b) => b.closest("div")?.textContent?.includes(label));
+// The button sits inside a flex row; the outer card (which also carries the diverged note, a
+// SIBLING of that flex row, not a descendant) is its grandparent.
+const rowOf = (label: string) => {
+  const btn = [...container.querySelectorAll("button")].find((b) => b.closest("div")?.textContent?.includes(label));
+  return btn?.parentElement?.parentElement as HTMLElement | undefined;
+};
+const buttonOf = (label: string) => rowOf(label)?.querySelector("button") as HTMLElement | undefined;
 
 root.render(React.createElement(NavPanel, { canEdit: true, t: (s: string) => s, triggerToast: (m: string, k?: string) => toasts.push([m, k]) }));
 await waitFor(() => container.textContent!.includes("Transparency"));
 
-ok(container.textContent!.includes("Programs") && container.textContent!.includes("برامجنا"), "both languages' nav lists rendered from the real fetch");
-ok(!!container.querySelector('[dir="rtl"]'), "the Arabic list renders right-to-left");
-
-ok(findRow("Transparency")?.textContent === "Hide", `the visible "Transparency" row shows a "Hide" button (saw: ${findRow("Transparency")?.textContent})`);
-
-// The actual click a real user's mouse produces — not calling the handler prop directly.
-findRow("Transparency")?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+console.log("\na paired row, in both languages, one toggle");
+ok(container.textContent!.includes("Transparency") && container.textContent!.includes("الشفافية"), "the Transparency row shows both languages' labels together");
+ok(buttonOf("Transparency")?.textContent === "Hide", `it shows a "Hide" button (saw: ${buttonOf("Transparency")?.textContent})`);
+buttonOf("Transparency")?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 await waitFor(() => calls.length === 1);
-
-ok(calls[0].url === "/api/website/nav" && calls[0].body.lang === "en" && calls[0].body.href === "/transparency/" && calls[0].body.hidden === true,
-  `the click POSTed the right request (saw: ${JSON.stringify(calls[0])})`);
-await waitFor(() => findRow("Transparency")?.textContent === "Show");
-ok(true, "the button now reads \"Show\"");
-ok(/Hidden/.test(findRow("Transparency")?.closest("div")?.textContent || ""), "the row is visibly marked “Hidden”, not just removed from the list");
+ok(calls[0].url === "/api/website/nav" && calls[0].body.key === "transparency" && calls[0].body.hidden === true && calls[0].body.lang === undefined,
+  `one click sends one paired request, no lang — both languages together (saw: ${JSON.stringify(calls[0])})`);
+await waitFor(() => buttonOf("Transparency")?.textContent === "Show");
+ok(/Hidden/.test(rowOf("Transparency")?.textContent || ""), "the row stays listed, marked “Hidden”, not removed");
 ok(toasts.some(([m]) => m === "Hidden from the navigation"), `a toast confirmed it (saw: ${JSON.stringify(toasts)})`);
-
-// Click again — it must come back, and the fetch it sends must ask to un-hide, not hide again.
-findRow("Transparency")?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+buttonOf("Transparency")?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 await waitFor(() => calls.length === 2);
-ok(calls[1].body.hidden === false, `showing it again POSTed hidden:false (saw: ${JSON.stringify(calls[1])})`);
-await waitFor(() => findRow("Transparency")?.textContent === "Hide");
+ok(calls[1].body.key === "transparency" && calls[1].body.hidden === false, `showing it again asks to un-hide, same key (saw: ${JSON.stringify(calls[1])})`);
+await waitFor(() => buttonOf("Transparency")?.textContent === "Hide");
 ok(true, "the button is back to “Hide”");
 
-// canEdit=false: a reader must never see a button that would change the live site.
+console.log("\nAbout Us — the exact case href-pairing would have broken (/about-us/ vs /ar/من-نحن/)");
+ok(container.textContent!.includes("About Us") && container.textContent!.includes("من نحن"), "both languages' labels render despite the mismatched hrefs");
+buttonOf("About Us")?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+await waitFor(() => calls.length === 3);
+ok(calls[2].body.key === "about" && calls[2].body.hidden === true, `hides by key, not by href (saw: ${JSON.stringify(calls[2])})`);
+await waitFor(() => buttonOf("About Us")?.textContent === "Show");
+buttonOf("About Us")?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+await waitFor(() => calls.length === 4);
+
+console.log("\nInvestigations — English only, no Arabic twin");
+ok(!rowOf("Investigations")?.textContent?.match(/[؀-ۿ]/), "its row has no Arabic label — a missing twin renders as a single-language row, not an error");
+ok(buttonOf("Investigations")?.textContent === "Hide", "it still gets its own toggle");
+buttonOf("Investigations")?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+await waitFor(() => calls.length === 5);
+ok(calls[4].body.key === "investigations" && calls[4].body.hidden === true && calls[4].body.lang === undefined, `same request shape as a paired row — the server, not the UI, decides there is no Arabic side to touch (saw: ${JSON.stringify(calls[4])})`);
+await waitFor(() => buttonOf("Investigations")?.textContent === "Show");
+ok(!/don't match/.test(rowOf("Investigations")?.textContent || ""), "an unpaired item hiding is not reported as a language mismatch");
+
+console.log("\na pre-diverged row (Podcasts: English hidden, Arabic shown) is shown as a mismatch, not silently resolved");
+const podRow = rowOf("Podcasts")?.textContent || "";
+ok(/don't match/.test(podRow), `the row says English and Arabic don't match (saw: ${JSON.stringify(podRow)})`);
+ok(/English hidden/.test(podRow) && /Arabic shown/.test(podRow), "and says which is which");
+ok(buttonOf("Podcasts")?.textContent === "Hide", "the button treats \"not fully shown\" as the hidden state — clicking it will finish hiding, not partially show");
+
+console.log("\ncanEdit=false: a reader can never change the live site");
+root.render(React.createElement(NavPanel, { canEdit: false, t: (s: string) => s, triggerToast: () => {} }));
 // Same mounted root, same nav already in state (the fetch effect only runs once) — just a
 // prop change, so give React one tick to commit it and no more.
-root.render(React.createElement(NavPanel, { canEdit: false, t: (s: string) => s, triggerToast: () => {} }));
 await new Promise((r) => setTimeout(r, 20));
 ok(container.querySelectorAll("button").length === 0, "with canEdit=false, no toggle buttons render at all");
 

@@ -1601,13 +1601,18 @@ export const AR: Record<string, string> = {
   "Difference": "الفرق",
   "without notice": "دون إشعار",
 
-  // Live editor — hide/show a nav tab (22 Sep 2026)
+  // Live editor — hide/show a nav tab, both languages paired by key (22 Sep 2026)
   "Navigation": "التنقّل",
-  "Hides a tab from the header and the footer's quick links. The page itself keeps working at its own address.": "يخفي علامة تبويب من الرأس ومن روابط التذييل السريعة. الصفحة نفسها تبقى تعمل على عنوانها.",
+  "Hides a tab from the header and the footer's quick links, in both languages together. The page itself keeps working at its own address.": "يخفي علامة تبويب من الرأس ومن روابط التذييل السريعة، في اللغتين معًا. الصفحة نفسها تبقى تعمل على عنوانها.",
   "Hidden": "مخفي",
   "Show": "إظهار",
   "Hide": "إخفاء",
   "Hidden from the navigation": "أُخفي من التنقّل",
   "Back in the navigation": "عاد إلى التنقّل",
+  "English and Arabic don't match:": "الإنكليزية والعربية غير متطابقتين:",
+  "English hidden": "الإنكليزية مخفية",
+  "English shown": "الإنكليزية ظاهرة",
+  "Arabic hidden": "العربية مخفية",
+  "Arabic shown": "العربية ظاهرة",
 };
 export const tr = (lang: string, s: string) => (lang === "ar" ? (AR[s] || s) : s);

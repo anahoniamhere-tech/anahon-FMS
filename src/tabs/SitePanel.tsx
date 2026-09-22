@@ -165,12 +165,18 @@ export function SectionsPanel({ canEdit, t, triggerToast, siteUrl, focus, onWidg
   );
 }
 
-type NavItem = { label: string; href: string; hidden?: boolean };
+type NavItem = { label: string; href: string; key: string; hidden?: boolean };
 
 /**
- * Show/hide a nav tab — reversible, from the live editor (Saad, 22 Sep 2026), rather than
- * deleting the entry in the Sections form and having to retype it to bring it back. Keyed on
- * href (POST /api/website/nav): a hidden item stays listed, marked, so nothing is forgotten.
+ * Show/hide a nav tab in BOTH languages at once — reversible, from the live editor (Saad, 22
+ * Sep 2026), rather than deleting the entry in the Sections form (which would have to be
+ * retyped exactly to come back) or toggling each language separately (six clicks for three
+ * tabs, and two lists that can drift apart).
+ *
+ * One row per `key` (POST /api/website/nav, {key, hidden}) — never per href: some Arabic
+ * slugs are translated (/about-us/ ↔ /ar/من-نحن/) and href-pairing would work on exactly the
+ * tabs being hidden tonight and fail silently on those. A key with no twin in the other
+ * language (English's Investigations) is a normal, single-language row, not an error.
  *
  * This does not touch the page itself — only the header and footer links to it. The page keeps
  * building and answering at its address; taking a page down is a separate, undecided mechanism.
@@ -179,41 +185,55 @@ export function NavPanel({ canEdit, t, triggerToast }: { canEdit: boolean; t: T;
   const [nav, setNav] = useState<{ en: NavItem[]; ar: NavItem[] }>({ en: [], ar: [] });
   const [busy, setBusy] = useState("");
   useEffect(() => { fetch("/api/website/content").then(r => r.json()).then(j => setNav({ en: j.i18n?.ui?.en?.nav || [], ar: j.i18n?.ui?.ar?.nav || [] })); }, []);
-  const toggle = async (lang: "en" | "ar", item: NavItem) => {
-    const key = lang + item.href;
-    setBusy(key);
-    const r = await post("/api/website/nav", { lang, href: item.href, hidden: !item.hidden });
+  // One row per key, in the order the English list gives them — the superset today (English
+  // has Investigations; nothing exists in Arabic that doesn't also exist in English).
+  const rows = nav.en.map(en => ({ key: en.key, en, ar: nav.ar.find(a => a.key === en.key) }));
+  const toggle = async (row: (typeof rows)[number], nextHidden: boolean) => {
+    setBusy(row.key);
+    const r = await post("/api/website/nav", { key: row.key, hidden: nextHidden });
     setBusy("");
     if (r.success) {
-      setNav(n => ({ ...n, [lang]: n[lang].map(i => i.href === item.href ? { ...i, hidden: !item.hidden } : i) }));
-      triggerToast(t(item.hidden ? "Back in the navigation" : "Hidden from the navigation"));
+      setNav(n => ({
+        en: n.en.map(i => i.key === row.key ? { ...i, hidden: nextHidden } : i),
+        ar: n.ar.map(i => i.key === row.key ? { ...i, hidden: nextHidden } : i),
+      }));
+      triggerToast(t(nextHidden ? "Hidden from the navigation" : "Back in the navigation"));
     } else triggerToast(r.error || t("Not saved"), "error");
   };
   return (
     <div className="flex-1 overflow-y-auto p-2 text-xs">
-      <p className="mb-2 text-[11px] text-slate-500">{t("Hides a tab from the header and the footer's quick links. The page itself keeps working at its own address.")}</p>
-      {(["en", "ar"] as const).map(lang => (
-        <div key={lang} className="mb-3">
-          <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">{lang === "en" ? "English" : "العربية"}</p>
-          <div className="space-y-1">
-            {nav[lang].map(item => (
-              <div key={item.href} className="flex items-center gap-2 rounded border border-slate-200 px-2 py-1">
-                <span className={`min-w-0 flex-1 truncate ${item.hidden ? "text-slate-400 line-through" : ""}`} dir={lang === "ar" ? "rtl" : "ltr"}>
-                  {item.label}
-                  {item.hidden && <span className="ms-1.5 rounded bg-slate-200 px-1 py-0.5 text-[9px] font-bold uppercase text-slate-500 no-underline">{t("Hidden")}</span>}
+      <p className="mb-2 text-[11px] text-slate-500">{t("Hides a tab from the header and the footer's quick links, in both languages together. The page itself keeps working at its own address.")}</p>
+      <div className="space-y-1">
+        {rows.map(row => {
+          const enHidden = !!row.en.hidden, arHidden = row.ar ? !!row.ar.hidden : enHidden;
+          const diverged = !!row.ar && enHidden !== arHidden;
+          const hidden = row.ar ? enHidden && arHidden : enHidden; // "shown" needs every side that exists to be shown
+          return (
+            <div key={row.key} className="rounded border border-slate-200 px-2 py-1">
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate">
+                  <span className={enHidden ? "text-slate-400 line-through" : ""}>{row.en.label}</span>
+                  {row.ar && <span className="mx-1 text-slate-300">/</span>}
+                  {row.ar && <span dir="rtl" className={arHidden ? "text-slate-400 line-through" : ""}>{row.ar.label}</span>}
+                  {hidden && !diverged && <span className="ms-1.5 rounded bg-slate-200 px-1 py-0.5 text-[9px] font-bold uppercase text-slate-500 no-underline">{t("Hidden")}</span>}
                 </span>
                 {canEdit && (
-                  <button onClick={() => toggle(lang, item)} disabled={busy === lang + item.href}
-                    className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold disabled:opacity-40 ${item.hidden ? "bg-slate-200 text-slate-700" : "bg-red-700 text-white"}`}>
-                    {busy === lang + item.href ? "…" : item.hidden ? t("Show") : t("Hide")}
+                  <button onClick={() => toggle(row, !hidden)} disabled={busy === row.key}
+                    className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold disabled:opacity-40 ${hidden ? "bg-slate-200 text-slate-700" : "bg-red-700 text-white"}`}>
+                    {busy === row.key ? "…" : hidden ? t("Show") : t("Hide")}
                   </button>
                 )}
               </div>
-            ))}
-            {!nav[lang].length && <p className="text-slate-400">{t("Loading…")}</p>}
-          </div>
-        </div>
-      ))}
+              {diverged && (
+                <p className="mt-0.5 text-[10px] text-amber-700">
+                  {t("English and Arabic don't match:")} {enHidden ? t("English hidden") : t("English shown")}, {arHidden ? t("Arabic hidden") : t("Arabic shown")}.
+                </p>
+              )}
+            </div>
+          );
+        })}
+        {!rows.length && <p className="text-slate-400">{t("Loading…")}</p>}
+      </div>
     </div>
   );
 }

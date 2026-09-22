@@ -80,12 +80,26 @@ ok("desktop / tablet / phone preview widths", /\["desktop", "tablet", "phone"\] 
 console.log("\nhide a nav tab without deleting it (Saad, 22 Sep 2026)");
 ok("the route is gated inline, same as the other website routes", /app\.post\("\/api\/website\/nav"/.test(server) && /if \(!SITE_EDITOR_ROLES\.includes\(user\?\.role\)\) return res\.status\(403\)\.json\(\{ error: "Editing the website needs an editor role\." \}\)/.test(server.slice(server.indexOf('app.post("/api/website/nav"'))));
 ok("the gate table knows the route too", /"\/api\/website\/nav": SITE_EDITORS,/.test(gates));
-ok("it finds the item by href, not by label — a renamed label still hides the right one", /doc\?\.ui\?\.\[lang\]\?\.nav\?\.find\(\(i: any\) => i\.href === href\)/.test(server));
+ok("it finds the item by key, never by href — some Arabic slugs are translated and href-pairing would fail silently on those", /doc\?\.ui\?\.\[l\]\?\.nav\?\.find\(\(i: any\) => i\.key === key\)/.test(server) && !/i\.href === href/.test(server.slice(server.indexOf('app.post("/api/website/nav"'), server.indexOf('app.post("/api/website/build"'))));
 ok("hiding sets a flag; it never removes the item, so it can always come back", /if \(hidden\) item\.hidden = true; else delete item\.hidden;/.test(server));
+ok("default touches both languages; an explicit lang narrows to one", /for \(const l of lang \? \[lang\] : \(\["en", "ar"\] as const\)\)/.test(server));
+ok("a language with no item at this key is skipped, not an error — English's Investigations has no Arabic pair", /if \(!item\) continue;/.test(server) && /if \(!touched\.length\) return res\.status\(404\)/.test(server));
 ok("NavPanel exists and is mounted as its own tab", /export function NavPanel\(/.test(web) && /import \{ SectionsPanel, NavPanel, Focus \} from "\.\/SitePanel"/.test(live) && /panel === "nav" && <NavPanel canEdit/.test(live));
-ok("a hidden item stays listed, marked, not deleted from the list", /\{item\.hidden && <span[^}]*>\{t\("Hidden"\)\}<\/span>\}/.test(web));
+ok("one row per key — both languages, one toggle", /const rows = nav\.en\.map\(en => \(\{ key: en\.key, en, ar: nav\.ar\.find\(a => a\.key === en\.key\) \}\)\)/.test(web) && /post\("\/api\/website\/nav", \{ key: row\.key, hidden: nextHidden \}\)/.test(web));
+ok("a hidden row stays listed, marked, not deleted from the list", /\{hidden && !diverged && <span[^}]*>\{t\("Hidden"\)\}<\/span>\}/.test(web));
+ok("a language mismatch is shown, not silently resolved", /const diverged = !!row\.ar && enHidden !== arHidden;/.test(web) && /t\("English and Arabic don't match:"\)/.test(web));
 ok("the site filters on the same flag, header and footer both", /t\.nav\.filter\(\(item\) => !item\.hidden\)/.test(site("src/components/Header.astro")) && /!i\.hidden/.test(site("src/components/Footer.astro")));
 ok("hiding a tab is not the same as removing the page — no page-deletion mechanism exists here", !/unlink|rmSync|delete.*dist\//.test(server.slice(server.indexOf('app.post("/api/website/nav"'), server.indexOf('app.post("/api/website/build"'))));
+// key is a plain string field, so findInContent (the live text-editor's walker) DOES walk it —
+// same as href always has. Neither is ever clickable page text (Header.astro renders only
+// item.label), so a click can never target them; case is the second guard (keys are lowercase,
+// every real label is capitalised). Proven, not assumed: no key value collides with any label.
+const i18nData = JSON.parse(site("src/data/i18n.json"));
+const navKeys = new Set<string>();
+const navLabels = new Set<string>();
+for (const l of ["en", "ar"] as const) for (const item of i18nData.ui[l].nav) { navKeys.add(item.key); navLabels.add(item.label); }
+ok("no nav key collides with any nav label (findInContent could not confuse the two)", [...navKeys].every((k) => !navLabels.has(k)));
+ok("navHidden's own body-link fix (src/lib/i18n.ts) still reads href, unaffected by the key rework", /export function navHidden\(lang: Lang, href: string\)/.test(site("src/lib/i18n.ts")));
 
 console.log("\nevery widget is a list in the panel");
 ok("a click inside a widget reports its entries in page order, not an inline edit", /const wf = e\.target\.closest && e\.target\.closest\('\[data-widget-frame\]'\);\s*if \(wf\) \{ sendWidget\(wf\); return; \}/.test(script) && /items: \[\.\.\.f\.querySelectorAll\('\[data-item\]'\)\]\.map\(\(n\) => n\.dataset\.item\)/.test(script));
