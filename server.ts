@@ -6941,8 +6941,27 @@ if (!process.env.VERCEL && process.env.SOCIAL_QUEUE !== "off") {
 // The site's copy lives in JSON files it imports (site.json: hero, programs, team, …;
 // i18n.json: navigation, footer, labels). The desk edits sections and the site
 // re-reads on /__refresh. Programs/mission/register (programs.json) join later.
+/**
+ * Is this GET's caller a site editor? POST routes read `req.body.user.role`, which the gate
+ * middleware fills in — but that middleware returns early on anything that is not a POST, so on a
+ * GET `req.body.user` does not exist and `SITE_EDITOR_ROLES.includes(user?.role)` silently passes
+ * `undefined`. A GET has to resolve the viewer itself, the way /images/* does.
+ *
+ * Found 22 Sep 2026 by Website & systems while checking their own feature: `/api/website/content`
+ * and `/api/website/library` required only a signed-in account despite `ROUTE_SEATS` naming
+ * SITE_EDITORS for that path — the entry gates the POST that shares the path, never the GET.
+ * Same shape as the papers shelf: see memory anahon-route-seats-is-post-only.
+ */
+const siteEditorReads = async (req: any): Promise<boolean> => {
+  const id = await viewerIdFromReq(req);
+  const u = id ? await prisma.user.findUnique({ where: { id } }) : null;
+  return Boolean(u && u.active !== false && SITE_EDITOR_ROLES.includes(u.role));
+};
+const SITE_READ_REFUSAL = "The website's copy and image library belong to the editors and the Digital Officer.";
+
 const WEBSITE_FILES: Record<string, string> = { site: "site.json", i18n: "i18n.json", programs: "programs.json", home: "home.json" };
-app.get("/api/website/content", (_req, res) => {
+app.get("/api/website/content", async (req, res) => {
+  if (!(await siteEditorReads(req))) return res.status(403).json({ error: SITE_READ_REFUSAL });
   const out: Record<string, any> = {};
   for (const [k, f] of Object.entries(WEBSITE_FILES)) { const v = readJsonFile(path.join(SITE_DIR, "src/data", f), null); if (v) out[k] = v; }
   res.json(out);
@@ -7046,7 +7065,8 @@ app.post("/api/website/edit", async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 // Pictures the site can serve: what the desk uploaded plus the brand assets.
-app.get("/api/website/library", (_req, res) => {
+app.get("/api/website/library", async (req, res) => {
+  if (!(await siteEditorReads(req))) return res.status(403).json({ error: SITE_READ_REFUSAL });
   const out: { path: string; name: string; size: number; mtime: number }[] = [];
   for (const [dir, prefix] of [["public/uploads/website", "/uploads/website/"], ["public/images", "/images/"]] as const) {
     const abs = path.join(SITE_DIR, dir); if (!fs.existsSync(abs)) continue;

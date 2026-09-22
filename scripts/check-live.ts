@@ -159,5 +159,22 @@ for (const k of ["Home hero slider", "Latest episodes", "Latest articles", "Arti
 const missing = [...keys].filter(k => !(k in AR));
 ok(`${keys.size} strings, all translated`, missing.length === 0, missing.slice(0, 5).join(" | "));
 
+console.log("\nthe website's GET routes refuse a non-editor themselves");
+// Found 22 Sep 2026 by Website & systems: these two GETs required only a signed-in account, while
+// ROUTE_SEATS named SITE_EDITORS for that path — the entry gates the POST sharing the path, not the
+// GET. The gate middleware returns early on anything that is not a POST, so `req.body.user` does
+// not exist on a GET and `SITE_EDITOR_ROLES.includes(user?.role)` would pass `undefined`.
+for (const route of ['app.get("/api/website/content"', 'app.get("/api/website/library"']) {
+  const start = server.indexOf(route);
+  const body = start < 0 ? "" : server.slice(start, server.indexOf("\n});", start));
+  const guard = body.indexOf("siteEditorReads");
+  const read = Math.min(...[body.indexOf("readJsonFile"), body.indexOf("readdirSync")].filter(i => i > 0).concat([Number.MAX_SAFE_INTEGER]));
+  ok(`${route.slice(9)} asks who is calling`, guard > 0, start < 0 ? "route not found" : "no siteEditorReads guard");
+  ok(`${route.slice(9)} asks BEFORE it reads anything`, guard > 0 && guard < read);
+}
+ok("the guard resolves the viewer itself rather than trusting req.body.user",
+  /const siteEditorReads = async \(req: any\)[\s\S]{0,400}?viewerIdFromReq\(req\)[\s\S]{0,300}?SITE_EDITOR_ROLES\.includes\(u\.role\)/.test(server));
+ok("and it refuses a closed account", /u\.active !== false && SITE_EDITOR_ROLES/.test(server));
+
 console.log(failed ? `\n${failed} check(s) failed` : "\nall checks passed");
 process.exit(failed ? 1 : 0);
