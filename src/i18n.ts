@@ -621,7 +621,6 @@ export const AR: Record<string, string> = {
   "Travel": "السفر",
   "Doors": "الأبواب",
   "Search vouchers, projects, suppliers, documents…": "ابحث في السندات والمشاريع والموردين والمستندات…",
-  "Clear search": "مسح البحث",
   "No matches for": "لا نتائج لـ",
   "Voucher": "سند صرف",
   "Document": "مستند",
