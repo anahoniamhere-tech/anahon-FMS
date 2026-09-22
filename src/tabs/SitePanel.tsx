@@ -181,7 +181,7 @@ type NavItem = { label: string; href: string; key: string; hidden?: boolean };
  * This does not touch the page itself — only the header and footer links to it. The page keeps
  * building and answering at its address; taking a page down is a separate, undecided mechanism.
  */
-export function NavPanel({ canEdit, t, triggerToast }: { canEdit: boolean; t: T; triggerToast: (m: string, k?: "success" | "error") => void }) {
+export function NavPanel({ canEdit, t, triggerToast, tell }: { canEdit: boolean; t: T; triggerToast: (m: string, k?: "success" | "error") => void; tell: (m: any) => void }) {
   const [nav, setNav] = useState<{ en: NavItem[]; ar: NavItem[] }>({ en: [], ar: [] });
   const [busy, setBusy] = useState("");
   useEffect(() => { fetch("/api/website/content").then(r => r.json()).then(j => setNav({ en: j.i18n?.ui?.en?.nav || [], ar: j.i18n?.ui?.ar?.nav || [] })); }, []);
@@ -197,6 +197,10 @@ export function NavPanel({ canEdit, t, triggerToast }: { canEdit: boolean; t: T;
         en: n.en.map(i => i.key === row.key ? { ...i, hidden: nextHidden } : i),
         ar: n.ar.map(i => i.key === row.key ? { ...i, hidden: nextHidden } : i),
       }));
+      // The framed preview only re-fetches when the page dropdown picks a DIFFERENT page —
+      // staying on the same one after a toggle leaves it showing pre-toggle DOM (Front desk,
+      // 22 Sep 2026). live-edit.js already reloads on this message; nothing else changes.
+      tell({ type: "reload" });
       triggerToast(t(nextHidden ? "Hidden from the navigation" : "Back in the navigation"));
     } else triggerToast(r.error || t("Not saved"), "error");
   };

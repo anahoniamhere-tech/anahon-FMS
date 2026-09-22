@@ -88,6 +88,13 @@ ok("NavPanel exists and is mounted as its own tab", /export function NavPanel\(/
 ok("one row per key — both languages, one toggle", /const rows = nav\.en\.map\(en => \(\{ key: en\.key, en, ar: nav\.ar\.find\(a => a\.key === en\.key\) \}\)\)/.test(web) && /post\("\/api\/website\/nav", \{ key: row\.key, hidden: nextHidden \}\)/.test(web));
 ok("a hidden row stays listed, marked, not deleted from the list", /\{hidden && !diverged && <span[^}]*>\{t\("Hidden"\)\}<\/span>\}/.test(web));
 ok("a language mismatch is shown, not silently resolved", /const diverged = !!row\.ar && enHidden !== arHidden;/.test(web) && /t\("English and Arabic don't match:"\)/.test(web));
+// Front desk, 22 Sep 2026: Saad hid five tabs, the panel showed it correctly, but the framed
+// preview stayed on 10 — the iframe only re-fetches when the page dropdown changes to a
+// DIFFERENT page (LiveTab's go() sets frame.current.src, a no-op when the value is unchanged).
+// live-edit.js already reloads on {type:'reload'}; NavPanel and Publish just never sent it.
+ok("NavPanel is given tell and uses it after a successful toggle", /tell: \(m: any\) => void/.test(web) && /tell\(\{ type: "reload" \}\);/.test(web));
+ok("LiveTab passes its own tell down to NavPanel", /<NavPanel canEdit=\{canEdit\} t=\{t\} triggerToast=\{triggerToast\} tell=\{tell\} \/>/.test(live));
+ok("Publish also tells the preview to reload once it succeeds — the visible backstop, not just the toggle's own", /if \(r\.ok\) tell\(\{ type: "reload" \}\);/.test(live));
 ok("the site filters on the same flag, header and footer both", /t\.nav\.filter\(\(item\) => !item\.hidden\)/.test(site("src/components/Header.astro")) && /!i\.hidden/.test(site("src/components/Footer.astro")));
 ok("hiding a tab is not the same as removing the page — no page-deletion mechanism exists here", !/unlink|rmSync|delete.*dist\//.test(server.slice(server.indexOf('app.post("/api/website/nav"'), server.indexOf('app.post("/api/website/build"'))));
 // key is a plain string field, so findInContent (the live text-editor's walker) DOES walk it —

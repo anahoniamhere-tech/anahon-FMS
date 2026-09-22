@@ -65,6 +65,7 @@ let calls: { url: string; body: any }[] = [];
 };
 
 const toasts: [string, string?][] = [];
+const tellCalls: any[] = [];
 const container = document.createElement("div");
 document.body.appendChild(container);
 const root = createRoot(container);
@@ -76,7 +77,7 @@ const rowOf = (label: string) => {
 };
 const buttonOf = (label: string) => rowOf(label)?.querySelector("button") as HTMLElement | undefined;
 
-root.render(React.createElement(NavPanel, { canEdit: true, t: (s: string) => s, triggerToast: (m: string, k?: string) => toasts.push([m, k]) }));
+root.render(React.createElement(NavPanel, { canEdit: true, t: (s: string) => s, triggerToast: (m: string, k?: string) => toasts.push([m, k]), tell: (m: any) => tellCalls.push(m) }));
 await waitFor(() => container.textContent!.includes("Transparency"));
 
 console.log("\na paired row, in both languages, one toggle");
@@ -89,6 +90,11 @@ ok(calls[0].url === "/api/website/nav" && calls[0].body.key === "transparency" &
 await waitFor(() => buttonOf("Transparency")?.textContent === "Show");
 ok(/Hidden/.test(rowOf("Transparency")?.textContent || ""), "the row stays listed, marked “Hidden”, not removed");
 ok(toasts.some(([m]) => m === "Hidden from the navigation"), `a toast confirmed it (saw: ${JSON.stringify(toasts)})`);
+// Front desk, 22 Sep 2026: the preview iframe stayed on 10 tabs after Saad hid five, until he
+// switched pages and back — the parent never told the framed page to reload, so a toggle on
+// the CURRENT page left it showing pre-toggle DOM. live-edit.js already listens for exactly
+// this ({type:'reload'} -> location.reload()); NavPanel just never sent it.
+ok(tellCalls.some((m) => m.type === "reload"), `a successful toggle tells the framed preview to reload, so the same page shows the change without switching away and back (saw: ${JSON.stringify(tellCalls)})`);
 buttonOf("Transparency")?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 await waitFor(() => calls.length === 2);
 ok(calls[1].body.key === "transparency" && calls[1].body.hidden === false, `showing it again asks to un-hide, same key (saw: ${JSON.stringify(calls[1])})`);

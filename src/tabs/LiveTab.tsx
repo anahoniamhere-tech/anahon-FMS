@@ -131,6 +131,10 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
     setBusy(true); setLog(null);
     const r = await post("/api/website/build", {});
     setBusy(false); setLog(r.log || r.error || JSON.stringify(r));
+    // A toggle already tells the preview to reload itself (see NavPanel), so by the time
+    // Publish is pressed the framed page should already match. This is the backstop, so
+    // pressing Publish always leaves the preview visibly caught up, not just theoretically so.
+    if (r.ok) tell({ type: "reload" });
     triggerToast(r.ok ? `${t("Published in")} ${r.seconds}s${r.deployed === null ? ` (${t("built only — no host configured yet")})` : ""}` : (r.error || t("Publish failed")), r.ok ? "success" : "error");
   };
   const upload = async (f: File) => {
@@ -191,7 +195,7 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
             {panel === "section" && (focusWidget
               ? <WidgetPanel widget={focusWidget.widget} pageItems={focusWidget.items} items={items} articles={articles} pageLang={pageLang} canEdit={canEdit} t={t} triggerToast={triggerToast} tell={tell} onBack={() => setFocusWidget(null)} />
               : <SectionsPanel canEdit={canEdit} t={t} triggerToast={triggerToast} siteUrl={siteUrl} focus={focus} onWidget={openWidget} />)}
-            {panel === "nav" && <NavPanel canEdit={canEdit} t={t} triggerToast={triggerToast} />}
+            {panel === "nav" && <NavPanel canEdit={canEdit} t={t} triggerToast={triggerToast} tell={tell} />}
             {panel === "library" && (
               <>
                 <div className="space-y-1 border-b p-1.5">
