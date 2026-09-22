@@ -35,6 +35,12 @@ ok(PAGE_SECTIONS.Home?.length === 10, `Home carries all ten wrapped sections (sa
 ok(PAGE_SECTIONS.Home?.every((s: any) => /^home\.[a-z]+$/.test(s.id)), "every id is namespaced by page, so ids can never collide across files later");
 ok(new Set(PAGE_SECTIONS.Home?.map((s: any) => s.id)).size === 10, "no duplicate ids");
 
+console.log("\nPAGE_SECTIONS, extended to every page in PAGES (22 Sep 2026)");
+const ALL_LABELS = ["Home", "About", "Programs", "Articles", "Podcasts", "Documentaries", "Library", "Transparency", "Contact", "iContent", "iContent — Studio", "iContent — Trainings"];
+ok(ALL_LABELS.every((l) => PAGE_SECTIONS[l]?.length > 0), `every page in PAGES has at least one registered section (saw: ${ALL_LABELS.filter((l) => !PAGE_SECTIONS[l]?.length).join(",") || "none missing"})`);
+const everyId = ALL_LABELS.flatMap((l) => PAGE_SECTIONS[l].map((s: any) => s.id));
+ok(new Set(everyId).size === everyId.length, `no id is reused across pages — the actual namespacing guarantee (${everyId.length} ids total)`);
+
 let calls: { url: string; body: any }[] = [];
 let tellCalls: any[] = [];
 // "Numbers" (home.stats) starts pre-hidden — proves the panel reads existing state, not just writes it.
@@ -94,11 +100,28 @@ await waitFor(() => calls.length === 3);
 ok(calls[2].body.id === "home.stats" && calls[2].body.hidden === false, `un-hides the right id (saw: ${JSON.stringify(calls[2])})`);
 await waitFor(() => buttonOf("Numbers")?.textContent === "Hide");
 
-console.log("\na page with no registered sections yet");
-root.render(React.createElement(PageSectionsPanel, { canEdit: true, pageLabel: "Contact", t: (s: string) => s, triggerToast: () => {}, tell: () => {} }));
+console.log("\na page with no registered sections at all (every real page in PAGES now has some — this proves the fallback itself, not that one was missed)");
+root.render(React.createElement(PageSectionsPanel, { canEdit: true, pageLabel: "Not A Real Page", t: (s: string) => s, triggerToast: () => {}, tell: () => {} }));
 await new Promise((r) => setTimeout(r, 20));
 ok(container.textContent!.includes("no labeled sections"), "says so plainly rather than showing an empty list or crashing");
 ok(container.querySelectorAll("button").length === 0, "and offers no toggle for a page with nothing registered");
+
+console.log("\na page that ISN'T Home — About — gets its own scoped panel (the actual scope of tonight's work)");
+(globalThis as any).fetch = async (url: string, opts?: any) => {
+  if (url === "/api/website/content") return { json: async () => ({ i18n: { sections: {} } }) } as any;
+  if (url === "/api/website/sections") { const body = JSON.parse(opts.body); calls.push({ url, body }); return { json: async () => ({ success: true, refreshed: { invalidated: 1 } }) } as any; }
+  throw new Error(`unmocked fetch: ${url}`);
+};
+calls = [];
+root.render(React.createElement(PageSectionsPanel, { canEdit: true, pageLabel: "About", t: (s: string) => s, triggerToast: (m: string, k?: string) => toasts.push([m, k]), tell: (m: any) => tellCalls.push(m) }));
+await waitFor(() => buttonOf("Our Values")?.textContent === "Hide");
+ok(PAGE_SECTIONS.About.every((s: any) => container.textContent!.includes(s.label)), "About's own three sections render, by their own real labels (About Us, Our Values, Meet The Hosts)");
+ok(!container.textContent!.includes("Our Programs"), "and none of Home's labels leak into About's panel");
+buttonOf("Our Values")?.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+await waitFor(() => calls.length === 1);
+ok(calls[0].body.id === "about.values" && !calls[0].body.id.startsWith("home."), `toggling a section on a non-Home page posts THAT page's own namespaced id, never one of Home's (saw: ${JSON.stringify(calls[0])})`);
+await waitFor(() => buttonOf("Our Values")?.textContent === "Show");
+ok(tellCalls.some((m) => m.type === "reload"), "reloads the preview here too, same as every other panel");
 
 console.log("\ncanEdit=false: a reader can never change the live site");
 root.render(React.createElement(PageSectionsPanel, { canEdit: false, pageLabel: "Home", t: (s: string) => s, triggerToast: () => {}, tell: () => {} }));

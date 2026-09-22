@@ -258,6 +258,29 @@ export const PAGE_SECTIONS: Record<string, SectionInfo[]> = {
     { id: "home.incubator", label: "Media Incubator" },
     { id: "home.newsletter", label: "Newsletter" },
   ],
+  About: [
+    { id: "about.intro", label: "About Us" },
+    { id: "about.values", label: "Our Values" },
+    { id: "about.hosts", label: "Meet The Hosts" },
+  ],
+  Programs: [{ id: "programs.all", label: "Our Programs" }],
+  Articles: [{ id: "articles.all", label: "Articles" }],
+  Podcasts: [{ id: "podcasts.all", label: "Podcasts" }],
+  Documentaries: [{ id: "documentaries.all", label: "Documentaries" }],
+  Library: [{ id: "library.all", label: "Media Library" }],
+  Transparency: [{ id: "transparency.all", label: "Transparency" }],
+  Contact: [
+    { id: "contact.intro", label: "Contact" },
+    { id: "contact.faq", label: "FAQ" },
+  ],
+  iContent: [
+    { id: "icontent.hero", label: "Hero" },
+    { id: "icontent.pillars", label: "Pillars" },
+    { id: "icontent.academy", label: "The Academy So Far" },
+    { id: "icontent.follow", label: "Follow iContent" },
+  ],
+  "iContent — Studio": [{ id: "icstudio.all", label: "Creator Coach" }],
+  "iContent — Trainings": [{ id: "ictrainings.all", label: "Trainings" }],
 };
 
 /**
@@ -267,8 +290,9 @@ export const PAGE_SECTIONS: Record<string, SectionInfo[]> = {
  * elsewhere. One row per id, one flag, not per language (a section is the same structural piece
  * of the layout in both). POST /api/website/sections, keyed on `id` ("page.section").
  *
- * Tonight's scope is the mechanism plus Home's ten sections; wiring another page later is
- * "add its rows to PAGE_SECTIONS, wrap the section in the component" — nothing else changes.
+ * Wired for every page in LiveTab's PAGES list (22 Sep 2026): ids are namespaced per page
+ * ("about.mission", "contact.faq", …) precisely so a page.astro's own sections can never
+ * collide with another page's, or with Home's.
  */
 export function PageSectionsPanel({ canEdit, t, triggerToast, tell, pageLabel }: { canEdit: boolean; t: T; triggerToast: (m: string, k?: "success" | "error") => void; tell: (m: any) => void; pageLabel: string }) {
   const [hidden, setHidden] = useState<Record<string, boolean>>({});

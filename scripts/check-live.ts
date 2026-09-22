@@ -122,6 +122,41 @@ ok("it tells the framed preview to reload after a successful toggle — the exac
 ok("LiveTab passes its own tell and the current page's label down", /<PageSectionsPanel canEdit=\{canEdit\} t=\{t\} triggerToast=\{triggerToast\} tell=\{tell\} pageLabel=\{current\?\.label \|\| ""\} \/>/.test(live));
 ok("PAGE_SECTIONS is exported so wiring the next page is data, not new plumbing", /export const PAGE_SECTIONS: Record<string, SectionInfo\[\]> = \{/.test(web));
 
+console.log("\nthe same mechanism, wired for every page in PAGES (Saad, 22 Sep 2026) — proving namespacing, not just that toggling works");
+// pageLabel here must match LiveTab's own PAGES array exactly — the same string keys PAGE_SECTIONS
+// is looked up by at runtime — not a paraphrase of it.
+const PAGE_FILES: Record<string, string> = {
+  Home: "Home.astro",
+  About: "About.astro",
+  Programs: "ProgramsHub.astro",
+  Articles: "ArticlesIndex.astro",
+  Podcasts: "Podcasts.astro",
+  Documentaries: "Documentaries.astro",
+  Library: "Library.astro",
+  Transparency: "Transparency.astro",
+  Contact: "Contact.astro",
+  iContent: "ICHome.astro",
+  "iContent — Studio": "ICStudio.astro",
+  "iContent — Trainings": "ICTrainings.astro",
+};
+ok("LiveTab's PAGES carries exactly these labels — the panel's lookup key and the check's own map agree", /const PAGES: \{ label: string; en: string; ar: string \}\[\] = \[/.test(live) && Object.keys(PAGE_FILES).every((label) => live.includes(`label: "${label}"`)));
+const allIds: string[] = [];
+for (const [label, file] of Object.entries(PAGE_FILES)) {
+  const src = site(`src/components/${file}`);
+  const ids = [...src.matchAll(/sectionHidden\('([a-z.]+)'\)/g)].map((m) => m[1]);
+  const prefix = label === "Home" ? "home." : label === "iContent" ? "icontent." : label === "iContent — Studio" ? "icstudio." : label === "iContent — Trainings" ? "ictrainings." : `${label.toLowerCase()}.`;
+  ok(`${file}: every wrapped id is namespaced "${prefix}…", none repeated, none borrowed from another page`, ids.length > 0 && ids.every((id) => id.startsWith(prefix)) && new Set(ids).size === ids.length, ids.join(","));
+  ok(`${file}: every wrap opens and closes — balanced, no swallowed or duplicated markup`, (src.match(/\{!sectionHidden\('[a-z.]+'\) && \(/g) || []).length === (src.match(/^\)\}$/gm) || []).length);
+  // No nested "[" inside a PAGE_SECTIONS entry (objects use { }, not arrays), so the array for one
+  // label runs from its own "label: [" marker to the very next "]" — safe without a real parser.
+  const marker = `${/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(label) ? label : JSON.stringify(label)}: [`;
+  const start = web.indexOf(marker);
+  const registryIds = start < 0 ? [] : [...web.slice(start, web.indexOf("]", start)).matchAll(/id: "([a-z.]+)"/g)].map((m) => m[1]);
+  ok(`${label}: PAGE_SECTIONS' ids match exactly what's wrapped in ${file} — the registry the FMS panel reads and the markup the site builds are the same set`, start >= 0 && ids.length === registryIds.length && ids.every((id) => registryIds.includes(id)), `wrapped=${ids.join(",")} registry=${registryIds.join(",")}`);
+  allIds.push(...ids);
+}
+ok("every id, across every page, is globally unique — this is the actual namespacing guarantee: no page's toggle can ever reach another page's markup", new Set(allIds).size === allIds.length, `${allIds.length} ids total`);
+
 console.log("\nevery widget is a list in the panel");
 ok("a click inside a widget reports its entries in page order, not an inline edit", /const wf = e\.target\.closest && e\.target\.closest\('\[data-widget-frame\]'\);\s*if \(wf\) \{ sendWidget\(wf\); return; \}/.test(script) && /items: \[\.\.\.f\.querySelectorAll\('\[data-item\]'\)\]\.map\(\(n\) => n\.dataset\.item\)/.test(script));
 ok("the page answers widget-items and reload", /d\.type === 'widget-items'/.test(script) && /d\.type === 'reload'\) location\.reload\(\)/.test(script));

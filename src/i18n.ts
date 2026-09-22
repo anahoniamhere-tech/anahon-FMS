@@ -1630,5 +1630,22 @@ export const AR: Record<string, string> = {
   "Numbers": "الأرقام",
   "Media Incubator": "حاضنة الإعلام",
   "Newsletter": "النشرة البريدية",
+
+  // Page sections — the 11 pages beyond Home (22 Sep 2026)
+  "About Us": "من نحن",
+  "Our Values": "قيمنا",
+  "Meet The Hosts": "تعرّف على المقدّمين",
+  "Articles": "المقالات",
+  "Podcasts": "بودكاست",
+  "Documentaries": "أفلام وثائقية",
+  "Media Library": "المكتبة الإعلامية",
+  "Transparency": "الشفافية",
+  "Contact": "تواصل معنا",
+  "FAQ": "الأسئلة الشائعة",
+  "Pillars": "الركائز",
+  "The Academy So Far": "الأكاديمية حتى الآن",
+  "Follow iContent": "تابع أنا المحتوى",
+  "Creator Coach": "مدرّب صنّاع المحتوى",
+  "Trainings": "التدريبات",
 };
 export const tr = (lang: string, s: string) => (lang === "ar" ? (AR[s] || s) : s);
