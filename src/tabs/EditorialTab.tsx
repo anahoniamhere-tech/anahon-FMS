@@ -12,6 +12,7 @@ import EditorialMap from "./EditorialMap";
 import { openFacts, itemOpenFacts, splitFill } from "../fillMarkers";
 import ChannelPanel, { TokenHealth } from "./ChannelPanel";
 import NetworkPanel from "./NetworkPanel";
+import ArticlesPanel from "./ArticlesPanel";
 import { SITE_EDITORS } from "../roles";
 
 // Editorial pipeline (Policies P3 & P4). The tab renders the register and the
@@ -1675,6 +1676,10 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
           })}
         </div>
       </div>
+
+      {/* Everything already on the website — managed, not produced. Separate from the chain above
+          on purpose: these are corrections and reclassifications, most on legacy imports. */}
+      {canPost && <ArticlesPanel currentUser={currentUser} t={t} triggerToast={triggerToast} />}
 
       <NetworkPanel accounts={social.status?.accounts || []} role={currentUser?.role}
         canPost={canPost} triggerToast={triggerToast} t={t} />

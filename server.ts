@@ -16,6 +16,7 @@ import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, workpl
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory, isContentLabel, LABEL_WORDS } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { itemOpenFacts } from "./src/fillMarkers.js";
+import { parseArticle, writeArticle, field, tagsOf, unquote, changedText, correctionBlocker, EDITABLE, ARTICLE_TYPES } from "./src/articleFile.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
 import { MANAGERS as MANAGERS_SEATS, DIRECTORS, CREW, EDITORS, CONTENT_EDITORS, SITE_EDITORS, ARCHIVE_EDITORS, PLO as PLO_SEAT, DIGITAL as DIGITAL_SEAT, ALL_ROLES, AUDITOR, SELF, REPORT_READERS, INTEGRITY_SUMMARY_READERS, SUPPLIER_EDITORS, FULL_VIEW, TIMESHEET_FILERS, HR } from "./src/roles.js";
@@ -175,7 +176,7 @@ const PLO_ALLOWED_POSTS = new Set([
 // subscriptions. No money, no editorial approval.
 const DIGITAL_ALLOWED_POSTS = new Set([
   "/api/auth/sync",
-  "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build",
+  "/api/website/content", "/api/website/image", "/api/website/edit", "/api/website/build", "/api/articles/save",
   "/api/archive/item", "/api/archive/schema", "/api/archive/home", "/api/archive/publish",
   "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete", "/api/social/image-public",
   "/api/tools/save", "/api/tools/delete",
@@ -188,7 +189,7 @@ const EDITOR_ALLOWED_POSTS = new Set([
   "/api/pool/save", "/api/pool/assess",   // the field heads assess their own freelancers
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/preview", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
-  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete", "/api/social/image-public", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image"
+  "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete", "/api/social/image-public", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image", "/api/articles/save"
 ]);
 // The auditor reads; the one write is confirming that a piece of equipment physically exists.
 // Anyone can be given a task, so every working seat may tick its own and put it back;
@@ -6285,6 +6286,110 @@ app.post("/api/archive/schema", async (req, res) => {
     await createAuditLog(user?.id, user?.name, "Archive Schema Saved", `${Object.keys(fac).length} tags in the facet map, ${sup.length} removed (${isIC ? "iContent" : "AnaHon"} view).`);
     res.json({ success: true, schema: out, refreshed: await siteRefresh() });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// ---- Master article editor ------------------------------------------------
+// Every article already on the site, in one list, with every front-matter field editable. This is
+// NOT the editorial chain: that chain (P3 §4) produces a new piece through fact-check and two
+// approvals. This manages what is already published — reclassifying it, fixing it — and most of
+// these 14 files are legacy WordPress imports with no ContentItem behind them at all.
+//
+// Saad's rule (22 Sep 2026): metadata is free, because none of it changes what a reader was told.
+// Changing the TITLE or the BODY does, and P3 §8 then wants a dated line saying what was wrong and
+// what is right, kept on the record and shown on the article.
+const articleDir = (lang: string) => path.join(SITE_DIR, "src/content/articles", lang === "ar" ? "ar" : "en");
+const articlePath = (lang: string, file: string) => {
+  // The file name is chosen from the list; never let one reach outside its language folder.
+  const dir = articleDir(lang);
+  const full = path.join(dir, path.basename(String(file || "")));
+  if (!full.startsWith(dir + path.sep) || !full.endsWith(".md")) throw new Error("Not an article file.");
+  return full;
+};
+
+app.get("/api/articles", (req: any, res) => {
+  if (!SITE_EDITOR_ROLES.includes(req.dbUser?.role)) return res.status(403).json({ error: "The website's articles are the editors'." });
+  const rows: any[] = [];
+  for (const lang of ["en", "ar"]) {
+    const dir = articleDir(lang);
+    if (!fs.existsSync(dir)) continue;
+    for (const file of fs.readdirSync(dir).filter(f => f.endsWith(".md"))) {
+      const a = parseArticle(fs.readFileSync(path.join(dir, file), "utf-8"));
+      rows.push({
+        file, lang,
+        title: field(a, "title"), slug: field(a, "slug"), date: field(a, "date"),
+        articleType: field(a, "articleType") || "news", category: field(a, "category"),
+        contentLabel: field(a, "contentLabel"), tags: tagsOf(a),
+        updated: field(a, "updated"), correction: field(a, "correction"), fmsId: field(a, "fmsId"),
+      });
+    }
+  }
+  rows.sort((x, y) => String(y.date).localeCompare(String(x.date)));
+  res.json({ ok: true, articles: rows, editable: EDITABLE, articleTypes: ARTICLE_TYPES });
+});
+
+app.get("/api/articles/one", (req: any, res) => {
+  if (!SITE_EDITOR_ROLES.includes(req.dbUser?.role)) return res.status(403).json({ error: "The website's articles are the editors'." });
+  try {
+    const text = fs.readFileSync(articlePath(String(req.query.lang || ""), String(req.query.file || "")), "utf-8");
+    const a = parseArticle(text);
+    const fields: Record<string, string | string[]> = { tags: tagsOf(a) };
+    for (const k of EDITABLE) if (k !== "tags") fields[k] = field(a, k);
+    // Every other key in the file, shown read-only so nobody wonders where it went.
+    const others = a.lines.filter(l => l.key && !(EDITABLE as readonly string[]).includes(l.key))
+      .map(l => ({ key: l.key, value: unquote(l.raw) }));
+    res.json({ ok: true, fields, body: a.body, others });
+  } catch (e: any) { res.status(404).json({ error: e.message }); }
+});
+
+app.post("/api/articles/save", async (req, res) => {
+  try {
+    const { lang, file, fields, body, correctionNote, user } = req.body;
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website's articles needs an editor role." });
+    const full = articlePath(String(lang || ""), String(file || ""));
+    const text = fs.readFileSync(full, "utf-8");
+    const current = parseArticle(text);
+    const updates: Record<string, string | string[] | null> = {};
+    for (const [k, v] of Object.entries(fields || {})) {
+      // Refuse an unknown field out loud. The parser would keep it, but silently accepting a name
+      // nobody reads is how a value goes missing without anyone being told.
+      if (!(EDITABLE as readonly string[]).includes(k)) return res.status(400).json({ error: `"${k}" is not a field this screen edits (${EDITABLE.join(", ")}).` });
+      updates[k] = v as string | string[];
+    }
+    if (updates.articleType && !(ARTICLE_TYPES as readonly string[]).includes(String(updates.articleType))) {
+      return res.status(400).json({ error: `"${updates.articleType}" is not an article type (${ARTICLE_TYPES.join(", ")}).` });
+    }
+    if (updates.contentLabel && !isContentLabel(String(updates.contentLabel))) {
+      return res.status(400).json({ error: `"${updates.contentLabel}" is not a content label Policy P3 defines (${LABEL_WORDS.map(([w]) => w).join(", ")}).` });
+    }
+    // P3 §8 — the same rule the check pins, decided here and not in the browser.
+    const changed = changedText(
+      { title: field(current, "title"), body: current.body },
+      { title: updates.title === undefined ? undefined : String(updates.title), body }
+    );
+    const blocker = correctionBlocker(changed, String(correctionNote || ""));
+    if (blocker) return res.status(400).json({ error: blocker });
+    if (changed.length) {
+      const today = localDate();
+      updates.updated = today;
+      // Kept with its date, permanently: a later correction is appended, never overwritten.
+      const previous = field(current, "correction");
+      updates.correction = `${previous ? previous + " · " : ""}${today}: ${String(correctionNote).trim()}`;
+    }
+    // The FMS does not write the site's article files, and must not: /data/site/src/content is
+    // mounted read-only on purpose, and the site is the writer for its own content (that is what
+    // /__publish and /__preview already are). So compose the file here and hand it over.
+    const next = writeArticle(text, updates, changed.includes("body") ? String(body) : undefined);
+    const wrote = await fetch(`${SITE_URL}/__article`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ lang, file: path.basename(full), text: next })
+    }).then(async r => ({ status: r.status, body: await r.json().catch(() => ({})) }))
+      .catch((e: any) => ({ status: 0, body: { error: e.message } }));
+    if (wrote.status === 404) return res.status(503).json({ error: "The editing site has no /__article endpoint yet, so this save has nowhere to go. Website & systems owns that endpoint (astro.config.mjs) — nothing was changed." });
+    if (wrote.status !== 200) return res.status(502).json({ error: `The editing site refused the save: ${(wrote.body as any).error || wrote.status}` });
+    await createAuditLog(user?.id, user?.name, changed.length ? "Website Article Corrected" : "Website Article Edited",
+      `${lang}/${path.basename(full)}${changed.length ? ` — ${changed.join(" and ")} changed: ${String(correctionNote).trim().slice(0, 160)}` : ` — ${Object.keys(updates).join(", ")}`}`);
+    res.json({ ok: true, corrected: changed, refreshed: await siteRefresh() });
+  } catch (e: any) { res.status(400).json({ error: e.message }); }
 });
 
 app.get("/api/archive/home", (_req, res) => {

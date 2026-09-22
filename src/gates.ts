@@ -186,6 +186,9 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/website/content": SITE_EDITORS,
   "/api/website/image": SITE_EDITORS,
   "/api/website/edit": SITE_EDITORS,
+  // The master article editor writes the site's article files; the GET side refuses in the route,
+  // because ROUTE_SEATS gates POST only.
+  "/api/articles/save": SITE_EDITORS,
   "/api/website/locate": SITE_EDITORS,
   "/api/website/nav": SITE_EDITORS,
   "/api/website/sections": SITE_EDITORS,
