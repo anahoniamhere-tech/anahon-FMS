@@ -69,7 +69,7 @@ ok("the Live editor labels it", /podcastsPage: "Podcasts page"/.test(widget));
 console.log("\none website editor: the page in front, the section beside it");
 ok("the Site content door is gone from the sidebar", !/navKey: "website"/.test(nav) && !/WebsiteTab/.test(app));
 ok("SitePanel exports the form and the panel", /export function Field\(/.test(web) && /export function SectionsPanel\(/.test(web));
-ok("the Live editor mounts it as the Section tab", /import \{ SectionsPanel, NavPanel, Focus \} from "\.\/SitePanel"/.test(live) && /panel === "section" && \(focusWidget/.test(live) && /: <SectionsPanel canEdit/.test(live));
+ok("the Live editor mounts it as the Section tab", /import \{ SectionsPanel, NavPanel, PageSectionsPanel, Focus \} from "\.\/SitePanel"/.test(live) && /panel === "section" && \(focusWidget/.test(live) && /: <SectionsPanel canEdit/.test(live));
 ok("a click on the page reports what was clicked", /send\(\{ type: 'select', text: norm\(n\.nodeValue\), lang/.test(script));
 ok("the server answers where it lives, without writing", /app\.post\("\/api\/website\/locate"/.test(server) && /res\.json\(\{ paths: findInContent\("text", want, lang\) \}\)/.test(server) && !/writeFileSync/.test(server.slice(server.indexOf('app.post("/api/website/locate"'), server.indexOf('app.post("/api/website/edit"'))));
 ok("edit and locate share one walker", /const hits = findInContent\(kind, want, lang, to\);/.test(server));
@@ -84,7 +84,7 @@ ok("it finds the item by key, never by href — some Arabic slugs are translated
 ok("hiding sets a flag; it never removes the item, so it can always come back", /if \(hidden\) item\.hidden = true; else delete item\.hidden;/.test(server));
 ok("default touches both languages; an explicit lang narrows to one", /for \(const l of lang \? \[lang\] : \(\["en", "ar"\] as const\)\)/.test(server));
 ok("a language with no item at this key is skipped, not an error — English's Investigations has no Arabic pair", /if \(!item\) continue;/.test(server) && /if \(!touched\.length\) return res\.status\(404\)/.test(server));
-ok("NavPanel exists and is mounted as its own tab", /export function NavPanel\(/.test(web) && /import \{ SectionsPanel, NavPanel, Focus \} from "\.\/SitePanel"/.test(live) && /panel === "nav" && <NavPanel canEdit/.test(live));
+ok("NavPanel exists and is mounted as its own tab", /export function NavPanel\(/.test(web) && /import \{ SectionsPanel, NavPanel, PageSectionsPanel, Focus \} from "\.\/SitePanel"/.test(live) && /panel === "nav" && <NavPanel canEdit/.test(live));
 ok("one row per key — both languages, one toggle", /const rows = nav\.en\.map\(en => \(\{ key: en\.key, en, ar: nav\.ar\.find\(a => a\.key === en\.key\) \}\)\)/.test(web) && /post\("\/api\/website\/nav", \{ key: row\.key, hidden: nextHidden \}\)/.test(web));
 ok("a hidden row stays listed, marked, not deleted from the list", /\{hidden && !diverged && <span[^}]*>\{t\("Hidden"\)\}<\/span>\}/.test(web));
 ok("a language mismatch is shown, not silently resolved", /const diverged = !!row\.ar && enHidden !== arHidden;/.test(web) && /t\("English and Arabic don't match:"\)/.test(web));
@@ -107,6 +107,20 @@ const navLabels = new Set<string>();
 for (const l of ["en", "ar"] as const) for (const item of i18nData.ui[l].nav) { navKeys.add(item.key); navLabels.add(item.label); }
 ok("no nav key collides with any nav label (findInContent could not confuse the two)", [...navKeys].every((k) => !navLabels.has(k)));
 ok("navHidden's own body-link fix (src/lib/i18n.ts) still reads href, unaffected by the key rework", /export function navHidden\(lang: Lang, href: string\)/.test(site("src/lib/i18n.ts")));
+
+console.log("\nhide a whole page section, independent of the nav (Saad, 22 Sep 2026)");
+ok("the route is gated inline, same as the other website routes", /app\.post\("\/api\/website\/sections"/.test(server) && /if \(!SITE_EDITOR_ROLES\.includes\(user\?\.role\)\) return res\.status\(403\)\.json\(\{ error: "Editing the website needs an editor role\." \}\)/.test(server.slice(server.indexOf('app.post("/api/website/sections"'))));
+ok("the gate table knows the route too", /"\/api\/website\/sections": SITE_EDITORS,/.test(gates));
+ok("stored as an object KEY, not a value — never a candidate for findInContent's walk at all, stronger than href or nav's key ever needed to be", /if \(hidden\) doc\.sections\[id\] = true; else delete doc\.sections\[id\];/.test(server));
+ok("sectionHidden(id) reads the same file, decoupled from navHidden(lang, href) — different signature on purpose, one flag per id not per language", /export function sectionHidden\(id: string\): boolean \{/.test(site("src/lib/i18n.ts")) && /return !!\(data as any\)\.sections\?\.\[id\];/.test(site("src/lib/i18n.ts")));
+const homeAstro = site("src/components/Home.astro");
+const sectionIds = [...homeAstro.matchAll(/sectionHidden\('([a-z.]+)'\)/g)].map((m) => m[1]);
+ok("Home.astro wraps ten sections, each with its own namespaced id, none repeated", sectionIds.length === 10 && sectionIds.every((id) => id.startsWith("home.")) && new Set(sectionIds).size === 10, sectionIds.join(","));
+ok("every wrapped section actually opens and closes — an unbalanced wrap would still build but silently swallow or duplicate markup", (homeAstro.match(/\{!sectionHidden\('[a-z.]+'\) && \(/g) || []).length === (homeAstro.match(/^\)\}$/gm) || []).length);
+ok("PageSectionsPanel exists, keyed on id (not href, not lang) and mounted as its own tab", /export function PageSectionsPanel\(/.test(web) && /post\("\/api\/website\/sections", \{ id, hidden: next \}\)/.test(web) && /panel === "pageSections" && <PageSectionsPanel canEdit/.test(live));
+ok("it tells the framed preview to reload after a successful toggle — the exact staleness bug from tonight, guarded here too", /tell\(\{ type: "reload" \}\);\s*\n\s*triggerToast\(t\(next \? "Hidden from the page" : "Back on the page"\)\);/.test(web));
+ok("LiveTab passes its own tell and the current page's label down", /<PageSectionsPanel canEdit=\{canEdit\} t=\{t\} triggerToast=\{triggerToast\} tell=\{tell\} pageLabel=\{current\?\.label \|\| ""\} \/>/.test(live));
+ok("PAGE_SECTIONS is exported so wiring the next page is data, not new plumbing", /export const PAGE_SECTIONS: Record<string, SectionInfo\[\]> = \{/.test(web));
 
 console.log("\nevery widget is a list in the panel");
 ok("a click inside a widget reports its entries in page order, not an inline edit", /const wf = e\.target\.closest && e\.target\.closest\('\[data-widget-frame\]'\);\s*if \(wf\) \{ sendWidget\(wf\); return; \}/.test(script) && /items: \[\.\.\.f\.querySelectorAll\('\[data-item\]'\)\]\.map\(\(n\) => n\.dataset\.item\)/.test(script));

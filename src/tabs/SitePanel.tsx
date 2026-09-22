@@ -241,3 +241,73 @@ export function NavPanel({ canEdit, t, triggerToast, tell }: { canEdit: boolean;
     </div>
   );
 }
+
+/** One page's labeled sections, in the order they appear — maintained here the same way
+ *  LiveTab's own PAGES list is, since a section has no metadata on the page to read it from. */
+export type SectionInfo = { id: string; label: string };
+export const PAGE_SECTIONS: Record<string, SectionInfo[]> = {
+  Home: [
+    { id: "home.hero", label: "Hero" },
+    { id: "home.articles", label: "Latest Articles" },
+    { id: "home.mission", label: "Mission" },
+    { id: "home.programs", label: "Our Programs" },
+    { id: "home.hosts", label: "Our Hosts" },
+    { id: "home.episodes", label: "Latest Episodes" },
+    { id: "home.academy", label: "iContent Academy" },
+    { id: "home.stats", label: "Numbers" },
+    { id: "home.incubator", label: "Media Incubator" },
+    { id: "home.newsletter", label: "Newsletter" },
+  ],
+};
+
+/**
+ * Hide/show a whole labeled section of the CURRENT page — independent of the Navigation panel
+ * on purpose (Saad, 22 Sep 2026): a page can be off the menu with every section still visible
+ * at its own address, or a section hidden from one page while what it promotes stays reachable
+ * elsewhere. One row per id, one flag, not per language (a section is the same structural piece
+ * of the layout in both). POST /api/website/sections, keyed on `id` ("page.section").
+ *
+ * Tonight's scope is the mechanism plus Home's ten sections; wiring another page later is
+ * "add its rows to PAGE_SECTIONS, wrap the section in the component" — nothing else changes.
+ */
+export function PageSectionsPanel({ canEdit, t, triggerToast, tell, pageLabel }: { canEdit: boolean; t: T; triggerToast: (m: string, k?: "success" | "error") => void; tell: (m: any) => void; pageLabel: string }) {
+  const [hidden, setHidden] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState("");
+  useEffect(() => { fetch("/api/website/content").then(r => r.json()).then(j => setHidden(j.i18n?.sections || {})); }, []);
+  const sections = PAGE_SECTIONS[pageLabel] || [];
+  const toggle = async (id: string, next: boolean) => {
+    setBusy(id);
+    const r = await post("/api/website/sections", { id, hidden: next });
+    setBusy("");
+    if (r.success) {
+      setHidden(h => ({ ...h, [id]: next }));
+      tell({ type: "reload" });
+      triggerToast(t(next ? "Hidden from the page" : "Back on the page"));
+    } else triggerToast(r.error || t("Not saved"), "error");
+  };
+  return (
+    <div className="flex-1 overflow-y-auto p-2 text-xs">
+      <p className="mb-2 text-[11px] text-slate-500">{t("Hides a whole section of this page. The menu and every other page are unaffected.")}</p>
+      {!sections.length && <p className="text-slate-400">{t("This page has no labeled sections yet.")}</p>}
+      <div className="space-y-1">
+        {sections.map(s => {
+          const h = !!hidden[s.id];
+          return (
+            <div key={s.id} className="flex items-center gap-2 rounded border border-slate-200 px-2 py-1">
+              <span className={`min-w-0 flex-1 truncate ${h ? "text-slate-400 line-through" : ""}`}>
+                {t(s.label)}
+                {h && <span className="ms-1.5 rounded bg-slate-200 px-1 py-0.5 text-[9px] font-bold uppercase text-slate-500 no-underline">{t("Hidden")}</span>}
+              </span>
+              {canEdit && (
+                <button onClick={() => toggle(s.id, !h)} disabled={busy === s.id}
+                  className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-semibold disabled:opacity-40 ${h ? "bg-slate-200 text-slate-700" : "bg-red-700 text-white"}`}>
+                  {busy === s.id ? "…" : h ? t("Show") : t("Hide")}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

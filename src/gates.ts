@@ -188,6 +188,7 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   "/api/website/edit": SITE_EDITORS,
   "/api/website/locate": SITE_EDITORS,
   "/api/website/nav": SITE_EDITORS,
+  "/api/website/sections": SITE_EDITORS,
   "/api/website/build": SITE_EDITORS,
   "/api/archive/item": ARCHIVE_EDITORS,
   "/api/archive/schema": ARCHIVE_EDITORS,

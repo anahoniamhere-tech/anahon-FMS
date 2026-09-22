@@ -3,7 +3,7 @@ import { SharedProps } from "./shared";
 import Info from "../Info";
 import { SITE_EDITORS } from "../roles";
 import { tr } from "../i18n";
-import { SectionsPanel, NavPanel, Focus } from "./SitePanel";
+import { SectionsPanel, NavPanel, PageSectionsPanel, Focus } from "./SitePanel";
 import { WidgetPanel, WIDGET_LABEL, WIDGET_PAGE } from "./WidgetPanel";
 
 /**
@@ -63,7 +63,7 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
   const [pageLang, setPageLang] = useState<"en" | "ar">("en");
   const [articleId, setArticleId] = useState("");   // the desk record behind the framed page, when it is an article
   const [lib, setLib] = useState<LibItem[]>([]);
-  const [panel, setPanel] = useState<"section" | "library" | "pictures" | "nav">("section");
+  const [panel, setPanel] = useState<"section" | "library" | "pictures" | "nav" | "pageSections">("section");
   const [focus, setFocus] = useState<Focus>(null);        // the section behind the last clicked text
   const [device, setDevice] = useState<"desktop" | "tablet" | "phone">("desktop");
   const [focusWidget, setFocusWidget] = useState<{ widget: string; items: string[] } | null>(null);   // the widget behind the last click
@@ -190,12 +190,13 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
         {canEdit && (
           <aside className={`hidden shrink-0 flex-col rounded-lg border border-slate-200 bg-white md:flex ${panel === "section" ? "w-96" : "w-64"}`}>
             <div className="flex border-b text-xs font-semibold">
-              {(["section", "nav", "library", "pictures"] as const).map(p => <button key={p} onClick={() => setPanel(p)} className={`flex-1 px-2 py-1.5 ${panel === p ? "bg-slate-800 text-white" : ""}`}>{t(p === "section" ? "Section" : p === "nav" ? "Navigation" : p === "library" ? "Library" : "Pictures")}</button>)}
+              {(["section", "nav", "pageSections", "library", "pictures"] as const).map(p => <button key={p} onClick={() => setPanel(p)} className={`flex-1 px-2 py-1.5 ${panel === p ? "bg-slate-800 text-white" : ""}`}>{t(p === "section" ? "Section" : p === "nav" ? "Navigation" : p === "pageSections" ? "Page sections" : p === "library" ? "Library" : "Pictures")}</button>)}
             </div>
             {panel === "section" && (focusWidget
               ? <WidgetPanel widget={focusWidget.widget} pageItems={focusWidget.items} items={items} articles={articles} pageLang={pageLang} canEdit={canEdit} t={t} triggerToast={triggerToast} tell={tell} onBack={() => setFocusWidget(null)} />
               : <SectionsPanel canEdit={canEdit} t={t} triggerToast={triggerToast} siteUrl={siteUrl} focus={focus} onWidget={openWidget} />)}
             {panel === "nav" && <NavPanel canEdit={canEdit} t={t} triggerToast={triggerToast} tell={tell} />}
+            {panel === "pageSections" && <PageSectionsPanel canEdit={canEdit} t={t} triggerToast={triggerToast} tell={tell} pageLabel={current?.label || ""} />}
             {panel === "library" && (
               <>
                 <div className="space-y-1 border-b p-1.5">

@@ -7094,6 +7094,32 @@ app.post("/api/website/nav", async (req, res) => {
     res.json({ success: true, touched, refreshed: await siteRefresh() });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
+// Hide/show a whole labeled section of a page — independent of the nav (Saad, 22 Sep 2026: a
+// page can be off the menu with every section of it still visible at its own address, or a
+// section can be hidden from one page while what it promotes stays reachable elsewhere; the
+// two controls never drive each other). One flag per id, not per language: a section is
+// structural — the same layout piece in both languages — unlike a nav item's label or href.
+//
+// Stored in i18n.json › sections (a flat id → true map) rather than a new file: it is the one
+// place the live editor's own text-replacer (findInContent) already reads and the site already
+// imports, and an id is an OBJECT KEY here, never walked as a value — nothing for that walker to
+// ever touch, unlike href or nav's key, which are values and merely unreachable by a click.
+app.post("/api/website/sections", async (req, res) => {
+  try {
+    const { id, hidden, user } = req.body;
+    if (!SITE_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Editing the website needs an editor role." });
+    if (typeof id !== "string" || !/^[a-z0-9]+(\.[a-z0-9]+)+$/.test(id)) return res.status(400).json({ error: "id must be page.section (lowercase)" });
+    const p = path.join(SITE_DIR, "src/data", WEBSITE_FILES.i18n);
+    const doc = readJsonFile(p, null);
+    if (!doc) return res.status(500).json({ error: "i18n.json not found" });
+    if (!doc.sections) doc.sections = {};
+    if (hidden) doc.sections[id] = true; else delete doc.sections[id];
+    fs.writeFileSync(p, JSON.stringify(doc, null, 1) + "\n");
+    await createAuditLog(user?.id, user?.name, hidden ? "Website Section Hidden" : "Website Section Shown",
+      `section "${id}" ${hidden ? "hidden from" : "restored to"} its page.`);
+    res.json({ success: true, refreshed: await siteRefresh() });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
 // Publish: the site builds itself to dist/ and runs its DEPLOY_CMD (see the site's .env).
 app.post("/api/website/build", async (req, res) => {
   try {

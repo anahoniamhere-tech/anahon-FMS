@@ -1614,5 +1614,21 @@ export const AR: Record<string, string> = {
   "English shown": "الإنكليزية ظاهرة",
   "Arabic hidden": "العربية مخفية",
   "Arabic shown": "العربية ظاهرة",
+
+  // Live editor — hide/show a whole page section, independent of the nav (22 Sep 2026)
+  "Page sections": "أقسام الصفحة",
+  "Hides a whole section of this page. The menu and every other page are unaffected.": "يخفي قسمًا كاملاً من هذه الصفحة. القائمة وبقية الصفحات لا تتأثر.",
+  "This page has no labeled sections yet.": "لا أقسام مُسمّاة لهذه الصفحة بعد.",
+  "Hidden from the page": "أُخفي من الصفحة",
+  "Back on the page": "عاد إلى الصفحة",
+  "Hero": "الافتتاحية",
+  "Latest Articles": "أحدث المقالات",
+  "Our Programs": "برامجنا",
+  "Our Hosts": "مضيفونا",
+  "Latest Episodes": "أحدث الحلقات",
+  "iContent Academy": "أكاديمية أنا المحتوى",
+  "Numbers": "الأرقام",
+  "Media Incubator": "حاضنة الإعلام",
+  "Newsletter": "النشرة البريدية",
 };
 export const tr = (lang: string, s: string) => (lang === "ar" ? (AR[s] || s) : s);
