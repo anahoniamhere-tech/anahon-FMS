@@ -7,6 +7,8 @@
  * selfDealing.ts. Every constant and blocker below traces to a policy sentence.
  */
 
+import { m, say, type Msg } from "./gateText";
+
 export const CONTENT_STATUSES = [
   "Assigned", "In Production", "Fact-Check", "Editorial Review", "Approved", "Published"
 ] as const;
@@ -45,12 +47,14 @@ export const CONTENT_CHECKS: [key: string, label: string, policySentence: string
  * goes out: a piece still in the pipeline yields a Draft that the gate releases on publish
  * (src/meta.ts initialState). It only refuses a post that no piece is answerable for.
  */
-export function socialPostBlockers(item: { status: string; retractedAt: string; rehearsal?: boolean } | null): string[] {
-  if (!item) return ["Every post carries a piece from the editorial register — Policy P3 covers Facebook and Instagram exactly as it covers the website, and all content is reviewed and approved before it is published. Create or pick the piece, and the post goes out when the piece is cleared."];
-  if (item.retractedAt) return ["That piece has been retracted — its posts were cancelled and it may not be promoted again (Policy P4)."];
-  if ((item as any).rehearsal) return ["That piece is a rehearsal — a walk-through of the chain, not a publication. Nothing from it goes to a social account."];
+export function socialPostParts(item: { status: string; retractedAt: string; rehearsal?: boolean } | null): Msg[] {
+  if (!item) return [m("social.no-piece")];
+  if (item.retractedAt) return [m("social.retracted")];
+  if ((item as any).rehearsal) return [m("social.rehearsal")];
   return [];
 }
+/** The same refusals as English sentences — what the server sends and the checks match on. */
+export const socialPostBlockers = (item: { status: string; retractedAt: string; rehearsal?: boolean } | null): string[] => socialPostParts(item).map(x => x.en);
 
 /**
  * Policy P3 "Content Types" — the label the published piece must carry.
@@ -163,37 +167,43 @@ export type ContentGateFields = {
  * Director before being published" + legal review when flagged. Policy P4:
  * fact-checked content approved before publication, by a named independent checker.
  */
-export function publishBlockers(c: ContentGateFields): string[] {
-  const blockers: string[] = [];
-  if (c.status !== "Approved") blockers.push(`Status is ${c.status} — only Approved content can be published.`);
-  if (!c.factCheckPassedAt) blockers.push("Fact-check has not passed (Policy P4: fact-checked before publication).");
-  if (!c.pmApprovedBy) blockers.push("Production Manager approval missing (Policy P3).");
-  if (!c.pdApprovedBy) blockers.push("Programs Director approval missing (Policy P3).");
+export function publishBlockerParts(c: ContentGateFields): Msg[] {
+  const blockers: Msg[] = [];
+  if (c.status !== "Approved") blockers.push(m("publish.status", c.status));
+  if (!c.factCheckPassedAt) blockers.push(m("publish.factcheck"));
+  if (!c.pmApprovedBy) blockers.push(m("publish.pm"));
+  if (!c.pdApprovedBy) blockers.push(m("publish.pd"));
   if (c.rehearsal) {
     // A rehearsal is one person in four seats, so "two different people" becomes "four different
     // seats" — and it is still refused when any two steps were taken in the same one.
-    blockers.push(...rehearsalSeatsBlockers(c));
+    blockers.push(...rehearsalSeatsParts(c));
   } else if (c.pmApprovedBy && c.pdApprovedBy && c.pmApprovedBy === c.pdApprovedBy) {
-    blockers.push("Both approvals are by the same person — Policy P3 requires the Production Manager AND the Programs Director.");
+    blockers.push(m("publish.same-person"));
   }
   // Policy P3 requires every piece to be labelled News / Commercial / Opinion, and a commercial
   // piece to disclose the relationship behind it. An unlabelled piece cannot be published.
-  if (!c.contentLabel) blockers.push("No content label — say whether this is News, Commercial or Opinion (Policy P3: each content type must be clearly labelled).");
-  else if (!isContentLabel(c.contentLabel)) blockers.push(`"${c.contentLabel}" is not a content label Policy P3 defines (${LABEL_WORDS.map(([w]) => w).join(", ")}).`);
+  if (!c.contentLabel) blockers.push(m("publish.no-label"));
+  else if (!isContentLabel(c.contentLabel)) blockers.push(m("publish.bad-label", c.contentLabel, LABEL_WORDS.map(([w]) => w).join(", ")));
   else if (labelKind(c.contentLabel) === "Commercial" && !String(c.sponsorDisclosure || "").trim())
-    blockers.push("Commercial content must say who paid for it or what the relationship is (Policy P3: maintain transparency about any commercial relationships or sponsorships).");
+    blockers.push(m("publish.commercial-disclosure"));
   if (c.legalFlag && !c.legalReviewedBy)
-    blockers.push("Flagged for legal implications but no legal review recorded (Policy P3).");
+    blockers.push(m("publish.legal"));
   // The golden transparency rule: AI-assisted content publishes only with its label.
   if (c.aiAssisted && !c.aiDisclosed)
-    blockers.push("AI was used on this item — confirm the AI-use watermark/disclaimer is on the published piece (transparency rule).");
+    blockers.push(m("publish.ai"));
   let checks: Record<string, boolean> = {};
   try { checks = JSON.parse(c.checksJson || "{}"); } catch { /* treated as unchecked */ }
   for (const [key, label] of CONTENT_CHECKS) {
-    if (!checks[key]) blockers.push(`Standard unmet: ${label} (Policy P3).`);
+    if (!checks[key]) blockers.push(m("publish.standard", label));
   }
   return blockers;
 }
+/**
+ * The same blockers as English sentences. This is the behavioural contract: the server sends these
+ * as its refusal text and the check scripts match on them, so the wording must not move. The screen
+ * calls publishBlockerParts instead and renders them in the reader's language (src/gateText.ts).
+ */
+export const publishBlockers = (c: ContentGateFields): string[] => publishBlockerParts(c).map(x => x.en);
 
 /* ── Rehearsal: the chain walked by one person in several seats ──────────────
  * Saad is the only active holder of an editorial seat, so the real chain cannot run end to end:
@@ -215,37 +225,41 @@ type Seats = { assigneeAs?: string | null; factCheckerAs?: string | null; pmAppr
  *   pass      — only the seat named as fact-checker may pass it
  *   pm / pd   — an approval seat must differ from the author, the checker and the other approval
  */
-export function rehearsalSeatClash(item: Seats, step: RehearsalStep, seat: string): string {
+export function rehearsalSeatClashPart(item: Seats, step: RehearsalStep, seat: string): Msg | null {
   const s = String(seat || "");
-  if (!s) return "No seat — stand in a seat with Act as… first.";
+  if (!s) return m("clash.no-seat");
   if (step === "factcheck") {
-    return s === item.assigneeAs ? `The ${s} seat authored this rehearsal — name a different seat as fact-checker (Policy P4: the checker is not the author).` : "";
+    return s === item.assigneeAs ? m("clash.author-factcheck", s) : null;
   }
   if (step === "pass") {
-    return s !== item.factCheckerAs ? `Only the ${item.factCheckerAs || "named fact-checker"} seat can pass this — you are standing in ${s}.` : "";
+    return s !== item.factCheckerAs ? m("clash.pass", item.factCheckerAs || "named fact-checker", s) : null;
   }
   const other = step === "pm" ? item.pdApprovedAs : item.pmApprovedAs;
-  if (s === item.assigneeAs) return `The ${s} seat authored this rehearsal — approve it from a different seat (§4.3).`;
-  if (s === item.factCheckerAs) return `The ${s} seat fact-checked this rehearsal — approve it from a different seat.`;
-  if (other && s === other) return `The ${s} seat already holds the other approval — Policy P3 needs two different approvers, so use a different seat.`;
-  return "";
+  if (s === item.assigneeAs) return m("clash.author-approve", s);
+  if (s === item.factCheckerAs) return m("clash.checker-approve", s);
+  if (other && s === other) return m("clash.other-approval", s);
+  return null;
 }
+/** The clash as an English sentence, "" when there is none — the server's 403 text. */
+export const rehearsalSeatClash = (item: Seats, step: RehearsalStep, seat: string): string => rehearsalSeatClashPart(item, step, seat)?.en || "";
 
 /** A rehearsal publishes only with four steps taken in four different seats. */
-export function rehearsalSeatsBlockers(c: Seats): string[] {
+export function rehearsalSeatsParts(c: Seats): Msg[] {
   const named: [string, string | null | undefined][] = [
     ["author", c.assigneeAs], ["fact-checker", c.factCheckerAs],
     ["Production Manager approval", c.pmApprovedAs], ["Programs Director approval", c.pdApprovedAs],
   ];
-  const out = named.filter(([, v]) => !v).map(([k]) => `Rehearsal: no seat recorded for the ${k}.`);
+  const out = named.filter(([, v]) => !v).map(([k]) => m("seats.missing", k));
   const seen = new Map<string, string>();
   for (const [k, v] of named) {
     if (!v) continue;
-    if (seen.has(v)) out.push(`Rehearsal: the ${seen.get(v)} and the ${k} were both the ${v} seat — each step must be a different seat.`);
+    if (seen.has(v)) out.push(m("seats.duplicate", seen.get(v), k, v));
     else seen.set(v, k);
   }
   return out;
 }
+/** The rehearsal seat refusals as English sentences — publishBlockers folds these in. */
+export const rehearsalSeatsBlockers = (c: Seats): string[] => rehearsalSeatsParts(c).map(x => x.en);
 
 /**
  * Source and editorial material — Policy P11. One rule, read by the newsroom and by the consultant's month

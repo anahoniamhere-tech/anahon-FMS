@@ -3,7 +3,8 @@ import { ic } from "../nav";
 import { Newspaper, ShieldAlert, CheckCircle2, Ban, Bot, Calendar, Clapperboard, Drama, Library, Lightbulb, Link as LinkIcon, Scale } from "lucide-react";
 import { ContentItem } from "../types";
 import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "../constants";
-import { CONTENT_LABELS, LABEL_WORDS, labelKind } from "../editorialGates";
+import { CONTENT_LABELS, LABEL_WORDS, labelKind, publishBlockerParts } from "../editorialGates";
+import { say } from "../gateText";
 import { SharedProps } from "./shared";
 import Info from "../Info";
 import { CONTENT_EDITORS, CREW, ALL_ROLES } from "../roles";
@@ -1160,7 +1161,10 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
             const open = openId === item.id;
             const isAssignee = item.rehearsal ? seat === item.assigneeAs : currentUser.id === item.assigneeUserId;
             const isChecker = item.rehearsal ? seat === item.factCheckerAs : currentUser.id === item.factCheckerUserId;
-            const blockers = publishBlockers({ ...item, checksJson: JSON.stringify(item.checks || {}) });
+            // The gate's own sentences, in the reader's language (src/gateText.ts). The values it
+            // fills in — a status, a seat, a standard — are interface words the app already has.
+            const blockerParts = publishBlockerParts({ ...item, checksJson: JSON.stringify(item.checks || {}) });
+            const blockers = blockerParts.map(b => say(lang, b, t));
             const openHere = itemOpenFacts(item);
             return (
               <div key={item.id} className="py-3 text-xs">
@@ -1614,7 +1618,7 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                         12 Sep 2026; the gate they answer to did not change with the move. */}
                     <ChannelPanel item={item} accounts={social.status?.accounts || []}
                       rows={social.rows.filter((r: any) => r.contentItemId === item.id)}
-                      reload={loadSocial} canPost={canPost} triggerToast={triggerToast} t={t} />
+                      reload={loadSocial} canPost={canPost} triggerToast={triggerToast} t={t} lang={lang} />
 
                     {item.rehearsal && (
                       <div className="rounded border border-amber-300 bg-amber-50 p-2 text-[11px] text-amber-900">

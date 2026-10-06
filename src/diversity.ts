@@ -15,6 +15,8 @@
 
 /** Who the piece is mainly about. The sheet only had Male/Female, but a piece about a ministry or
  *  a statement is about neither, and recording it as a man is how a tracker starts lying. */
+import { m, type Msg } from "./gateText";
+
 export const MAIN_SUBJECTS: [key: string, en: string, ar: string][] = [
   ["woman", "Woman", "امرأة"],
   ["man", "Man", "رجل"],
@@ -97,26 +99,28 @@ export function diversityComplete(entry: Entry | null | undefined): boolean {
  * "Recorded" includes saying there were none: §2.5 asks for a check, and "we looked and found no
  * women quoted" is a check. What it refuses is silence.
  */
-export function diversityBlockers(entry: Entry | null | undefined): string[] {
-  if (!entry) return ["The diversity tracker has not been filled in for this piece — the main subject, the women and men mentioned or quoted, any vulnerable group, and the women and men quoted as experts (Policy P3 §4.1)."];
-  const out: string[] = [];
+export function diversityParts(entry: Entry | null | undefined): Msg[] {
+  if (!entry) return [m("dv.none")];
+  const out: Msg[] = [];
   const subject = String(entry.mainSubject || "").trim();
-  if (!subject) out.push("Diversity tracker: say who the piece is mainly about (Policy P3 §4.1).");
-  else if (!MAIN_SUBJECTS.some(([k]) => k === subject)) out.push(`Diversity tracker: "${subject}" is not one of the main-subject options (Policy P3 §4.1).`);
+  if (!subject) out.push(m("dv.subject"));
+  else if (!MAIN_SUBJECTS.some(([k]) => k === subject)) out.push(m("dv.bad-subject", subject));
   for (const [key, en] of PRESENCE_FIELDS) {
     const v = (entry as any)[key];
-    if (!String(v ?? "").trim()) out.push(`Diversity tracker: record ${en.toLowerCase()} — a number, "yes", or "none" (Policy P3 §4.1).`);
-    else if (!isPresenceValue(v)) out.push(`Diversity tracker: "${v}" is not a value for ${en.toLowerCase()} — use a number, "yes" or "none" (Policy P3 §4.1).`);
+    if (!String(v ?? "").trim()) out.push(m("dv.record", en.toLowerCase()));
+    else if (!isPresenceValue(v)) out.push(m("dv.bad-value", v, en.toLowerCase()));
   }
   const groups = groupsOf(entry);
-  if (!groups.length) out.push(`Diversity tracker: name any vulnerable group in the piece, or tick "${NO_GROUP}" to record that there is none (Policy P3 §4.1).`);
+  if (!groups.length) out.push(m("dv.groups", NO_GROUP));
   else {
     const bad = groups.filter(g => g !== NO_GROUP && !VULNERABLE_GROUPS.some(([k]) => k === g));
-    if (bad.length) out.push(`Diversity tracker: "${bad[0]}" is not one of the vulnerable groups the tracker records (Policy P3 §4.1).`);
-    if (groups.includes(NO_GROUP) && groups.length > 1) out.push(`Diversity tracker: "${NO_GROUP}" cannot be combined with a group (Policy P3 §4.1).`);
+    if (bad.length) out.push(m("dv.bad-group", bad[0]));
+    if (groups.includes(NO_GROUP) && groups.length > 1) out.push(m("dv.none-combined", NO_GROUP));
   }
   return out;
 }
+/** The same refusals as English sentences — the server's 400 text and what the checks match on. */
+export const diversityBlockers = (entry: Entry | null | undefined): string[] => diversityParts(entry).map(x => x.en);
 
 /**
  * Pieces in production when the tracker went live did not have one to fill. They are PROMPTED, not

@@ -255,6 +255,39 @@ assert.strictEqual(socialRendition({ title: "T", drafts: [d(CAPTION_KIND, "Spons
 assert.strictEqual(socialRendition({ title: "T", brief: "B", contentLabel: "Commercial" }).text, "Sponsored: T\n\nB",
   "an improvised text is marked too");
 
+/* ── Every refusal speaks Arabic (6 Oct 2026) ─────────────────────────────────────────────
+ * AnaHon is an Arabic newsroom and these are the sentences an editor reads when the system says
+ * no. A blocker with no Arabic is a blocker that will be shown in English to an Arabic reader. */
+{
+  const { GATE_TEXT, untranslated, m: mk, say: sayIt } = await import("../src/gateText");
+  assert.deepStrictEqual(untranslated(), [], "every gate refusal has Arabic");
+  const keys = Object.keys(GATE_TEXT);
+  assert.ok(keys.length >= 25, `${keys.length} refusals carry both languages`);
+  for (const [key, v] of Object.entries(GATE_TEXT)) {
+    assert.ok(v.en.trim() && v.ar.trim(), `${key} has both`);
+    assert.ok(/[\u0600-\u06FF]/.test(v.ar), `${key}'s Arabic is Arabic`);
+    // The placeholders must match, or a value the gate fills in vanishes in one language.
+    const ph = (t2: string) => [...t2.matchAll(/\{(\d+)\}/g)].map(x => x[1]).sort().join(",");
+    assert.strictEqual(ph(v.en), ph(v.ar), `${key}: the two languages take the same values`);
+  }
+  // Every key the gate files actually use must exist in the table — m() throws otherwise, but a
+  // key used on a rare branch would only throw for the editor who hit it.
+  const used = new Set<string>();
+  for (const f of ["../src/editorialGates.ts", "../src/diversity.ts"])
+    for (const match of readFileSync(new URL(f, import.meta.url), "utf8").matchAll(/\bm\("([^"]+)"/g)) used.add(match[1]);
+  assert.ok(used.size >= 25, `${used.size} refusal sites build from the table`);
+  for (const k of used) assert.ok(GATE_TEXT[k], `the gate uses "${k}", which the table must define`);
+  // And the rendering really switches language.
+  const sample = mk("publish.pm");
+  assert.strictEqual(sayIt("en", sample), sample.en, "English is the stored sentence");
+  assert.notStrictEqual(sayIt("ar", sample), sample.en, "Arabic is not the English one");
+  assert.match(sayIt("ar", sample), /[\u0600-\u06FF]/);
+  // A filled-in value survives into Arabic, and the caller's translator is applied to it.
+  assert.match(sayIt("ar", mk("publish.status", "Draft")), /Draft/, "the value is still there");
+  assert.match(sayIt("ar", mk("publish.status", "Draft"), () => "مسودة"), /مسودة/, "…and can be translated by the caller");
+  assert.throws(() => mk("no.such.key"), /no entry/, "an unknown key is a loud error, never an empty refusal");
+}
+
 console.log("check-editorial-gates: all assertions passed —",
   `${5 + cases.length + CONTENT_CHECKS.length} gate scenarios (Policies P3 & P4 + transparency rule)`,
   `+ ${stations.length} derived map stations, none hardcoded.`);

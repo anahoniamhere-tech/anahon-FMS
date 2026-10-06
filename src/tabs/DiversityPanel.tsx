@@ -3,8 +3,9 @@ import { ic } from "../nav";
 import { Users, TriangleAlert } from "lucide-react";
 import {
   MAIN_SUBJECTS, VULNERABLE_GROUPS, PRESENCE_FIELDS, PACKAGE_ANGLES, NO_GROUP,
-  diversityBlockers, present, monthlySummary, monthsLogged, type Entry,
+  diversityParts, diversityBlockers, present, monthlySummary, monthsLogged, type Entry,
 } from "../diversity";
+import { say } from "../gateText";
 
 /**
  * The diversity tracker — Policy P3 §4.1 step 2 on the piece, §4.3 for the month (handbook ed.7).
@@ -31,7 +32,7 @@ export function DiversityForm({ item, entry, currentUser, t, lang, triggerToast,
     groups: (() => { try { return JSON.parse(entry?.groupsJson || "[]"); } catch { return []; } })(),
   }));
   const [busy, setBusy] = useState(false);
-  const gaps = diversityBlockers({ ...form, groupsJson: JSON.stringify(form.groups) });
+  const gaps = diversityParts({ ...form, groupsJson: JSON.stringify(form.groups) }).map(g => say(lang, g, t));
 
   const toggleGroup = (key: string) => setForm(f => {
     // "none" and a named group are mutually exclusive: the first says we looked and found none.

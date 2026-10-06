@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ic } from "../nav";
 import { TriangleAlert } from "lucide-react";
-import { socialPostBlockers, socialRendition, CAPTION_KIND } from "../editorialGates";
+import { socialPostParts, socialRendition, CAPTION_KIND } from "../editorialGates";
+import { say } from "../gateText";
 import { CAROUSEL_MIN, CAROUSEL_MAX } from "../meta";
 
 /**
@@ -25,9 +26,9 @@ const toLocalInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() *
 const MAX_VIDEO_MB = 300; const MAX_IMAGE_MB = 10;
 type Media = "none" | "cover" | "image" | "video";
 
-export default function ChannelPanel({ item, accounts, rows, reload, canPost, triggerToast, t }: {
+export default function ChannelPanel({ item, accounts, rows, reload, canPost, triggerToast, t, lang }: {
   item: any; accounts: any[]; rows: any[]; reload: () => void;
-  canPost: boolean; triggerToast: (m: string, k?: string) => void; t: (s: string) => string;
+  canPost: boolean; triggerToast: (m: string, k?: string) => void; t: (s: string) => string; lang: string;
 }) {
   const [targets, setTargets] = useState<string[]>([]);          // "accountId|network"
   const [message, setMessage] = useState(""); const [link, setLink] = useState("");
@@ -77,7 +78,7 @@ export default function ChannelPanel({ item, accounts, rows, reload, canPost, tr
   const isCarousel = media === "image" && pics.length >= CAROUSEL_MIN;
   const igNeedsPublic = igChosen && media === "image" && pics.some(p => !/^https:\/\//.test(p.v));
   // The same function the server refuses with, so the button and the 403 cannot disagree.
-  const gate = socialPostBlockers(item);
+  const gate = socialPostParts(item).map(g => say(lang, g, t));
   const edited = message.trim() !== rendition.text.trim();
   const canSend = !gate.length && targets.length > 0 && !busy && !uploading && (message.trim() || link.trim() || hasMedia) && (media === "none" || hasMedia)
     && !(igChosen && media !== "video" && media !== "image") && !igNeedsPublic;
