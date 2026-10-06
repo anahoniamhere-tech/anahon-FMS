@@ -3,6 +3,7 @@ import { ic } from "../nav";
 import { GraduationCap } from "lucide-react";
 import { NetworkContact, Engagement } from "../types";
 import { STREAMS, ENGAGEMENT_KINDS, ENGAGEMENT_PARTS, CONTACT_KINDS } from "../constants";
+import { SOLIDARITY_ACTIONS, SOLIDARITY_KIND, solidarityBlocker, solidarityYear, solidarityYears } from "../solidarity";
 import { SharedProps, waLink } from "./shared";
 import { CONTACT_EDITORS } from "../roles";
 
@@ -36,7 +37,8 @@ const BLANK = {
 // people because you always arrive at one from the other.
 const BLANK_ENG = {
   id: "", title: "", kind: "Conference", ourPart: "Attended", org: "", place: "",
-  startDate: "", endDate: "", stream: "", projectId: "", outcome: "", notes: ""
+  startDate: "", endDate: "", stream: "", projectId: "", outcome: "", notes: "",
+  solidarityAction: "", hours: 0
 };
 const PART_STYLE: Record<string, string> = {
   Attended: "bg-slate-100 text-slate-700",
@@ -52,6 +54,7 @@ export default function NetworkTab({ state, currentUser, refreshState, t, trigge
   const [q, setQ] = useState("");
   const [eventFilter, setEventFilter] = useState("");
   const [kindFilter, setKindFilter] = useState("");
+  const [solidarityYearPick, setSolidarityYearPick] = useState("");
   const [engForm, setEngForm] = useState<any>(null);   // null = the engagement form is closed
   const [engBusy, setEngBusy] = useState(false);
 
@@ -130,6 +133,8 @@ export default function NetworkTab({ state, currentUser, refreshState, t, trigge
   const saveEng = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!engForm.title.trim()) { triggerToast("The engagement needs a name.", "error"); return; }
+    const refusedSolidarity = solidarityBlocker(engForm);
+    if (refusedSolidarity) { triggerToast(refusedSolidarity, "error"); return; }
     setEngBusy(true);
     try {
       const res = await fetch("/api/engagements/save", {
@@ -242,10 +247,32 @@ export default function NetworkTab({ state, currentUser, refreshState, t, trigge
                 {ENGAGEMENT_PARTS.map(k => <option key={k} value={k}>{k}</option>)}
               </select>
             </div>
+            {/* P3 §7.5 — a solidarity entry says which of the six acts it was, and mentoring says
+                how many hours, because the year owes 20 of them. Both stay empty on anything else. */}
+            {engForm.kind === SOLIDARITY_KIND && (
+              <>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Solidarity action")}</label>
+                  <select value={engForm.solidarityAction} onChange={e => setEngForm({ ...engForm, solidarityAction: e.target.value })} className="finance-input w-full">
+                    <option value="">— {t("which action")} —</option>
+                    {SOLIDARITY_ACTIONS.map(a => <option key={a} value={a}>{t(a)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                    {t("Hours")} <span className="font-normal normal-case text-slate-400">— {t("mentoring only")}</span>
+                  </label>
+                  <input type="number" min={0} step={0.5} value={engForm.hours || 0}
+                    onChange={e => setEngForm({ ...engForm, hours: Number(e.target.value) || 0 })} className="finance-input w-full" />
+                </div>
+              </>
+            )}
             <div>
-              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Run by</label>
+              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                {engForm.kind === SOLIDARITY_KIND ? t("Outlet or journalist helped") : t("Run by")}
+              </label>
               <input value={engForm.org} onChange={e => setEngForm({ ...engForm, org: e.target.value })}
-                placeholder="ICFJ · Samir Kassir Foundation" className="finance-input w-full" />
+                placeholder={engForm.kind === SOLIDARITY_KIND ? t("the outlet, as you would report it") : "ICFJ · Samir Kassir Foundation"} className="finance-input w-full" />
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Where</label>
@@ -277,7 +304,10 @@ export default function NetworkTab({ state, currentUser, refreshState, t, trigge
             <div className="md:col-span-3">
               <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">What came of it</label>
               <textarea rows={2} value={engForm.outcome} onChange={e => setEngForm({ ...engForm, outcome: e.target.value })}
-                placeholder="Three trainers met; NewsScope access to ask for; an Arabic data-journalism module to explore." className="finance-input w-full" />
+                placeholder={engForm.kind === SOLIDARITY_KIND
+                  ? t("Record what AnaHon did, not details of the person at risk.")
+                  : "Three trainers met; NewsScope access to ask for; an Arabic data-journalism module to explore."}
+                className="finance-input w-full" />
             </div>
             <div className="md:col-span-3 flex gap-2">
               <button type="submit" disabled={engBusy} className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-40">
@@ -287,6 +317,56 @@ export default function NetworkTab({ state, currentUser, refreshState, t, trigge
             </div>
           </form>
         )}
+
+        {/* P3 §7.5 — the three numbers the year owes, counted from the register itself, never typed.
+            Cases raised have no target: they follow what happens to other people, not a quota. */}
+        {(() => {
+          const years = solidarityYears(engagements as any);
+          if (!years.length) return null;
+          const year = solidarityYearPick && years.includes(solidarityYearPick) ? solidarityYearPick : years[0];
+          const tally = solidarityYear(engagements as any, year);
+          const bar = (done: number, target: number) => Math.min(100, Math.round((done / target) * 100));
+          return (
+            <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <h4 className="text-[11px] font-bold uppercase text-slate-700">{t("Solidarity this year")}</h4>
+                <span className="text-[10px] text-slate-400">{t("Editorial Standards P3 §7.5")}</span>
+                <select value={year} onChange={e => setSolidarityYearPick(e.target.value)}
+                  className="finance-input ms-auto w-24 py-0.5 text-[11px]" aria-label={t("Year")}>
+                  {years.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="rounded border border-slate-100 p-2">
+                  <div className="text-[10px] font-bold uppercase text-slate-500">{t("Cases raised")}</div>
+                  <div className="text-xl font-bold text-slate-800">{tally.casesRaised}</div>
+                  <div className="text-[10px] text-slate-400">{t("no target — as they happen")}</div>
+                </div>
+                <div className="rounded border border-slate-100 p-2">
+                  <div className="text-[10px] font-bold uppercase text-slate-500">{t("Mentoring hours")}</div>
+                  <div className={`text-xl font-bold ${tally.mentoringHours >= tally.mentoringTarget ? "text-emerald-700" : "text-slate-800"}`}>
+                    <span dir="ltr">{tally.mentoringHours} / {tally.mentoringTarget}</span>
+                  </div>
+                  <div className="mt-1 h-1.5 rounded bg-slate-100">
+                    <div className="h-1.5 rounded bg-red-500" style={{ width: `${bar(tally.mentoringHours, tally.mentoringTarget)}%` }} />
+                  </div>
+                </div>
+                <div className="rounded border border-slate-100 p-2">
+                  <div className="text-[10px] font-bold uppercase text-slate-500">{t("Organisations given tools")}</div>
+                  <div className={`text-xl font-bold ${tally.toolsOrgs.length >= tally.toolsTarget ? "text-emerald-700" : "text-slate-800"}`}>
+                    <span dir="ltr">{tally.toolsOrgs.length} / {tally.toolsTarget}</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400">{tally.toolsOrgs.join(" · ") || t("none yet")}</div>
+                </div>
+              </div>
+              {!!tally.byAction.length && (
+                <p className="mt-2 text-[10px] text-slate-500">
+                  {tally.byAction.map(a => `${t(a.action)} ${a.count}`).join(" · ")}
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         {engagements.length === 0 && !engForm && (
           <p className="mt-3 text-xs text-slate-500">
@@ -300,7 +380,8 @@ export default function NetworkTab({ state, currentUser, refreshState, t, trigge
               <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${PART_STYLE[e.ourPart] || "bg-slate-100 text-slate-700"}`}>{e.ourPart}</span>
               <span className="text-[13px] font-medium text-slate-900">{e.title}</span>
               <span className="text-[11px] text-slate-500">
-                {[e.kind, e.org, e.place, e.startDate && (e.endDate && e.endDate !== e.startDate ? `${e.startDate} → ${e.endDate}` : e.startDate)]
+                {[e.kind, (e as any).solidarityAction, (e as any).hours ? `${(e as any).hours} h` : "", e.org, e.place,
+                  e.startDate && (e.endDate && e.endDate !== e.startDate ? `${e.startDate} → ${e.endDate}` : e.startDate)]
                   .filter(Boolean).join(" · ")}
               </span>
               {e.projectId
@@ -323,10 +404,12 @@ export default function NetworkTab({ state, currentUser, refreshState, t, trigge
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {[
           ["Contacts", contacts.length],
           ["Trainers", contacts.filter(c => c.kind === "Trainer").length],
+          // The alert list of P3 §7.5 is a filter, not a register of its own.
+          ["Press-freedom", contacts.filter(c => c.kind === "Press-freedom").length],
           ["Events & engagements", engagements.length],
           ["Follow-ups due", dueSoon.length]
         ].map(([label, n]) => (

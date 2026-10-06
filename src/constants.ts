@@ -16,12 +16,16 @@ export const PROPOSAL_SECTIONS: [keyof Proposal, string, string][] = [
 export const STREAMS = ["AnaHon Platform", "iContent Academy", "Ahali Al Madina", "Roots & Reach", "Production", "Core / Org-wide"];
 // An event or engagement — one we attended, or one we ran. Kept beside STREAMS because
 // the two are always chosen together on the same form.
-export const ENGAGEMENT_KINDS = ["Conference", "Bootcamp", "Training", "Coaching", "Workshop", "Meeting", "Other"];
+// "Solidarity" added 6 Oct 2026: P3 §7.5 asks for these actions to be counted, and they would have
+// vanished among "Meeting" and "Other" (src/solidarity.ts).
+export const ENGAGEMENT_KINDS = ["Conference", "Bootcamp", "Training", "Coaching", "Workshop", "Meeting", "Solidarity", "Other"];
 // Which side of it we were on. One field covers both directions.
 export const ENGAGEMENT_PARTS = ["Attended", "Delivered", "Co-hosted", "Sponsored"];
 // Who a contact is to us. Coach and Partner added 5 Sep 2026 — the people who help run
 // a training or a coaching session were not describable before.
-export const CONTACT_KINDS = ["Trainer", "Coach", "Partner", "Participant", "Organiser", "Speaker", "Other"];
+// "Press-freedom" added 6 Oct 2026 (P3 §7.5): the list the ED alerts when a journalist is at risk
+// is one filter here, not a separate register.
+export const CONTACT_KINDS = ["Trainer", "Coach", "Partner", "Participant", "Organiser", "Speaker", "Press-freedom", "Other"];
 
 export const OPP_STAGES = ["Prospect", "Drafting", "Submitted", "Awarded", "Declined"] as const;
 // Editorial vocabulary lives in editorialGates.ts (shared with the server's enforcement).

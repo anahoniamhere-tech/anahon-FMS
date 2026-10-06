@@ -52,6 +52,7 @@ import { isFloat as isFloatAccount } from "./src/pettyCash.js";
 import { pairFxLegs, isFxReversal, FX_PATTERN } from "./src/fxPairs.js";
 import { CONSULTANT_REVIEW_CATEGORY, isMonth, monthBounds, packExcludes, reconcileMarkBlocker, legsOf, trialBalance, openItems, paymentDate, lateRecords, safeName, type Recorded } from "./src/consultantPack.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
+import { solidarityBlocker } from "./src/solidarity.js";
 import { periodMonths, workplanFromActivities, workplanBlocker, type Workplan } from "./src/workplan.js";
 import { requestRef, instalmentNo, nextInstalment, instalmentBlocker, type Instalment, type PayeeBank } from "./src/instalments.js";
 import { shareBlocker, shareExpiry, shareUrl, outboxName, printedChange, SHAREABLE_STATUSES } from "./src/quoteShare.js";
@@ -62,7 +63,7 @@ import {
 } from "./src/officialPapers.js";
 import { mayCall, seatsFor } from "./src/gates.js";
 import { buildStatement, buildBalanceSheet, recognitionFlags, STATEMENT_LINES } from "./src/statement.js";
-import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS } from "./src/constants.js";
+import { STREAMS , ENGAGEMENT_KINDS, ENGAGEMENT_PARTS, CONTACT_KINDS } from "./src/constants.js";
 import { isPersonnelDoc, maySeePersonnelFile, filterPersonnelDocs, poolViewFor, cutPoolFor, POOL_FIELD_KEYS, POOL_STATUSES, mayEditPool, mayAssess, mayRemoveFromPool, poolFieldsWritableBy, poolAssessedAs } from "./src/personnelDocs.js";
 import { parseIcs } from "./src/ics.js";
 import { VOICE_SESSIONS, VOICE_CONSENT, wavInfo } from "./src/annaVoiceBank.js";
@@ -9268,7 +9269,8 @@ app.post("/api/tools/delete", async (req, res) => {
 });
 
 // ── Networking register: people met at trainings, conferences and events ────
-const CONTACT_KINDS = ["Trainer", "Participant", "Organiser", "Speaker", "Other"];
+// The one list, shared with the form (src/constants.ts). Its own copy here had gone stale: it
+// never grew "Coach" or "Partner" (5 Sep 2026), so the server refused kinds the screen offered.
 const CONTACT_STATUSES = ["New", "Contacted", "Warm", "Dormant"];
 
 /* ── Events and engagements ─────────────────────────────────────────────────
@@ -9294,17 +9296,21 @@ app.post("/api/engagements/save", async (req, res) => {
       const proj = await prisma.project.findUnique({ where: { id: String(b.projectId) } });
       if (!proj) return res.status(400).json({ error: "That project does not exist." });
     }
+    // P3 §7.5: a solidarity entry says which action it was, and only a solidarity entry carries one.
+    const refusedSolidarity = solidarityBlocker({ kind: b.kind || "Conference", solidarityAction: b.solidarityAction, hours: b.hours });
+    if (refusedSolidarity) return res.status(400).json({ error: refusedSolidarity });
     const data = {
       title: String(b.title).trim(), kind: b.kind || "Conference", ourPart: b.ourPart || "Attended",
       org: b.org || "", place: b.place || "", startDate: b.startDate || "", endDate: b.endDate || "",
       stream: b.stream || "", projectId: b.projectId || null, outcome: b.outcome || "", notes: b.notes || "",
+      solidarityAction: String(b.solidarityAction || "").trim(), hours: Number(b.hours) || 0,
     };
     const existing = b.id ? await prisma.engagement.findUnique({ where: { id: String(b.id) } }) : null;
     const eng = existing
       ? await prisma.engagement.update({ where: { id: existing.id }, data })
       : await prisma.engagement.create({ data: { id: `eng-${Date.now()}`, ...data, created_at: new Date().toISOString() } });
     await createAuditLog(user?.id, user?.name, existing ? "Engagement Updated" : "Engagement Added",
-      `${existing ? "Updated" : "Added"} ${eng.ourPart.toLowerCase()} ${eng.kind.toLowerCase()}: "${eng.title}"${eng.place ? ` in ${eng.place}` : ""}${eng.startDate ? `, ${eng.startDate}` : ""}${eng.projectId ? "" : " — not tied to a project"}.`);
+      `${existing ? "Updated" : "Added"} ${eng.ourPart.toLowerCase()} ${eng.kind.toLowerCase()}${eng.solidarityAction ? ` (${eng.solidarityAction.toLowerCase()}${eng.hours ? `, ${eng.hours} h` : ""})` : ""}: "${eng.title}"${eng.place ? ` in ${eng.place}` : ""}${eng.startDate ? `, ${eng.startDate}` : ""}${eng.projectId ? "" : " — not tied to a project"}.`);
     res.json({ success: true, engagement: eng });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

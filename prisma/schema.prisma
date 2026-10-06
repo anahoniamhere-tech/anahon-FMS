@@ -842,7 +842,11 @@ model EditorialMeeting {
 model Engagement {
   id         String  @id
   title      String
-  kind       String  @default("Conference")   // Conference | Bootcamp | Training | Coaching | Workshop | Meeting | Other
+  kind       String  @default("Conference")   // Conference | Bootcamp | Training | Coaching | Workshop | Meeting | Solidarity | Other
+  // P3 §7.5: which act of solidarity this was (src/solidarity.ts), and the mentoring hours the
+  // year counts towards 20. Both empty on every other kind of engagement.
+  solidarityAction String @default("")
+  hours            Float  @default(0)
   ourPart    String  @default("Attended")     // Attended | Delivered | Co-hosted | Sponsored
   org        String  @default("")             // who ran it
   place      String  @default("")
@@ -868,7 +872,7 @@ model NetworkContact {
   email      String  @default("")
   phone      String  @default("")
   links      String  @default("")                // profile URLs, one per line
-  kind       String  @default("Participant")     // Trainer | Participant | Organiser | Speaker | Other
+  kind       String  @default("Participant")     // Trainer | Coach | Partner | Participant | Organiser | Speaker | Press-freedom | Other
   metAt      String  @default("")                // the event, as text — the label for anything with no record of its own
   engagementId String?                              // …or the engagement record itself
   metOn      String  @default("")                // YYYY-MM-DD
