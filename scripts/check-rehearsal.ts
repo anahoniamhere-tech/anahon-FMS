@@ -110,7 +110,7 @@ ok(/!c\.rehearsal && c\.publishedAt/.test(tab), "a rehearsal is not counted as p
 // The composer moved into the piece's drawer (Newsroom merge, 12 Sep 2026). It no longer picks a
 // piece from a list, so "never offers a rehearsal" is now: the gate decides whether it is drawn.
 const chan = read("../src/tabs/ChannelPanel.tsx");
-ok(/const gate = socialPostBlockers\(item\)/.test(chan), "the channel panel asks socialPostBlockers about its own piece");
+ok(/const gate = socialPost(Blockers|Parts)\(item\)/.test(chan), "the channel panel asks the gate about its own piece");
 ok(/gate\.length > 0 \?/.test(chan), "a blocked piece gets the blocker instead of a composer — a rehearsal is one");
 ok(!/contentItems/.test(chan), "the channel panel never picks a piece from the register — it posts for the one it is in");
 ok(/filter\(\(c: any\) => !c\.rehearsal\)/.test(read("../src/tabs/EditorialMap.tsx")), "the map counts real pieces only");

@@ -217,9 +217,9 @@ assert.ok(/activeTab === "social"[\s\S]{0,120}?setActiveTab\("editorial"\)/.test
 // Social desk asked — imported from editorialGates, not reimplemented beside it.
 const panel = src("../src/tabs/ChannelPanel.tsx");
 assert.ok(/from "\.\.\/editorialGates"/.test(panel), "the channel panel imports the gate, it does not restate it");
-assert.ok(/socialPostBlockers\(item\)/.test(panel), "…and asks it about the piece it belongs to");
+assert.ok(/socialPost(Blockers|Parts)\(item\)/.test(panel), "…and asks it about the piece it belongs to");
 assert.ok(/socialRendition\(item\)/.test(panel), "…and takes the caption from the piece");
-assert.ok(!/socialPostBlockers\s*=\s*|function socialPostBlockers/.test(panel), "no local copy of the blocker list");
+assert.ok(!/socialPost(Blockers|Parts)\s*=\s*\(|function socialPost(Blockers|Parts)/.test(panel), "no local copy of the blocker list");
 
 // Connecting a Page, its tokens and removing an account are configuration: they are in Admin.
 const admin = src("../src/tabs/MetaAccounts.tsx");
