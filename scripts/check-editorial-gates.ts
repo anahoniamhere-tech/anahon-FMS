@@ -288,6 +288,28 @@ assert.strictEqual(socialRendition({ title: "T", brief: "B", contentLabel: "Comm
   assert.throws(() => mk("no.such.key"), /no entry/, "an unknown key is a loud error, never an empty refusal");
 }
 
+/* ── Route refusals carry their key, so the screen can show them in Arabic (phase 1) ──── */
+{
+  const { GATE_TEXT: GT, sayResponse } = await import("../src/gateText");
+  const srv = readFileSync(new URL("../server.ts", import.meta.url), "utf8");
+  const routeKeys = Object.keys(GT).filter(k => k.startsWith("route."));
+  assert.ok(routeKeys.length >= 40, `${routeKeys.length} route refusals carry both languages`);
+  // Every route.* key must actually be used by a route — an entry nobody sends is dead text that
+  // quietly rots out of step with the sentence the editor really sees.
+  for (const k of routeKeys) assert.ok(srv.includes(`gm("${k}"`), `server.ts must send "${k}"`);
+  // And the helper must send the English, the key and the values — all three.
+  assert.match(srv, /const refuseWith = \(res: any, code: number, msg: Msg\) =>\s*\n\s*res\.status\(code\)\.json\(\{ error: msg\.en, errorKey: msg\.key, errorArgs: msg\.args \}\);/,
+    "a converted route sends the English sentence AND its key AND its values");
+  // The client prefers the key, and falls back to the English when a route has not been converted.
+  assert.strictEqual(sayResponse("ar", { error: "plain" }), "plain", "no key → the English sentence");
+  assert.strictEqual(sayResponse("ar", { error: "x", errorKey: "no.such" }), "x", "an unknown key → the English sentence");
+  assert.match(sayResponse("ar", { error: "x", errorKey: "route.publish-who" }), /[\u0600-\u06FF]/, "a known key → Arabic");
+  assert.match(sayResponse("ar", { error: "x", errorKey: "route.checker-not-author", errorArgs: ["Omar"] }), /Omar/, "…with the value still in it");
+  assert.strictEqual(sayResponse("en", { error: "x", errorKey: "route.publish-who" }), GT["route.publish-who"].en, "English stays the stored sentence");
+  const tab = readFileSync(new URL("../src/tabs/EditorialTab.tsx", import.meta.url), "utf8");
+  assert.ok(/sayResponse\(lang, data, t\)/.test(tab), "the desk renders a refusal in the reader's language");
+}
+
 console.log("check-editorial-gates: all assertions passed —",
   `${5 + cases.length + CONTENT_CHECKS.length} gate scenarios (Policies P3 & P4 + transparency rule)`,
   `+ ${stations.length} derived map stations, none hardcoded.`);

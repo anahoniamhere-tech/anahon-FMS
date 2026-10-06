@@ -4,7 +4,7 @@ import { Newspaper, ShieldAlert, CheckCircle2, Ban, Bot, Calendar, Clapperboard,
 import { ContentItem } from "../types";
 import { STREAMS, CONTENT_STATUSES, CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, publishBlockers } from "../constants";
 import { CONTENT_LABELS, LABEL_WORDS, labelKind, publishBlockerParts } from "../editorialGates";
-import { say } from "../gateText";
+import { say, sayResponse } from "../gateText";
 import { SharedProps } from "./shared";
 import Info from "../Info";
 import { CONTENT_EDITORS, CREW, ALL_ROLES } from "../roles";
@@ -230,7 +230,8 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
         body: JSON.stringify({ ...body, user: currentUser })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Request failed");
+      // The refusal in the reader's language when the route sent its key (src/gateText.ts).
+      if (!res.ok) throw new Error(sayResponse(lang, data, t) || "Request failed");
       if (ok) triggerToast(ok);
       refreshState();
       return true;

@@ -5,7 +5,7 @@ import {
   MAIN_SUBJECTS, VULNERABLE_GROUPS, PRESENCE_FIELDS, PACKAGE_ANGLES, NO_GROUP,
   diversityParts, diversityBlockers, present, monthlySummary, monthsLogged, type Entry,
 } from "../diversity";
-import { say } from "../gateText";
+import { say, sayResponse } from "../gateText";
 
 /**
  * The diversity tracker — Policy P3 §4.1 step 2 on the piece, §4.3 for the month (handbook ed.7).
@@ -50,7 +50,7 @@ export function DiversityForm({ item, entry, currentUser, t, lang, triggerToast,
     }).catch((e: any) => ({ error: e.message }));
     setBusy(false);
     if (r.ok) { triggerToast(r.remaining?.length ? t("Saved — still incomplete.") : t("Diversity tracker saved.")); refreshState(); }
-    else triggerToast(r.error || t("Could not save the tracker"), "error");
+    else triggerToast(sayResponse(lang, r, t) || t("Could not save the tracker"), "error");
   };
 
   const pill = (field: string, value: string) => (
@@ -136,7 +136,7 @@ export default function DiversityPanel({ state, currentUser, t, lang, triggerToa
   const saveGap = async () => {
     const r = await post("/api/diversity/gap", { meetingId: meeting.id, gap, user: currentUser });
     if (r.ok) { triggerToast(t("Gap recorded for the month ahead.")); setGap(""); refreshState(); }
-    else triggerToast(r.error || t("Could not record it"), "error");
+    else triggerToast(sayResponse(lang, r, t) || t("Could not record it"), "error");
   };
 
   const stat = (n: number, share: number, en: string, arLabel: string) => (

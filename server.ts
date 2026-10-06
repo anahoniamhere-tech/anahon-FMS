@@ -16,6 +16,7 @@ import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, workpl
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory, isContentLabel, LABEL_WORDS } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { itemOpenFacts } from "./src/fillMarkers.js";
+import { m as gm, type Msg } from "./src/gateText.js";
 import { diversityBlockers, trackerRequired, monthlySummary, monthsLogged, isPresenceValue, MAIN_SUBJECTS, VULNERABLE_GROUPS, PRESENCE_FIELDS, PACKAGE_ANGLES, NO_GROUP, TRACKER_FROM } from "./src/diversity.js";
 import { parseArticle, writeArticle, field, tagsOf, listOf, unquote, changedText, correctionBlocker, EDITABLE, ARTICLE_TYPES } from "./src/articleFile.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
@@ -72,6 +73,16 @@ import { ANNA_PRICE, ANNA_CLIP_FACTOR, pickKeyterms, type KeytermName, parseRoll
 dotenv.config();
 
 const prisma = new PrismaClient();
+
+/**
+ * A refusal the screen can show in Arabic. `error` stays the English sentence — unchanged, because
+ * the server is language-free (the audit record must not come out in two languages) and several
+ * check scripts match on this wording — and the key travels beside it for the client to render
+ * through src/gateText.ts. A route that has not been converted simply has no key.
+ */
+const refuseWith = (res: any, code: number, msg: Msg) =>
+  res.status(code).json({ error: msg.en, errorKey: msg.key, errorArgs: msg.args });
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -5702,10 +5713,10 @@ app.post("/api/content/save", async (req, res) => {
     const block = await contentManageBlock(req, stream || "");
     if (block) return res.status(403).json({ error: block });
     if (contentLabel && !isContentLabel(contentLabel)) {
-      return res.status(400).json({ error: `"${contentLabel}" is not a content label Policy P3 defines (${LABEL_WORDS.map(([w]) => w).join(", ")}).` });
+      return refuseWith(res, 400, gm("route.bad-label", contentLabel, LABEL_WORDS.map(([w]) => w).join(", ")));
     }
     if (contentType && !CONTENT_TYPES.includes(contentType)) {
-      return res.status(400).json({ error: `Content type must be one of: ${CONTENT_TYPES.join(", ")} (Policy P3).` });
+      return refuseWith(res, 400, gm("route.bad-type", CONTENT_TYPES.join(", ")));
     }
     if (stream && !STREAMS.includes(stream)) {
       return res.status(400).json({ error: `Programme must be one of: ${STREAMS.join(", ")}.` });
@@ -5713,7 +5724,7 @@ app.post("/api/content/save", async (req, res) => {
     const chan: string[] = Array.isArray(channels) ? channels : [];
     const badChan = chan.filter(c => !CONTENT_CHANNELS.includes(c));
     if (badChan.length) {
-      return res.status(400).json({ error: `Unknown channel(s): ${badChan.join(", ")}. Policy P3 channels: ${CONTENT_CHANNELS.join(", ")}.` });
+      return refuseWith(res, 400, gm("route.bad-channels", badChan.join(", "), CONTENT_CHANNELS.join(", ")));
     }
     for (const [d, label] of [[dueDate, "Due date"], [assignedMeetingDate, "Assigned-meeting date"], [reviewedMeetingDate, "Reviewed-meeting date"]]) {
       if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) return res.status(400).json({ error: `${label} must be YYYY-MM-DD.` });
@@ -5745,10 +5756,10 @@ app.post("/api/content/save", async (req, res) => {
     // `data` below never carries it, so no update — from any seat — can flip it either way.
     const wantsRehearsal = !existing && rehearsal === true;
     if (wantsRehearsal && (req as any).dbUser?.role !== "Super Admin") {
-      return res.status(403).json({ error: "Only the master account can start a rehearsal." });
+      return refuseWith(res, 403, gm("route.rehearsal-master"));
     }
     if (existing && existing.status === "Published") {
-      return res.status(403).json({ error: "Published content is a permanent record — issue a public correction instead (Policy P4)." });
+      return refuseWith(res, 403, gm("route.published-correct"));
     }
 
     const data = {
@@ -5803,7 +5814,7 @@ app.post("/api/content/start", async (req, res) => {
     }
     if (user?.id !== item.assigneeUserId) {
       const block = await contentManageBlock(req, item.stream);
-      if (block) return res.status(403).json({ error: "Only the assignee or an editor can start production." });
+      if (block) return refuseWith(res, 403, gm("route.start-who"));
     }
     const updated = await prisma.contentItem.update({ where: { id }, data: { status: "In Production",
       ...(item.rehearsal ? { assigneeAs: seatOf(user) } : {}) } });
@@ -5824,7 +5835,7 @@ app.post("/api/content/submit-factcheck", async (req, res) => {
     }
     if (user?.id !== item.assigneeUserId) {
       const block = await contentManageBlock(req, item.stream);
-      if (block) return res.status(403).json({ error: "Only the assignee or an editor can submit for fact-check." });
+      if (block) return refuseWith(res, 403, gm("route.submit-who"));
     }
     if (item.rehearsal) {
       const seat = String(req.body.factCheckerSeat || "");
@@ -5847,11 +5858,11 @@ app.post("/api/content/submit-factcheck", async (req, res) => {
 
     const checker = factCheckerUserId ? await prisma.user.findUnique({ where: { id: factCheckerUserId } }) : null;
     if (!checker || !checker.active) {
-      return res.status(400).json({ error: "Name an active user as the fact-checker (Policy P4: assign a dedicated individual responsible for verifying the facts)." });
+      return refuseWith(res, 400, gm("route.checker-active"));
     }
     // Policy P4 impartiality — same segregation spirit as the §4.3 voucher rule.
     if (factCheckerUserId === item.assigneeUserId) {
-      return res.status(403).json({ error: `Policy P4 impartiality: the fact-checker must not be the author — assign someone other than ${checker.name}.` });
+      return refuseWith(res, 403, gm("route.checker-not-author", checker.name));
     }
     const updated = await prisma.contentItem.update({ where: { id }, data: { status: "Fact-Check", factCheckerUserId } });
     await itemAudit(item, user, "Content Sent to Fact-Check",
@@ -5870,9 +5881,9 @@ app.post("/api/content/factcheck-log", async (req, res) => {
     if (!["In Production", "Fact-Check"].includes(item.status)) {
       return res.status(400).json({ error: `Sources are logged during production or fact-check (currently ${item.status}).` });
     }
-    if (!source) return res.status(400).json({ error: "Name the source (Policy P4: detailed records of all sources and verification steps)." });
+    if (!source) return refuseWith(res, 400, gm("route.name-source"));
     const allowed = user?.id === item.factCheckerUserId || user?.id === item.assigneeUserId || CONTENT_EDITOR_ROLES.includes(user?.role);
-    if (!allowed) return res.status(403).json({ error: "Only the assignee, the named fact-checker or an editor can log sources." });
+    if (!allowed) return refuseWith(res, 403, gm("route.log-who"));
     const log = JSON.parse(item.factCheckJson || "[]");
     log.push({ source, step: step || "", date: localDate() });
     const updated = await prisma.contentItem.update({ where: { id }, data: { factCheckJson: JSON.stringify(log) } });
@@ -5894,7 +5905,7 @@ app.post("/api/content/factcheck-pass", async (req, res) => {
     }
     // The NAMED person is the policy — no editor or master-account stand-in here.
     if (user?.id !== item.factCheckerUserId) {
-      return res.status(403).json({ error: "Only the named fact-checker can pass this item (Policy P4: independent review by the assigned individual)." });
+      return refuseWith(res, 403, gm("route.pass-who"));
     }
     if (item.rehearsal) {
       const clash = rehearsalSeatClash(item, "pass", seatOf(user));
@@ -5902,7 +5913,7 @@ app.post("/api/content/factcheck-pass", async (req, res) => {
     }
     const log = JSON.parse(item.factCheckJson || "[]");
     if (!log.length) {
-      return res.status(403).json({ error: "Log at least one source or verification step first (Policy P4: detailed records of all sources and verification steps)." });
+      return refuseWith(res, 403, gm("route.pass-needs-source"));
     }
     const updated = await prisma.contentItem.update({ where: { id },
       data: { status: "Editorial Review", factCheckPassedAt: new Date().toISOString() } });
@@ -5926,10 +5937,10 @@ app.post("/api/content/return", async (req, res) => {
     const isChecker = user?.id === item.factCheckerUserId;
     const isEditor = CONTENT_EDITOR_ROLES.includes(user?.role);
     if (item.status === "Fact-Check" && !isChecker && !isEditor) {
-      return res.status(403).json({ error: "Only the named fact-checker or an editor can return this item." });
+      return refuseWith(res, 403, gm("route.return-who"));
     }
     if (item.status === "Editorial Review" && !isEditor) {
-      return res.status(403).json({ error: "Only an editor can return content from editorial review." });
+      return refuseWith(res, 403, gm("route.return-review-who"));
     }
     // Changed content voids prior sign-offs — one rule, no matrix.
     const updated = await prisma.contentItem.update({ where: { id }, data: {
@@ -5953,10 +5964,10 @@ app.post("/api/content/approve", async (req, res) => {
       return res.status(400).json({ error: `Approvals happen in Editorial Review (currently ${item.status}).` });
     }
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
-      return res.status(403).json({ error: "Approval needs the Production Manager, the Programs Director or the master account (Policy P3)." });
+      return refuseWith(res, 403, gm("route.approve-who"));
     }
     if (!item.rehearsal && user?.id === item.assigneeUserId) {
-      return res.status(403).json({ error: "You authored this item — a different officer must approve it (§4.3 segregation of duties)." });
+      return refuseWith(res, 403, gm("route.approve-author"));
     }
     // Role → slot; the master account may stand in for ONE empty slot, never both.
     let target: "pm" | "pd";
@@ -5967,7 +5978,7 @@ app.post("/api/content/approve", async (req, res) => {
     const other = target === "pm" ? item.pdApprovedBy : item.pmApprovedBy;
     if (mine) return res.status(400).json({ error: `The ${target === "pm" ? "Production Manager" : "Programs Director"} slot is already approved.` });
     if (!item.rehearsal && other === user?.id) {
-      return res.status(403).json({ error: "You already hold the other approval — Policy P3 requires the Production Manager AND the Programs Director, two different people." });
+      return refuseWith(res, 403, gm("route.approve-other-slot"));
     }
     if (item.rehearsal) {
       const clash = rehearsalSeatClash(item, target, seatOf(user));
@@ -5995,13 +6006,13 @@ app.post("/api/content/legal-record", async (req, res) => {
     const item = await prisma.contentItem.findUnique({ where: { id } });
     if (!item) return res.status(404).json({ error: "Content item not found." });
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
-      return res.status(403).json({ error: "Recording a legal review needs an editor role." });
+      return refuseWith(res, 403, gm("route.legal-who"));
     }
     if (!["Editorial Review", "Approved"].includes(item.status)) {
       return res.status(400).json({ error: `Legal review is recorded during Editorial Review or after approval (currently ${item.status}).` });
     }
     if (!legalReviewedBy) {
-      return res.status(400).json({ error: "Name who performed the legal review (Policy P3: stories with potential legal implications are reviewed by the legal team)." });
+      return refuseWith(res, 400, gm("route.legal-name"));
     }
     const updated = await prisma.contentItem.update({ where: { id }, data: {
       legalReviewedBy, legalReviewNote: legalReviewNote || "",
@@ -6021,7 +6032,7 @@ app.post("/api/content/publish", async (req, res) => {
     const item = await prisma.contentItem.findUnique({ where: { id } });
     if (!item) return res.status(404).json({ error: "Content item not found." });
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
-      return res.status(403).json({ error: "Publishing needs the Production Manager, the Programs Director or the master account (Policy P3)." });
+      return refuseWith(res, 403, gm("route.publish-who"));
     }
     // The whole point: the same blocker list the UI shows is what the server enforces.
     const blockers = publishBlockers(item);
@@ -6104,7 +6115,7 @@ app.post("/api/content/cover", async (req, res) => {
     const { id, provider, prompt, docId, user } = req.body;
     const item = await prisma.contentItem.findUnique({ where: { id } });
     if (!item) return res.status(404).json({ error: "Content item not found." });
-    if (!contentProduceAllowed(user, item)) return res.status(403).json({ error: "Only the working team can set this item's cover." });
+    if (!contentProduceAllowed(user, item)) return refuseWith(res, 403, gm("route.cover-who"));
     if (item.retractedAt) return res.status(400).json({ error: "This piece was retracted — no cover changes." });
 
     let coverPath = "", how = "";
@@ -7285,10 +7296,10 @@ app.post("/api/content/retract", async (req, res) => {
     const { id, reason, user } = req.body;
     const item = await prisma.contentItem.findUnique({ where: { id } });
     if (!item) return res.status(404).json({ error: "Content item not found." });
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Retracting needs an editor role." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return refuseWith(res, 403, gm("route.retract-who"));
     if (item.status !== "Published") return res.status(400).json({ error: "Only published content can be retracted — unpublished work is just edited or removed." });
     if (item.retractedAt) return res.status(400).json({ error: "Already retracted." });
-    if (!reason) return res.status(400).json({ error: "State why it is being retracted (public record, Policy P4)." });
+    if (!reason) return refuseWith(res, 400, gm("route.retract-why"));
     const updated = await prisma.contentItem.update({ where: { id }, data: { retractedAt: new Date().toISOString(), retractReason: String(reason) } });
     await itemAudit(item, user, "Content Retracted", `"${item.title}" taken off the website: ${reason}`);
     void notifySiteUnpublish(id);
@@ -7305,13 +7316,13 @@ app.post("/api/content/correction", async (req, res) => {
     const item = await prisma.contentItem.findUnique({ where: { id } });
     if (!item) return res.status(404).json({ error: "Content item not found." });
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
-      return res.status(403).json({ error: "Issuing a correction needs an editor role." });
+      return refuseWith(res, 403, gm("route.correction-who"));
     }
     if (item.status !== "Published") {
       return res.status(400).json({ error: "Corrections apply to published content — unpublished work is just edited." });
     }
     if (!nature || !correction) {
-      return res.status(400).json({ error: "State the nature of the error and the correction (Policy P4: public record with date and details)." });
+      return refuseWith(res, 400, gm("route.correction-what"));
     }
     const corrections = JSON.parse(item.correctionsJson || "[]");
     corrections.push({ date: localDate(), nature, correction, by: user?.name || "" });
@@ -7359,13 +7370,13 @@ app.post("/api/content/delete", async (req, res) => {
     const item = await prisma.contentItem.findUnique({ where: { id } });
     if (!item) return res.status(404).json({ error: "Content item not found." });
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
-      return res.status(403).json({ error: "Removing a content item needs an editor role." });
+      return refuseWith(res, 403, gm("route.delete-who"));
     }
     // A rehearsal may go even when "published": it never reached an audience, BY CONSTRUCTION —
     // the flag is set at creation and no route can set it later, so it cannot be claimed after the
     // fact for a real piece. That is the difference from the predicates the note above forbids.
     if (item.status === "Published" && !item.rehearsal) {
-      return res.status(403).json({ error: "Published content is a permanent record and cannot be deleted — append a correction instead (Policy P4)." });
+      return refuseWith(res, 403, gm("route.delete-published"));
     }
     await prisma.contentItem.delete({ where: { id } });
     await itemAudit(item, user, "Content Item Removed", `Removed "${item.title}" (${item.status}).`);
@@ -7384,7 +7395,7 @@ app.post("/api/content/brainstorm", async (req, res) => {
   try {
     const { messages, materials, attachment, user } = req.body;
     if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
-      return res.status(403).json({ error: "The idea desk is for editors and Project Officers — assignments come out of the editorial meetings (Policy P3)." });
+      return refuseWith(res, 403, gm("route.brainstorm-who"));
     }
     if (!aiConfigured()) return res.status(400).json({ error: "No AI provider configured — add ANTHROPIC_API_KEY or GEMINI_API_KEY to .env." });
     const thread: { role: string; text: string }[] = Array.isArray(messages) ? messages.slice(-20) : [];
@@ -7482,13 +7493,13 @@ app.post("/api/meetings/save", async (req, res) => {
     const { kind, date, attendees, direction, notes, minutes, topics, user } = req.body;
     const mtgKind = kind || "Weekly Editorial";
     if (!["Weekly Editorial", "Daily Production"].includes(mtgKind)) {
-      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy P3)." });
+      return refuseWith(res, 400, gm("route.meeting-kind"));
     }
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return res.status(400).json({ error: "Meeting date must be YYYY-MM-DD." });
     }
     if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
-      return res.status(403).json({ error: "Recording a meeting needs an editor or Project Officer (Policy P3 participants)." });
+      return refuseWith(res, 403, gm("route.meeting-who"));
     }
     const ids: string[] = Array.isArray(attendees) ? attendees : [];
     const known = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true } });
@@ -7545,7 +7556,7 @@ app.post("/api/content/produce", async (req, res) => {
       return res.status(400).json({ error: `Drafting happens before editorial review (currently ${item.status}) — after that, the text under review is frozen.` });
     }
     if (!contentProduceAllowed(user, item)) {
-      return res.status(403).json({ error: "The studio is for the assignee, the fact-checker, Project Officers and editors." });
+      return refuseWith(res, 403, gm("route.studio-who"));
     }
     if (!aiConfigured()) return res.status(400).json({ error: "No AI provider configured — add ANTHROPIC_API_KEY or GEMINI_API_KEY to .env." });
     const thread: { role: string; text: string }[] = Array.isArray(messages) ? messages.slice(-20) : [];
@@ -7617,7 +7628,7 @@ app.post("/api/content/research", async (req, res) => {
     const item = await prisma.contentItem.findUnique({ where: { id } });
     if (!item) return res.status(404).json({ error: "Content item not found." });
     if (!contentProduceAllowed(user, item)) {
-      return res.status(403).json({ error: "Research is for the assignee, the fact-checker, Project Officers and editors." });
+      return refuseWith(res, 403, gm("route.research-who"));
     }
     // The newsroom's own links — the reporter chose these, so reading them is both
     // cheaper than discovery and closer to what Policy P4 asks for.
@@ -7690,7 +7701,7 @@ app.post("/api/diversity/save", async (req, res) => {
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
       const item = contentItemId ? await prisma.contentItem.findUnique({ where: { id: contentItemId } }) : null;
       const mayLog = item && (item.assigneeUserId === user?.id || item.factCheckerUserId === user?.id);
-      if (!mayLog) return res.status(403).json({ error: "The tracker is filled by the piece's author, its fact-checker or an editor (Policy P3 §4.1)." });
+      if (!mayLog) return refuseWith(res, 403, gm("route.tracker-who"));
     }
     const e = entry || {};
     // Refuse a value the vocabulary does not contain rather than storing prose that no summary can read.
@@ -7740,7 +7751,7 @@ app.get("/api/diversity/summary", async (req: any, res) => {
 app.post("/api/diversity/gap", async (req, res) => {
   try {
     const { meetingId, gap, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "The monthly review is the editors' (Policy P3 §4.3)." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return refuseWith(res, 403, gm("route.review-who"));
     const meeting = await prisma.editorialMeeting.findUnique({ where: { id: meetingId } });
     if (!meeting) return res.status(404).json({ error: "No such meeting." });
     const updated = await prisma.editorialMeeting.update({ where: { id: meetingId }, data: { diversityGap: String(gap || "").slice(0, 400) } });
@@ -7753,7 +7764,7 @@ app.post("/api/diversity/gap", async (req, res) => {
 app.post("/api/coverage/save", async (req, res) => {
   try {
     const { id, title, issue, stream, status, angles, user } = req.body;
-    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Coverage packages are planned by the editors (Policy P3 §4.3)." });
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return refuseWith(res, 403, gm("route.package-who"));
     if (!String(title || "").trim()) return res.status(400).json({ error: "Give the package a title." });
     const anglesJson = JSON.stringify(Array.isArray(angles) ? angles : PACKAGE_ANGLES.map(([key]) => ({ angle: key, format: "", contentItemId: "" })));
     const data: any = { title: String(title).slice(0, 200), issue: String(issue || "").slice(0, 600), stream: String(stream || ""), status: String(status || "Planned"), anglesJson };
@@ -7773,7 +7784,7 @@ app.post("/api/content/draft-save", async (req, res) => {
     if (!CONTENT_WORKING_STATUSES.includes(item.status)) {
       return res.status(400).json({ error: `Drafts are added before editorial review (currently ${item.status}).` });
     }
-    if (!contentProduceAllowed(user, item)) return res.status(403).json({ error: "Only the working team can save drafts on this item." });
+    if (!contentProduceAllowed(user, item)) return refuseWith(res, 403, gm("route.draft-save-who"));
     if (!text || !label) return res.status(400).json({ error: "A draft needs a label and its text." });
     const drafts = JSON.parse(item.draftsJson || "[]");
     drafts.push({ label: String(label).slice(0, 120), kind: kind || "Other", text: String(text), date: localDate(), by: user?.name || "" });
@@ -7795,7 +7806,7 @@ app.post("/api/content/draft-delete", async (req, res) => {
     if (!CONTENT_WORKING_STATUSES.includes(item.status)) {
       return res.status(400).json({ error: "Drafts are frozen once editorial review starts." });
     }
-    if (!contentProduceAllowed(user, item)) return res.status(403).json({ error: "Only the working team can remove drafts on this item." });
+    if (!contentProduceAllowed(user, item)) return refuseWith(res, 403, gm("route.draft-delete-who"));
     const drafts = JSON.parse(item.draftsJson || "[]");
     if (!(index >= 0 && index < drafts.length)) return res.status(400).json({ error: "No such draft." });
     const [removed] = drafts.splice(index, 1);
@@ -7838,11 +7849,11 @@ app.post("/api/meetings/extract-topics", async (req, res) => {
     const { kind, date, minutes, user } = req.body;
     const mtgKind = kind || "Weekly Editorial";
     if (!["Weekly Editorial", "Daily Production"].includes(mtgKind)) {
-      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy P3)." });
+      return refuseWith(res, 400, gm("route.meeting-kind"));
     }
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Meeting date must be YYYY-MM-DD." });
     if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
-      return res.status(403).json({ error: "Processing minutes needs an editor or Project Officer (Policy P3 participants)." });
+      return refuseWith(res, 403, gm("route.minutes-who"));
     }
     if (!minutes || String(minutes).trim().length < 20) {
       return res.status(400).json({ error: "Paste the meeting minutes or transcript first (at least a few lines)." });
@@ -7906,11 +7917,11 @@ app.post("/api/meetings/transcribe", async (req, res) => {
     const { kind, date, audio, user } = req.body;
     const mtgKind = kind || "Weekly Editorial";
     if (!["Weekly Editorial", "Daily Production"].includes(mtgKind)) {
-      return res.status(400).json({ error: "Meeting kind must be Weekly Editorial or Daily Production (Policy P3)." });
+      return refuseWith(res, 400, gm("route.meeting-kind"));
     }
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: "Meeting date must be YYYY-MM-DD." });
     if (!CONTENT_EDITOR_ROLES.includes(user?.role) && user?.role !== "Project Officer") {
-      return res.status(403).json({ error: "Processing a recording needs an editor or Project Officer (Policy P3 participants)." });
+      return refuseWith(res, 403, gm("route.recording-who"));
     }
     if (!audio?.base64 || !String(audio.mimeType || "").startsWith("audio/")) {
       return res.status(400).json({ error: "Send the meeting recording as audio." });
@@ -7985,7 +7996,7 @@ app.post("/api/meetings/delete", async (req, res) => {
   try {
     const { id, user } = req.body;
     if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
-      return res.status(403).json({ error: "Removing a meeting record needs an editor role." });
+      return refuseWith(res, 403, gm("route.meeting-delete-who"));
     }
     const meeting = await prisma.editorialMeeting.findUnique({ where: { id } });
     if (!meeting) return res.status(404).json({ error: "Meeting record not found." });

@@ -146,6 +146,175 @@ export const GATE_TEXT: Record<string, { en: string; ar: string }> = {
     en: "Diversity tracker: \"{0}\" cannot be combined with a group (Policy P3 §4.1).",
     ar: "متتبّع التنوّع: لا يمكن الجمع بين «{0}» وأي فئة (السياسة P3، البند 4.1).",
   },
+
+  // ── Route refusals (phase 1, 6 Oct 2026) ──────────────────────────────────────────────
+  // The 27 policy-citing refusals the editorial routes return, plus the permission refusals an
+  // editor meets most. The ROUTE keeps sending `error` in English — the server stays language-free
+  // so the audit record does too — and sends the key beside it for the screen to render.
+  "route.bad-label": {
+    en: "\"{0}\" is not a content label Policy P3 defines ({1}).",
+    ar: "«{0}» ليست من تصنيفات المحتوى التي تحدّدها السياسة P3 ({1}).",
+  },
+  "route.bad-type": {
+    en: "Content type must be one of: {0} (Policy P3).",
+    ar: "نوع المحتوى يجب أن يكون أحد: {0} (السياسة P3).",
+  },
+  "route.bad-channels": {
+    en: "Unknown channel(s): {0}. Policy P3 channels: {1}.",
+    ar: "قنوات غير معروفة: {0}. قنوات السياسة P3: {1}.",
+  },
+  "route.rehearsal-master": {
+    en: "Only the master account can start a rehearsal.",
+    ar: "لا يبدأ البروفة إلا الحساب الرئيسي.",
+  },
+  "route.published-correct": {
+    en: "Published content is a permanent record — issue a public correction instead (Policy P4).",
+    ar: "المحتوى المنشور سجلّ دائم — أصدر تصحيحًا علنيًا بدلًا من تعديله (السياسة P4).",
+  },
+  "route.start-who": {
+    en: "Only the assignee or an editor can start production.",
+    ar: "لا يبدأ الإنتاج إلا المكلّف بالمادة أو محرّر.",
+  },
+  "route.submit-who": {
+    en: "Only the assignee or an editor can submit for fact-check.",
+    ar: "لا يرسل المادة إلى التحقّق من المعلومات إلا المكلّف بها أو محرّر.",
+  },
+  "route.checker-active": {
+    en: "Name an active user as the fact-checker (Policy P4: assign a dedicated individual responsible for verifying the facts).",
+    ar: "سمِّ مستخدمًا فعّالًا مدقّقًا للمعلومات (السياسة P4: تكليف شخص محدّد بالتحقّق من الوقائع).",
+  },
+  "route.checker-not-author": {
+    en: "Policy P4 impartiality: the fact-checker must not be the author — assign someone other than {0}.",
+    ar: "حياد السياسة P4: مدقّق المعلومات ليس كاتب المادة — كلّف شخصًا غير {0}.",
+  },
+  "route.name-source": {
+    en: "Name the source (Policy P4: detailed records of all sources and verification steps).",
+    ar: "سمِّ المصدر (السياسة P4: سجلّات تفصيلية لكل المصادر وخطوات التحقّق).",
+  },
+  "route.log-who": {
+    en: "Only the assignee, the named fact-checker or an editor can log sources.",
+    ar: "لا يسجّل المصادر إلا المكلّف بالمادة أو مدقّق المعلومات المسمّى أو محرّر.",
+  },
+  "route.pass-who": {
+    en: "Only the named fact-checker can pass this item (Policy P4: independent review by the assigned individual).",
+    ar: "لا يجيز هذه المادة إلا مدقّق المعلومات المسمّى (السياسة P4: مراجعة مستقلة من الشخص المكلّف).",
+  },
+  "route.pass-needs-source": {
+    en: "Log at least one source or verification step first (Policy P4: detailed records of all sources and verification steps).",
+    ar: "سجّل مصدرًا واحدًا أو خطوة تحقّق واحدة على الأقل أولًا (السياسة P4: سجلّات تفصيلية لكل المصادر وخطوات التحقّق).",
+  },
+  "route.return-who": {
+    en: "Only the named fact-checker or an editor can return this item.",
+    ar: "لا يعيد هذه المادة إلا مدقّق المعلومات المسمّى أو محرّر.",
+  },
+  "route.return-review-who": {
+    en: "Only an editor can return content from editorial review.",
+    ar: "لا يعيد المادة من المراجعة التحريرية إلا محرّر.",
+  },
+  "route.approve-who": {
+    en: "Approval needs the Production Manager, the Programs Director or the master account (Policy P3).",
+    ar: "الموافقة تحتاج مدير الإنتاج أو مدير البرامج أو الحساب الرئيسي (السياسة P3).",
+  },
+  "route.approve-author": {
+    en: "You authored this item — a different officer must approve it (§4.3 segregation of duties).",
+    ar: "أنت كاتب هذه المادة — يوافق عليها مسؤول آخر (البند 4.3: الفصل بين المهام).",
+  },
+  "route.approve-other-slot": {
+    en: "You already hold the other approval — Policy P3 requires the Production Manager AND the Programs Director, two different people.",
+    ar: "أنت تحمل الموافقة الأخرى أصلًا — تشترط السياسة P3 مدير الإنتاج ومدير البرامج معًا، وهما شخصان مختلفان.",
+  },
+  "route.legal-who": {
+    en: "Recording a legal review needs an editor role.",
+    ar: "تسجيل مراجعة قانونية يحتاج صفة محرّر.",
+  },
+  "route.legal-name": {
+    en: "Name who performed the legal review (Policy P3: stories with potential legal implications are reviewed by the legal team).",
+    ar: "سمِّ من أجرى المراجعة القانونية (السياسة P3: المواد ذات التبعات القانونية المحتملة يراجعها الفريق القانوني).",
+  },
+  "route.publish-who": {
+    en: "Publishing needs the Production Manager, the Programs Director or the master account (Policy P3).",
+    ar: "النشر يحتاج مدير الإنتاج أو مدير البرامج أو الحساب الرئيسي (السياسة P3).",
+  },
+  "route.cover-who": {
+    en: "Only the working team can set this item's cover.",
+    ar: "لا يضع صورة غلاف هذه المادة إلا فريق العمل عليها.",
+  },
+  "route.retract-who": {
+    en: "Retracting needs an editor role.",
+    ar: "سحب المادة يحتاج صفة محرّر.",
+  },
+  "route.retract-why": {
+    en: "State why it is being retracted (public record, Policy P4).",
+    ar: "اذكر سبب سحب المادة (سجلّ علني، السياسة P4).",
+  },
+  "route.correction-who": {
+    en: "Issuing a correction needs an editor role.",
+    ar: "إصدار تصحيح يحتاج صفة محرّر.",
+  },
+  "route.correction-what": {
+    en: "State the nature of the error and the correction (Policy P4: public record with date and details).",
+    ar: "اذكر طبيعة الخطأ ونصّ التصحيح (السياسة P4: سجلّ علني بالتاريخ والتفاصيل).",
+  },
+  "route.delete-who": {
+    en: "Removing a content item needs an editor role.",
+    ar: "حذف مادة من السجل يحتاج صفة محرّر.",
+  },
+  "route.delete-published": {
+    en: "Published content is a permanent record and cannot be deleted — append a correction instead (Policy P4).",
+    ar: "المحتوى المنشور سجلّ دائم لا يُحذف — أضف تصحيحًا بدلًا من ذلك (السياسة P4).",
+  },
+  "route.brainstorm-who": {
+    en: "The idea desk is for editors and Project Officers — assignments come out of the editorial meetings (Policy P3).",
+    ar: "مكتب الأفكار للمحرّرين ومسؤولي المشاريع — والتكليفات تخرج من الاجتماعات التحريرية (السياسة P3).",
+  },
+  "route.meeting-kind": {
+    en: "Meeting kind must be Weekly Editorial or Daily Production (Policy P3).",
+    ar: "نوع الاجتماع يجب أن يكون تحريريًا أسبوعيًا أو إنتاجيًا يوميًا (السياسة P3).",
+  },
+  "route.meeting-who": {
+    en: "Recording a meeting needs an editor or Project Officer (Policy P3 participants).",
+    ar: "تسجيل اجتماع يحتاج محرّرًا أو مسؤول مشاريع (المشاركون في السياسة P3).",
+  },
+  "route.studio-who": {
+    en: "The studio is for the assignee, the fact-checker, Project Officers and editors.",
+    ar: "الاستوديو للمكلّف بالمادة ومدقّق المعلومات ومسؤولي المشاريع والمحرّرين.",
+  },
+  "route.research-who": {
+    en: "Research is for the assignee, the fact-checker, Project Officers and editors.",
+    ar: "البحث للمكلّف بالمادة ومدقّق المعلومات ومسؤولي المشاريع والمحرّرين.",
+  },
+  "route.tracker-who": {
+    en: "The tracker is filled by the piece's author, its fact-checker or an editor (Policy P3 §4.1).",
+    ar: "يملأ متتبّع التنوّع كاتبُ المادة أو مدقّق معلوماتها أو محرّر (السياسة P3، البند 4.1).",
+  },
+  "route.review-who": {
+    en: "The monthly review is the editors' (Policy P3 §4.3).",
+    ar: "المراجعة الشهرية للمحرّرين (السياسة P3، البند 4.3).",
+  },
+  "route.package-who": {
+    en: "Coverage packages are planned by the editors (Policy P3 §4.3).",
+    ar: "حزم التغطية يخطّط لها المحرّرون (السياسة P3، البند 4.3).",
+  },
+  "route.draft-save-who": {
+    en: "Only the working team can save drafts on this item.",
+    ar: "لا يحفظ مسوّدات هذه المادة إلا فريق العمل عليها.",
+  },
+  "route.draft-delete-who": {
+    en: "Only the working team can remove drafts on this item.",
+    ar: "لا يحذف مسوّدات هذه المادة إلا فريق العمل عليها.",
+  },
+  "route.minutes-who": {
+    en: "Processing minutes needs an editor or Project Officer (Policy P3 participants).",
+    ar: "معالجة المحضر تحتاج محرّرًا أو مسؤول مشاريع (المشاركون في السياسة P3).",
+  },
+  "route.recording-who": {
+    en: "Processing a recording needs an editor or Project Officer (Policy P3 participants).",
+    ar: "معالجة تسجيل تحتاج محرّرًا أو مسؤول مشاريع (المشاركون في السياسة P3).",
+  },
+  "route.meeting-delete-who": {
+    en: "Removing a meeting record needs an editor role.",
+    ar: "حذف سجلّ اجتماع يحتاج صفة محرّر.",
+  },
 };
 
 const fill = (template: string, args: string[]) =>
@@ -170,6 +339,18 @@ export function say(lang: string, msg: Msg, tr: (s: string) => string = s => s):
   if (!entry) return msg.en;
   const args = lang === "ar" ? msg.args.map(tr) : msg.args;
   return fill(lang === "ar" ? entry.ar : entry.en, args);
+}
+
+/**
+ * A server refusal in the reader's language. The response carries the English sentence in `error`
+ * and, where the route has been converted, `errorKey` and `errorArgs` beside it. Falls back to the
+ * English — so a route that has not been converted, or an older server, still reads correctly.
+ */
+export function sayResponse(lang: string, data: any, tr: (s: string) => string = s => s): string {
+  const en = String(data?.error || "");
+  const key = String(data?.errorKey || "");
+  if (!key || !GATE_TEXT[key]) return en;
+  return say(lang, { key, args: (data?.errorArgs || []).map(String), en }, tr);
 }
 
 /** Every key that has no Arabic — empty when the gate can speak Arabic throughout. */
