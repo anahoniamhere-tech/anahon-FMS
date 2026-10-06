@@ -699,6 +699,9 @@ model FxRates {
   id  String @id @default("rates")
   EUR Float
   LBP Float
+  // USD per one AED. The dirham is pegged (3.6725 AED = 1 USD), so this is the peg inverted and
+  // is not refreshed like the two above — see src/currencies.ts.
+  AED Float  @default(0.272294)
 }
 
 // Editorial pipeline (signed Policies 002 & 005): content moves

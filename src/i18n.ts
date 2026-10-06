@@ -1699,5 +1699,8 @@ export const AR: Record<string, string> = {
   "Organisations given tools": "جهات شاركناها أدواتنا",
   "none yet": "لا شيء بعد",
   "Press-freedom": "حرية الصحافة",
+  // AED on quotations (7 Oct 2026, src/currencies.ts).
+  "pegged": "مربوط بالدولار",
+  "Converted to USD — this client was quoted in more than one currency.": "محوّل إلى الدولار — عُرضت على هذا العميل أسعار بأكثر من عملة.",
 };
 export const tr = (lang: string, s: string) => (lang === "ar" ? (AR[s] || s) : s);

@@ -818,5 +818,5 @@ export interface DatabaseState {
   engagements: Engagement[];
   tools: Tool[];
   orgSettings: OrgSettings;
-  fxRates: { EUR: number; LBP: number };
+  fxRates: { EUR: number; LBP: number; AED?: number };
 }

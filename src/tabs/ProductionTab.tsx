@@ -10,6 +10,7 @@ import { withTicket } from "../docTicket";
 import { outstandingOn, paidOn } from "../quoteTranches";
 import { DEFAULT_NEW_QUOTE_ISSUER, QUOTE_ISSUERS, QUOTE_ISSUER_LABELS, quoteTotals, discountBlocker, DEFAULT_DISCOUNT_LABEL } from "../quoteTotals";
 import { RECEIPT_CATEGORY, receiptLog, receiptNoOf } from "../receipts";
+import { QUOTE_CURRENCIES, PEG_NOTE, toUSD, isMixed } from "../currencies";
 import { liveShare, shareUrl, SHAREABLE_STATUSES } from "../quoteShare";
 import ReceiveOffbankForm from "./ReceiveOffbankForm";
 
@@ -323,7 +324,12 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   {state.clients.map(c => {
                     const cQuotes = state.quotations.filter(q => q.clientId === c.id);
-                    const acceptedTotal = cQuotes.filter(q => ["Accepted", "Invoiced", "Paid"].includes(q.status)).reduce((s, q) => s + q.amount, 0);
+                    // Accepted work for this client, in USD. It used to add the raw amounts together,
+                    // which was only ever right because every quotation was in dollars; AED (7 Oct 2026)
+                    // would have made 14,850 dirhams read as 14,850 dollars.
+                    const accepted = cQuotes.filter(q => ["Accepted", "Invoiced", "Paid"].includes(q.status));
+                    const acceptedTotal = accepted.reduce((s, q) => s + toUSD(q.amount, q.currency, state.fxRates), 0);
+                    const acceptedMixed = isMixed(accepted.map(q => q.currency));
                     return (
                       <div key={c.id} className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm">
                         <div className="flex items-center justify-between mb-1">
@@ -339,7 +345,9 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                         )}
                         <div className="border-t border-slate-100 mt-3 pt-2 flex justify-between text-[10px]">
                           <span className="text-slate-400 uppercase">{cQuotes.length} quotation{cQuotes.length === 1 ? "" : "s"}</span>
-                          <strong className="font-mono text-slate-800">accepted: {formatUSD(acceptedTotal)}</strong>
+                          <strong className="font-mono text-slate-800" title={acceptedMixed ? t("Converted to USD — this client was quoted in more than one currency.") : undefined}>
+                            accepted: {acceptedMixed ? "≈ " : ""}{formatUSD(acceptedTotal)}
+                          </strong>
                         </div>
                       </div>
                     );
@@ -405,8 +413,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                       <div>
                         <label htmlFor="qt-currency" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Currency")}</label>
                         <select id="qt-currency" value={quoteForm.currency || "USD"} onChange={e => setQuoteForm({ ...quoteForm, currency: e.target.value })} className="finance-input w-full text-xs">
-                          <option value="USD">USD</option>
-                          <option value="EUR">EUR</option>
+                          {QUOTE_CURRENCIES.map(c => <option key={c} value={c}>{c}{PEG_NOTE[c] ? ` · ${t("pegged")}` : ""}</option>)}
                         </select>
                       </div>
                       <div>
