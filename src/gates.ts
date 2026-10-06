@@ -185,6 +185,11 @@ export const ROUTE_SEATS: Record<string, readonly string[]> = {
   // ---- The site and what it shows ------------------------------------------
   "/api/website/content": SITE_EDITORS,
   "/api/website/image": SITE_EDITORS,
+  // The diversity tracker and coverage packages (P3 §4.1, §4.3). Saving a log is open to the
+  // piece's author and fact-checker too; that narrower rule is in the route, which knows the piece.
+  "/api/diversity/save": CONTENT_EDITORS,
+  "/api/diversity/gap": CONTENT_EDITORS,
+  "/api/coverage/save": CONTENT_EDITORS,
   "/api/website/edit": SITE_EDITORS,
   // The master article editor writes the site's article files; the GET side refuses in the route,
   // because ROUTE_SEATS gates POST only.

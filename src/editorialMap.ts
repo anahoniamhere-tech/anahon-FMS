@@ -17,6 +17,7 @@
  */
 import { RULES, type Rule, type DeskItem } from "./workflow";
 import { CONTENT_STATUSES, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, type ContentGateFields } from "./editorialGates";
+import { diversityBlockers } from "./diversity";
 
 /** The one collection this map draws. Everything else in RULES belongs to another door. */
 export const MAP_KIND = "contentItems";
@@ -44,6 +45,9 @@ export type Station = {
   dateField: string;
   /** No seat and no person: nothing in the rule table moves a piece on from here. */
   terminal: boolean;
+  /** What must be recorded BEFORE this station's move may be made — P3 §4.1 step 2's tracker.
+   *  Not a publish blocker: it stops a transition, so it hangs on the station that makes it. */
+  stepGate: string[];
   /** Publication blockers this station is the one to clear (see stationBlockers below). */
   clears: string[];
   /** Everything still standing between a piece here and publication. */
@@ -172,8 +176,14 @@ export function editorialStations(): Station[] {
     const terminal = mine.every(r => !r.seat && !r.person && !r.standIns);
     const outstanding = terminal ? [] : blockersAt(index);
     const next = terminal || index + 1 >= CONTENT_STATUSES.length ? [] : blockersAt(index + 1);
+    // The tracker (P3 §4.1 step 2) is logged while the piece is produced and checked when it is
+    // sent on. Which station that is, is DERIVED: the one immediately before the station whose
+    // turn belongs to the named fact-checker. No station name is written here.
+    const checkerAt = CONTENT_STATUSES.findIndex(st =>
+      rules.some(r => r.status === st && r.person === "factCheckerUserId"));
+    const stepGate = checkerAt > 0 && index === checkerAt - 1 ? diversityBlockers(null) : [];
     return {
-      status, index, rules: mine,
+      status, index, rules: mine, stepGate,
       seats: [...new Set(mine.flatMap(r => [...(r.seat || [])]))],
       personField,
       verbs: [...new Set(mine.map(r => r.verb).filter(Boolean))],

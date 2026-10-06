@@ -16,6 +16,7 @@ import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, workpl
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory, isContentLabel, LABEL_WORDS } from "./src/editorialGates.js";
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { itemOpenFacts } from "./src/fillMarkers.js";
+import { diversityBlockers, trackerRequired, monthlySummary, monthsLogged, isPresenceValue, MAIN_SUBJECTS, VULNERABLE_GROUPS, PRESENCE_FIELDS, PACKAGE_ANGLES, NO_GROUP, TRACKER_FROM } from "./src/diversity.js";
 import { parseArticle, writeArticle, field, tagsOf, listOf, unquote, changedText, correctionBlocker, EDITABLE, ARTICLE_TYPES } from "./src/articleFile.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
 import { actingContext, currentSeat, stampDetails, stampActingAs } from "./src/auditContext.js";
@@ -148,6 +149,7 @@ const CREW_ALLOWED_POSTS = new Set([
   "/api/content/factcheck-pass",   // any team member can be the named independent checker
   "/api/content/return",           // the named checker sends work back
   "/api/content/produce",          // the assignee drafts their own piece in the studio
+  "/api/diversity/save",           // P3 §4.1 step 2: the author logs the piece while producing it
   "/api/content/research",
   "/api/content/preview",          // a rehearsal shown on the internal editing site (any seat may be worn in a walk-through)
   "/api/content/draft-save",
@@ -188,6 +190,7 @@ const DIGITAL_ALLOWED_POSTS = new Set([
 const EDITOR_ALLOWED_POSTS = new Set([
   "/api/pool/save", "/api/pool/assess",   // the field heads assess their own freelancers
   "/api/auth/sync", "/api/document/upload", "/api/materials/link", "/api/timesheets/submit", "/api/documents/meta",
+  "/api/diversity/save", "/api/diversity/gap", "/api/coverage/save",
   "/api/content/approve", "/api/content/brainstorm", "/api/content/correction", "/api/content/cover", "/api/content/delete", "/api/content/draft-delete", "/api/content/draft-save", "/api/content/factcheck-log", "/api/content/factcheck-pass", "/api/content/legal-record", "/api/content/produce", "/api/content/publish", "/api/content/research", "/api/content/preview", "/api/content/retract", "/api/content/return", "/api/content/save", "/api/content/start", "/api/content/submit-factcheck", "/api/meetings/delete", "/api/meetings/extract-topics", "/api/meetings/save", "/api/meetings/transcribe",
   "/api/archive/home", "/api/archive/item", "/api/archive/publish", "/api/archive/schema", "/api/social/accounts/remove", "/api/social/media", "/api/social/queue", "/api/social/queue/cancel", "/api/social/queue/retry", "/api/social/edit", "/api/social/delete", "/api/social/periods/save", "/api/social/periods/delete", "/api/social/image-public", "/api/website/build", "/api/website/content", "/api/website/edit", "/api/website/image", "/api/articles/save"
 ]);
@@ -604,6 +607,8 @@ async function loadStateFor(viewer?: any) {
     quotations,
     contentItems,
     editorialMeetings,
+    diversityEntries,
+    coveragePackages,
     networkContacts,
     engagements,
     tools,
@@ -644,6 +649,8 @@ async function loadStateFor(viewer?: any) {
     prisma.quotation.findMany(),
     prisma.contentItem.findMany({ orderBy: { created_at: "desc" } }),
     prisma.editorialMeeting.findMany({ orderBy: { date: "desc" } }),
+    prisma.diversityEntry.findMany({ orderBy: { loggedOn: "desc" } }),
+    prisma.coveragePackage.findMany({ orderBy: { created_at: "desc" } }),
     prisma.networkContact.findMany({ orderBy: { metOn: "desc" } }),
     prisma.engagement.findMany({ orderBy: { startDate: "desc" } }),
     prisma.tool.findMany({ orderBy: { name: "asc" } }),
@@ -822,7 +829,7 @@ async function loadStateFor(viewer?: any) {
       opportunities: [], cashCounts: [], cashTopUps: [], cashDraws: [], subscriptions: [], projectActivities: [],
       clients: [], quotations: [], networkContacts: [], engagements: [], tools: [], poolCandidates: poolFor(viewer),
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent, // the whole board — the daily production meeting is collective
-      editorialMeetings: formattedMeetings,
+      editorialMeetings: formattedMeetings, diversityEntries, coveragePackages,
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
     };
@@ -889,7 +896,7 @@ async function loadStateFor(viewer?: any) {
       poolCandidates: [],   // the Contacts door is theirs; the freelancer pool is not
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "",
       contentItems: buys ? [] : formattedContent,
-      editorialMeetings: formattedMeetings,
+      editorialMeetings: formattedMeetings, diversityEntries, coveragePackages,
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
     };
@@ -937,7 +944,7 @@ async function loadStateFor(viewer?: any) {
       // author or fact-check in another programme.
       siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent.filter(c =>
         poStreams.has(c.stream) || c.assigneeUserId === viewer.id || c.factCheckerUserId === viewer.id),
-      editorialMeetings: formattedMeetings, // POs attend both meetings (Policy P3)
+      editorialMeetings: formattedMeetings, diversityEntries, coveragePackages, // POs attend both meetings (Policy P3)
       orgSettings: orgSettingsRaw || DEFAULT_DATABASE.orgSettings,
       fxRates: fxRatesRaw || DEFAULT_DATABASE.fxRates
     };
@@ -1021,7 +1028,7 @@ async function loadStateFor(viewer?: any) {
     donorReportSubmissions,
     // Editorial pipeline (Policies P3 & P4) — content register with enforcement fields.
     siteUrl: process.env.SITE_PUBLIC_URL || process.env.SITE_URL || "", contentItems: formattedContent,
-    editorialMeetings: formattedMeetings,
+    editorialMeetings: formattedMeetings, diversityEntries, coveragePackages,
     // Production stream — clients pay us; a quotation is never income until
     // the payment shows on a bank statement.
     clients,
@@ -5827,6 +5834,16 @@ app.post("/api/content/submit-factcheck", async (req, res) => {
       await itemAudit(item, user, "Content Sent to Fact-Check", `"${item.title}" → fact-check by the ${seat} seat (not the author's seat, ${item.assigneeAs || "unrecorded"}).`);
       return res.json({ success: true, item: updated });
     }
+    // Policy P3 §4.1 step 2 (handbook ed.7): the piece is logged in the diversity tracker while it
+    // is produced. Enforced here because this is the move the step precedes. A piece opened before
+    // the tracker went live is PROMPTED instead — the obligation starts with the work.
+    const logged = await prisma.diversityEntry.findUnique({ where: { contentItemId: id } });
+    const trackerGaps = diversityBlockers(logged);
+    if (trackerGaps.length && trackerRequired(item.created_at)) {
+      return res.status(400).json({ error: trackerGaps[0], diversityGaps: trackerGaps });
+    }
+    const trackerPrompt = trackerGaps.length ? trackerGaps[0] : "";
+
     const checker = factCheckerUserId ? await prisma.user.findUnique({ where: { id: factCheckerUserId } }) : null;
     if (!checker || !checker.active) {
       return res.status(400).json({ error: "Name an active user as the fact-checker (Policy P4: assign a dedicated individual responsible for verifying the facts)." });
@@ -5837,8 +5854,8 @@ app.post("/api/content/submit-factcheck", async (req, res) => {
     }
     const updated = await prisma.contentItem.update({ where: { id }, data: { status: "Fact-Check", factCheckerUserId } });
     await itemAudit(item, user, "Content Sent to Fact-Check",
-      `"${item.title}" → independent fact-check by ${checker.name} (not the author — Policy P4).`);
-    res.json({ success: true, item: updated });
+      `"${item.title}" → independent fact-check by ${checker.name} (not the author — Policy P4).${trackerPrompt ? " Diversity tracker not filled — this piece predates the tracker (P3 §4.1), so it was let through with a prompt." : ""}`);
+    res.json({ success: true, item: updated, trackerPrompt });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -7655,6 +7672,96 @@ app.post("/api/content/research", async (req, res) => {
     }
     res.status(500).json({ error: err.message });
   }
+});
+
+// ---- The diversity tracker (P3 §4.1 step 2, §2.5, §4.3) --------------------------------------
+// The author logs the piece while producing it; the planning meeting reads the month back. The
+// vocabulary and the refusals live in src/diversity.ts, so the screen asks for exactly what the
+// gate requires. Logging records what is in a piece — it never judges the piece.
+app.get("/api/diversity/options", (_req, res) => res.json({
+  ok: true, mainSubjects: MAIN_SUBJECTS, groups: VULNERABLE_GROUPS, fields: PRESENCE_FIELDS,
+  angles: PACKAGE_ANGLES, none: NO_GROUP, trackerFrom: TRACKER_FROM,
+}));
+
+app.post("/api/diversity/save", async (req, res) => {
+  try {
+    const { contentItemId, entry, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) {
+      const item = contentItemId ? await prisma.contentItem.findUnique({ where: { id: contentItemId } }) : null;
+      const mayLog = item && (item.assigneeUserId === user?.id || item.factCheckerUserId === user?.id);
+      if (!mayLog) return res.status(403).json({ error: "The tracker is filled by the piece's author, its fact-checker or an editor (Policy P3 §4.1)." });
+    }
+    const e = entry || {};
+    // Refuse a value the vocabulary does not contain rather than storing prose that no summary can read.
+    for (const [key, en] of PRESENCE_FIELDS) {
+      const v = String(e[key] ?? "").trim();
+      if (v && !isPresenceValue(v)) return res.status(400).json({ error: `"${v}" is not a value for ${en.toLowerCase()} — use a number, "yes" or "none".` });
+    }
+    const groups: string[] = Array.isArray(e.groups) ? e.groups.map(String) : [];
+    const badGroup = groups.find(g => g !== NO_GROUP && !VULNERABLE_GROUPS.some(([k]) => k === g));
+    if (badGroup) return res.status(400).json({ error: `"${badGroup}" is not one of the vulnerable groups the tracker records.` });
+    if (e.mainSubject && !MAIN_SUBJECTS.some(([k]) => k === e.mainSubject)) {
+      return res.status(400).json({ error: `"${e.mainSubject}" is not one of the main-subject options.` });
+    }
+    const existing = contentItemId ? await prisma.diversityEntry.findUnique({ where: { contentItemId } }) : null;
+    const data: any = {
+      loggedOn: String(e.loggedOn || "").slice(0, 10) || localDate(),
+      title: String(e.title || ""), description: String(e.description || ""),
+      programmeText: String(e.programmeText || ""), contentTypeText: String(e.contentTypeText || ""),
+      authorText: String(e.authorText || ""), formatText: String(e.formatText || ""),
+      statusText: String(e.statusText || ""), link: String(e.link || ""),
+      mainSubject: String(e.mainSubject || ""),
+      mentionedWomen: String(e.mentionedWomen || "").trim().toLowerCase(),
+      mentionedMen: String(e.mentionedMen || "").trim().toLowerCase(),
+      expertWomen: String(e.expertWomen || "").trim().toLowerCase(),
+      expertMen: String(e.expertMen || "").trim().toLowerCase(),
+      groupsJson: JSON.stringify(groups), notes: String(e.notes || ""),
+      recordedBy: user?.name || "",
+    };
+    const row = existing
+      ? await prisma.diversityEntry.update({ where: { id: existing.id }, data })
+      : await prisma.diversityEntry.create({ data: { ...data, id: `dv-${Date.now()}`, contentItemId: contentItemId || null, created_at: new Date().toISOString() } });
+    await createAuditLog(user?.id, user?.name, existing ? "Diversity Log Updated" : "Diversity Log Recorded",
+      `${contentItemId ? `content ${contentItemId}` : `"${data.title}"`} — main subject ${data.mainSubject || "—"}, ${groups.length} group tag(s) (Policy P3 §4.1).`);
+    res.json({ ok: true, entry: row, remaining: diversityBlockers(row) });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// §4.3: what the planning meeting reads once a month.
+app.get("/api/diversity/summary", async (req: any, res) => {
+  if (!req.dbUser?.role) return res.status(403).json({ error: "Sign in to read this." });
+  const rows = await prisma.diversityEntry.findMany();
+  const month = String(req.query.month || "").slice(0, 7) || (monthsLogged(rows)[0] || localDate().slice(0, 7));
+  res.json({ ok: true, months: monthsLogged(rows), summary: monthlySummary(rows, month) });
+});
+
+// §4.3: the one gap the meeting names for the month ahead, on the meeting's own record.
+app.post("/api/diversity/gap", async (req, res) => {
+  try {
+    const { meetingId, gap, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "The monthly review is the editors' (Policy P3 §4.3)." });
+    const meeting = await prisma.editorialMeeting.findUnique({ where: { id: meetingId } });
+    if (!meeting) return res.status(404).json({ error: "No such meeting." });
+    const updated = await prisma.editorialMeeting.update({ where: { id: meetingId }, data: { diversityGap: String(gap || "").slice(0, 400) } });
+    await createAuditLog(user?.id, user?.name, "Diversity Gap Named", `${meeting.date}: ${String(gap || "").slice(0, 160)} (Policy P3 §4.3).`);
+    res.json({ ok: true, meeting: updated });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+// §4.3 coverage packages. A plan, not a gate: nothing refuses a piece for standing outside one.
+app.post("/api/coverage/save", async (req, res) => {
+  try {
+    const { id, title, issue, stream, status, angles, user } = req.body;
+    if (!CONTENT_EDITOR_ROLES.includes(user?.role)) return res.status(403).json({ error: "Coverage packages are planned by the editors (Policy P3 §4.3)." });
+    if (!String(title || "").trim()) return res.status(400).json({ error: "Give the package a title." });
+    const anglesJson = JSON.stringify(Array.isArray(angles) ? angles : PACKAGE_ANGLES.map(([key]) => ({ angle: key, format: "", contentItemId: "" })));
+    const data: any = { title: String(title).slice(0, 200), issue: String(issue || "").slice(0, 600), stream: String(stream || ""), status: String(status || "Planned"), anglesJson };
+    const row = id
+      ? await prisma.coveragePackage.update({ where: { id }, data })
+      : await prisma.coveragePackage.create({ data: { ...data, id: `cp-${Date.now()}`, createdBy: user?.name || "", created_at: new Date().toISOString() } });
+    await createAuditLog(user?.id, user?.name, id ? "Coverage Package Updated" : "Coverage Package Planned", `"${row.title}" (Policy P3 §4.3).`);
+    res.json({ ok: true, package: row });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 app.post("/api/content/draft-save", async (req, res) => {

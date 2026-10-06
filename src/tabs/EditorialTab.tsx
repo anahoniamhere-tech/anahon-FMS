@@ -13,6 +13,7 @@ import { openFacts, itemOpenFacts, splitFill } from "../fillMarkers";
 import ChannelPanel, { TokenHealth } from "./ChannelPanel";
 import NetworkPanel from "./NetworkPanel";
 import ArticlesPanel from "./ArticlesPanel";
+import DiversityPanel, { DiversityForm } from "./DiversityPanel";
 import { SITE_EDITORS } from "../roles";
 
 // Editorial pipeline (Policies P3 & P4). The tab renders the register and the
@@ -1602,6 +1603,13 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
                       </div>
                     )}
 
+                    {/* Policy P3 §4.1 step 2 (handbook ed.7): logged while the piece is produced,
+                        and the fact-check step refuses to start without it. */}
+                    {(isAssignee || isChecker || canManage) && !item.rehearsal && (
+                      <DiversityForm item={item} entry={(state as any).diversityEntries?.find((d: any) => d.contentItemId === item.id)}
+                        currentUser={currentUser} t={t} lang={lang} triggerToast={triggerToast} refreshState={refreshState} />
+                    )}
+
                     {/* The piece's channels. Facebook and Instagram were a separate desk until
                         12 Sep 2026; the gate they answer to did not change with the move. */}
                     <ChannelPanel item={item} accounts={social.status?.accounts || []}
@@ -1679,6 +1687,8 @@ export default function EditorialTab({ state, currentUser, t, rtl, refreshState,
 
       {/* Everything already on the website — managed, not produced. Separate from the chain above
           on purpose: these are corrections and reclassifications, most on legacy imports. */}
+      <DiversityPanel state={state} currentUser={currentUser} t={t} lang={lang} triggerToast={triggerToast} refreshState={refreshState} />
+
       {canPost && <ArticlesPanel currentUser={currentUser} t={t} triggerToast={triggerToast} />}
 
       <NetworkPanel accounts={social.status?.accounts || []} role={currentUser?.role}

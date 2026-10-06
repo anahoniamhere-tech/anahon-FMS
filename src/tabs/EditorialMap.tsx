@@ -175,6 +175,15 @@ export default function EditorialMap({ state, currentUser, t, rtl }: { state: an
                         </ul>
                       </div>
                     )}
+                    {s.stepGate.length > 0 && (
+                      <div>
+                        {/* Not a publish blocker: it stops the MOVE off this station (P3 §4.1 step 2). */}
+                        <p className="uppercase tracking-wide text-amber-700">{t("Recorded before leaving here")}</p>
+                        <ul className="mt-0.5 list-disc space-y-0.5 ps-4 text-amber-900">
+                          {s.stepGate.map(b => <li key={b} dir="auto">{b}</li>)}
+                        </ul>
+                      </div>
+                    )}
                     {s.clears.length > 0 && (
                       <div>
                         <p className="uppercase tracking-wide text-slate-400">{t("Clears here")}</p>

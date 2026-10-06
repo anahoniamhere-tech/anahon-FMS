@@ -761,6 +761,7 @@ model ContentItem {
   draftsJson          String  @default("[]")     // [{label, kind, text, date, by}] — production drafts the fact-checker verifies
   aiAssisted          Boolean @default(false)    // set automatically when an AI draft is saved; manual toggle for outside tools
   aiDisclosed         Boolean @default(false)    // attestation: watermark/disclaimer on the published piece (golden rule)
+  packageId           String  @default("")       // CoveragePackage this piece belongs to (P3 §4.3), "" for a standalone piece
   created_at          String
 }
 
@@ -825,6 +826,7 @@ model EditorialMeeting {
   notes         String @default("")                 // issues addressed, decisions, performance review (002)
   minutes       String @default("")                 // pasted transcript or in-app recording transcription
   topicsJson    String @default("[]")               // [{topic, note}] — documented topics, seeds for the idea desk
+  diversityGap  String @default("")                 // P3 §4.3: the one gap the monthly review names for the month ahead
   recordedBy    String @default("")
   created_at    String
 
@@ -1183,4 +1185,47 @@ model SourceFile {
   createdAt          String
   createdById        String
   updatedAt          String @default("")
+}
+
+/// One piece logged in the diversity tracker (P3 §4.1 step 2, §2.5 "checked, not assumed").
+/// `contentItemId` is null for the history imported from the FPU sheet: half those rows are
+/// iContent reels that never went through the editorial chain, and inventing register entries
+/// for them to hold a log row would put pieces in the newsroom that were never produced in it.
+model DiversityEntry {
+  id              String   @id
+  contentItemId   String?  @unique
+  loggedOn        String
+  title           String   @default("")
+  description     String   @default("")
+  programmeText   String   @default("")   // the sheet's own words — never forced onto a STREAM
+  contentTypeText String   @default("")
+  authorText      String   @default("")
+  formatText      String   @default("")
+  statusText      String   @default("")
+  link            String   @default("")
+  mainSubject     String   @default("")   // MAIN_SUBJECTS key
+  mentionedWomen  String   @default("")   // "" | none | yes | a whole number
+  mentionedMen    String   @default("")
+  expertWomen     String   @default("")
+  expertMen       String   @default("")
+  groupsJson      String   @default("[]") // VULNERABLE_GROUPS keys, or ["none"]
+  notes           String   @default("")
+  imported        Boolean  @default(false)
+  recordedBy      String   @default("")
+  created_at      String
+
+  @@index([loggedOn])
+}
+
+/// P3 §4.3: a major local issue planned as a package of angles with the format that suits each.
+/// Nothing refuses a piece for lacking one — the policy plans coverage, it does not gate it.
+model CoveragePackage {
+  id         String @id
+  title      String
+  issue      String @default("")
+  stream     String @default("")
+  status     String @default("Planned")
+  anglesJson String @default("[]")   // [{angle, format, contentItemId}]
+  createdBy  String @default("")
+  created_at String
 }
