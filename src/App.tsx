@@ -51,6 +51,7 @@ import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, B
 
 import { PROPOSAL_SECTIONS, STREAMS, OPP_STAGES, QUOTE_STATUSES, SERVICE_CATALOG, FINANCIAL_TERMS, PRODUCTION_NOTE, TECHNICAL_NOTE, EXTRAS_DEFAULT } from "./constants";
 import { tr } from "./i18n";
+import { sayResponse } from "./gateText";
 import { THRESHOLD_LABEL, needsProcurement } from "./procurementPolicy";
 import IcontentInvPage from "./IcontentInvPage";
 import ProjectsTab from "./tabs/ProjectsTab";
@@ -651,7 +652,7 @@ export default function App() {
             const problem = await syncRes.json().catch(() => ({ error: "Sign-in failed." }));
             await signOut(auth);
             setFbUser(null);
-            setAuthError(problem.error || "Sign-in failed.");
+            setAuthError(sayResponse(lang, problem, t) || "Sign-in failed.");
             setLoading(false);
             setAuthLoading(false);
             return;

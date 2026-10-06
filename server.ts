@@ -368,9 +368,9 @@ async function readSubject(label: string, reqPath: string): Promise<string> {
 app.use(async (req: any, res, next) => {
   if (req.method === "GET" && req.path.startsWith("/api/") && !OPEN_GETS.has(req.path)) {
     const viewerId = await viewerIdFromReq(req);
-    if (!viewerId) return res.status(401).json({ error: "Sign in to read this." });
+    if (!viewerId) return refuseWith(res, 401, gm("auth.read-signin"));
     const viewer = await prisma.user.findUnique({ where: { id: viewerId } });
-    if (!viewer || !viewer.active) return res.status(403).json({ error: "This user account is deactivated." });
+    if (!viewer || !viewer.active) return refuseWith(res, 403, gm("auth.deactivated"));
     req.dbUser = viewer;
     // Recorded on the way out, so the line carries what actually happened: a refusal is
     // as much worth keeping as a download. Only a signed-in reader reaches this point —
@@ -402,17 +402,17 @@ app.use(async (req: any, res, next) => {
         const verified = await verifyIdToken(token);
         dbUser = await findUserByEmail(verified.email);
         if (!dbUser) {
-          return res.status(403).json({ error: `${verified.email} authenticated, but has no account in this system. An administrator must create one first.` });
+          return refuseWith(res, 403, gm("auth.no-account", verified.email));
         }
       } catch (err: any) {
-        return res.status(401).json({ error: `Sign-in could not be verified (${err.message}). Sign in again.` });
+        return refuseWith(res, 401, gm("auth.verify-failed", err.message));
       }
     }
     if (!dbUser) {
-      return res.status(401).json({ error: "This action requires a signed-in user." });
+      return refuseWith(res, 401, gm("auth.required"));
     }
     {
-      if (!dbUser.active) return res.status(403).json({ error: "This user account is deactivated." });
+      if (!dbUser.active) return refuseWith(res, 403, gm("auth.deactivated"));
       // The database is the authority on what this verified person may do.
       req.body.user = { id: dbUser.id, name: dbUser.name, role: dbUser.role, email: dbUser.email };
       req.dbUser = dbUser;
@@ -423,13 +423,13 @@ app.use(async (req: any, res, next) => {
       const wanted = String(req.get("X-Acting-As") || "").trim();
       if (wanted) {
         if (dbUser.role !== "Super Admin") {
-          return res.status(403).json({ error: "Only a Super Admin may act in another role." });
+          return refuseWith(res, 403, gm("auth.acting-super-admin-only"));
         }
         if (!ASSIGNABLE_ROLES.includes(wanted)) {
-          return res.status(400).json({ error: `"${wanted}" is not a role in this system.` });
+          return refuseWith(res, 400, gm("auth.acting-unknown-role", wanted));
         }
         if (wanted === dbUser.role) {
-          return res.status(400).json({ error: "That is already your own role." });
+          return refuseWith(res, 400, gm("auth.acting-own-role"));
         }
         const holder = await prisma.user.findFirst({ where: { role: wanted, active: true, NOT: { id: dbUser.id } } });
         // The seat's limits come with the seat: standing in as Digital Officer does not
@@ -439,13 +439,13 @@ app.use(async (req: any, res, next) => {
           : wanted === AUDITOR ? AUDITOR_ALLOWED_POSTS : wanted === SELF ? SELF_ALLOWED_POSTS : null;
         if (seatList && !seatList.has(req.path)) {
           await createAuditLog(dbUser.id, dbUser.name, "Role Assumption Refused", `${dbUser.name} tried ${req.path} while standing in as ${wanted}; that seat may not.`);
-          return res.status(403).json({ error: `The ${wanted} seat cannot do this. Stop acting to use your own authority.` });
+          return refuseWith(res, 403, gm("auth.acting-seat-cannot", wanted));
         }
         const step = typeof req.body?.action === "string" ? req.body.action : undefined;
         if (!mayCall(req.path, wanted, step)) {
           await createAuditLog(dbUser.id, dbUser.name, "Role Assumption Refused",
             `${dbUser.name} tried ${req.path}${step ? ` — ${step}` : ""} while standing in as ${wanted}; that seat may not.`);
-          return res.status(403).json({ error: `The ${wanted} seat cannot do this. Stop acting to use your own authority.` });
+          return refuseWith(res, 403, gm("auth.acting-seat-cannot", wanted));
         }
         const ctx = { actingAs: wanted, ownRole: dbUser.role, vacant: !holder };
         req.body.user.role = wanted;
@@ -458,22 +458,22 @@ app.use(async (req: any, res, next) => {
         });
       }
       if (dbUser.role === "Project Officer" && !PO_ALLOWED_POSTS.has(req.path)) {
-        return res.status(403).json({ error: "Project Officers can raise purchase requests and upload evidence only — this action needs the Finance Officer or master account." });
+        return refuseWith(res, 403, gm("auth.po-scope"));
       }
       if (dbUser.role === PLO_ROLE && !PLO_ALLOWED_POSTS.has(req.path)) {
-        return res.status(403).json({ error: "The Procurement and Logistics seat buys and raises requests — it does not approve, pay, or post." });
+        return refuseWith(res, 403, gm("auth.plo-scope"));
       }
       if (dbUser.role === DIGITAL_ROLE && !DIGITAL_ALLOWED_POSTS.has(req.path)) {
-        return res.status(403).json({ error: "The Digital Officer seat runs the website, archive, social and tools — nothing financial or editorial." });
+        return refuseWith(res, 403, gm("auth.digital-scope"));
       }
       if (EDITORS.includes(dbUser.role) && !EDITOR_ALLOWED_POSTS.has(req.path)) {
-        return res.status(403).json({ error: "Editorial seats act on the pipeline and the site — nothing financial." });
+        return refuseWith(res, 403, gm("auth.editor-scope"));
       }
       if (dbUser.role === AUDITOR && !AUDITOR_ALLOWED_POSTS.has(req.path)) {
-        return res.status(403).json({ error: "The auditor's account is read-only." });
+        return refuseWith(res, 403, gm("auth.auditor-scope"));
       }
       if (dbUser.role === SELF && !SELF_ALLOWED_POSTS.has(req.path)) {
-        return res.status(403).json({ error: "A self-service account files its own timesheet and papers only." });
+        return refuseWith(res, 403, gm("auth.self-scope"));
       }
       /**
        * Phase 9: the route asks the same question the desk does. src/gates.ts names the
@@ -488,14 +488,12 @@ app.use(async (req: any, res, next) => {
         await createAuditLog(dbUser.id, dbUser.name, "Action Refused",
           `${dbUser.name} (${effectiveRole}${effectiveRole !== dbUser.role ? `, standing in` : ""}) tried ${req.path}${step ? ` — ${step}` : ""}. ` +
           (seats.length ? `That step belongs to: ${seats.join(", ")}.` : "No seat is allowed to call it."));
-        return res.status(403).json({
-          error: seats.length
-            ? `This step belongs to ${seats.filter(r => r !== "Super Admin").join(" or ") || "the master account"}.`
-            : "This action is not available.",
-        });
+        return seats.length
+          ? refuseWith(res, 403, gm("auth.seat-required", seats.filter(r => r !== "Super Admin").join(" or ") || "the master account"))
+          : refuseWith(res, 403, gm("auth.action-unavailable"));
       }
       if (CONTENT_CREW_ROLES.includes(dbUser.role) && !CREW_ALLOWED_POSTS.has(req.path)) {
-        return res.status(403).json({ error: "Content-team accounts act on the editorial pipeline only — this action needs an editor or finance role." });
+        return refuseWith(res, 403, gm("auth.crew-scope"));
       }
     }
     next();
@@ -1098,25 +1096,25 @@ app.post("/api/auth/sync", async (req, res) => {
     // Firebase ID token and we check Google's signature on it. An account is NEVER
     // created here: a verified stranger is still a stranger.
     const { idToken } = req.body;
-    if (!idToken) return res.status(400).json({ error: "Sign-in token required." });
+    if (!idToken) return refuseWith(res, 400, gm("auth.sync-token-required"));
 
     let verified;
     try {
       verified = await verifyIdToken(idToken);
     } catch (err: any) {
-      return res.status(401).json({ error: `Sign-in could not be verified: ${err.message}` });
+      return refuseWith(res, 401, gm("auth.sync-verify-failed", err.message));
     }
 
     const user = await findUserByEmail(verified.email);
     if (!user) {
       await createAuditLog(null, verified.email, "Sign-In Refused — No Account",
         `${verified.email} authenticated with Firebase but has no account in this system. No account was created. If this person should have access, a Super Admin must create it explicitly.`);
-      return res.status(403).json({ error: `${verified.email} signed in successfully, but has no account in AnaHon FMS. Ask a Super Admin to create one.` });
+      return refuseWith(res, 403, gm("auth.sync-no-account", verified.email));
     }
     if (!user.active) {
       await createAuditLog(user.id, user.name, "Sign-In Refused — Deactivated",
         `${verified.email} attempted to sign in against a deactivated account.`);
-      return res.status(403).json({ error: `${verified.email} has an account here, but it has been deactivated. If you have another address, sign in with that one; otherwise ask a Super Admin.` });
+      return refuseWith(res, 403, gm("auth.sync-deactivated", verified.email));
     }
 
     await createAuditLog(user.id, user.name, "Signed In", `${user.name} (${user.role}) signed in as ${verified.email}.`);

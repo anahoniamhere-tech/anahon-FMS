@@ -315,6 +315,106 @@ export const GATE_TEXT: Record<string, { en: string; ar: string }> = {
     en: "Removing a meeting record needs an editor role.",
     ar: "حذف سجلّ اجتماع يحتاج صفة محرّر.",
   },
+
+  // ── Auth middleware (Admin room, 6 Oct 2026) ──────────────────────────────────────────
+  // The two app.use() gates that run before any route — unauthenticated or wrongly-scoped
+  // callers meet these FIRST, so in the Arabic interface they were the one place a user still
+  // saw English. Every refusal here is reachable by a real signed-in-or-not user; none is left
+  // in English on purpose. The {0} in auth.seat-required is a comma/or-joined list of English
+  // role names built server-side at runtime (ROUTE_SEATS can list more than a fixed few seats),
+  // so — like route.bad-channels / route.bad-type already do for their own joined lists — it is
+  // treated as one opaque value, not translated role-by-role. Individually-named seats (e.g.
+  // auth.acting-seat-cannot's {0}) ARE single translatable role names and render correctly.
+  "auth.read-signin": {
+    en: "Sign in to read this.",
+    ar: "سجّل الدخول لقراءة هذا.",
+  },
+  "auth.deactivated": {
+    en: "This user account is deactivated.",
+    ar: "حساب هذا المستخدم معطَّل.",
+  },
+  "auth.required": {
+    en: "This action requires a signed-in user.",
+    ar: "هذا الإجراء يتطلّب مستخدمًا مسجَّل الدخول.",
+  },
+  "auth.no-account": {
+    en: "{0} authenticated, but has no account in this system. An administrator must create one first.",
+    ar: "{0} تحقّقت هويته، لكن لا حساب له في هذا النظام. يجب أن يُنشئ له مسؤول حسابًا أولًا.",
+  },
+  "auth.verify-failed": {
+    en: "Sign-in could not be verified ({0}). Sign in again.",
+    ar: "تعذّر التحقّق من تسجيل الدخول ({0}). سجّل الدخول مجددًا.",
+  },
+  "auth.acting-super-admin-only": {
+    en: "Only a Super Admin may act in another role.",
+    ar: "لا يحق العمل بصفة أخرى إلا للمدير العام للنظام.",
+  },
+  "auth.acting-unknown-role": {
+    en: "\"{0}\" is not a role in this system.",
+    ar: "«{0}» ليست صفة في هذا النظام.",
+  },
+  "auth.acting-own-role": {
+    en: "That is already your own role.",
+    ar: "هذه صفتك الأصلية أصلًا.",
+  },
+  "auth.acting-seat-cannot": {
+    en: "The {0} seat cannot do this. Stop acting to use your own authority.",
+    ar: "مقعد {0} لا يملك هذه الصلاحية. أوقف العمل بصفة أخرى لاستخدام صلاحيتك الخاصة.",
+  },
+  "auth.po-scope": {
+    en: "Project Officers can raise purchase requests and upload evidence only — this action needs the Finance Officer or master account.",
+    ar: "مسؤولو المشاريع يرفعون طلبات شراء ويحمّلون الوثائق فقط — هذا الإجراء يحتاج المسؤول المالي أو الحساب الرئيسي.",
+  },
+  "auth.plo-scope": {
+    en: "The Procurement and Logistics seat buys and raises requests — it does not approve, pay, or post.",
+    ar: "مقعد المشتريات واللوجستيات يشتري ويرفع الطلبات — ولا يوافق أو يدفع أو يسجّل القيود.",
+  },
+  "auth.digital-scope": {
+    en: "The Digital Officer seat runs the website, archive, social and tools — nothing financial or editorial.",
+    ar: "مقعد المسؤول الرقمي يدير الموقع والأرشيف والمنصّات الاجتماعية والأدوات — لا شيء ماليًا أو تحريريًا.",
+  },
+  "auth.editor-scope": {
+    en: "Editorial seats act on the pipeline and the site — nothing financial.",
+    ar: "المقاعد التحريرية تعمل على سلسلة الإنتاج التحريري والموقع — لا شيء ماليًا.",
+  },
+  "auth.auditor-scope": {
+    en: "The auditor's account is read-only.",
+    ar: "حساب المدقّق للقراءة فقط.",
+  },
+  "auth.self-scope": {
+    en: "A self-service account files its own timesheet and papers only.",
+    ar: "حساب الخدمة الذاتية يسجّل دوام صاحبه وأوراقه فقط.",
+  },
+  "auth.crew-scope": {
+    en: "Content-team accounts act on the editorial pipeline only — this action needs an editor or finance role.",
+    ar: "حسابات فريق المحتوى تعمل على سلسلة الإنتاج التحريري فقط — هذا الإجراء يحتاج صفة محرّر أو صفة مالية.",
+  },
+  "auth.seat-required": {
+    en: "This step belongs to {0}.",
+    ar: "هذه الخطوة من مهمة {0}.",
+  },
+  "auth.action-unavailable": {
+    en: "This action is not available.",
+    ar: "هذا الإجراء غير متاح.",
+  },
+
+  // ── /api/auth/sync — the sign-in screen itself, before the middleware above even applies ──
+  "auth.sync-token-required": {
+    en: "Sign-in token required.",
+    ar: "رمز تسجيل الدخول مطلوب.",
+  },
+  "auth.sync-verify-failed": {
+    en: "Sign-in could not be verified: {0}",
+    ar: "تعذّر التحقّق من تسجيل الدخول: {0}",
+  },
+  "auth.sync-no-account": {
+    en: "{0} signed in successfully, but has no account in AnaHon FMS. Ask a Super Admin to create one.",
+    ar: "{0} سجّل الدخول بنجاح، لكن لا حساب له في نظام اناهون. اطلب من المدير العام للنظام إنشاء حساب.",
+  },
+  "auth.sync-deactivated": {
+    en: "{0} has an account here, but it has been deactivated. If you have another address, sign in with that one; otherwise ask a Super Admin.",
+    ar: "لـ{0} حساب هنا، لكنه معطَّل. إذا كان لديك عنوان آخر، سجّل الدخول به؛ وإلا فاطلب من المدير العام للنظام.",
+  },
 };
 
 const fill = (template: string, args: string[]) =>
