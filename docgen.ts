@@ -378,7 +378,7 @@ ${row("إجمالي قيمة العقد", "Contract Total", noFixedValue
 ${budgetLine ? row("بند الموازنة", "Budget Line", esc(`${budgetLine.code} — ${budgetLine.description}`)) : ""}
 ${row("رقم التسجيل الضريبي (وزارة المالية)", "MoF Tax Registry ID", registered
       ? esc(taxId)
-      : `<strong>Not available</strong> — this service provider is not registered with the Ministry of Finance${isService ? ", so ${WHT_LABEL} withholding tax is deducted at source from every payment under this agreement and remitted to the MoF by AnaHon" : ""}`)}
+      : `<strong>Not available</strong> — this service provider is not registered with the Ministry of Finance${isService ? `, so ${WHT_LABEL} withholding tax is deducted at source from every payment under this agreement and remitted to the MoF by AnaHon` : ""}`)}
 ${row("يُدفع من", "Paid From", account
       ? `${emp.paymentMethod === "Cash" ? "Cash withdrawn from" : "Bank transfer from"} ${esc(account.name)} <span>${esc(account.accountNo)}</span>`
       : isService

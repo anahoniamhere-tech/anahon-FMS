@@ -5,6 +5,9 @@
 // computed, and the compliance dot in the sidebar was painted on unconditionally. A
 // figure nobody measures is worse than no figure, because it gets quoted to a donor.
 // Run: npx tsx scripts/check-honesty.ts
+import { WHT_RATE, WHT_NET_FACTOR } from "../src/tax.js";
+/** The same formatting docgen uses, so an expectation cannot differ from the page by a comma. */
+const usd = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 import { readFileSync } from "node:fs";
 import { contractHtml } from "../docgen.js";
 
@@ -91,8 +94,16 @@ ok("and prints no $0.00 anywhere", !framework.includes("$0.00"));
 const funded = contract({ project: { code: "TRF-2026", name: "Trust Fund" }, monthlyFee: 800, contractTotal: 9600 });
 ok("a funded subcontract still states its real total", funded.includes("total value of this contract is $9,600.00"));
 const service = contract({ kind: "Service", contractTotal: 2000 });
+// 7 Oct 2026: the rate is 8.5% (src/tax.ts), so $2,000 withholds $170.00 and leaves $1,830.00.
+// Derived from the constant, not retyped, so the next change to the rate cannot leave this stale.
 ok("an unregistered provider's withholding is still computed from a real total",
-  service.includes("$150.00 withheld") && service.includes("$1,850.00 net"));
+  service.includes(`${usd(2000 * WHT_RATE)} withheld`) && service.includes(`${usd(2000 * WHT_NET_FACTOR)} net`)
+  && service.includes("$170.00 withheld") && service.includes("$1,830.00 net"));
+// The rate reaches the page, rather than a placeholder: f83ba00 left ${WHT_LABEL} inside a plain
+// quoted string in the tax-registry row, and a source grep could not see it — only the render could.
+ok("every generated contract substitutes what it interpolates — no ${…} reaches the page",
+  !service.includes("${") && !framework.includes("${") && !funded.includes("${"));
+ok("and the row about an unregistered provider names the rate", /not registered with the Ministry of Finance, so 8\.5% withholding tax is deducted at source/.test(service));
 ok("and reads as a sentence when there is no total to compute it from",
   contract({ kind: "Service" }).includes("computed on the contracted value of each engagement, unless the provider"));
 ok("the project select no longer forces one onto a framework contract",
