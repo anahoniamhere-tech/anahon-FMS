@@ -17,8 +17,17 @@ const src = (f: string) => readFileSync(new URL(`../src/${f}`, import.meta.url),
 
 console.log("\nthe guard");
 ok("every API GET needs a viewer", /req\.method === "GET" && req\.path\.startsWith\("\/api\/"\) && !OPEN_GETS\.has\(req\.path\)/.test(server));
-ok("no viewer, no read", /if \(!viewerId\) return res\.status\(401\)/.test(server));
-ok("a deactivated account reads nothing", /if \(!viewer \|\| !viewer\.active\) return res\.status\(403\)/.test(server));
+// Updated 7 Oct 2026, after commit 73d444c sent these two refusals through refuseWith()/gm()
+// for Arabic (errorKey/errorArgs beside the same English). The guard itself did not move —
+// only its literal text did, which is exactly why the old regex (`return res.status(401)`)
+// kept matching nothing and failing, instead of catching a REMOVED guard. Anchored on the
+// auth.* key names now, which are unique to gateText.ts and used nowhere else in the file —
+// unlike the English sentences, which a totally unrelated route can coincidentally repeat
+// (see the ordering check below: the old "deactivated" regex was quietly passing against the
+// calendar route's /diary/ guard, not this one, because it shares the same `if (!viewer ||
+// !viewer.active) return res.status(403)` shape with completely different wording).
+ok("no viewer, no read", /if \(!viewerId\) return refuseWith\(res, 401, gm\("auth\.read-signin"\)\);/.test(server));
+ok("a deactivated account reads nothing", /if \(!viewer \|\| !viewer\.active\) return refuseWith\(res, 403, gm\("auth\.deactivated"\)\);/.test(server));
 ok("it accepts the sign-in token or a document ticket", /const viewerId = await viewerIdFromReq\(req\);/.test(server));
 
 console.log("\nthe exceptions, and only those");
@@ -57,8 +66,14 @@ ok("a diary is personal — each person reads their own feeds only", /const feed
 console.log("\nreads leave a trace");
 ok("sensitive reads are recorded on the way out, with the status", /res\.on\("finish"/.test(server) && /res\.statusCode < 400 \? "Record Read" : "Read Refused"/.test(server));
 ok("only a signed-in reader can write a line (no anonymous flooding)", (() => {
+  // Same 73d444c text change as above. This one is worse when stale: indexOf of a string
+  // that no longer exists returns -1, and -1 < anything is true — so a missing guard would
+  // have made the ordering comparison vacuously pass instead of failing. Require the guard
+  // to actually be found (its index is not -1) before trusting the "comes before" compare.
   const g = (server.match(/if \(req\.method === "GET"[\s\S]*?return next\(\);\n  \}/) || [""])[0];
-  return g.indexOf('if (!viewerId) return res.status(401)') < g.indexOf("READ_AUDIT.find") && g.includes("READ_AUDIT.find");
+  const guardAt = g.indexOf('if (!viewerId) return refuseWith(res, 401, gm("auth.read-signin"));');
+  const auditAt = g.indexOf("READ_AUDIT.find");
+  return guardAt !== -1 && auditAt !== -1 && guardAt < auditAt;
 })());
 const watched = (server.match(/const READ_AUDIT: \[RegExp, string\]\[\] = \[([\s\S]*?)\n\];/) || ["", ""])[1];
 ok("the quotation, the statements, the documents and the bank suggestions are watched",
