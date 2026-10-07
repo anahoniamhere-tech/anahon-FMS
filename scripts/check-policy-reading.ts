@@ -231,7 +231,7 @@ ok("AR refs «السياسة P5، البند 4.3», «(P5، البند 6.8)», �
   JSON.stringify(arRefs("كما في السياسة P5، البند 4.3 و(P5، البند 6.8) ثم البند 6 (السياسة P11).")));
 ok("AR quoted citation samples «P5، البند 4.4.2»، «البند 7.2» stay plain", arRefs("بحسب البند — «P5، البند 4.4.2»، «البند 7.2». لذلك").length === 0);
 ok("AR «البنود» / «والبند» are not a bare «البند»", arRefs("البنود 4 و5، والبند 6").length === 0);
-ok("AR example strip at «أمثلة:»", splitExample("… في قرار تتّخذه باسم «أنا هون». أمثلة: التعاقد مع قريب.")?.example === "أمثلة: التعاقد مع قريب.");
+ok("AR example strip at «أمثلة:»", splitExample("… في قرار تتّخذه باسم اناهون. أمثلة: التعاقد مع قريب.")?.example === "أمثلة: التعاقد مع قريب.");
 ok("AR «— أمثلة:» mid-bullet stays put (as the English does)", splitExample("المعلومات الشخصية — أمثلة: بطاقات الهوية") === null);
 ok("AR label «أمين الصندوق: …»", splitLabel("أمين الصندوق والنقد: يحتفظ المسؤول المالي بالصندوق.")?.label === "أمين الصندوق والنقد");
 ok("AR list lead-in with nothing after is not a label", splitLabel("ما لا يُدفع من الصندوق أبداً:") === null);
@@ -239,21 +239,22 @@ ok("AR «لمحة سريعة» is At a glance", isGlanceLabel("لمحة سريع
 ok("AR search ignores short vowels", mentions("يُقيَّد كل بلاغ في سجلّ خاص", "يقيد") && mentions("سجلّ", "سجل"));
 const hits = markPieces("يُقيَّد كل بلاغ", "يقيد").filter(p => p.mark === "find").map(p => p.text);
 ok("AR hit keeps its vowels, text survives", same(hits, ["يُقيَّد"]) && markPieces("يُقيَّد كل بلاغ", "يقيد").map(p => p.text).join("") === "يُقيَّد كل بلاغ", JSON.stringify(hits));
-const ch = arabicChapters("منصة «أنا هون» الإعلامية — دليل الفريق\nالجزء الأول — مدوّنة السلوك والنزاهة (السياسة P1)\nنص\n(السياسة P11) في السطر\nالجزء الثاني — سياسة شؤون الأفراد (السياسة P2)");
+const ch = arabicChapters("منصة اناهون الإعلامية — دليل الفريق\nالجزء الأول — مدوّنة السلوك والنزاهة (السياسة P1)\nنص\n(السياسة P11) في السطر\nالجزء الثاني — سياسة شؤون الأفراد (السياسة P2)");
 ok("AR chapter headings, and a body «(السياسة P11)» is not one", JSON.stringify(ch.anchors) === '{"P1":1,"P2":4}' && ch.titles.P1 === "مدوّنة السلوك والنزاهة", JSON.stringify(ch));
 const GOV_EN = "ترجمة رسمية للنص الإنكليزي. عند أي اختلاف في المعنى بين النصين، يُعمل بالنص الإنكليزي ويُرجع إلى المدير التنفيذي لتصويب الترجمة.";
 ok("governing line: English governs today", governingLine(`عنوان\n${GOV_EN}\nالإصدار 7`)?.governs === "en");
 ok("governing line: the approved clause makes Arabic govern", governingLine("عنوان\nاللغة. صدرت هذه السياسة بالعربية والإنكليزية، والنص العربي هو النص الملزم. وعند أي اختلاف في المعنى بين النصين، يُعمل بالنص العربي.")?.governs === "ar");
 ok("no status line, no badge", governingLine("Title\nEdition 7") === null);
 
-// The Arabic Index twin, a frozen excerpt of its real wording (16 Sep 2026).
-const AR_INDEX = `منصة «أنا هون» الإعلامية — السياسات والأدلة
+// The Arabic Index twin, a frozen excerpt of its real wording (re-read 7 Oct 2026, after the
+// name became اناهون).
+const AR_INDEX = `منصة اناهون الإعلامية — السياسات والأدلة
 ترجمة رسمية للنص الإنكليزي. عند أي اختلاف في المعنى بين النصين، يُعمل بالنص الإنكليزي.
 تحمل السياسات الأرقام من P1 إلى P11، مجمّعةً بحسب الدليل وبترتيب القراءة.
 1. دليل الفريق
 \t•\tP1 مدوّنة السلوك والنزاهة — الاحتيال، والفساد، وتضارب المصالح
-\t•\tP2 سياسة شؤون الأفراد — كيف تتعاقد «أنا هون» مع مقدّمي الخدمات
-كُتب وفق إعلان 12 أيلول 2026: ليس لدى «أنا هون» موظفون.
+\t•\tP2 سياسة شؤون الأفراد — كيف تتعاقد اناهون مع مقدّمي الخدمات
+كُتب وفق إعلان 12 أيلول 2026: ليس لدى اناهون موظفون.
 5. الاستراتيجية
 \t•\tP10 الخطة الاستراتيجية — خطة لا قاعدة، وهي الوثيقة التي تخدمها الأدلة
 مستقلة بذاتها
