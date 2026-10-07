@@ -34,7 +34,7 @@ assert.ok(!ic.includes('alt="AnaHon"'), "no AnaHon logo image on an iContent quo
 // Saad, 15 Sep 2026: a client document issued as iContent names AnaHon nowhere (fonts stripped first,
 // since base64 is arbitrary letters).
 const icText = ic.replace(/data:font\/woff2;base64,[A-Za-z0-9+/=]+/g, "");
-assert.ok(!/anahon|أنا هون|ANH-/i.test(icText), `an iContent quotation mentions AnaHon: ${(icText.match(/.{30}(anahon|أنا هون|ANH-).{30}/i) || [""])[0]}`);
+assert.ok(!/anahon|اناهون|أنا هون|ANH-/i.test(icText), `an iContent quotation mentions AnaHon: ${(icText.match(/.{30}(anahon|اناهون|أنا هون|ANH-).{30}/i) || [""])[0]}`);
 assert.ok(ic.includes("For iContent Studio — date &amp; signature"), "signature block");
 assert.ok(ic.includes("contact: Saad Matar · +961"), "contact footer, no title");
 assert.ok(ic.includes("iContent Studio · This quotation is not an invoice"), "footer");

@@ -28,7 +28,7 @@ assert.ok(!fs.readFileSync("docgen.ts", "utf8").includes("AnaHon may revise"), "
 assert.ok(QUOTE_REVISION_CLAUSE_AR.includes("خطّياً"), "the Arabic carries the same condition");
 // Saad, 15 Sep: the Arabic clause prints too — its own RTL block, directly under the English line.
 assert.equal(html.split(QUOTE_REVISION_CLAUSE_AR).length - 1, 1, "the Arabic clause appears exactly once on the quotation");
-assert.ok(/<p dir="rtl" lang="ar"[^>]*>[^<]*يحقّ لأنا هون/.test(html), "the Arabic clause is an isolated rtl block, marked as Arabic");
+assert.ok(/<p dir="rtl" lang="ar"[^>]*>[^<]*يحقّ لاناهون/.test(html), "the Arabic clause is an isolated rtl block, marked as Arabic");
 assert.ok(html.indexOf(QUOTE_REVISION_CLAUSE) < html.indexOf(QUOTE_REVISION_CLAUSE_AR), "the Arabic sits under the English line");
 assert.ok(!/monospace/.test(html.slice(html.indexOf('lang="ar"') - 20, html.indexOf(QUOTE_REVISION_CLAUSE_AR))), "not in a monospace face");
 // iContent variant (Saad, 15 Sep 2026): same rule, iContent Studio as the party; the AnaHon wording must not appear.
@@ -38,7 +38,7 @@ assert.ok(!icHtml.includes(QUOTE_REVISION_CLAUSE) && !icHtml.includes(QUOTE_REVI
 assert.equal(QUOTE_REVISION_CLAUSE_ICONTENT.replace("iContent Studio", "AnaHon"), QUOTE_REVISION_CLAUSE, "same wording, only the subject differs");
 const icAr = QUOTE_REVISION_CLAUSE_ICONTENT_AR.replace("{ICONTENT}", '<span dir="ltr">iContent Studio</span>');
 assert.equal(icHtml.split(icAr).length - 1, 1, "the Arabic iContent clause prints once, the name in an LTR span");
-assert.equal(QUOTE_REVISION_CLAUSE_ICONTENT_AR.replace("يحقّ لـ {ICONTENT}", "يحقّ لأنا هون"), QUOTE_REVISION_CLAUSE_AR, "Arabic: same wording, only the subject differs");
+assert.equal(QUOTE_REVISION_CLAUSE_ICONTENT_AR.replace("يحقّ لـ {ICONTENT}", "يحقّ لاناهون"), QUOTE_REVISION_CLAUSE_AR, "Arabic: same wording, only the subject differs");
 assert.ok(/Valid until: —/.test(html), "a quotation with no expiry still prints the dash, not an invented date");
 
 // C — the desk rule that chases a Sent quotation, with 15-day validity (workflow.ts is read, not edited).

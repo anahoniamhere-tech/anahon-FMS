@@ -125,7 +125,7 @@ function page(title: string, body: string, opts: { letterhead?: boolean; style?:
 <title>${esc(title)}</title>
 <style>${STYLE}${opts.style || ""}</style></head><body>
 ${opts.letterhead === false ? "" : `<div class="lh"><img src="${LOGO}" alt="AnaHon" />
-<div class="org">ANAHON MEDIA PLATFORM &middot; \u0623\u0646\u0627 \u0647\u0648\u0646<span>Independent media, reporting from where it happens &middot; Tripoli, Lebanon &middot; anahon.org</span></div></div>`}
+<div class="org">ANAHON MEDIA PLATFORM &middot; \u0627\u0646\u0627\u0647\u0648\u0646<span>Independent media, reporting from where it happens &middot; Tripoli, Lebanon &middot; anahon.org</span></div></div>`}
 ${body}
 </body></html>`;
 }
@@ -296,12 +296,12 @@ export function contractHtml(o: {
    * and stitching fragments produces word salad (the same reason WA_TEMPLATES keeps whole
    * sentences). Each language states the same facts in its own syntax.
    */
-  const engagementAr = `<p>تتعاقد منصة أنا هون مع <b>${ltr(esc(emp.name))}</b> بصفة <b>${ltr(esc(roleText))}</b>${p ? ` في مشروع ${ltr(esc(p.code))} — ${ltr(esc(p.name))}` : ""} للفترة من ${dAr(startDate)} إلى ${dAr(endDate)}.${isFramework && supersedesReference
+  const engagementAr = `<p>تتعاقد منصة اناهون مع <b>${ltr(esc(emp.name))}</b> بصفة <b>${ltr(esc(roleText))}</b>${p ? ` في مشروع ${ltr(esc(p.code))} — ${ltr(esc(p.name))}` : ""} للفترة من ${dAr(startDate)} إلى ${dAr(endDate)}.${isFramework && supersedesReference
       ? ` يحلّ هذا العقد <b>محلّ العقد السنوي ${ltr(esc(supersedesReference))}</b>، الذي يتوقف مفعوله من تاريخ البدء أعلاه. ولا يؤثر ذلك في أي عقد فرعي صادر مسبقاً: يستمر كل منها إلى نهاية مدته وبشروطه الخاصة.`
       : ""}${isSub
       ? parentReference
-        ? ` أُبرم هذا العقد الفرعي بموجب <b>العقد السنوي ${ltr(esc(parentReference))}</b> بين منصة أنا هون و${ltr(esc(emp.name))}، وهو العقد الذي يُنشئ الارتباط ويحدّد الراتب الإجمالي دون أن يستوجب بذاته أي دفع. يشتري هذا العقد الفرعي نسبة جهد منه لهذا المشروع وحده، وتسري أحكامه على هذا المشروع عند الاختلاف بينهما. وينتهي بانتهاء المدة أعلاه، ويبقى العقد السنوي سارياً.`
-        : ` <b>لا يوجد عقد سنوي في ملف ${ltr(esc(emp.name))}.</b> وفق نموذج الارتباط في أنا هون ينبغي أن يستند هذا العقد الفرعي إلى عقد سنوي؛ وإلى أن يُصدر، يبقى هذا المستند قائماً بذاته وهو كامل الارتباط الذي يصفه.`
+        ? ` أُبرم هذا العقد الفرعي بموجب <b>العقد السنوي ${ltr(esc(parentReference))}</b> بين منصة اناهون و${ltr(esc(emp.name))}، وهو العقد الذي يُنشئ الارتباط ويحدّد الراتب الإجمالي دون أن يستوجب بذاته أي دفع. يشتري هذا العقد الفرعي نسبة جهد منه لهذا المشروع وحده، وتسري أحكامه على هذا المشروع عند الاختلاف بينهما. وينتهي بانتهاء المدة أعلاه، ويبقى العقد السنوي سارياً.`
+        : ` <b>لا يوجد عقد سنوي في ملف ${ltr(esc(emp.name))}.</b> وفق نموذج الارتباط في اناهون ينبغي أن يستند هذا العقد الفرعي إلى عقد سنوي؛ وإلى أن يُصدر، يبقى هذا المستند قائماً بذاته وهو كامل الارتباط الذي يصفه.`
       : ""}</p>`;
 
   const remunerationAr = `<p>${isFramework
@@ -323,10 +323,10 @@ ${noFixedValue
 
   const paymentAr = `<p>يُدفع ${account
       ? `${emp.paymentMethod === "Cash" ? "نقداً مسحوباً من" : "بتحويل مصرفي من"} <b>${ltr(esc(account.name))}</b> (${ltr(esc(account.accountNo))})`
-      : "من الحساب المسجّل في نظام الإدارة المالية"}، مقابل سند صرف معتمد و${isService ? "فاتورة مقدّم الخدمة للمخرجات المسلّمة" : "كشف دوام موقّع للشهر"}، وفقاً لسياسة المالية والمشتريات لدى أنا هون (السياسة ${ltr("P5")}).${isService
+      : "من الحساب المسجّل في نظام الإدارة المالية"}، مقابل سند صرف معتمد و${isService ? "فاتورة مقدّم الخدمة للمخرجات المسلّمة" : "كشف دوام موقّع للشهر"}، وفقاً لسياسة المالية والمشتريات لدى اناهون (السياسة ${ltr("P5")}).${isService
       ? (registered
         ? " مقدّم الخدمة مسجّل لدى وزارة المالية؛ ويُطبَّق الاقتطاع الضريبي حيث يوجبه القانون."
-        : ` ولأن مقدّم الخدمة غير مسجّل لدى وزارة المالية، <b>تُقتطع ضريبة استقطاع بنسبة ${ltr(WHT_LABEL)} من المنبع</b> من كل دفعة وتُحوَّل إلى وزارة المالية من قِبل أنا هون؛ ويتقاضى مقدّم الخدمة المبلغ الصافي.${noFixedValue
+        : ` ولأن مقدّم الخدمة غير مسجّل لدى وزارة المالية، <b>تُقتطع ضريبة استقطاع بنسبة ${ltr(WHT_LABEL)} من المنبع</b> من كل دفعة وتُحوَّل إلى وزارة المالية من قِبل اناهون؛ ويتقاضى مقدّم الخدمة المبلغ الصافي.${noFixedValue
           ? " ويُحسب المقتطع والصافي على القيمة المتعاقد عليها لكل ارتباط، ما لم"
           : ` وعلى القيمة الإجمالية لهذه الاتفاقية يكون المقتطع ${mAr(contractTotal * WHT_RATE)} والصافي ${mAr(contractTotal * WHT_NET_FACTOR)}، ما لم`} يقدّم مقدّم الخدمة رقم تسجيل ضريبي، وفي هذه الحالة تُدفع المبالغ إجمالاً.`)
       : ""}</p>`;
@@ -445,7 +445,7 @@ binding text</b>. Where the two texts differ in meaning, the Arabic text prevail
 
 <div class="sig">
 <div>${esc(emp.name)}<br>${esc(emp.position)} — date &amp; signature<span class="alt">${positionAr(emp.position)} — التاريخ والتوقيع</span></div>
-<div>${esc(countersignatory?.name || "—")}<br>${esc(countersignatory?.role || "For AnaHon Media Platform")} — date &amp; signature<span class="alt">عن منصة أنا هون — التاريخ والتوقيع</span></div>
+<div>${esc(countersignatory?.name || "—")}<br>${esc(countersignatory?.role || "For AnaHon Media Platform")} — date &amp; signature<span class="alt">عن منصة اناهون — التاريخ والتوقيع</span></div>
 </div>
 <p class="note">Generated by the AnaHon Financial Management System on ${esc(new Date().toISOString())}.
 Unsigned until countersigned by both parties. Never backdate: corrections are issued as a dated addendum
@@ -453,7 +453,7 @@ Unsigned until countersigned by both parties. Never backdate: corrections are is
 <br><strong>This document is bilingual, and the Arabic text governs</strong> (clause 5). Every figure and
 date appears once only, in the particulars table above, so the two texts cannot state different amounts; where
 their wording differs in meaning, the Arabic prevails.</p>
-<p class="note ar" lang="ar" dir="rtl">صدر عن نظام الإدارة المالية في أنا هون بتاريخ ${ltr(esc(new Date().toISOString()))}.
+<p class="note ar" lang="ar" dir="rtl">صدر عن نظام الإدارة المالية في اناهون بتاريخ ${ltr(esc(new Date().toISOString()))}.
 غير موقّع إلى أن يوقّعه الطرفان. ولا يُعتمد تاريخ سابق: تُصدَر التصحيحات بملحق مؤرَّخ (السياسة §6.8 / §14.2).
 <br><strong>هذا المستند ثنائي اللغة، والنص العربي هو الملزم</strong> (البند ٥). وترد كل الأرقام والتواريخ مرة واحدة
 فقط في جدول البيانات أعلاه، فلا يمكن أن يذكر النصّان مبلغين مختلفين؛ وعند اختلاف صياغتهما في المعنى يُعمل بالنص العربي.</p>`);
@@ -877,7 +877,7 @@ export function payslipHtml(o: {
   const cap = (en: string, ar: string) => `<caption>${esc(en)} <span dir="rtl" lang="ar">· ${esc(ar)}</span></caption>`;
 
   return page(`Payslip ${month} — ${emp.name} · قسيمة راتب`, `
-<h1>ANAHON MEDIA PLATFORM — PAYSLIP<span class="alt" style="font-size:13px;letter-spacing:0">منصة أنا هون — قسيمة راتب</span></h1>
+<h1>ANAHON MEDIA PLATFORM — PAYSLIP<span class="alt" style="font-size:13px;letter-spacing:0">منصة اناهون — قسيمة راتب</span></h1>
 <h2>${esc(monthLabel)} · ${esc(emp.name)}</h2>
 <table>
   ${cap("Service provider", "مقدّم الخدمة")}
@@ -914,10 +914,10 @@ ${o.allocations.length ? `<table>
   </tbody>
 </table>
 ${gross === 0 ? `<p class="note"><strong>Nil statement.</strong> No payment is recorded for this role in this month. Under AnaHon's standing rule, with no project there is no payment — and the annual contract remains active regardless. This record exists to document the month, not to assert a payment.</p>
-<p class="note ar" lang="ar" dir="rtl"><strong>قسيمة صفرية.</strong> لا يوجد دفع مسجّل لهذا الدور في هذا الشهر. ووفق القاعدة المعتمدة في أنا هون: بلا مشروع لا يوجد دفع — ويبقى العقد السنوي سارياً في كل الأحوال. وُجد هذا السجل لتوثيق الشهر، لا لإثبات دفعة.</p>` : ""}
+<p class="note ar" lang="ar" dir="rtl"><strong>قسيمة صفرية.</strong> لا يوجد دفع مسجّل لهذا الدور في هذا الشهر. ووفق القاعدة المعتمدة في اناهون: بلا مشروع لا يوجد دفع — ويبقى العقد السنوي سارياً في كل الأحوال. وُجد هذا السجل لتوثيق الشهر، لا لإثبات دفعة.</p>` : ""}
 <div class="sig">
   <div>Service provider — ${esc(emp.name)}<br>Signature &amp; date (received)<span class="alt">مقدّم الخدمة — التوقيع والتاريخ (الاستلام)</span></div>
-  <div>For AnaHon Media Platform — ${esc(o.countersignatory)}<br>Signature &amp; date<span class="alt">عن منصة أنا هون — التوقيع والتاريخ</span></div>
+  <div>For AnaHon Media Platform — ${esc(o.countersignatory)}<br>Signature &amp; date<span class="alt">عن منصة اناهون — التوقيع والتاريخ</span></div>
 </div>
 <p class="note">System-generated from the service provider's record and the approved timesheet for ${esc(month)}; figures are not re-entered by hand.
 AnaHon engages everyone on the team as a service provider on an annual contract, not as an employee. <strong>Statutory deductions are shown as nil pending confirmation of the tax and social-security treatment of that engagement with AnaHon's accountant</strong> — withholding on services and NSSF are not settled here, and this statement must be reissued if that confirmation changes the month's figures. Unsigned until countersigned. Retention 7 years per Policy §13.3.
@@ -925,8 +925,8 @@ AnaHon engages everyone on the team as a service provider on an annual contract,
 so the Arabic and English readings cannot differ about what was paid; where their wording differs in meaning,
 the Arabic prevails.</p>
 <p class="note ar" lang="ar" dir="rtl">أُنشئت آلياً من سجل مقدّم الخدمة ومن كشف الدوام المعتمد لشهر ${ltr(esc(month))}؛ والأرقام غير مُدخلة يدوياً.
-تتعاقد أنا هون مع كل أعضاء الفريق بصفة مقدّمي خدمات بعقد سنوي، لا بصفة موظفين. <strong>وتظهر الاقتطاعات القانونية صفراً
-بانتظار تثبيت المعالجة الضريبية والضمان الاجتماعي لهذا الارتباط مع محاسب أنا هون</strong> — فالاقتطاع على الخدمات والضمان
+تتعاقد اناهون مع كل أعضاء الفريق بصفة مقدّمي خدمات بعقد سنوي، لا بصفة موظفين. <strong>وتظهر الاقتطاعات القانونية صفراً
+بانتظار تثبيت المعالجة الضريبية والضمان الاجتماعي لهذا الارتباط مع محاسب اناهون</strong> — فالاقتطاع على الخدمات والضمان
 غير محسومين هنا، ويجب إعادة إصدار هذه القسيمة إذا غيّر ذلك التثبيت أرقام الشهر. غير موقّعة إلى أن توقَّع بالمقابل.
 مدة الحفظ سبع سنوات وفق السياسة §13.3.
 <br><strong>هذه القسيمة ثنائية اللغة، والنص العربي هو الملزم.</strong> يرد كل رقم مرة واحدة فقط، فلا يمكن أن تختلف
@@ -964,7 +964,7 @@ export function declarationHtml(o: {
 </table>
 <div class="lang ar" lang="ar" dir="rtl">
 <h3>النص العربي</h3>
-<p>أنا الموقّع أدناه، المستفيد المذكور في البيانات أعلاه، أُقرّ بأنني قبضت من منصة أنا هون المبلغ المذكور أعلاه، في التاريخ المذكور، لقاء ما هو مبيَّن في البيانات، وذلك ضمن المشروع المذكور.</p>
+<p>أنا الموقّع أدناه، المستفيد المذكور في البيانات أعلاه، أُقرّ بأنني قبضت من منصة اناهون المبلغ المذكور أعلاه، في التاريخ المذكور، لقاء ما هو مبيَّن في البيانات، وذلك ضمن المشروع المذكور.</p>
 <p>وأُقرّ بأن الإيصال الأصلي لهذه الدفعة لم يعد متوفراً، وبأنه تعذّر الحصول على نسخة معاد إصدارها منه، وبأن هذه الدفعة لم يُطالَب بها ولن يُطالَب بها مرة ثانية.</p>
 <p>حُرّر هذا الإقرار في التاريخ المذكور في البيانات، وهو تاريخ تحريره لا تاريخ الدفع. ولا يحلّ محلّ الإيصال إلا بعد توقيعي عليه وموافقة المدير التنفيذي.</p>
 </div>

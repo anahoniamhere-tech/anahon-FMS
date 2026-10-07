@@ -93,4 +93,4 @@ export const ICONTENT_EMAIL = "hello@icontent.studio"; // live 15 Sep 2026 (MX/S
 export const QUOTE_REVISION_CLAUSE_ICONTENT = "iContent Studio may revise the prices, scope or terms of this quotation at any time until the client accepts it in writing; after acceptance, changes require the agreement of both parties.";
 /** Arabic; the name is wrapped in an LTR span where it prints. */
 export const QUOTE_REVISION_CLAUSE_ICONTENT_AR = "يحقّ لـ {ICONTENT} تعديل الأسعار أو نطاق العمل أو شروط عرض السعر هذا في أي وقت إلى أن يقبله العميل خطّياً؛ وبعد القبول، لا يُجرى أي تعديل إلا بموافقة الطرفين.";
-export const QUOTE_REVISION_CLAUSE_AR = "يحقّ لأنا هون تعديل الأسعار أو نطاق العمل أو شروط عرض السعر هذا في أي وقت إلى أن يقبله العميل خطّياً؛ وبعد القبول، لا يُجرى أي تعديل إلا بموافقة الطرفين.";
+export const QUOTE_REVISION_CLAUSE_AR = "يحقّ لاناهون تعديل الأسعار أو نطاق العمل أو شروط عرض السعر هذا في أي وقت إلى أن يقبله العميل خطّياً؛ وبعد القبول، لا يُجرى أي تعديل إلا بموافقة الطرفين.";

@@ -40,7 +40,7 @@ for (const key of Object.keys(WA_TEMPLATES) as WaTemplateKey[]) {
   for (const lang of ["en", "ar"]) {
     const text = WA_TEMPLATES[key]((s: string) => tr(lang, s), params[key]);
     ok(`${key} (${lang}): every value is filled in`, !/\{\w+\}/.test(text), text);
-    ok(`${key} (${lang}): it says who wrote it`, /— (AnaHon|أنا هون)$/.test(text.trim()), text.slice(-20));
+    ok(`${key} (${lang}): it says who wrote it`, /— (AnaHon|اناهون)$/.test(text.trim()), text.slice(-20));
     if (lang === "ar") ok(`${key} (ar): it is actually Arabic, not the English fallback`, /[؀-ۿ]/.test(text));
   }
   ok(`${key}: the name reaches the reader`, WA_TEMPLATES[key]((s: string) => s, params[key]).includes(params[key].name));
@@ -72,10 +72,10 @@ const BAL = (lang: string, over: any) => WA_TEMPLATES["client-balance"]((s: stri
   { name: "Maroun", amount: "250.00 USD", date: "2026-09-10", issuedAs: "icontent", ...over });
 for (const lang of ["en", "ar"]) {
   for (const [label, text] of [["quotation", Q(lang, {})], ["balance", BAL(lang, {})]] as const) {
-    ok(`iContent ${label} (${lang}) never names AnaHon`, !/AnaHon|أنا هون/i.test(text), text);
+    ok(`iContent ${label} (${lang}) never names AnaHon`, !/AnaHon|اناهون|أنا هون/i.test(text), text);
     ok(`iContent ${label} (${lang}) is signed iContent Studio`, /— \u2068?iContent Studio\u2069?$/.test(text.trim()), text.slice(-24));
   }
-  ok(`AnaHon quotation (${lang}) is still signed AnaHon`, /— (AnaHon|أنا هون)$/.test(Q(lang, { issuedAs: "anahon" }).trim()));
+  ok(`AnaHon quotation (${lang}) is still signed AnaHon`, /— (AnaHon|اناهون)$/.test(Q(lang, { issuedAs: "anahon" }).trim()));
   ok(`quotation (${lang}) delivers it rather than claiming it was sent`, !/we have sent|أرسلنا/.test(Q(lang, {})), Q(lang, {}));
   ok(`quotation (${lang}) prints the validity date as the PDF does`,
     lang === "en" ? Q(lang, {}).includes("valid until 30 September 2026.") : /30\u2069? أيلول \u2066?2026/.test(Q(lang, {})) && !Q(lang, {}).includes("2026-09-30"), Q(lang, {}));
@@ -92,7 +92,7 @@ for (const lang of ["en", "ar"]) {
   ok(`quotation (${lang}): the sentence ends with a colon before the link`, lines[0].endsWith(":"), lines[0]);
   ok(`quotation (${lang}): the link appears once`, (withLink.match(/https:\/\//g) || []).length === 1);
   ok(`quotation (${lang}): the request and the signature follow the link`, /^(Tell me if anything should change\.|أعلمني إذا أردت أي تعديل\.) — /.test(lines[2] || ""), lines[2]);
-  ok(`quotation (${lang}) with a link still names no AnaHon`, !/AnaHon|أنا هون/i.test(withLink), withLink);
+  ok(`quotation (${lang}) with a link still names no AnaHon`, !/AnaHon|اناهون|أنا هون/i.test(withLink), withLink);
   ok(`quotation (${lang}) with no link is one line, as before`, !Q(lang, { link: "" }).includes("\n") && Q(lang, { link: "" }) === Q(lang, {}));
   const noDateLink = Q(lang, { validUntil: "", link: URL });
   ok(`quotation (${lang}) with a link and no date keeps the link and drops the date`, noDateLink.split("\n")[1] === URL && !/valid until|صالح حتى/.test(noDateLink), noDateLink);

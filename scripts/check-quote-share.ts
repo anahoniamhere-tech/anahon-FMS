@@ -79,7 +79,7 @@ assert.ok(/"\/api\/quotations\/share": MANAGERS/.test(gates) && /"\/api\/quotati
 // G — the bytes a client reads carry no AnaHon.
 const html = quotationHtml({ quoteNo: "006/2026", date: "2026-09-15", validUntil: "2026-09-30", preparedBy: "Saad Matar — Executive Director", clientName: "Maroun Asmar", clientContact: "", clientPhone: "", clientTaxId: "",
   currency: "USD", total: 750, items: [{ service: "Brand", description: "", output: "", unitPrice: 750, qty: 1 }], terms: {}, notes: "", issuedAs: "icontent", discountAmount: 0, discountLabel: "", title: "VxV" });
-assert.ok(!/anahon|أنا هون|ANH-/i.test(html.replace(/data:font\/woff2;base64,[A-Za-z0-9+/=]+/g, "")), "iContent PDF names AnaHon");
+assert.ok(!/anahon|اناهون|أنا هون|ANH-/i.test(html.replace(/data:font\/woff2;base64,[A-Za-z0-9+/=]+/g, "")), "iContent PDF names AnaHon");
 
 // H — the outbox write: mtime survives the rename and a revoked file is gone.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "qshare-"));

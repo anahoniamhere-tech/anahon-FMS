@@ -161,7 +161,7 @@ const quoteText = (t: (s: string) => string, p: Record<string, string>) => {
 
 const signed = (text: string, issuedAs?: string) => {
   const arabic = /[\u0600-\u06FF]/.test(text);
-  const who = issuedAs === "icontent" ? (arabic ? "\u2068iContent Studio\u2069" : "iContent Studio") : (arabic ? "أنا هون" : "AnaHon");
+  const who = issuedAs === "icontent" ? (arabic ? "\u2068iContent Studio\u2069" : "iContent Studio") : (arabic ? "اناهون" : "AnaHon");
   return `${text} — ${who}`;
 };
 
