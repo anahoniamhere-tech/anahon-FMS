@@ -6,6 +6,7 @@
 // looks like the wrong instrument, or a subcontract that cites a framework contract nobody
 // ever issued. So this renders the documents and reads them, rather than trusting the
 // template. Run: npx tsx scripts/check-contracts.ts
+import { WHT_RATE, WHT_LABEL, WHT_NET_FACTOR, whtLabelOf } from "../src/tax.js";
 import { readFileSync } from "node:fs";
 import { contractHtml, referenceOfContractDoc } from "../docgen.js";
 
@@ -255,8 +256,19 @@ ok("the form's Type options describe what comes out, and never say employment co
 })());
 ok("the payslip names the counterparty a service provider",
   /cap\("Service provider", "مقدّم الخدمة"\)/.test(payslipSrc) && payslipSrc.includes("<div>Service provider — "));
+// 7 Oct 2026: the rate moved to 8.5% (2024 Budget Law, adopted by Saad). It lives in src/tax.ts and
+// nowhere else; the clause still keys on isService, and only a SERVICE agreement carries it.
 ok("a term with legal meaning is NOT quietly reworded — withholding still keys on isService",
-  /isService[\s\S]{0,400}7\.5% withholding tax/.test(gen));
+  /isService[\s\S]{0,400}\$\{WHT_LABEL\} withholding tax/.test(gen));
+ok("the clause quotes today's rate, from the one constant", WHT_RATE === 0.085 && WHT_LABEL === "8.5%" && WHT_NET_FACTOR === 0.915);
+ok("no rate is typed into a document — Arabic or English",
+  !/7\.5\s*%|0\.075|0\.925/.test(gen) && (gen.match(/WHT_LABEL|WHT_RATE|WHT_NET_FACTOR/g) || []).length >= 6);
+ok("the Arabic clause isolates the rate so the percent sign cannot jump", /بنسبة \$\{ltr\(WHT_LABEL\)\} من المنبع/.test(gen));
+ok("the net factor is the complement of the rate, not a second typed number",
+  /contractTotal \* WHT_RATE/.test(gen) && /contractTotal \* WHT_NET_FACTOR/.test(gen));
+// A paid voucher keeps the rate it was paid at: its invoice reads the rate back from its own figures.
+ok("a past payment's invoice says the rate it was actually withheld at", /Less withholding tax \(\$\{whtLabelOf\(wht, gross\)\}\)/.test(gen));
+ok("and that read-back is honest about old and new", whtLabelOf(75, 1000) === "7.5%" && whtLabelOf(85, 1000) === "8.5%" && whtLabelOf(0, 1000) === WHT_LABEL);
 ok("and the nil month states the rule, not an entitlement",
   payslipSrc.includes("with no project there is no payment") && payslipSrc.includes("the annual contract remains active"));
 ok("the payslip says the tax and social-security treatment is unconfirmed, not settled",

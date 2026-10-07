@@ -1,8 +1,8 @@
 # أسئلة للمحاسب / المدقق — ضريبة ووزارة المالية
 # Questions for the Accountant / Auditor — Tax & Ministry of Finance
 
-**شركة أنا هون — شركة مدنية، سجل تجاري ٩٠/٢٠٢٣، رقم المالية ٣٨٩٣١٨٥**
-AnaHon — Civil Partnership, CR 90/2023 (Tripoli), MoF no. 3893185
+**شركة أنا هون — شركة مدنية، شركة مدنية رقم ٩٠/٢٠٢٣، رقم المالية ٣٨٩٣١٨٥**
+AnaHon — civil company (general partnership), civil company no. 90/2023 (Tripoli), MoF no. 3893185
 تاريخ الإعداد / Prepared: 22 August 2026
 
 > كل سؤال مرفق بـ **«المستند»** — الرقم أو الواقعة من دفاترنا التي أثارت السؤال.
@@ -34,7 +34,7 @@ AnaHon — Civil Partnership, CR 90/2023 (Tripoli), MoF no. 3893185
 
 **٢.٢** إقرار ٢٠٢٣ قُدِّم عن الفترة ١‑١‑٢٠٢٣ إلى ٣١‑١٢‑٢٠٢٣، بينما تسجيل المالية صدر في **٣٠‑١٠‑٢٠٢٣**. هل يغطي الإقرار الفترة كاملة أم من تاريخ التسجيل فقط؟ وهل يحتاج إلى تعديل؟
 *The FY2023 return covers 01/01–31/12/2023, but MoF registration was issued **30‑10‑2023**. Does the return cover the full year or only from registration — and does it need amending?*
-> **المستند:** التسلسل: العقد ٣٠‑٩‑٢٠٢٣ ← السجل التجاري ١٢‑١٠‑٢٠٢٣ ← المالية ٣٠‑١٠‑٢٠٢٣ ← الحساب المصرفي ٢٦‑١‑٢٠٢٤.
+> **المستند:** التسلسل: العقد ٣٠‑٩‑٢٠٢٣ ← تسجيل الشركة المدنية ١٢‑١٠‑٢٠٢٣ ← المالية ٣٠‑١٠‑٢٠٢٣ ← الحساب المصرفي ٢٦‑١‑٢٠٢٤.
 
 **٢.٣** استلمنا **١٥٬٠٠٠ دولار** من «بسمة وزيتونة» في ٣ أيار / ٥ حزيران / ٣١ تموز ٢٠٢٣ — أي **قبل** تسجيل المالية بثلاثة إلى ستة أشهر، وعبر BOB Finance لا عبر حساب مصرفي. هل هذا دخل للشركة أم خارج دفاترها؟
 *We received **USD 15,000** from Basmeh & Zeitooneh on 3 May / 5 Jun / 31 Jul 2023 — three to six months **before** MoF registration, and through BOB Finance, not a bank account. Is this company income or outside the books?*
@@ -74,6 +74,9 @@ AnaHon — Civil Partnership, CR 90/2023 (Tripoli), MoF no. 3893185
 **٤.١** طبّقنا اقتطاع ٧٫٥٪ على **٤ نفقات فقط** من أصل ١٩٢، بمجموع ٦٠٫٨٩ دولاراً. أين يجب أن يُطبَّق الاقتطاع فعلياً، وبأي نسبة، ومَن الملزَم بتوريده؟
 *We applied 7.5% WHT to only **4 of 192 expenses**, totalling USD 60.89. Where should withholding actually apply, at what rate, and who is liable to remit it?*
 > **المستند:** الأربعة هي Higgsfield، Google AI Ultra، Claude Pro، وخدمات عمر الأبيض. أما ٦٬٣٣٠ دولاراً لسعد مطر و٦٬٠٠٠ لخالد الصبّاغ و٣٬٠٠٠ لمحمد كبارة فبلا اقتطاع.
+>
+> **تحديث ٧ تشرين الأول ٢٠٢٦:** اعتمد سعد مطر نسبة ٨٫٥٪ اعتباراً من هذا التاريخ (قانون موازنة ٢٠٢٤)، ويطبّقها النظام على السندات الجديدة وحدها. ويبقى السؤال قائماً: كيف يُصرَّح عن هذا الاقتطاع ويُورَّد؟
+> *Update, 7 Oct 2026: Saad Matar set the rate at 8.5% from that date (2024 Budget Law); the system applies it to new vouchers only. Still asked: how to declare and remit it.*
 
 **٤.٢** المدفوعات إلى **مزوّدين خارج لبنان** (اشتراكات برمجية، منصّات): هل تخضع لاقتطاع غير المقيمين؟ بأي نسبة، وكيف يُصرَّح عنها؟
 *Payments to **non-resident suppliers** (software subscriptions, platforms): do they attract non-resident withholding? At what rate and declared how?*
@@ -170,7 +173,7 @@ AnaHon — Civil Partnership, CR 90/2023 (Tripoli), MoF no. 3893185
 ## ملحق: ما هو جاهز لديكم فوراً / Ready for you on request
 
 - شهادة تسجيل المالية ٣٨٩٣١٨٥ — صادرة ٣٠‑١٠‑٢٠٢٣
-- شهادة السجل التجاري ٩٠/٢٠٢٣ — ١٢‑١٠‑٢٠٢٣ (عربي + ترجمة محلّفة)
+- شهادة تسجيل الشركة المدنية ٩٠/٢٠٢٣ — ١٢‑١٠‑٢٠٢٣، غرفة الدرجة الأولى في الشمال، طرابلس (عربي + ترجمة محلّفة)
 - النظام التأسيسي (١٢ صفحة)
 - إقرار ٢٠٢٣ الكامل + الملحق أ٤٩ + إيصال المالية ٢٤٥٠١٩٠٥٥
 - كتاب بنك بلوم ٢٦‑١‑٢٠٢٤ + كشوف الحسابين بالدولار واليورو

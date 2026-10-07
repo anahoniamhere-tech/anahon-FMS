@@ -5,6 +5,7 @@ import { Procurement, Project, Vendor } from "../types";
 import { THRESHOLD_LABEL, needsProcurement } from "../procurementPolicy";
 import { costAccountChoices, noSupplierChoice } from "../spendKind";
 import { costAccountFor } from "../costAccount";
+import { WHT_RATE, WHT_LABEL, whtLabelOf } from "../tax";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import Info from "../Info";
 import { FINANCE, MANAGERS, REQUESTERS } from "../roles";
@@ -897,7 +898,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                             </div>
                             <div>
                               <span className={`text-[10px] uppercase block font-bold ${exp.whtAmount > 0 ? "text-amber-800" : "text-emerald-800"}`}>
-                                {exp.whtAmount > 0 ? "WHT Withheld (7.5%)" : "WHT Withheld (0% Registered)"}
+                                {exp.whtAmount > 0 ? `WHT Withheld (${whtLabelOf(exp.whtAmount, exp.amount)})` : "WHT Withheld (0% Registered)"}
                               </span>
                               <span className={`font-bold ${exp.whtAmount > 0 ? "text-amber-700" : "text-emerald-700"}`} dir="ltr">
                                 {exp.whtAmount > 0 ? `-${(exp.whtAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "0.00"} {exp.currency}
@@ -987,7 +988,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
 
                           {exp.status === "Approved" && FINANCE.includes(currentUser.role) && (() => {
                             const hasTaxId = vendor && vendor.taxId && vendor.taxId.trim() !== "" && vendor.taxId.trim().toUpperCase() !== "N/A";
-                            const whtRate = hasTaxId ? 0 : 0.075;
+                            const whtRate = hasTaxId ? 0 : WHT_RATE;
                             const whtVal = (exp.amount || 0) * whtRate;
                             const netVal = (exp.amount || 0) - whtVal;
                             // §4.4.2: a Finance Officer's approval does not open the cash accounts above
@@ -1024,7 +1025,7 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                     <span dir="ltr" className="font-bold text-slate-900">{(exp.amount || 0).toLocaleString()} {exp.currency}</span>
                                   </div>
                                   <div>
-                                    <span className="text-[10px] text-slate-500 uppercase block font-bold">WHT Withheld (7.5%)</span>
+                                    <span className="text-[10px] text-slate-500 uppercase block font-bold">WHT Withheld ({WHT_LABEL})</span>
                                     <span className="font-bold text-red-600" dir="ltr">-{whtVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {exp.currency}</span>
                                   </div>
                                   <div>

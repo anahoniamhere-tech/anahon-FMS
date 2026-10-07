@@ -11,6 +11,7 @@ import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { evidenceOf, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATION_SIGNED } from "./src/declarations.js";
 import { teamMemberFlag } from "./src/supplierDocs.js";
+import { WHT_RATE, WHT_LABEL } from "./src/tax.js";
 import { CONFIDENTIAL_PURPOSE, nextSourceCode, maySealedRead, SEALED_REFUSAL, confidentialRaiseBlocker, SANCTIONS_RESULTS, SEALED_DOC_KINDS, hasSealedReceipt, reviewDue, type SealedDoc } from "./src/sources.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, workplanHtml, instalmentRequestHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory, isContentLabel, LABEL_WORDS } from "./src/editorialGates.js";
@@ -10712,9 +10713,9 @@ app.post("/api/expense/direct-petty-cash", async (req, res) => {
         const hasTaxId = vendor.taxId && vendor.taxId.trim() !== "" && vendor.taxId.trim().toUpperCase() !== "N/A";
         // Withholding applies to SERVICE payments to unregistered providers (engageable, no tax
         // ID). A counter purchase — shop, taxi, subscription — is paid in full: the cash that
-        // left equals the price, and pretending 7.5% was withheld misstates both the payment
-        // and the MoF liability.
-        const whtRate = vendor.engageable && !hasTaxId ? 0.075 : 0;
+        // left equals the price, and pretending tax was withheld misstates both the payment
+        // and the MoF liability. The rate itself lives in src/tax.ts and nowhere else.
+        const whtRate = vendor.engageable && !hasTaxId ? WHT_RATE : 0;
         whtVal = Number((Number(amount) * whtRate).toFixed(2));
         netVal = Number(amount) - whtVal;
       }
@@ -13707,7 +13708,7 @@ ANAHON ACCOUNTING POLICY THRESHOLDS (Accounting & Business Policy Manual v020):
 - Budget line overruns above 10% of the line require prior donor approval (Section 11).
 - Every restricted-grant expense must map to exactly one approved budget line (Section 2.4).
 - All supporting documents retained 7 years (Section 13).
-- WHT on non-resident service vendors per Lebanese MoF rules (7.5%), declared quarterly (Form 83 context applies).
+- WHT on service vendors not registered with the MoF, per Lebanese rules (${WHT_LABEL} since 7 Oct 2026; vouchers paid earlier keep the rate they were paid at), declared quarterly (Form 83 context applies).
 
 ACTUAL SYSTEM DATA:
 Projects & budget lines: ${JSON.stringify(projectStats)}

@@ -15,6 +15,7 @@ import { runsIn, type Workplan, type WorkplanActivity } from "./src/workplan.js"
 import { type Instalment, type PayeeBank } from "./src/instalments.js";
 import { AR } from "./src/i18n.js";
 import { ALL_ROLES } from "./src/roles.js";
+import { WHT_LABEL, WHT_RATE, WHT_NET_FACTOR, whtLabelOf } from "./src/tax.js";
 import path from "path";
 import os from "os";
 
@@ -325,9 +326,9 @@ ${noFixedValue
       : "من الحساب المسجّل في نظام الإدارة المالية"}، مقابل سند صرف معتمد و${isService ? "فاتورة مقدّم الخدمة للمخرجات المسلّمة" : "كشف دوام موقّع للشهر"}، وفقاً لسياسة المالية والمشتريات لدى أنا هون (السياسة ${ltr("P5")}).${isService
       ? (registered
         ? " مقدّم الخدمة مسجّل لدى وزارة المالية؛ ويُطبَّق الاقتطاع الضريبي حيث يوجبه القانون."
-        : ` ولأن مقدّم الخدمة غير مسجّل لدى وزارة المالية، <b>تُقتطع ضريبة استقطاع بنسبة 7.5% من المنبع</b> من كل دفعة وتُحوَّل إلى وزارة المالية من قِبل أنا هون؛ ويتقاضى مقدّم الخدمة المبلغ الصافي.${noFixedValue
+        : ` ولأن مقدّم الخدمة غير مسجّل لدى وزارة المالية، <b>تُقتطع ضريبة استقطاع بنسبة ${ltr(WHT_LABEL)} من المنبع</b> من كل دفعة وتُحوَّل إلى وزارة المالية من قِبل أنا هون؛ ويتقاضى مقدّم الخدمة المبلغ الصافي.${noFixedValue
           ? " ويُحسب المقتطع والصافي على القيمة المتعاقد عليها لكل ارتباط، ما لم"
-          : ` وعلى القيمة الإجمالية لهذه الاتفاقية يكون المقتطع ${mAr(contractTotal * 0.075)} والصافي ${mAr(contractTotal * 0.925)}، ما لم`} يقدّم مقدّم الخدمة رقم تسجيل ضريبي، وفي هذه الحالة تُدفع المبالغ إجمالاً.`)
+          : ` وعلى القيمة الإجمالية لهذه الاتفاقية يكون المقتطع ${mAr(contractTotal * WHT_RATE)} والصافي ${mAr(contractTotal * WHT_NET_FACTOR)}، ما لم`} يقدّم مقدّم الخدمة رقم تسجيل ضريبي، وفي هذه الحالة تُدفع المبالغ إجمالاً.`)
       : ""}</p>`;
 
   const otherAr = `<p>تخضع جميع أحكام الارتباط الأخرى، ومنها السرية وحماية الأشخاص وإنهاء العقد، لسياسات المؤسسة النافذة، وهي جزء لا يتجزأ من هذ${isService ? "ه الاتفاقية" : "ا العقد"}.</p>`;
@@ -377,7 +378,7 @@ ${row("إجمالي قيمة العقد", "Contract Total", noFixedValue
 ${budgetLine ? row("بند الموازنة", "Budget Line", esc(`${budgetLine.code} — ${budgetLine.description}`)) : ""}
 ${row("رقم التسجيل الضريبي (وزارة المالية)", "MoF Tax Registry ID", registered
       ? esc(taxId)
-      : `<strong>Not available</strong> — this service provider is not registered with the Ministry of Finance${isService ? ", so 7.5% withholding tax is deducted at source from every payment under this agreement and remitted to the MoF by AnaHon" : ""}`)}
+      : `<strong>Not available</strong> — this service provider is not registered with the Ministry of Finance${isService ? ", so ${WHT_LABEL} withholding tax is deducted at source from every payment under this agreement and remitted to the MoF by AnaHon" : ""}`)}
 ${row("يُدفع من", "Paid From", account
       ? `${emp.paymentMethod === "Cash" ? "Cash withdrawn from" : "Bank transfer from"} ${esc(account.name)} <span>${esc(account.accountNo)}</span>`
       : isService
@@ -428,9 +429,9 @@ and ${isService ? "the provider's invoice for the delivered outputs" : "a signed
 AnaHon's Finance and Procurement Policy (Policy P5).${isService
       ? (registered
         ? " The provider is registered with the Ministry of Finance; withholding tax is applied where the law requires it."
-        : ` Because the provider is not registered with the Ministry of Finance, <b>7.5% withholding tax is deducted at source</b> from each payment and remitted to the MoF by AnaHon; the provider receives the net amount.${noFixedValue
+        : ` Because the provider is not registered with the Ministry of Finance, <b>${WHT_LABEL} withholding tax is deducted at source</b> from each payment and remitted to the MoF by AnaHon; the provider receives the net amount.${noFixedValue
           ? " The withheld and net amounts are computed on the contracted value of each engagement, unless"
-          : ` On the total value of this agreement that is ${esc(money(contractTotal * 0.075))} withheld and ${esc(money(contractTotal * 0.925))} net, unless`} the provider supplies a tax registry number, in which case payments are made gross.`)
+          : ` On the total value of this agreement that is ${esc(money(contractTotal * WHT_RATE))} withheld and ${esc(money(contractTotal * WHT_NET_FACTOR))} net, unless`} the provider supplies a tax registry number, in which case payments are made gross.`)
       : ""}</p>
 
 <h2 style="color:#1a1a1a;font-size:13px"><strong>4. Other terms</strong></h2>
@@ -831,7 +832,7 @@ export function providerInvoiceHtml(o: {
   <tbody>
     <tr><td>${esc(e.title)}${p ? `<br><span style="color:#555;font-size:12px">Services rendered under project ${esc(p.code)}</span>` : ""}</td><td class="r">${money(gross, e.currency)}</td></tr>
     <tr><th scope="row">Gross fee</th><td class="r">${money(gross, e.currency)}</td></tr>
-    ${wht > 0 ? `<tr><th scope="row">Less withholding tax (7.5%)</th><td class="r">− ${money(wht, e.currency)}</td></tr>` : ""}
+    ${wht > 0 ? `<tr><th scope="row">Less withholding tax (${whtLabelOf(wht, gross)})</th><td class="r">− ${money(wht, e.currency)}</td></tr>` : ""}
     <tr><th scope="row">Net payable to provider</th><td class="r amt">${money(net, e.currency)}</td></tr>
   </tbody>
 </table>

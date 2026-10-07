@@ -7,6 +7,7 @@
  *
  * Adding one: append an object here. Nothing else to wire.
  */
+import { WHT_LABEL } from "./tax";
 export type HelpEntry = {
   id: string;
   area: "Money" | "Buying" | "Editorial" | "Website" | "People" | "Seats & approvals" | "Records";
@@ -108,7 +109,7 @@ export const HELP: HelpEntry[] = [
   },
   {
     id: "vendor-tax", area: "Buying",
-    q: { en: "Why is 7.5% deducted from a supplier’s payment?", ar: "لماذا يُقتطع 7.5٪ من دفعة مورّد؟" },
+    q: { en: `Why is ${WHT_LABEL} deducted from a supplier’s payment?`, ar: `لماذا يُقتطع ${WHT_LABEL} من دفعة مورّد؟` },
     a: {
       en: "Suppliers without a registered tax number are subject to withholding tax on services in Lebanon. The system computes it when the supplier has no tax ID on record and books it to the withholding account. Add the tax ID to the supplier to stop the deduction.",
       ar: "المورّدون الذين ليس لديهم رقم ضريبي مسجّل يخضعون لضريبة الاقتطاع على الخدمات في لبنان. يحتسبها النظام عندما لا يكون للمورّد رقم ضريبي مسجّل ويقيّدها في حساب الاقتطاع. أضف الرقم الضريبي إلى المورّد لإيقاف الاقتطاع.",

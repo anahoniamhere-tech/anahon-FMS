@@ -3,6 +3,7 @@ import { ic } from "../nav";
 import { Trash2, Ban, Bot, FileSignature, Landmark, Plus, RefreshCw, Search } from "lucide-react";
 import { Account, Vendor } from "../types";
 import { tr } from "../i18n";
+import { WHT_LABEL } from "../tax";
 import { SharedProps } from "./shared";
 import { MANAGERS, SUPPLIER_EDITORS } from "../roles";
 import { missingSupplierDocs, PARTY_KINDS, partyKindLabel, isTeamMember } from "../supplierDocs";
@@ -626,7 +627,7 @@ export default function VendorsTab({ contractBusy, contractFor, contractForm, co
                     <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-xs flex flex-col gap-1 font-mono">
                       <span className="font-bold flex items-center gap-1">{ic(Landmark)}Lebanese MoF Statutory Compliance Alert:</span>
                       <p className="leading-relaxed">
-                        Individuals and consultants who do not have an official, active **Tax Registry ID** (MoF number) are subject to a **7.5% Withholding Tax (WHT)**.
+                        Individuals and consultants who do not have an official, active **Tax Registry ID** (MoF number) are subject to a **{WHT_LABEL} Withholding Tax (WHT)**.
                         The system will automatically calculate and withhold this tax at the payment stage unless a valid Tax Registry ID is entered above.
                       </p>
                     </div>
