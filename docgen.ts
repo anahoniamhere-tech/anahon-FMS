@@ -411,13 +411,34 @@ ${noFixedValue
    * paragraphs rather than printed as one run-on block, and in the Arabic every Latin run —
    * SKF-AN-31/2026, Brave Media, OLAF — isolated, or the punctuation beside it jumps.
    */
-  const LATIN_RUN = /[A-Za-z][A-Za-z0-9&/.,'()\u2019-]*(?:\s+[A-Za-z0-9][A-Za-z0-9&/.,'()\u2019-]*)*/g;
+  /**
+   * A Latin run inside Arabic prose, for isolation. Brackets and commas are NOT part of a run:
+   * a run may only start with a letter, so "(sanctionsmap.eu)" matched from the letter and
+   * swallowed the CLOSING bracket, which then printed on the wrong side — "((sanctionsmap.eu"
+   * (reported 8 Oct 2026, in every in-app contract on the SKF grant). Trailing full stops and
+   * commas go the same way, so the run is trimmed back to its last letter or digit.
+   */
+  const LATIN_RUN = /[A-Za-z][A-Za-z0-9&/.'’-]*(?:\s+[A-Za-z0-9][A-Za-z0-9&/.'’-]*)*/g;
+  /**
+   * Isolate on the RAW text, escaping each piece as it is emitted — never on escaped text, where
+   * "&amp;" and "&#39;" are themselves Latin runs and would be cut in half.
+   */
+  const isolateLatin = (raw: string) => {
+    let out = "", last = 0;
+    for (const m of raw.matchAll(LATIN_RUN)) {
+      const i = m.index ?? 0;
+      let run = m[0];
+      // Trim back to the last letter or digit: trailing punctuation belongs to the Arabic sentence.
+      const trimmed = run.replace(/[^A-Za-z0-9’]+$/, "");
+      if (!trimmed) continue;
+      out += esc(raw.slice(last, i)) + ltr(esc(trimmed));
+      last = i + trimmed.length;
+    }
+    return out + esc(raw.slice(last));
+  };
   const clauseHtml = (text: string, isArabic: boolean) =>
-    String(text || "").split(/\n+/).map(para => para.trim()).filter(Boolean)
-      .map(para => {
-        const body = esc(para.replace(/\s+/g, " "));
-        return `<p>${isArabic ? body.replace(LATIN_RUN, run => ltr(run)) : body}</p>`;
-      }).join("\n");
+    String(text || "").split(/\n+/).map(para => para.trim().replace(/\s+/g, " ")).filter(Boolean)
+      .map(para => `<p>${isArabic ? isolateLatin(para) : esc(para)}</p>`).join("\n");
 
   const H = (n: string, ar: string) => `<h2 style="color:#1a1a1a;font-size:13px"><strong>${n}. ${ar}</strong></h2>`;
   const arabicText = `<section class="lang ar" lang="ar" dir="rtl">

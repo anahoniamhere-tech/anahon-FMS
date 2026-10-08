@@ -479,6 +479,28 @@ console.log("\nL. what the papers say AnaHon is (Front desk / Saad, 18 Sep 2026)
     const bare = clause.replace(/<span dir="ltr" class="num">[\s\S]*?<\/span>/g, "").replace(/<[^>]*>/g, "");
     return !/[A-Za-z]/.test(bare);
   })());
+  // 8 Oct 2026: a run may only START with a letter, so "(OLAF)" matched from the O and swallowed the
+  // closing bracket — the Arabic printed "((OLAF". Brackets and trailing punctuation stay in the Arabic.
+  ok("a bracketed Latin name keeps its brackets in the Arabic, on the correct sides", (() => {
+    const b = doc({ project: TRF, donorClauses: { en: "x", ar: "متاحة للتدقيق من المكتب الأوروبي لمكافحة الاحتيال (OLAF) وديوان المحاسبة." } });
+    const sec = (b.match(/<section class="lang ar"[\s\S]*?<\/section>/) || [""])[0];
+    const clause = sec.slice(sec.indexOf("متطلبات الجهة المانحة"));
+    return clause.includes(`(${'<span dir="ltr" class="num">OLAF</span>'})`)
+      && !clause.includes('class="num">OLAF)</span>') && !/[A-Za-z]/.test(clause.replace(/<span dir="ltr" class="num">[\s\S]*?<\/span>/g, "").replace(/<[^>]*>/g, ""));
+  })());
+  // The class still allows "." inside a run (sanctionsmap.eu), so a sentence-ending stop would be
+  // swallowed the same way the bracket was. The run is trimmed back to its last letter or digit.
+  ok("a full stop ending the Arabic sentence stays outside the isolated run", (() => {
+    const b = doc({ project: TRF, donorClauses: { en: "x", ar: "ضمن برنامج Brave Media." } });
+    return b.includes('<span dir="ltr" class="num">Brave Media</span>.') && !b.includes('Brave Media.</span>');
+  })());
+  ok("an escaped entity in the Arabic is never cut in half, and runs are escaped inside the span", (() => {
+    const b = doc({ project: TRF, donorClauses: { en: "x", ar: "مؤسسة سمير قصير & الاتحاد الأوروبي، ومنها AnaHon's حقوق." } });
+    const sec = (b.match(/<section class="lang ar"[\s\S]*?<\/section>/) || [""])[0];
+    const clause = sec.slice(sec.indexOf("متطلبات الجهة المانحة"));
+    return clause.includes("&amp;") && !clause.includes("&amp;amp;") && !clause.includes('class="num">amp;</span>')
+      && clause.includes('<span dir="ltr" class="num">AnaHon&#39;s</span>');
+  })());
   ok("the English clause is NOT wrapped in RTL isolation spans — it is already LTR prose",
     !/<p><span dir="ltr" class="num">This subcontract/.test(d));
   ok("the route lets the form decide withholding per contract, and the form defaults it on",
