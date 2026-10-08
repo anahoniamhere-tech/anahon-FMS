@@ -929,6 +929,8 @@ export const AR: Record<string, string> = {
   "Also add to": "إضافة أيضاً إلى",
   "Field": "المجال",
   "assessed by the": "يقيّمه",
+  "Deduct 8.5% withholding at source": "اقتطاع ضريبة استقطاع بنسبة 8.5% من المنبع",
+  "— untick only if they have an MoF registration number": "— يُزال الخيار فقط لمن لديه رقم تسجيل ضريبي لدى وزارة المالية",
   "Nobody in this field yet.": "لا أحد في هذا المجال بعد.",
   "Executive Director": "المدير التنفيذي",
   "seat vacant": "منصب شاغر",

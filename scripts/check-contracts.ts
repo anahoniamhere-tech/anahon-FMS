@@ -421,7 +421,7 @@ console.log("\nL. what the papers say AnaHon is (Front desk / Saad, 18 Sep 2026)
     !doc({ kind: "Service", contractTotal: 1000, party: { ...BASE.party, taxId: "" }, withholding: false })
       .includes("withholding tax is deducted at source"));
 
-  const donor = doc({ project: TRF, donorClauses: { en: "<p>EN SANCTIONS CLAUSE</p>", ar: "<p>بند العقوبات</p>" } });
+  const donor = doc({ project: TRF, donorClauses: { en: "EN SANCTIONS CLAUSE", ar: "بند العقوبات" } });
   ok("a donor's clauses print as clause 6, after Language, in both languages",
     /6\. Donor requirements<\/strong><\/h2>\s*<p>EN SANCTIONS CLAUSE<\/p>/.test(donor)
     && donor.includes("٦. متطلبات الجهة المانحة") && donor.includes("بند العقوبات")
@@ -459,6 +459,32 @@ console.log("\nL. what the papers say AnaHon is (Front desk / Saad, 18 Sep 2026)
     && past.includes("ويُوقَّع بالتاريخ المدوَّن إلى جانب التوقيعين أدناه") && past.includes("It is not backdated."));
   ok("a contract whose term starts today or later says nothing of the sort",
     !doc({ startDate: "2027-01-01", endDate: "2027-12-31", monthlyFee: 2700 }).includes("precedes its signature")); }
+
+// 8 Oct 2026 — the donor's clauses are stored as plain text a person typed, not markup: paragraphs
+// separated by blank lines. They were being inserted raw, so clause 6 ran on as one block, any "&"
+// or "<" in a donor's wording would have become markup, and the Latin runs in the Arabic
+// (SKF-AN-31/2026, Brave Media, OLAF) sat unisolated in RTL prose — section K's rule.
+{ const AR = "يُموَّل هذا العقد الفرعي بموجب اتفاقية الدعم المالي لأطراف ثالثة رقم SKF-AN-31/2026 المبرمة مع مؤسسة سمير قصير، ضمن برنامج Brave Media.\n(ج) السجلات والتدقيق: مفتوحة للتدقيق من المكتب الأوروبي لمكافحة الاحتيال (OLAF).";
+  const EN = "This subcontract is funded under agreement SKF-AN-31/2026 with SKF <the foundation> & the EU.\n(c) Records and audit. Open to audit by OLAF.";
+  const d = doc({ project: TRF, donorClauses: { ar: AR, en: EN } });
+  const arSec = (d.match(/<section class="lang ar"[\s\S]*?<\/section>/) || [""])[0];
+  ok("each donor clause is its own paragraph — the stored wording separates them with SINGLE newlines",
+    (d.match(/<p>This subcontract is funded under agreement/g) || []).length === 1
+    && d.includes("<p>(c) Records and audit. Open to audit by OLAF.</p>")
+    && (arSec.match(/<p>/g) || []).length >= 2);
+  ok("donor text is escaped — a donor's own angle bracket or ampersand never becomes markup",
+    d.includes("SKF &lt;the foundation&gt; &amp; the EU") && !d.includes("SKF <the foundation>"));
+  ok("every Latin run inside the Arabic clause is bidi-isolated (section K's rule)", (() => {
+    const clause = arSec.slice(arSec.indexOf("متطلبات الجهة المانحة"));
+    const bare = clause.replace(/<span dir="ltr" class="num">[\s\S]*?<\/span>/g, "").replace(/<[^>]*>/g, "");
+    return !/[A-Za-z]/.test(bare);
+  })());
+  ok("the English clause is NOT wrapped in RTL isolation spans — it is already LTR prose",
+    !/<p><span dir="ltr" class="num">This subcontract/.test(d));
+  ok("the route lets the form decide withholding per contract, and the form defaults it on",
+    /const \{ employeeId[^}]*withholding \} = req\.body;/.test(server)
+    && /withholding: withholding === undefined \|\| withholding === null \|\| withholding === "" \? undefined : !!withholding,/.test(server)
+    && readFileSync(new URL("../src/tabs/PayrollTab.tsx", import.meta.url), "utf8").includes("checked={contractForm.withholding !== false}")); }
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

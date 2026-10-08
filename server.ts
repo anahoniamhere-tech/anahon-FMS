@@ -3607,7 +3607,7 @@ const initialsFor = (partyId: string, name: string) =>
 
 app.post("/api/contracts/generate", async (req, res) => {
   try {
-    const { employeeId, vendorId, projectId, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLineId, role, user } = req.body;
+    const { employeeId, vendorId, projectId, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLineId, role, user, withholding } = req.body;
 
     // Two distinct instruments, one generator:
     //   employeeId -> Employment contract (payroll, timesheet-based)
@@ -3708,6 +3708,10 @@ app.post("/api/contracts/generate", async (req, res) => {
       // Both come from the project, so a EUR grant cannot print dollars and a grant that
       // requires its terms in every contract cannot produce one without them.
       currency: project?.currency || "USD",
+      // Saad, 8 Oct 2026: everyone on the team is a service provider, so 8.5% withholding applies to
+      // every party without an MoF registration number — a team subcontract included. The form sends
+      // the answer per contract; absent, the generator keeps its own default (service agreements only).
+      withholding: withholding === undefined || withholding === null || withholding === "" ? undefined : !!withholding,
       donorClauses: project?.donorClausesEn || project?.donorClausesAr
         ? { en: project.donorClausesEn, ar: project.donorClausesAr } : undefined,
       // The rate the framework contract sets. Quoted on a subcontract for context; never

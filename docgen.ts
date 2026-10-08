@@ -403,6 +403,22 @@ ${noFixedValue
    */
   const languageAr = `<p>أُبرم هذ${isService ? "ه الاتفاقية" : "ا العقد"} بالعربية والإنكليزية، و<b>النص العربي هو النص الملزم</b>. وعند أي اختلاف في المعنى بين النصين، يُعمل بالنص العربي.</p>`;
 
+  /**
+   * The donor's clauses, as a person typed them: plain text, one clause per line (the stored SKF
+   * wording separates its clauses with single newlines, not blank lines, so splitting on blank
+   * lines alone printed the whole of clause 6 as one run-on block).
+   * Escaped (they are text, not markup, and a stray "&" or "<" must not become one), split into
+   * paragraphs rather than printed as one run-on block, and in the Arabic every Latin run —
+   * SKF-AN-31/2026, Brave Media, OLAF — isolated, or the punctuation beside it jumps.
+   */
+  const LATIN_RUN = /[A-Za-z][A-Za-z0-9&/.,'()\u2019-]*(?:\s+[A-Za-z0-9][A-Za-z0-9&/.,'()\u2019-]*)*/g;
+  const clauseHtml = (text: string, isArabic: boolean) =>
+    String(text || "").split(/\n+/).map(para => para.trim()).filter(Boolean)
+      .map(para => {
+        const body = esc(para.replace(/\s+/g, " "));
+        return `<p>${isArabic ? body.replace(LATIN_RUN, run => ltr(run)) : body}</p>`;
+      }).join("\n");
+
   const H = (n: string, ar: string) => `<h2 style="color:#1a1a1a;font-size:13px"><strong>${n}. ${ar}</strong></h2>`;
   const arabicText = `<section class="lang ar" lang="ar" dir="rtl">
 <h3>النص العربي</h3>
@@ -411,7 +427,7 @@ ${H("٢", isService ? "الأجور" : "الأجر")}${remunerationAr}
 ${H("٣", "الدفع")}${paymentAr}
 ${H("٤", "أحكام أخرى")}${otherAr}
 ${H("٥", "اللغة")}${languageAr}
-${donorClauses?.ar ? `${H("٦", "متطلبات الجهة المانحة")}${donorClauses.ar}` : ""}
+${donorClauses?.ar ? `${H("٦", "متطلبات الجهة المانحة")}${clauseHtml(donorClauses.ar, true)}` : ""}
 </section>`;
 
   return page(`${reference} — ${title} · ${titleAr}`, `<h1>${esc(title)}<span class="alt" style="font-size:13px;letter-spacing:0">${esc(titleAr)}</span></h1>
@@ -507,7 +523,7 @@ organisation's standing policies, which form part of this ${isService ? "agreeme
 binding text</b>. Where the two texts differ in meaning, the Arabic text prevails.</p>
 ${donorClauses?.en ? `
 <h2 style="color:#1a1a1a;font-size:13px"><strong>6. Donor requirements</strong></h2>
-${donorClauses.en}` : ""}
+${clauseHtml(donorClauses.en, false)}` : ""}
 </section>
 
 <div class="sig">

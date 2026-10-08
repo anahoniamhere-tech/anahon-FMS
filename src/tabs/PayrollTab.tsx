@@ -563,6 +563,17 @@ export default function PayrollTab(props: SharedProps) {
                               onChange={(e) => setContractForm({ ...contractForm, contractTotal: e.target.value })}
                               className="finance-input w-full font-mono text-xs" />
                           </div>
+                          <div className="md:col-span-4">
+                            {/* Everyone on the team is a service provider, and none has an MoF registration
+                                number, so the deduction is the normal case (Saad, 8 Oct 2026). Untick it for a
+                                party who produces a tax registry number — they are then paid gross. */}
+                            <label htmlFor={`ct-wht-${emp.id}`} className="flex items-center gap-2 text-[11px] text-slate-700">
+                              <input id={`ct-wht-${emp.id}`} type="checkbox" checked={contractForm.withholding !== false}
+                                onChange={(e) => setContractForm({ ...contractForm, withholding: e.target.checked })}
+                                className="h-4 w-4" />
+                              {t("Deduct 8.5% withholding at source")} <span className="text-slate-400">{t("— untick only if they have an MoF registration number")}</span>
+                            </label>
+                          </div>
                           <button type="submit" disabled={contractBusy}
                             className="bg-slate-900 hover:bg-slate-950 disabled:opacity-50 text-white text-xs font-semibold rounded px-4 py-2.5 shadow transition-all min-h-[44px]">
                             {contractBusy ? "Generating…" : "Generate contract"}

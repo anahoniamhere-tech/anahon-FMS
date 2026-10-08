@@ -190,7 +190,11 @@ export default function App() {
   const [contractFor, setContractFor] = useState<string | null>(null);
   const [contractParty, setContractParty] = useState<"employee" | "vendor">("employee");
   const [contractForm, setContractForm] = useState({
-    projectId: "", kind: "Employment", startDate: "", endDate: "", loePct: "", monthlyFee: "", contractTotal: "", role: ""
+    projectId: "", kind: "Employment", startDate: "", endDate: "", loePct: "", monthlyFee: "", contractTotal: "", role: "",
+    // 8.5% deducted at source. Defaulted on, because no party on file has an MoF registration number
+    // and everyone on the team is a service provider (Saad, 8 Oct 2026); a party who produces one
+    // is paid gross, and whoever draws the contract says so here.
+    withholding: true
   });
   const [contractBusy, setContractBusy] = useState(false);
 
@@ -403,7 +407,7 @@ export default function App() {
       if (res.ok) {
         triggerToast(`Contract ${data.reference} generated — unsigned, open it to review.`);
         setContractFor(null);
-        setContractForm({ projectId: "", kind: "Employment", startDate: "", endDate: "", loePct: "", monthlyFee: "", contractTotal: "" });
+        setContractForm({ projectId: "", kind: "Employment", startDate: "", endDate: "", loePct: "", monthlyFee: "", contractTotal: "", role: "", withholding: true });
         refreshState();
       } else {
         triggerToast(data.error || "Contract generation failed.", "error");
