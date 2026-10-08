@@ -75,3 +75,20 @@ export function shareOfLine(v: VoucherLike, budgetLineId: string): number {
   if (split.length) return r2(split.filter(a => a.budgetLineId === budgetLineId).reduce((s, a) => s + Number(a.amount) * (v.rate || 1), 0));
   return v.budgetLineId === budgetLineId ? r2(v.convertedAmount) : 0;
 }
+
+/**
+ * How one voucher divides over budget lines, in USD: its allocations when it carries them — with whatever is
+ * left of the debit under "" — and otherwise the whole amount on the line it names. For reading a voucher by
+ * category: the newsroom VPS debit of 222.23 puts 52.59 under the grant's line and 169.64 under no line, so a
+ * category rollup no longer files the whole debit under a category only part of it belongs to.
+ */
+export function linesOf(v: VoucherLike): { budgetLineId: string; usd: number }[] {
+  let allocations: { budgetLineId?: string; amount?: number }[] = [];
+  try { allocations = JSON.parse(v.allocationsJson || "[]"); } catch { }
+  const split = allocations.filter(a => a.budgetLineId && a.amount != null);
+  if (!split.length) return [{ budgetLineId: String(v.budgetLineId || ""), usd: r2(v.convertedAmount) }];
+  const out = split.map(a => ({ budgetLineId: String(a.budgetLineId), usd: r2(Number(a.amount) * (v.rate || 1)) }));
+  const left = r2(v.convertedAmount - out.reduce((s, x) => s + x.usd, 0));
+  if (Math.abs(left) > 0.005) out.push({ budgetLineId: "", usd: left });
+  return out;
+}

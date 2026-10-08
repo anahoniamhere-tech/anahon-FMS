@@ -52,7 +52,7 @@ import { FINANCE as FINANCE_SEATS } from "./src/roles.js";
 import { REQUIRED_PERSONNEL } from "./src/personnelDocs.js";
 import { isFloat as isFloatAccount } from "./src/pettyCash.js";
 import { pairFxLegs, isFxReversal, FX_PATTERN } from "./src/fxPairs.js";
-import { shareOfProject, shareOfLine } from "./src/budgetActuals.js";
+import { shareOfProject, shareOfLine, linesOf } from "./src/budgetActuals.js";
 import { CONSULTANT_REVIEW_CATEGORY, isMonth, monthBounds, packExcludes, reconcileMarkBlocker, legsOf, trialBalance, openItems, paymentDate, lateRecords, safeName, type Recorded } from "./src/consultantPack.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { solidarityBlocker } from "./src/solidarity.js";
@@ -13448,11 +13448,13 @@ app.get("/api/reports/period", async (req, res) => {
       };
     }).filter(p => p.inPeriod > 0 || p.toDate > 0);
 
-    // category rollup across projects (period)
+    // category rollup across projects (period). A split voucher divides over its lines (src/budgetActuals.ts):
+    // read whole, the newsroom VPS filed all 222.23 under the grant line's category when 52.59 of it is that
+    // line's. The categories still add up to the period's whole spend — the remainder sits under Unallocated.
     const byCategory: Record<string, number> = {};
-    for (const e of periodExpenses) {
-      const cat = budgetLines.find(b => b.id === e.budgetLineId)?.category || "Unallocated";
-      byCategory[cat] = +((byCategory[cat] || 0) + e.convertedAmount).toFixed(2);
+    for (const e of periodExpenses) for (const part of linesOf(e as any)) {
+      const cat = budgetLines.find(b => b.id === part.budgetLineId)?.category || "Unallocated";
+      byCategory[cat] = +((byCategory[cat] || 0) + part.usd).toFixed(2);
     }
 
     // income received in the window (bank deposits).
@@ -13723,6 +13725,9 @@ app.post("/api/gemini/compliance-audit", async (req, res) => {
       voucher: e.voucherNo, title: e.title, amount: e.amount, currency: e.currency,
       convertedUSD: e.convertedAmount, whtUSD: e.whtAmount, netUSD: e.netAmount,
       status: e.status, paymentMethod: e.paymentMethod, budgetLineId: e.budgetLineId,
+      // A split voucher names one line but belongs to several: without its allocations the auditor would read
+      // the whole debit against that one line (the newsroom VPS: 222.23 named, 52.59 the grant's).
+      allocations: (() => { try { return JSON.parse(e.allocationsJson || "[]"); } catch { return []; } })(),
       // The date the cost happened, and separately when it was recorded — a late record must read as late (§6.8).
       hasAttachment: e.hasAttachment, date: e.transactionDate || e.created_at?.split("T")[0], recordedOn: e.created_at?.split("T")[0]
     }));

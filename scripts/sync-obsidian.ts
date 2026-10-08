@@ -13,6 +13,7 @@
  *   npx tsx scripts/sync-obsidian.ts --check  # report drift, change nothing (CI-friendly)
  */
 import { PrismaClient } from "@prisma/client";
+import { shareOfProject } from "../src/budgetActuals.js";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -45,9 +46,12 @@ async function build() {
   const donorName = (id: string) => donors.find(d => d.id === id)?.name || "—";
   // Money actually committed: anything past approval. Draft/returned vouchers are not spend.
   const COUNTED = ["Approved", "Paid", "Posted"];
+  // A split voucher charges each project only its own share (src/budgetActuals.ts), and a voucher filed on
+  // another project may still carry a slice of this one — so the share decides, not the voucher's own project.
   const spentOf = (pid: string) => expenses
-    .filter(e => e.projectId === pid && COUNTED.includes(e.status))
-    .reduce((s, e) => s + e.convertedAmount, 0);
+    .filter(e => COUNTED.includes(e.status))
+    .reduce((s, e) => s + shareOfProject(e as any, pid), 0);
+  const vouchersOf = (pid: string) => expenses.filter(e => shareOfProject(e as any, pid) > 0).length;
   // Bank proof only: pending advice lines never count as received.
   const receivedOf = (pid: string) => txs
     .filter(t => t.projectId === pid && t.type === "Deposit" && !t.pending)
@@ -69,7 +73,7 @@ async function build() {
       `| Received (bank-confirmed) | ${usd(received)}${received < p.budgetUSD ? ` — **${usd(p.budgetUSD - received)} outstanding**` : ""} |`,
       `| Spent | ${usd(spent)} (${pct.toFixed(1)}%) |`,
       `| Unspent | ${usd(p.budgetUSD - spent)} |`,
-      `| Vouchers | ${expenses.filter(e => e.projectId === p.id).length} |`,
+      `| Vouchers | ${vouchersOf(p.id)} |`,
       `| Documents on file | ${docs.filter(d => d.linkedRecordId === p.id || d.linkedRecordType === p.code).length} |`,
       `| Timeline steps | ${acts.length}${acts.length ? ` (${done} done)` : ""} |`,
       `| Status | ${p.status} |`,

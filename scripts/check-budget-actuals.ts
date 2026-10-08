@@ -3,7 +3,7 @@
 // that the reconciliation reads the vouchers correctly.
 //   npx tsx scripts/check-budget-actuals.ts
 import { readFileSync } from "node:fs";
-import { budgetTotals, budgetDrift, shareOfProject, shareOfLine, ACTUAL_STATUSES, COMMITTED_STATUSES } from "../src/budgetActuals.js";
+import { budgetTotals, budgetDrift, shareOfProject, shareOfLine, linesOf, ACTUAL_STATUSES, COMMITTED_STATUSES } from "../src/budgetActuals.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
@@ -47,6 +47,21 @@ ok("the period report asks per project and per line, never the whole amount",
   /const inPeriod = periodExpenses\.reduce\(\(s, e\) => s \+ shareOfProject\(e as any, p\.id\), 0\)/.test(server)
   && /inPeriod: \+periodExpenses\.reduce\(\(s, e\) => s \+ shareOfLine\(e as any, b\.id\), 0\)/.test(server)
   && !/periodExpenses\.filter\(e => e\.projectId === p\.id\)/.test(server));
+
+console.log("\n3c. a split voucher reads by line without losing or inventing money");
+const parts = linesOf(vps as any);
+ok("the allocated slice keeps its line", parts.find(x => x.budgetLineId === "bl-6")?.usd === 52.59);
+ok("the rest of the debit is charged to no line, not to the grant's", parts.find(x => x.budgetLineId === "")?.usd === 169.64);
+ok("the parts add up to the payment", Math.abs(parts.reduce((s, x) => s + x.usd, 0) - 222.23) < 0.005);
+ok("a whole voucher stays one part on its own line", linesOf(v() as any).length === 1 && linesOf(v() as any)[0].budgetLineId === "bl-1");
+ok("the category rollup reads the voucher by line, not whole",
+  /for \(const e of periodExpenses\) for \(const part of linesOf\(e as any\)\)/.test(server)
+  && !/byCategory\[cat\] = \+\(\(byCategory\[cat\] \|\| 0\) \+ e\.convertedAmount\)/.test(server));
+ok("the auditor is given each voucher's allocations, so it cannot read a split one whole",
+  /allocations: \(\(\) => \{ try \{ return JSON\.parse\(e\.allocationsJson \|\| "\[\]"\); \} catch \{ return \[\]; \} \}\)\(\)/.test(server));
+ok("the Obsidian sync asks for each project's share",
+  /reduce\(\(s, e\) => s \+ shareOfProject\(e as any, pid\), 0\)/.test(read("scripts/sync-obsidian.ts"))
+  && !/filter\(e => e\.projectId === pid && COUNTED/.test(read("scripts/sync-obsidian.ts")));
 
 console.log("\n4. the script only touches the two stored totals");
 const script = read("scripts/reconcile-budget-actuals.ts");
