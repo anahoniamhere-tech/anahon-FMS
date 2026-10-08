@@ -38,6 +38,10 @@ export interface Project {
   /** Policy P5 §4.4.4 — "any" channel, or "bank" only as the donor's agreement says. */
   channelRule?: "any" | "bank";
   channelRuleSource?: string;
+  /** The donor's own clauses, printed as clause 6 of every contract drawn on this project.
+   *  Both languages or neither — the Arabic governs (server: /api/projects/donor-clauses). */
+  donorClausesEn?: string;
+  donorClausesAr?: string;
 }
 
 export interface ProposalBudgetRow { line: string; description: string; amount: number }

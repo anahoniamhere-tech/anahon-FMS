@@ -310,6 +310,8 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
     }
   };
 
+  // The donor clauses being edited, or null — both languages are saved together.
+  const [clauseDraft, setClauseDraft] = useState<{ en: string; ar: string } | null>(null);
   const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<WorkspaceTab>("overview");
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -1718,6 +1720,89 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                           </div>
                         </div>
                       )}
+
+                      {/* ── The donor's own clauses (People, f4cdb09) ──────────────────
+                          Some donors require their wording to appear in every contract AnaHon
+                          draws on their money — sanctions, termination. It prints as clause 6.
+                          Both languages or neither: the Arabic governs the contract, so English
+                          alone would put a term in front of a provider that the binding text
+                          does not carry. The server refuses that; so does this form. */}
+                      {projectWorkspaceTab === "papers" && (() => {
+                        const proj: any = state.projects.find((p: any) => p.id === selectedProjectId);
+                        if (!proj) return null;
+                        const mayEdit = MANAGERS.includes(currentUser.role);
+                        const has = !!(proj.donorClausesEn || proj.donorClausesAr);
+                        const half = !!clauseDraft && (!!clauseDraft.en.trim() !== !!clauseDraft.ar.trim());
+                        const saveClauses = async () => {
+                          try {
+                            const res = await fetch("/api/projects/donor-clauses", {
+                              method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ projectId: proj.id, donorClausesEn: clauseDraft!.en, donorClausesAr: clauseDraft!.ar, user: currentUser })
+                            });
+                            const d = await res.json().catch(() => ({}));
+                            if (!res.ok) throw new Error(d.error || "Refused");
+                            triggerToast(`${proj.code}: ${d.donorClausesEn ? t("donor clauses saved — they print as clause 6") : t("donor clauses cleared")}.`);
+                            setClauseDraft(null); refreshState();
+                          } catch (err: any) { triggerToast(err.message, "error"); }
+                        };
+                        return (
+                          <div className="p-4 border border-slate-200 rounded-lg bg-slate-50 space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs">
+                                <strong className="uppercase font-mono text-slate-700">{t("The donor's own clauses")}:</strong>{" "}
+                                {has
+                                  ? <span className="text-slate-700">{t("set — printed as clause 6 of every contract drawn on this project")}</span>
+                                  : <span className="text-slate-500">{t("none — contracts carry AnaHon's own terms only")}</span>}
+                              </p>
+                              {mayEdit && !clauseDraft && (
+                                <button type="button" onClick={() => setClauseDraft({ en: proj.donorClausesEn || "", ar: proj.donorClausesAr || "" })}
+                                  className="text-xs rounded-lg px-3 min-h-[44px] bg-white border border-slate-200 hover:bg-slate-100">
+                                  {has ? t("Change the clauses") : t("Add the donor's clauses")}
+                                </button>
+                              )}
+                            </div>
+                            {has && !clauseDraft && (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <p className="whitespace-pre-wrap rounded border border-slate-200 bg-white p-2 text-[11px] text-slate-700" dir="ltr">{proj.donorClausesEn}</p>
+                                <p className="whitespace-pre-wrap rounded border border-slate-200 bg-white p-2 text-[11px] text-slate-700" dir="rtl">{proj.donorClausesAr}</p>
+                              </div>
+                            )}
+                            {clauseDraft && (
+                              <div className="space-y-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                  <div>
+                                    <label htmlFor="dc-en" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("English")}</label>
+                                    <textarea id="dc-en" rows={6} dir="ltr" value={clauseDraft.en}
+                                      onChange={e => setClauseDraft({ ...clauseDraft, en: e.target.value })}
+                                      placeholder={t("The donor's wording, exactly as the agreement writes it.")}
+                                      className="finance-input w-full text-[11px]" />
+                                  </div>
+                                  <div>
+                                    <label htmlFor="dc-ar" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Arabic — this is the text that governs")}</label>
+                                    <textarea id="dc-ar" rows={6} dir="rtl" value={clauseDraft.ar}
+                                      onChange={e => setClauseDraft({ ...clauseDraft, ar: e.target.value })}
+                                      placeholder={t("The same clauses in Arabic.")}
+                                      className="finance-input w-full text-[11px]" />
+                                  </div>
+                                </div>
+                                {half && (
+                                  <p className="text-[11px] font-bold text-red-700">
+                                    {t("Donor clauses are set in both Arabic and English, or in neither — the Arabic text governs the contract.")}
+                                  </p>
+                                )}
+                                <div className="flex gap-2">
+                                  <button type="button" onClick={saveClauses} disabled={half}
+                                    className="text-xs rounded-lg px-3 min-h-[44px] bg-red-600 text-white hover:bg-red-700 disabled:opacity-60">
+                                    {half ? t("Cannot save — fill both languages, or empty both") : clauseDraft.en.trim() ? t("Save the clauses") : t("Clear the clauses")}
+                                  </button>
+                                  <button type="button" onClick={() => setClauseDraft(null)} className="text-xs rounded-lg px-3 min-h-[44px] bg-slate-100 hover:bg-slate-200">{t("Cancel")}</button>
+                                </div>
+                                <p className="text-[10px] text-slate-500">{t("Contracts already drawn are unchanged — the clauses print on contracts drawn from now on.")}</p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {projectWorkspaceTab === "money" && (
                         <div className="space-y-6">

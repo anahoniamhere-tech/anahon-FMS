@@ -1702,5 +1702,21 @@ export const AR: Record<string, string> = {
   // AED on quotations (7 Oct 2026, src/currencies.ts).
   "pegged": "مربوط بالدولار",
   "Converted to USD — this client was quoted in more than one currency.": "محوّل إلى الدولار — عُرضت على هذا العميل أسعار بأكثر من عملة.",
+  // The donor's own clauses on a project (8 Oct 2026) — printed as clause 6 of its contracts.
+  "The donor's own clauses": "بنود المانح",
+  "set — printed as clause 6 of every contract drawn on this project": "محدّدة — تُطبع كالبند السادس في كل عقد يُحرَّر على هذا المشروع",
+  "none — contracts carry AnaHon's own terms only": "لا توجد — تحمل العقود شروط اناهون وحدها",
+  "Add the donor's clauses": "إضافة بنود المانح",
+  "Change the clauses": "تعديل البنود",
+  "Arabic — this is the text that governs": "العربية — وهي النص الملزِم",
+  "The donor's wording, exactly as the agreement writes it.": "نص المانح كما ورد حرفياً في الاتفاقية.",
+  "The same clauses in Arabic.": "البنود نفسها بالعربية.",
+  "Donor clauses are set in both Arabic and English, or in neither — the Arabic text governs the contract.": "تُحدَّد بنود المانح بالعربية والإنكليزية معاً أو لا تُحدَّد — فالنص العربي هو الملزِم.",
+  "Cannot save — fill both languages, or empty both": "لا يمكن الحفظ — املأ اللغتين أو اتركهما فارغتين",
+  "Save the clauses": "حفظ البنود",
+  "Clear the clauses": "مسح البنود",
+  "Contracts already drawn are unchanged — the clauses print on contracts drawn from now on.": "العقود المحرَّرة سابقاً لا تتغيّر — تُطبع البنود في العقود التي تُحرَّر من الآن فصاعداً.",
+  "donor clauses saved — they print as clause 6": "حُفظت بنود المانح — وتُطبع كالبند السادس",
+  "donor clauses cleared": "مُسحت بنود المانح",
 };
 export const tr = (lang: string, s: string) => (lang === "ar" ? (AR[s] || s) : s);
