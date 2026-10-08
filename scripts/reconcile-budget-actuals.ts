@@ -17,14 +17,15 @@ const ALL = process.argv.includes("--all");
 const code = process.argv[process.argv.indexOf("--project") + 1];
 if (!ALL && (!code || code.startsWith("--"))) throw new Error("Name the project: --project TRF-2026, or --all");
 
-const projects = await prisma.project.findMany({ where: ALL ? {} : { code } });
+// Only the fields this needs: another room's unmigrated column must not break a reconciliation.
+const projects = await prisma.project.findMany({ where: ALL ? {} : { code }, select: { id: true, code: true } });
 if (!projects.length) throw new Error(`No project ${code}`);
-const vouchers = await prisma.expense.findMany();
+const vouchers = await prisma.expense.findMany({ select: { id: true, status: true, budgetLineId: true, convertedAmount: true, rate: true, allocationsJson: true } });
 const totals = budgetTotals(vouchers as any);
 const now = new Date().toISOString();
 
 for (const p of projects) {
-  const lines = await prisma.budgetLine.findMany({ where: { projectId: p.id }, orderBy: { code: "asc" } });
+  const lines = await prisma.budgetLine.findMany({ where: { projectId: p.id }, orderBy: { code: "asc" }, select: { id: true, code: true, actualUSD: true, committedUSD: true } });
   const changes: string[] = [];
   for (const l of lines) {
     const drift = budgetDrift(l, totals);
@@ -33,7 +34,7 @@ for (const p of projects) {
     changes.push(`${l.code}: actual ${l.actualUSD.toFixed(2)} → ${drift.actualUSD.toFixed(2)}, committed ${l.committedUSD.toFixed(2)} → ${drift.committedUSD.toFixed(2)}`);
     if (APPLY) await prisma.budgetLine.update({ where: { id: l.id }, data: { actualUSD: drift.actualUSD, committedUSD: drift.committedUSD } });
   }
-  const after = await prisma.budgetLine.findMany({ where: { projectId: p.id } });
+  const after = await prisma.budgetLine.findMany({ where: { projectId: p.id }, select: { allocatedUSD: true, actualUSD: true, committedUSD: true } });
   const sum = (f: "allocatedUSD" | "actualUSD" | "committedUSD") => after.reduce((s, l) => s + l[f], 0).toFixed(2);
   console.log(`  ${p.code}: ${changes.length} line(s) ${APPLY ? "reconciled" : "would change"} · allocated ${sum("allocatedUSD")} · actual ${sum("actualUSD")} · committed ${sum("committedUSD")}${APPLY ? "" : " (dry run)"}`);
   if (APPLY && changes.length) {

@@ -58,6 +58,21 @@ function describe(narrative: string): string {
   return hasArabic(n) ? `Statement line [${n}]` : n;
 }
 
+/**
+ * An incoming transfer's narrative is a bank code ("IPO/03MX26092232622"), and who sent it and what for are in
+ * the statement's details column. A line that reads "Incoming transfer — SAMIR KASSIR FOUNDATION, 'FIRST PAYMENT
+ * FOR EU FSTP…'" is worth more in the books than the code, and it is the bank's own text, not an interpretation.
+ */
+function withSender(base: string, details: string): string {
+  const lines = String(details || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const at = (label: string) => { const i = lines.findIndex(l => new RegExp(label, "i").test(l)); return i < 0 ? [] : lines.slice(i + 1); };
+  // The first line under "Ordering Customer" that is a name, not an account number or IBAN.
+  const who = at("Ordering Customer|Odering Customer").find(l => /[A-Za-z]{3}/.test(l) && !/^[A-Z]{2}\d{2}[A-Z0-9]{6,}$/.test(l) && !/^\d[\d\s]+$/.test(l));
+  const why = at("Details of Payment").filter(l => !/^Ordering|^Odering/i.test(l)).join(" ").replace(/\s+/g, " ").trim();
+  if (!who && !why) return base;
+  return `${base}${who ? ` — ${who}` : ""}${why ? `, "${why}"` : ""}`;
+}
+
 interface Line { date: string; amount: number; desc: string; ref: string; pending: boolean }
 function parse(file: string) {
   const wb = XLSX.readFile(file, { codepage: 1256 });
@@ -70,11 +85,11 @@ function parse(file: string) {
   const currency = /EUR/.test(bf) ? "EUR" : "USD";
   const lines: Line[] = [];
   for (const r of rows) {
-    const cells = r.filter(c => c !== "");
+    const cells = r.filter((c, i) => c !== "" || i === 6);
     if (!cells.length || !isDate(cells[0])) continue;
     if (isDate(cells[1] || "")) {
       // posted: business date, value date, narrative, amount, running balance, ref
-      lines.push({ date: iso(cells[0]), amount: num(cells[3]), desc: describe(cells[2]), ref: cells[5] || "", pending: false });
+      lines.push({ date: iso(cells[0]), amount: num(cells[3]), desc: withSender(describe(cells[2]), cells[6] || ""), ref: cells[5] || "", pending: false });
     } else {
       // the trailing block the bank does not consider definitive: date, narrative…, amount
       const amount = num(cells[cells.length - 1]);
