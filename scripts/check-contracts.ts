@@ -398,5 +398,44 @@ console.log("\nL. what the papers say AnaHon is (Front desk / Saad, 18 Sep 2026)
   ok("the registration number and MoF number are unchanged", (docgen.match(/90\/2023/g) || []).length >= 2 && docgen.includes("3893185"));
 }
 
+// 8 Oct 2026 — three gaps found drawing the SKF FSTP (EUR) subcontracts: a grant in euros printed
+// dollars; the withholding clause was welded to service agreements; and a donor's own terms had
+// nowhere to go. Figures follow the project's currency, withholding is a per-contract choice, and
+// a project carries its donor's clauses as clause 6.
+{ const eur = doc({ monthlyFee: 200, contractTotal: 1200, project: { code: "ANH-2026-SKF-BM-01", name: "AnaHon Forward", currency: "EUR" }, currency: "EUR" });
+  ok("a contract on a EUR grant prints euros, in both languages",
+    eur.includes("€200.00") && eur.includes("€1,200.00") && !/\$\d/.test(eur));
+  ok("a contract with no currency given still prints dollars, as every contract drawn before did",
+    doc({ monthlyFee: 200, contractTotal: 1200 }).includes("$200.00"));
+
+  const service = doc({ kind: "Service", contractTotal: 1000, party: { ...BASE.party, taxId: "" } });
+  ok("an unregistered service provider still gets the withholding clause by default",
+    service.includes(`${WHT_LABEL} withholding tax is deducted at source`) && service.includes("تُقتطع ضريبة استقطاع"));
+  const team = doc({ project: TRF, monthlyFee: 200, contractTotal: 1200 });
+  ok("a team subcontract gets NO withholding clause unless asked — the accountant has not answered yet",
+    !team.includes("withholding tax is deducted at source") && !team.includes("تُقتطع ضريبة استقطاع"));
+  const teamWht = doc({ project: TRF, monthlyFee: 200, contractTotal: 1200, withholding: true });
+  ok("...and gets it, in both languages, the day the answer is yes",
+    teamWht.includes(`${WHT_LABEL} withholding tax is deducted at source`) && teamWht.includes("تُقتطع ضريبة استقطاع"));
+  ok("withholding can also be switched OFF for a service agreement that should not carry it",
+    !doc({ kind: "Service", contractTotal: 1000, party: { ...BASE.party, taxId: "" }, withholding: false })
+      .includes("withholding tax is deducted at source"));
+
+  const donor = doc({ project: TRF, donorClauses: { en: "<p>EN SANCTIONS CLAUSE</p>", ar: "<p>بند العقوبات</p>" } });
+  ok("a donor's clauses print as clause 6, after Language, in both languages",
+    /6\. Donor requirements<\/strong><\/h2>\s*<p>EN SANCTIONS CLAUSE<\/p>/.test(donor)
+    && donor.includes("٦. متطلبات الجهة المانحة") && donor.includes("بند العقوبات")
+    && donor.indexOf("5. Language") < donor.indexOf("6. Donor requirements"));
+  ok("a project whose grant imposes no terms gets no clause 6 at all",
+    !doc({ project: TRF }).includes("Donor requirements") && !doc({ project: TRF }).includes("متطلبات الجهة المانحة"));
+  ok("the clauses are stored per project, in both languages, and set by Finance or a director",
+    /donorClausesEn\s+String @default\(""\)/.test(readFileSync(new URL("../prisma/schema.prisma", import.meta.url), "utf8"))
+    && /app\.post\("\/api\/projects\/donor-clauses"/.test(server)
+    && server.includes("Donor clauses are set in both Arabic and English, or in neither"));
+  ok("the generator is given the project's currency and its donor clauses",
+    /currency: project\?\.currency \|\| "USD",/.test(server) && /donorClauses: project\?\.donorClausesEn \|\| project\?\.donorClausesAr/.test(server));
+  ok("the contract's audit line names the currency it was drawn in, not USD",
+    !/total \$\{contractTotal\} USD/.test(server) && /total \$\{contractTotal\} \$\{contractCcy\}/.test(server)); }
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

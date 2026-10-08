@@ -60,6 +60,10 @@ model Project {
   channelRule       String @default("any")
   /// The agreement the rule comes from (an AppDoc id), so the refusal can cite it.
   channelRuleSource String @default("")
+  /// Donor terms this grant requires in every contract made under it (sanctions, termination…),
+  /// as clause paragraphs in each language. Printed as clause 6. Empty means the grant imposes none.
+  donorClausesEn    String @default("")
+  donorClausesAr    String @default("")
 }
 
 // Funding funnel: money BEFORE it lands. Deliberately a separate table so nothing

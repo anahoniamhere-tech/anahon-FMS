@@ -215,6 +215,25 @@ export function contractHtml(o: {
   role?: string;
   kind: "Employment" | "Service";
   startDate: string; endDate: string; loePct?: number; monthlyFee: number; contractTotal: number;
+  /**
+   * The currency the engagement is contracted in — the project's own currency, not a rollup
+   * figure. Omitted means USD, which is what every contract drawn before 8 Oct 2026 was.
+   * A EUR grant that printed "$" would state a sum nobody agreed to.
+   */
+  currency?: string;
+  /**
+   * Whether withholding tax is deducted at source under this instrument. Omitted keeps the rule
+   * the generator has always applied: a service agreement with a provider who has no MoF
+   * registration. Whether it also applies to the team's own subcontracts is with the accountant
+   * (open item 1 of the service-provider switch), so it is a choice per contract, not a guess.
+   */
+  withholding?: boolean;
+  /**
+   * The donor's own terms, where the grant agreement requires them in every contract under it
+   * (SKF §2.13 sanctions, §2.03 f termination). Both languages, already written as clause
+   * paragraphs; printed as clause 6, after Language. Absent means the grant imposes none.
+   */
+  donorClauses?: { ar: string; en: string };
   budgetLine?: any; reference: string;
   /**
    * The yearly framework contract this subcontract sits under, when one exists. Undefined
@@ -242,7 +261,7 @@ export function contractHtml(o: {
    */
   supersedesReference?: string | null;
 }) {
-  const { party: emp, project: p, account, countersignatory, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLine, reference, parentReference, fullSalary, supersedesReference } = o;
+  const { party: emp, project: p, account, countersignatory, kind, startDate, endDate, loePct, monthlyFee, contractTotal, budgetLine, reference, parentReference, fullSalary, supersedesReference, donorClauses } = o;
   const isService = kind === "Service";
   /**
    * A subcontract is an employment engagement that names a project. Nothing new is stored
@@ -268,6 +287,13 @@ export function contractHtml(o: {
   const taxId = String(emp.taxId ?? "").trim();
   const registered = !!taxId && !/^n\/a$/i.test(taxId);
   /**
+   * Is withholding deducted under THIS instrument? The default is the rule the generator has
+   * always applied — a service agreement with an unregistered provider — and the caller may
+   * say otherwise. The team's own subcontracts are left as they were, because whether
+   * withholding applies to them is still the accountant's answer to give, not the system's.
+   */
+  const withholds = o.withholding ?? (isService && !registered);
+  /**
   * What the paper calls itself. AnaHon has no employees — everyone on the team is a service
   * provider on an annual contract stating total salary and terms of reference, and projects
   * then buy a level of effort from it by subcontract (Saad, 12 Sep 2026). `kind` is still
@@ -289,7 +315,9 @@ export function contractHtml(o: {
   const titleAr = isService ? "اتفاقية خدمات" : isSub ? "عقد فرعي" : "عقد خدمات سنوي";
   const TOTAL_TEXT_AR = "لا قيمة ثابتة؛ يُتعاقد على كل ارتباط بصورة منفصلة لكل مشروع";
   const dAr = (iso: string) => ltr(longDateAr(iso));
-  const mAr = (v: number) => ltr(money(v));
+  /** Every figure on this instrument, in the currency it is contracted in. */
+  const m = (v: number) => money(v, o.currency || "USD");
+  const mAr = (v: number) => ltr(m(v));
 
   /* ── The clauses, written once per language ───────────────────────────────────────────
    * Not one template with swapped fragments: Arabic puts the pieces in a different order,
@@ -323,13 +351,13 @@ ${noFixedValue
 
   const paymentAr = `<p>يُدفع ${account
       ? `${emp.paymentMethod === "Cash" ? "نقداً مسحوباً من" : "بتحويل مصرفي من"} <b>${ltr(esc(account.name))}</b> (${ltr(esc(account.accountNo))})`
-      : "من الحساب المسجّل في نظام الإدارة المالية"}، مقابل سند صرف معتمد و${isService ? "فاتورة مقدّم الخدمة للمخرجات المسلّمة" : "كشف دوام موقّع للشهر"}، وفقاً لسياسة المالية والمشتريات لدى اناهون (السياسة ${ltr("P5")}).${isService
-      ? (registered
-        ? " مقدّم الخدمة مسجّل لدى وزارة المالية؛ ويُطبَّق الاقتطاع الضريبي حيث يوجبه القانون."
-        : ` ولأن مقدّم الخدمة غير مسجّل لدى وزارة المالية، <b>تُقتطع ضريبة استقطاع بنسبة ${ltr(WHT_LABEL)} من المنبع</b> من كل دفعة وتُحوَّل إلى وزارة المالية من قِبل اناهون؛ ويتقاضى مقدّم الخدمة المبلغ الصافي.${noFixedValue
+      : "من الحساب المسجّل في نظام الإدارة المالية"}، مقابل سند صرف معتمد و${isService ? "فاتورة مقدّم الخدمة للمخرجات المسلّمة" : "كشف دوام موقّع للشهر"}، وفقاً لسياسة المالية والمشتريات لدى اناهون (السياسة ${ltr("P5")}).${withholds
+      ? ` ولأن مقدّم الخدمة غير مسجّل لدى وزارة المالية، <b>تُقتطع ضريبة استقطاع بنسبة ${ltr(WHT_LABEL)} من المنبع</b> من كل دفعة وتُحوَّل إلى وزارة المالية من قِبل اناهون؛ ويتقاضى مقدّم الخدمة المبلغ الصافي.${noFixedValue
           ? " ويُحسب المقتطع والصافي على القيمة المتعاقد عليها لكل ارتباط، ما لم"
-          : ` وعلى القيمة الإجمالية لهذه الاتفاقية يكون المقتطع ${mAr(contractTotal * WHT_RATE)} والصافي ${mAr(contractTotal * WHT_NET_FACTOR)}، ما لم`} يقدّم مقدّم الخدمة رقم تسجيل ضريبي، وفي هذه الحالة تُدفع المبالغ إجمالاً.`)
-      : ""}</p>`;
+          : ` وعلى القيمة الإجمالية لهذ${isService ? "ه الاتفاقية" : "ا العقد"} يكون المقتطع ${mAr(contractTotal * WHT_RATE)} والصافي ${mAr(contractTotal * WHT_NET_FACTOR)}، ما لم`} يقدّم مقدّم الخدمة رقم تسجيل ضريبي، وفي هذه الحالة تُدفع المبالغ إجمالاً.`
+      : isService && registered
+        ? " مقدّم الخدمة مسجّل لدى وزارة المالية؛ ويُطبَّق الاقتطاع الضريبي حيث يوجبه القانون."
+        : ""}</p>`;
 
   const otherAr = `<p>تخضع جميع أحكام الارتباط الأخرى، ومنها السرية وحماية الأشخاص وإنهاء العقد، لسياسات المؤسسة النافذة، وهي جزء لا يتجزأ من هذ${isService ? "ه الاتفاقية" : "ا العقد"}.</p>`;
 
@@ -348,6 +376,7 @@ ${H("٢", isService ? "الأجور" : "الأجر")}${remunerationAr}
 ${H("٣", "الدفع")}${paymentAr}
 ${H("٤", "أحكام أخرى")}${otherAr}
 ${H("٥", "اللغة")}${languageAr}
+${donorClauses?.ar ? `${H("٦", "متطلبات الجهة المانحة")}${donorClauses.ar}` : ""}
 </section>`;
 
   return page(`${reference} — ${title} · ${titleAr}`, `<h1>${esc(title)}<span class="alt" style="font-size:13px;letter-spacing:0">${esc(titleAr)}</span></h1>
@@ -369,16 +398,16 @@ ${row("المدة", "Period", `${esc(longDate(startDate))} to ${esc(longDate(end
       + `<span class="alt">من ${dAr(startDate)} إلى ${dAr(endDate)}</span>`)}
 ${loePct ? row("نسبة الجهد", "Level of Effort", ltr(`${esc(loePct)}%`)) : ""}
 ${monthlyFee ? row(isService ? "الأجر لكل فترة" : isFramework ? "الراتب الشهري الكامل (نسبة جهد 100%)" : "الأجر الشهري",
-      isService ? "Fee per period" : isFramework ? "Full monthly salary (100% level of effort)" : "Monthly Fee", ltr(esc(money(monthlyFee)))) : ""}
-${isSub && parentReference && fullSalary ? row("الراتب الشهري الكامل بموجب العقد السنوي", "Full monthly salary under the annual contract", ltr(esc(money(fullSalary)))) : ""}
+      isService ? "Fee per period" : isFramework ? "Full monthly salary (100% level of effort)" : "Monthly Fee", ltr(esc(m(monthlyFee)))) : ""}
+${isSub && parentReference && fullSalary ? row("الراتب الشهري الكامل بموجب العقد السنوي", "Full monthly salary under the annual contract", ltr(esc(m(fullSalary)))) : ""}
 ${isFramework && supersedesReference ? row("يحلّ محلّ", "Replaces", ltr(esc(supersedesReference))) : ""}
 ${row("إجمالي قيمة العقد", "Contract Total", noFixedValue
       ? `${esc(TOTAL_TEXT)}<span class="alt">${esc(TOTAL_TEXT_AR)}</span>`
-      : `<strong>${ltr(esc(money(contractTotal)))}</strong>`)}
+      : `<strong>${ltr(esc(m(contractTotal)))}</strong>`)}
 ${budgetLine ? row("بند الموازنة", "Budget Line", esc(`${budgetLine.code} — ${budgetLine.description}`)) : ""}
 ${row("رقم التسجيل الضريبي (وزارة المالية)", "MoF Tax Registry ID", registered
       ? esc(taxId)
-      : `<strong>Not available</strong> — this service provider is not registered with the Ministry of Finance${isService ? `, so ${WHT_LABEL} withholding tax is deducted at source from every payment under this agreement and remitted to the MoF by AnaHon` : ""}`)}
+      : `<strong>Not available</strong> — this service provider is not registered with the Ministry of Finance${withholds ? `, so ${WHT_LABEL} withholding tax is deducted at source from every payment under this ${isService ? "agreement" : "contract"} and remitted to the MoF by AnaHon` : ""}`)}
 ${row("يُدفع من", "Paid From", account
       ? `${emp.paymentMethod === "Cash" ? "Cash withdrawn from" : "Bank transfer from"} ${esc(account.name)} <span>${esc(account.accountNo)}</span>`
       : isService
@@ -406,33 +435,33 @@ for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.${isFram
 <h2 style="color:#1a1a1a;font-size:13px"><strong>2. ${isService ? "Fees" : "Remuneration"}</strong></h2>
 <p>${isFramework
       ? (monthlyFee
-        ? `This contract states a <b>total salary of ${esc(money(monthlyFee))} per month</b> at a 100% level of effort. It does not by itself oblige payment: <b>with no project there is no payment, and this contract remains active regardless</b> — payment is made only through a subcontract by which a project buys a level of effort from this contract, and each subcontract states that level of effort and the amount that follows from it. `
+        ? `This contract states a <b>total salary of ${esc(m(monthlyFee))} per month</b> at a 100% level of effort. It does not by itself oblige payment: <b>with no project there is no payment, and this contract remains active regardless</b> — payment is made only through a subcontract by which a project buys a level of effort from this contract, and each subcontract states that level of effort and the amount that follows from it. `
         : `This contract establishes the engagement. <b>No total salary is stated on it yet</b>; until one is, every project that buys effort from it states its own amount on its subcontract. With no project there is no payment, and this contract remains active regardless. `)
       : `${loePct ? `The engagement is at a <b>${esc(loePct)}% level of effort</b>. ` : ""}${monthlyFee
-        ? `It carries a <b>fixed ${isService ? "fee of" : "monthly fee of"} ${esc(money(monthlyFee))}${isService ? " per agreed period" : ""}</b>${isService
+        ? `It carries a <b>fixed ${isService ? "fee of" : "monthly fee of"} ${esc(m(monthlyFee))}${isService ? " per agreed period" : ""}</b>${isService
           ? ". Fees are payable on delivery and acceptance of the agreed outputs, against the provider's invoice."
           : ", independent of the number of days worked in the month. Effort is recorded on monthly timesheets; the timesheet records the effort delivered, not the amount payable."} `
         : isService
           ? `It is a <b>lump-sum engagement</b>: the total below covers the agreed scope for the whole period, payable in instalments on delivery and acceptance of the agreed outputs, against the provider's invoice. `
           : ""}${isSub && parentReference && fullSalary
-            ? `The total salary stated in the annual contract is <b>${esc(money(fullSalary))}</b> per month; this project buys ${loePct ? `the <b>${esc(loePct)}% level of effort</b> stated above` : "the share stated above"} of it. `
+            ? `The total salary stated in the annual contract is <b>${esc(m(fullSalary))}</b> per month; this project buys ${loePct ? `the <b>${esc(loePct)}% level of effort</b> stated above` : "the share stated above"} of it. `
             : ""}`}
 ${noFixedValue
       ? `This ${isService ? "agreement" : "contract"} has <b>${esc(TOTAL_TEXT[0].toLowerCase() + TOTAL_TEXT.slice(1))}</b>.`
-      : `The approved total value of this ${isService ? "agreement" : "contract"} is <b>${esc(money(contractTotal))}</b>.`}</p>
+      : `The approved total value of this ${isService ? "agreement" : "contract"} is <b>${esc(m(contractTotal))}</b>.`}</p>
 
 <h2 style="color:#1a1a1a;font-size:13px"><strong>3. Payment</strong></h2>
 <p>Payment is made ${account
       ? `${emp.paymentMethod === "Cash" ? "in cash withdrawn from" : "by bank transfer from"} <b>${esc(account.name)}</b> (${esc(account.accountNo)})`
       : "from the account recorded in the financial management system"}, against an approved payment voucher
 and ${isService ? "the provider's invoice for the delivered outputs" : "a signed timesheet for the month"}, in line with
-AnaHon's Finance and Procurement Policy (Policy P5).${isService
-      ? (registered
-        ? " The provider is registered with the Ministry of Finance; withholding tax is applied where the law requires it."
-        : ` Because the provider is not registered with the Ministry of Finance, <b>${WHT_LABEL} withholding tax is deducted at source</b> from each payment and remitted to the MoF by AnaHon; the provider receives the net amount.${noFixedValue
+AnaHon's Finance and Procurement Policy (Policy P5).${withholds
+      ? ` Because the provider is not registered with the Ministry of Finance, <b>${WHT_LABEL} withholding tax is deducted at source</b> from each payment and remitted to the MoF by AnaHon; the provider receives the net amount.${noFixedValue
           ? " The withheld and net amounts are computed on the contracted value of each engagement, unless"
-          : ` On the total value of this agreement that is ${esc(money(contractTotal * WHT_RATE))} withheld and ${esc(money(contractTotal * WHT_NET_FACTOR))} net, unless`} the provider supplies a tax registry number, in which case payments are made gross.`)
-      : ""}</p>
+          : ` On the total value of this ${isService ? "agreement" : "contract"} that is ${esc(m(contractTotal * WHT_RATE))} withheld and ${esc(m(contractTotal * WHT_NET_FACTOR))} net, unless`} the provider supplies a tax registry number, in which case payments are made gross.`
+      : isService && registered
+        ? " The provider is registered with the Ministry of Finance; withholding tax is applied where the law requires it."
+        : ""}</p>
 
 <h2 style="color:#1a1a1a;font-size:13px"><strong>4. Other terms</strong></h2>
 <p>All other terms of engagement, including confidentiality, safeguarding and termination, are governed by the
@@ -441,6 +470,9 @@ organisation's standing policies, which form part of this ${isService ? "agreeme
 <h2 style="color:#1a1a1a;font-size:13px"><strong>5. Language</strong></h2>
 <p>This ${isService ? "agreement" : "contract"} is made in Arabic and English, and <b>the Arabic text is the
 binding text</b>. Where the two texts differ in meaning, the Arabic text prevails.</p>
+${donorClauses?.en ? `
+<h2 style="color:#1a1a1a;font-size:13px"><strong>6. Donor requirements</strong></h2>
+${donorClauses.en}` : ""}
 </section>
 
 <div class="sig">

@@ -3696,6 +3696,7 @@ app.post("/api/contracts/generate", async (req, res) => {
       if (isSub) { parentReference = supersedesReference; supersedesReference = null; }
     }
 
+    const contractCcy = project?.currency || "USD";
     const html = contractHtml({
       party, project, account, role, kind: kindVal as "Employment" | "Service",
       countersignatory: signatory ? { name: signatory.name, role: signatory.title } : undefined,
@@ -3703,6 +3704,12 @@ app.post("/api/contracts/generate", async (req, res) => {
       loePct: loePct === undefined || loePct === null || loePct === "" ? undefined : Number(loePct),
       monthlyFee: Number(monthlyFee), contractTotal: Number(contractTotal),
       budgetLine, reference, parentReference, supersedesReference,
+      // The project's own currency, and the donor's own clauses where the grant imposes them.
+      // Both come from the project, so a EUR grant cannot print dollars and a grant that
+      // requires its terms in every contract cannot produce one without them.
+      currency: project?.currency || "USD",
+      donorClauses: project?.donorClausesEn || project?.donorClausesAr
+        ? { en: project.donorClausesEn, ar: project.donorClausesAr } : undefined,
       // The rate the framework contract sets. Quoted on a subcontract for context; never
       // used to recompute the fee, which stays a figure a person typed.
       fullSalary: isSub ? Number((party as any).salary || 0) : undefined
@@ -3729,7 +3736,7 @@ app.post("/api/contracts/generate", async (req, res) => {
     if (isFramework && newRate > 0 && newRate !== (party.salary || 0)) {
       await prisma.employee.update({ where: { id: employeeId }, data: { salary: newRate } });
       await createAuditLog(user?.id || "u-1", user?.name || "Super Admin", "Full Salary Set By Contract",
-        `${party.name}: full monthly salary ${party.salary ? `changed from ${party.salary} to ` : "set to "}${newRate} USD by yearly agreement ${reference}. ` +
+        `${party.name}: full monthly salary ${party.salary ? `changed from ${party.salary} to ` : "set to "}${newRate} ${contractCcy} by yearly agreement ${reference}. ` +
         `A rate, not an instruction to pay: salary is drawn only through a subcontract under which a project funds the role.`);
     }
 
@@ -3740,7 +3747,7 @@ app.post("/api/contracts/generate", async (req, res) => {
       `Generated ${kindVal === "Service" ? "service agreement" : isSub ? "subcontract" : "yearly framework employment contract"} ${reference} for ` +
       `${party.name} (${party.position})${employeeId ? " [employee]" : " [service provider]"}` +
       `${project ? ` on ${project.code}` : ""}${isSub ? ` under framework contract ${parentReference || "NONE ON FILE"}` : ""}` +
-      `${supersedesReference ? ` replacing ${supersedesReference}` : ""}: ${monthlyFee} USD, total ${contractTotal} USD, ` +
+      `${supersedesReference ? ` replacing ${supersedesReference}` : ""}: ${monthlyFee} ${contractCcy}, total ${contractTotal} ${contractCcy}, ` +
       `${startDate} to ${endDate}. Unsigned — requires countersignature before it has effect.`
     );
 
@@ -3876,6 +3883,30 @@ app.post("/api/projects/channel-rule", async (req, res) => {
     await createAuditLog(user?.id, user?.name, "Project Channel Rule Set",
       `${project.code}: channel rule ${project.channelRule || "any"} → ${channelRule}${source ? ` (source: agreement ${source})` : ""}${project.channelRuleSource && !source ? ` (citation ${project.channelRuleSource} cleared)` : ""}.`);
     res.json({ success: true, channelRule, channelRuleSource: source });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// The donor's own terms, where a grant agreement requires them in every contract under it
+// (SKF §2.13 sanctions, §2.03 f termination). Stored per project in both languages and printed
+// as clause 6; the wording is the donor's and is pasted in by a person, never composed here.
+app.post("/api/projects/donor-clauses", async (req, res) => {
+  try {
+    const { projectId, donorClausesEn, donorClausesAr, user } = req.body;
+    if (!MANAGERS_SEATS.includes(user?.role)) {
+      return res.status(403).json({ error: "Finance or a director sets a project's donor clauses." });
+    }
+    const project = await prisma.project.findUnique({ where: { id: String(projectId || "") } });
+    if (!project) return res.status(404).json({ error: "Project not found." });
+    const en = String(donorClausesEn ?? "").trim(), ar = String(donorClausesAr ?? "").trim();
+    // The contract is bilingual and the ARABIC governs. One language alone would put a term in
+    // the English that the binding text does not carry, so either both or neither.
+    if (!!en !== !!ar) return res.status(400).json({ error: "Donor clauses are set in both Arabic and English, or in neither — the Arabic text governs the contract." });
+    await prisma.project.update({ where: { id: project.id }, data: { donorClausesEn: en, donorClausesAr: ar } });
+    await createAuditLog(user?.id, user?.name, "Project Donor Clauses Set",
+      `${project.code}: donor clauses ${en ? `set (${en.length} characters English, ${ar.length} Arabic)` : "cleared"}. They print as clause 6 of every contract drawn on this project from now on; contracts already drawn are unchanged.`);
+    res.json({ success: true, donorClausesEn: en, donorClausesAr: ar });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
