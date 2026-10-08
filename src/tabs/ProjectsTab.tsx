@@ -12,6 +12,7 @@ import { pickCoreDoc, CORE_PATTERNS, REFILE_CATEGORIES, CORE_SLOTS, missingCoreD
 import ReceiveOffbankForm from "./ReceiveOffbankForm";
 import ReportSubmissions from "./ReportSubmissions";
 import { overdueObligations, daysLate, UNKNOWN_DUE } from "../donorDeadlines";
+import { shareOfProject, shareOfLine } from "../budgetActuals";
 
 /** The pages of a project's workspace, in the order they are shown. */
 type WorkspaceTab = "overview" | "papers" | "money" | "reconciliation";
@@ -311,6 +312,23 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
   };
 
   // The donor clauses being edited, or null — both languages are saved together.
+  /**
+   * What a voucher charges THIS project, in USD, and the withholding inside that share.
+   *
+   * Every figure on this screen used to be built by hand from `e.amount` or an allocation's own
+   * amount — both of which are in the voucher's own currency. On a EUR grant that reads a euro as a
+   * dollar: FPU-2024-ICONTENT2's sixteen EUR vouchers showed EUR 19,163.05 where USD 20,066.86
+   * belonged, 4.7% short, in the reconciliation sheets a donor reads (Books, 8 Oct 2026).
+   * src/budgetActuals.ts already answers this once, with the rate and the allocation split in it.
+   */
+  const usdOfProject = (e: any) =>
+    shareOfProject({ ...e, allocationsJson: JSON.stringify(e.allocations || []) }, selectedProjectId || "");
+  const usdOfLine = (e: any, budgetLineId: string) =>
+    shareOfLine({ ...e, allocationsJson: JSON.stringify(e.allocations || []) }, budgetLineId);
+  /** The withholding inside this project's share: the voucher's own WHT ratio, applied to the share. */
+  const usdWhtOfProject = (e: any) =>
+    Math.round(usdOfProject(e) * (Number(e.amount) ? (Number(e.whtAmount) || 0) / Number(e.amount) : 0) * 100) / 100;
+
   const [clauseDraft, setClauseDraft] = useState<{ en: string; ar: string } | null>(null);
   const [projectWorkspaceTab, setProjectWorkspaceTab] = useState<WorkspaceTab>("overview");
 
@@ -606,10 +624,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
       // Sheet 1: Budget_vs_Actuals Data
       const sheet1Data = projectBudgetLines.map(bl => {
-        const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sum, e) => {
-          const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-          return sum + (alloc ? Number(alloc.amount) : e.amount);
-        }, 0);
+        const monthSpent = monthExpenses.reduce((sum, e) => sum + usdOfLine(e, bl.id), 0);
 
         const remaining = bl.allocatedUSD - bl.actualUSD;
         const burnPercent = bl.allocatedUSD > 0 ? (bl.actualUSD / bl.allocatedUSD) : 0;
@@ -628,10 +643,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
       // Calculate aggregates for Section I
       const totalAllocated = projectBudgetLines.reduce((sum, bl) => sum + bl.allocatedUSD, 0);
       const totalSpentMonth = projectBudgetLines.reduce((sum, bl) => {
-        const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sumE, e) => {
-          const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-          return sumE + (alloc ? Number(alloc.amount) : e.amount);
-        }, 0);
+        const monthSpent = monthExpenses.reduce((sumE, e) => sumE + usdOfLine(e, bl.id), 0);
         return sum + monthSpent;
       }, 0);
       const totalCumulative = projectBudgetLines.reduce((sum, bl) => sum + bl.actualUSD, 0);
@@ -650,29 +662,24 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
       // Sheet 2: Reconciled_Cash_Flows Data
       const sheet2Data = monthExpenses.map(exp => {
-        const alloc = exp.allocations ? exp.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-        const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (exp.whtAmount / exp.amount)) : (exp.netAmount || exp.amount);
-        const whtVal = alloc ? Number(alloc.amount) * (exp.whtAmount / exp.amount) : exp.whtAmount;
+        const whtVal = usdWhtOfProject(exp);
+        const calculatedNet = Math.round((usdOfProject(exp) - whtVal) * 100) / 100;
 
         return {
           "Statement Date": exp.transactionDate || exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0] || "",
           "Voucher / Ref": exp.voucherNo,
           "Transaction Memo": exp.title,
-          "Withholding Tax (WHT)": whtVal * exp.rate,
-          "Reconciled Net": calculatedNet * exp.rate
+          "Withholding Tax (WHT)": whtVal,
+          "Reconciled Net": calculatedNet
         };
       });
 
       const totalWht = monthExpenses.reduce((sum, e) => {
-        const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-        const whtVal = alloc ? Number(alloc.amount) * (e.whtAmount / e.amount) : e.whtAmount;
-        return sum + (whtVal * e.rate);
+        return sum + usdWhtOfProject(e);
       }, 0);
 
       const totalNet = monthExpenses.reduce((sum, e) => {
-        const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-        const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (e.whtAmount / e.amount)) : (e.netAmount || e.amount);
-        return sum + (calculatedNet * e.rate);
+        return sum + usdOfProject(e) - usdWhtOfProject(e);
       }, 0);
 
       sheet2Data.push({
@@ -1900,7 +1907,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                 {projExpenses.map(exp => {
                                   const alloc = exp.allocations ? exp.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
                                   const isShared = !!alloc;
-                                  const displayedVal = isShared ? Number(alloc.amount) : exp.amount;
+                                  const displayedVal = usdOfProject(exp);
                                   const docAttached = state.documents.find(d => d.linkedRecordType === "Expense" && d.linkedRecordId === exp.id);
 
                                   return (
@@ -1908,7 +1915,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                       <div className="flex justify-between items-center">
                                         <span className="font-mono font-bold text-slate-700">{exp.voucherNo}</span>
                                         <span className="font-mono font-bold text-slate-900">
-                                          {formatUSD(displayedVal * exp.rate)}
+                                          {formatUSD(displayedVal)}
                                           {isShared && <span className="text-[9px] text-amber-600 font-normal ms-1">({alloc.percentage}%)</span>}
                                         </span>
                                       </div>
@@ -2074,12 +2081,8 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
 
                       const monthBankTx = projBankTx.filter(bt => bt.date && bt.date.startsWith(reconMonth));
 
-                      const monthWht = monthExpenses.reduce((sum, e) => sum + (e.whtAmount || 0), 0);
-                      const monthPaid = monthExpenses.reduce((sum, e) => {
-                        const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                        const amt = alloc ? Number(alloc.amount) : e.amount;
-                        return sum + amt;
-                      }, 0);
+                      const monthWht = monthExpenses.reduce((sum, e) => sum + usdWhtOfProject(e), 0);
+                      const monthPaid = monthExpenses.reduce((sum, e) => sum + usdOfProject(e), 0);
 
                       return (
                         <div className="space-y-4 font-sans">
@@ -2156,10 +2159,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                               const totalAllocated = projectBudgetLines.reduce((sum, bl) => sum + bl.allocatedUSD, 0);
 
                               const totalSpentThisMonth = projectBudgetLines.reduce((sum, bl) => {
-                                const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sumE, e) => {
-                                  const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                  return sumE + (alloc ? Number(alloc.amount) : e.amount);
-                                }, 0);
+                                const monthSpent = monthExpenses.reduce((sumE, e) => sumE + usdOfLine(e, bl.id), 0);
                                 return sum + monthSpent;
                               }, 0);
 
@@ -2168,15 +2168,11 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                               const overallBurnRate = totalAllocated > 0 ? Math.round((totalCumulativeSpent / totalAllocated) * 100) : 0;
 
                               const totalNetReconciled = monthExpenses.reduce((sum, e) => {
-                                const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (e.whtAmount / e.amount)) : (e.netAmount || e.amount);
-                                return sum + (calculatedNet * e.rate);
+                                return sum + usdOfProject(e) - usdWhtOfProject(e);
                               }, 0);
 
                               const totalWhtReconciled = monthExpenses.reduce((sum, e) => {
-                                const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                const whtVal = alloc ? Number(alloc.amount) * (e.whtAmount / e.amount) : e.whtAmount;
-                                return sum + (whtVal * e.rate);
+                                return sum + usdWhtOfProject(e);
                               }, 0);
 
                               const hasPersonnelLines = projectBudgetLines.some(bl => bl.code.includes("PERS") || bl.category === "Personnel");
@@ -2202,10 +2198,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 font-mono">
                                           {projectBudgetLines.map(bl => {
-                                            const monthSpent = monthExpenses.filter(e => e.budgetLineId === bl.id).reduce((sum, e) => {
-                                              const alloc = e.allocations ? e.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                              return sum + (alloc ? Number(alloc.amount) : e.amount);
-                                            }, 0);
+                                            const monthSpent = monthExpenses.reduce((sum, e) => sum + usdOfLine(e, bl.id), 0);
 
                                             const remaining = bl.allocatedUSD - bl.actualUSD;
                                             const burnPercent = bl.allocatedUSD > 0 ? Math.round((bl.actualUSD / bl.allocatedUSD) * 100) : 0;
@@ -2262,17 +2255,16 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                             </tr>
                                           ) : (
                                             monthExpenses.map(exp => {
-                                              const alloc = exp.allocations ? exp.allocations.find((a: any) => a.projectId === selectedProjectId) : null;
-                                              const calculatedNet = alloc ? Number(alloc.amount) - (Number(alloc.amount) * (exp.whtAmount / exp.amount)) : (exp.netAmount || exp.amount);
-                                              const whtVal = alloc ? Number(alloc.amount) * (exp.whtAmount / exp.amount) : exp.whtAmount;
+                                              const whtVal = usdWhtOfProject(exp);
+                                              const calculatedNet = Math.round((usdOfProject(exp) - whtVal) * 100) / 100;
 
                                               return (
                                                 <tr key={exp.id} className="hover:bg-slate-50 break-inside-avoid">
                                                   <td className="px-4 py-2 text-slate-500 hidden md:table-cell">{exp.transactionDate || exp.paid_at?.split("T")[0] || exp.created_at?.split("T")[0]}</td>
                                                   <td className="px-4 py-2 text-slate-800 font-bold">{exp.voucherNo}</td>
                                                   <td className="px-4 py-2 text-slate-950 font-sans">{exp.title}</td>
-                                                  <td className="px-4 py-2 text-end text-amber-600 hidden md:table-cell">{formatUSD(whtVal * exp.rate)}</td>
-                                                  <td className="px-4 py-2 text-end text-slate-900 font-bold">{formatUSD(calculatedNet * exp.rate)}</td>
+                                                  <td className="px-4 py-2 text-end text-amber-600 hidden md:table-cell">{formatUSD(whtVal)}</td>
+                                                  <td className="px-4 py-2 text-end text-slate-900 font-bold">{formatUSD(calculatedNet)}</td>
                                                 </tr>
                                               );
                                             })
