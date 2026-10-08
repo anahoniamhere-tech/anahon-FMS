@@ -119,6 +119,23 @@ export const DONOR_OBLIGATIONS: Obligation[] = [
     source: "ASFARI-2024/Agreement/Anahon Media_PE Grant Agreement (2024)_FINAL.pdf"
   },
 
+  // ── SKF — AnaHon Forward, Brave Media FSTP (SKF-AN-31/2026) ────────────────
+  // Section 5.02's Reporting Schedule, and §4.01 b/c, which tie each instalment to a report.
+  {
+    projectId: "proj-skf-fstp", key: "interim-reports",
+    title: "Interim narrative and financial reports (10 Sep – 10 Dec 2026)",
+    detail: "Section 5.02 Reporting Schedule: due 20 December 2026. §4.01(b) releases the second instalment (50%, EUR 6,000) only on these reports, with an invoice and supporting documents, as proof that 75% of the first instalment — EUR 2,700 — has been spent. Financial reports go on the Financial Report Form (Annex 3); headers name the project, the recipient, the agreement number, the period and the submission date (§5.01).",
+    due: "2026-12-20",
+    source: "SKF-2026-FSTP/Agreement/2026-09-17_FSTP_Agreement_SKF-AnaHon_Brave_COUNTERSIGNED.pdf (§4.01 b, §5.02)"
+  },
+  {
+    projectId: "proj-skf-fstp", key: "final-reports",
+    title: "Final narrative and financial reports (10 Dec 2026 – 10 Mar 2027)",
+    detail: "Section 5.02 Reporting Schedule: due 31 March 2027. §4.01(c) releases the third and last instalment (20%, EUR 2,400) only on these reports, with an invoice and supporting documents. Records are kept seven years from the submission of the final expenditure report, open to SKF, the European Commission, OLAF, the EPPO and the European Court of Auditors.",
+    due: "2027-03-31",
+    source: "SKF-2026-FSTP/Agreement/2026-09-17_FSTP_Agreement_SKF-AnaHon_Brave_COUNTERSIGNED.pdf (§4.01 c, §5.02)"
+  },
+
   // ── SKF — Investigative Report (SKF-AH-06/2025) ────────────────────────────
   {
     projectId: "proj-skf-invj", key: "interim-narrative",

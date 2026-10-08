@@ -61,11 +61,18 @@ assert.equal(daysLate("2026-06-30", "2026-09-12"), 74);
 assert.equal(late.length, 2, "exactly two obligations are open and past their date");
 assert.ok(!late.some((r: any) => !r.dueDate), "an obligation with no date can never be 'overdue'");
 
+// E2 — AnaHon Forward (SKF FSTP), read from the countersigned agreement on 8 Oct 2026.
+const fstp = DONOR_OBLIGATIONS.filter(o => o.projectId === "proj-skf-fstp");
+assert.deepEqual(fstp.map(o => o.due), ["2026-12-20", "2027-03-31"], "§5.02's two reporting dates, not the project's own end date");
+assert.ok(fstp.every(o => /SKF-AnaHon_Brave_COUNTERSIGNED\.pdf/.test(o.source)), "both cite the signed agreement");
+assert.ok(fstp.every(o => !o.done && !o.unknown), "neither is submitted, and neither is unknown");
+assert.ok(/EUR 2,700/.test(fstp[0].detail), "the interim report carries the 75% test the second instalment turns on");
+
 // F — the generator must not write its guessed report row over a documented grant.
 const server = fs.readFileSync("server.ts", "utf8");
 assert.ok(/DOCUMENTED_PROJECT_IDS\.includes\(projectId\) \? \[\] : \[/.test(server),
   "the invented 'Final report' step must be skipped where the agreement has been read");
-assert.equal(DOCUMENTED_PROJECT_IDS.length, 9, "every project with a read agreement — all of them now");
+assert.equal(DOCUMENTED_PROJECT_IDS.length, 10, "every project with a read agreement — the ten, with AnaHon Forward added 8 Oct 2026");
 
 // G — a register row whose file is gone cannot fill a core slot (MediaMig's agreement).
 const core = fs.readFileSync("src/coreDocs.ts", "utf8");
