@@ -54,3 +54,24 @@ export function budgetDrift(line: { id: string; actualUSD: number; committedUSD:
   if (Math.abs(actualDiff) < 0.005 && Math.abs(committedDiff) < 0.005) return null;
   return { ...t, actualDiff, committedDiff };
 }
+
+/**
+ * What a voucher charges to one project, or to one budget line, in USD. A voucher may be split: the newsroom
+ * VPS was paid in one debit of USD 222.23, of which only the 173 days inside the grant period — USD 52.59 —
+ * belong to it. Read whole, that voucher would put 222.23 in a donor's report. Allocations decide when the
+ * voucher carries them; otherwise the voucher charges where it says it does.
+ */
+export function shareOfProject(v: VoucherLike & { projectId?: string | null }, projectId: string): number {
+  let allocations: { projectId?: string; amount?: number }[] = [];
+  try { allocations = JSON.parse(v.allocationsJson || "[]"); } catch { }
+  const split = allocations.filter(a => a.projectId && a.amount != null);
+  if (split.length) return r2(split.filter(a => a.projectId === projectId).reduce((s, a) => s + Number(a.amount) * (v.rate || 1), 0));
+  return v.projectId === projectId ? r2(v.convertedAmount) : 0;
+}
+export function shareOfLine(v: VoucherLike, budgetLineId: string): number {
+  let allocations: { budgetLineId?: string; amount?: number }[] = [];
+  try { allocations = JSON.parse(v.allocationsJson || "[]"); } catch { }
+  const split = allocations.filter(a => a.budgetLineId && a.amount != null);
+  if (split.length) return r2(split.filter(a => a.budgetLineId === budgetLineId).reduce((s, a) => s + Number(a.amount) * (v.rate || 1), 0));
+  return v.budgetLineId === budgetLineId ? r2(v.convertedAmount) : 0;
+}

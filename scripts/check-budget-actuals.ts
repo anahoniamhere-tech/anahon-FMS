@@ -3,13 +3,14 @@
 // that the reconciliation reads the vouchers correctly.
 //   npx tsx scripts/check-budget-actuals.ts
 import { readFileSync } from "node:fs";
-import { budgetTotals, budgetDrift, ACTUAL_STATUSES, COMMITTED_STATUSES } from "../src/budgetActuals.js";
+import { budgetTotals, budgetDrift, shareOfProject, shareOfLine, ACTUAL_STATUSES, COMMITTED_STATUSES } from "../src/budgetActuals.js";
 
 let failed = 0;
 const ok = (label: string, cond: boolean, detail = "") => {
   if (!cond) { failed++; console.error(`  FAIL  ${label}${detail ? " — " + detail : ""}`); } else console.log(`  ok    ${label}`);
 };
 const read = (f: string) => readFileSync(new URL("../" + f, import.meta.url), "utf8");
+const server = read("server.ts");
 // A missing line reads as zero, so a broken rule FAILS with its name instead of killing the run.
 const at = (m: Map<string, { actualUSD: number; committedUSD: number }>, id: string) => m.get(id) || { actualUSD: 0, committedUSD: 0 };
 const v = (over: Partial<Parameters<typeof budgetTotals>[0][number]> = {}) =>
@@ -35,6 +36,17 @@ ok("a line that agrees is left alone", budgetDrift({ id: "bl-1", actualUSD: 368.
 ok("a line that is short is reported with its difference", budgetDrift({ id: "bl-1", actualUSD: 360, committedUSD: 0 }, totals)?.actualDiff === 8.95);
 ok("a commitment that was never cleared is reported too", budgetDrift({ id: "bl-1", actualUSD: 368.95, committedUSD: 9000 }, totals)?.committedDiff === -9000);
 ok("a line with no vouchers at all reconciles to zero", budgetDrift({ id: "bl-none", actualUSD: 500, committedUSD: 0 }, totals)?.actualUSD === 0);
+
+console.log("\n3b. a split voucher charges each project only its share — in the reports too");
+const vps = { id: "e-vps", status: "Posted", budgetLineId: "bl-6", convertedAmount: 222.23, rate: 1,
+  projectId: "proj-skf-fstp", allocationsJson: JSON.stringify([{ projectId: "proj-skf-fstp", budgetLineId: "bl-6", amount: 52.59 }]) };
+ok("the grant is charged its share, not the whole payment", shareOfProject(vps as any, "proj-skf-fstp") === 52.59 && shareOfLine(vps as any, "bl-6") === 52.59);
+ok("another project is charged nothing", shareOfProject(vps as any, "proj-trf") === 0);
+ok("a voucher with no allocations charges where it says", shareOfProject({ ...vps, allocationsJson: "[]" } as any, "proj-skf-fstp") === 222.23);
+ok("the period report asks per project and per line, never the whole amount",
+  /const inPeriod = periodExpenses\.reduce\(\(s, e\) => s \+ shareOfProject\(e as any, p\.id\), 0\)/.test(server)
+  && /inPeriod: \+periodExpenses\.reduce\(\(s, e\) => s \+ shareOfLine\(e as any, b\.id\), 0\)/.test(server)
+  && !/periodExpenses\.filter\(e => e\.projectId === p\.id\)/.test(server));
 
 console.log("\n4. the script only touches the two stored totals");
 const script = read("scripts/reconcile-budget-actuals.ts");

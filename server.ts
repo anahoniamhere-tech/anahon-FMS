@@ -52,6 +52,7 @@ import { FINANCE as FINANCE_SEATS } from "./src/roles.js";
 import { REQUIRED_PERSONNEL } from "./src/personnelDocs.js";
 import { isFloat as isFloatAccount } from "./src/pettyCash.js";
 import { pairFxLegs, isFxReversal, FX_PATTERN } from "./src/fxPairs.js";
+import { shareOfProject, shareOfLine } from "./src/budgetActuals.js";
 import { CONSULTANT_REVIEW_CATEGORY, isMonth, monthBounds, packExcludes, reconcileMarkBlocker, legsOf, trialBalance, openItems, paymentDate, lateRecords, safeName, type Recorded } from "./src/consultantPack.js";
 import { paidOn, tranchedStatus } from "./src/quoteTranches.js";
 import { solidarityBlocker } from "./src/solidarity.js";
@@ -13431,8 +13432,10 @@ app.get("/api/reports/period", async (req, res) => {
     // per-project: allocated, actual in period, actual to date
     const perProject = projects.map(p => {
       const lines = budgetLines.filter(b => b.projectId === p.id);
-      const inPeriod = periodExpenses.filter(e => e.projectId === p.id).reduce((s, e) => s + e.convertedAmount, 0);
-      const toDate = expenses.filter(e => e.projectId === p.id && spentStatuses.includes(e.status)).reduce((s, e) => s + e.convertedAmount, 0);
+      // A split voucher charges each project only its own share (src/budgetActuals.ts): the newsroom VPS was one
+      // debit of 222.23, of which 52.59 is the grant's. Read whole, a donor report would claim the lot.
+      const inPeriod = periodExpenses.reduce((s, e) => s + shareOfProject(e as any, p.id), 0);
+      const toDate = expenses.filter(e => spentStatuses.includes(e.status)).reduce((s, e) => s + shareOfProject(e as any, p.id), 0);
       const allocated = lines.reduce((s, b) => s + b.allocatedUSD, 0);
       return {
         code: p.code, name: p.name, donor: donors.find(d => d.id === p.donorId)?.name || "", status: p.status,
@@ -13440,7 +13443,7 @@ app.get("/api/reports/period", async (req, res) => {
         variancePct: allocated ? +(((toDate - allocated) / allocated) * 100).toFixed(1) : 0,
         lines: lines.map(b => ({
           code: b.code, description: b.description, category: b.category, allocated: b.allocatedUSD, actual: b.actualUSD,
-          inPeriod: +periodExpenses.filter(e => e.budgetLineId === b.id).reduce((s, e) => s + e.convertedAmount, 0).toFixed(2)
+          inPeriod: +periodExpenses.reduce((s, e) => s + shareOfLine(e as any, b.id), 0).toFixed(2)
         }))
       };
     }).filter(p => p.inPeriod > 0 || p.toDate > 0);
