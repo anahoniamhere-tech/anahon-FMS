@@ -437,5 +437,28 @@ console.log("\nL. what the papers say AnaHon is (Front desk / Saad, 18 Sep 2026)
   ok("the contract's audit line names the currency it was drawn in, not USD",
     !/total \$\{contractTotal\} USD/.test(server) && /total \$\{contractTotal\} \$\{contractCcy\}/.test(server)); }
 
+// 8 Oct 2026, from the AnaHon Forward room: a subcontract on a EUR grant was printing the USD annual
+// base in euros — the figure the whole level of effort is measured against, wrong on a signed page.
+// And an annual contract whose term began before signature has to say so, because AnaHon's annual
+// contracts run by calendar year and are signed when they are signed, never backdated.
+{ const eurSub = doc({ kind: "Employment", project: { code: "ANH-2026-SKF-BM-01", name: "AnaHon Forward", currency: "EUR" },
+    currency: "EUR", monthlyFee: 200, contractTotal: 1200, loePct: 20, parentReference: "ANH-EC-SM-2026-01", fullSalary: 2700 });
+  ok("a subcontract states the annual base in the annual contract's own currency, not the grant's",
+    eurSub.includes("$2,700.00") && !eurSub.includes("€2,700.00"));
+  ok("...and still states its own fee and total in the grant's currency",
+    eurSub.includes("€200.00") && eurSub.includes("€1,200.00"));
+  ok("the rate the effort was priced at is stated when the currencies differ, in both languages",
+    doc({ kind: "Employment", project: { code: "P", name: "P", currency: "EUR" }, currency: "EUR", monthlyFee: 200,
+      contractTotal: 1200, loePct: 20, parentReference: "ANH-EC-SM-2026-01", fullSalary: 2700, fullSalaryRate: 0.925 })
+      .includes("priced at 0.925 EUR per USD"));
+  ok("no rate is invented when none is given", !eurSub.includes("priced at"));
+
+  const past = doc({ startDate: "2026-01-01", endDate: "2026-12-31", monthlyFee: 2700 });
+  ok("an annual contract whose term began before signature says so, in both languages",
+    past.includes("takes effect from 1 January 2026, which precedes its signature")
+    && past.includes("ويُوقَّع بالتاريخ المدوَّن إلى جانب التوقيعين أدناه") && past.includes("It is not backdated."));
+  ok("a contract whose term starts today or later says nothing of the sort",
+    !doc({ startDate: "2027-01-01", endDate: "2027-12-31", monthlyFee: 2700 }).includes("precedes its signature")); }
+
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);

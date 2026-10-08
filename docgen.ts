@@ -253,6 +253,18 @@ export function contractHtml(o: {
    */
   fullSalary?: number;
   /**
+   * The currency the ANNUAL contract states that salary in. A subcontract on a EUR grant quoting
+   * a USD base in euros would misstate the base on the face of a signed instrument, so the base
+   * is printed in its own currency, always. Absent means the same currency as this contract.
+   */
+  fullSalaryCurrency?: string;
+  /**
+   * Units of THIS contract's currency per one unit of the annual contract's currency, when they
+   * differ — the rate the level of effort was actually priced at. Absent prints no rate rather
+   * than an invented one; no figure here is ever used to recompute the fee, which a person typed.
+   */
+  fullSalaryRate?: number;
+  /**
    * The yearly agreement this one replaces, when the person already had one. A new agreement
    * says so on its face rather than leaving two live-looking contracts in the file with only
    * their dates to tell them apart. It replaces the yearly agreement ONLY — a subcontract is
@@ -317,6 +329,14 @@ export function contractHtml(o: {
   const dAr = (iso: string) => ltr(longDateAr(iso));
   /** Every figure on this instrument, in the currency it is contracted in. */
   const m = (v: number) => money(v, o.currency || "USD");
+  /** The annual contract's own currency — what the base is stated in, whatever this contract pays in. */
+  // Default USD, NOT this contract's currency: Employee.salary carries no currency and every annual
+  // contract to date states USD, so inheriting the grant's currency is exactly the error this fixes.
+  const baseCcy = o.fullSalaryCurrency || "USD";
+  const mBase = (v: number) => money(v, baseCcy);
+  const crossRate = baseCcy !== (o.currency || "USD") && Number(o.fullSalaryRate) > 0 ? Number(o.fullSalaryRate) : 0;
+  const rateEn = crossRate ? ` The level of effort was priced at ${esc(String(crossRate))} ${esc(o.currency || "USD")} per ${esc(baseCcy)}.` : "";
+  const rateAr = crossRate ? ` وقد احتُسبت نسبة الجهد على سعر صرف ${ltr(String(crossRate))} ${ltr(esc(o.currency || "USD"))} لكل ${ltr(esc(baseCcy))}.` : "";
   const mAr = (v: number) => ltr(m(v));
 
   /* ── The clauses, written once per language ───────────────────────────────────────────
@@ -324,7 +344,22 @@ export function contractHtml(o: {
    * and stitching fragments produces word salad (the same reason WA_TEMPLATES keeps whole
    * sentences). Each language states the same facts in its own syntax.
    */
-  const engagementAr = `<p>تتعاقد منصة اناهون مع <b>${ltr(esc(emp.name))}</b> بصفة <b>${ltr(esc(roleText))}</b>${p ? ` في مشروع ${ltr(esc(p.code))} — ${ltr(esc(p.name))}` : ""} للفترة من ${dAr(startDate)} إلى ${dAr(endDate)}.${isFramework && supersedesReference
+  /**
+   * A term that began before the paper is signed. AnaHon's annual contracts run by calendar year
+   * (Saad, 8 Oct 2026), so one signed in October still takes effect from January. That is not
+   * backdating and must not read as it: the term is stated as an effective period, and the date
+   * beside the signature is the real date of signing. Said plainly in the instrument rather than
+   * left for a reader to reconcile.
+   */
+  const startsBeforeToday = String(startDate) < new Date().toISOString().slice(0, 10);
+  const effectiveEn = startsBeforeToday
+    ? ` This ${isService ? "agreement" : "contract"} takes effect from ${longDate(startDate)}, which precedes its signature: it covers the engagement from that date, and is signed on the date written beside the signatures below. It is not backdated.`
+    : "";
+  const effectiveAr = startsBeforeToday
+    ? ` يسري هذ${isService ? "ه الاتفاقية" : "ا العقد"} اعتباراً من ${dAr(startDate)}، وهو تاريخ سابق لتوقيعه: فهو يغطي الارتباط من ذلك التاريخ، ويُوقَّع بالتاريخ المدوَّن إلى جانب التوقيعين أدناه. ولا يُعدّ ذلك تأريخاً سابقاً.`
+    : "";
+
+  const engagementAr = `<p>تتعاقد منصة اناهون مع <b>${ltr(esc(emp.name))}</b> بصفة <b>${ltr(esc(roleText))}</b>${p ? ` في مشروع ${ltr(esc(p.code))} — ${ltr(esc(p.name))}` : ""} للفترة من ${dAr(startDate)} إلى ${dAr(endDate)}.${effectiveAr}${isFramework && supersedesReference
       ? ` يحلّ هذا العقد <b>محلّ العقد السنوي ${ltr(esc(supersedesReference))}</b>، الذي يتوقف مفعوله من تاريخ البدء أعلاه. ولا يؤثر ذلك في أي عقد فرعي صادر مسبقاً: يستمر كل منها إلى نهاية مدته وبشروطه الخاصة.`
       : ""}${isSub
       ? parentReference
@@ -343,7 +378,7 @@ export function contractHtml(o: {
         : isService
           ? `وهو <b>ارتباط بمبلغ إجمالي</b>: يغطي الإجمالي أدناه النطاق المتفق عليه للمدة كاملة، ويُدفع على أقساط عند تسليم المخرجات وقبولها، مقابل فاتورة مقدّم الخدمة. `
           : ""}${isSub && parentReference && fullSalary
-            ? `الراتب الإجمالي المنصوص عليه في العقد السنوي هو <b>${mAr(fullSalary)}</b> شهرياً؛ ويشتري هذا المشروع <b>نسبة الجهد ${ltr(String(loePct || 0))}%</b> المذكورة أعلاه منه. `
+            ? `الراتب الإجمالي المنصوص عليه في العقد السنوي هو <b>${ltr(mBase(fullSalary))}</b> شهرياً؛ ويشتري هذا المشروع <b>نسبة الجهد ${ltr(String(loePct || 0))}%</b> المذكورة أعلاه منه.${rateAr} `
             : ""}`}
 ${noFixedValue
       ? `<b>لا قيمة ثابتة</b> لهذ${isService ? "ه الاتفاقية" : "ا العقد"}؛ يُتعاقد على كل ارتباط بصورة منفصلة لكل مشروع.`
@@ -399,7 +434,7 @@ ${row("المدة", "Period", `${esc(longDate(startDate))} to ${esc(longDate(end
 ${loePct ? row("نسبة الجهد", "Level of Effort", ltr(`${esc(loePct)}%`)) : ""}
 ${monthlyFee ? row(isService ? "الأجر لكل فترة" : isFramework ? "الراتب الشهري الكامل (نسبة جهد 100%)" : "الأجر الشهري",
       isService ? "Fee per period" : isFramework ? "Full monthly salary (100% level of effort)" : "Monthly Fee", ltr(esc(m(monthlyFee)))) : ""}
-${isSub && parentReference && fullSalary ? row("الراتب الشهري الكامل بموجب العقد السنوي", "Full monthly salary under the annual contract", ltr(esc(m(fullSalary)))) : ""}
+${isSub && parentReference && fullSalary ? row("الراتب الشهري الكامل بموجب العقد السنوي", "Full monthly salary under the annual contract", ltr(esc(mBase(fullSalary)))) : ""}
 ${isFramework && supersedesReference ? row("يحلّ محلّ", "Replaces", ltr(esc(supersedesReference))) : ""}
 ${row("إجمالي قيمة العقد", "Contract Total", noFixedValue
       ? `${esc(TOTAL_TEXT)}<span class="alt">${esc(TOTAL_TEXT_AR)}</span>`
@@ -424,7 +459,7 @@ ${arabicText}
 <h3>English text</h3>
 <h2 style="margin-top:6px;color:#1a1a1a;font-size:13px"><strong>1. Engagement</strong></h2>
 <p>AnaHon Media Platform engages ${esc(emp.name)} as <b>${esc(roleText)}</b>${p ? ` on project ${esc(p.code)} — ${esc(p.name)}` : ""}
-for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.${isFramework && supersedesReference
+for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.${effectiveEn}${isFramework && supersedesReference
       ? ` This contract <b>replaces the annual contract ${esc(supersedesReference)}</b>, which ceases to have effect from the start date above. It does not affect any subcontract already issued: each of those runs to the end of its own period on its own terms.`
       : ""}${isSub
       ? parentReference
@@ -444,7 +479,7 @@ for the period ${esc(longDate(startDate))} to ${esc(longDate(endDate))}.${isFram
         : isService
           ? `It is a <b>lump-sum engagement</b>: the total below covers the agreed scope for the whole period, payable in instalments on delivery and acceptance of the agreed outputs, against the provider's invoice. `
           : ""}${isSub && parentReference && fullSalary
-            ? `The total salary stated in the annual contract is <b>${esc(m(fullSalary))}</b> per month; this project buys ${loePct ? `the <b>${esc(loePct)}% level of effort</b> stated above` : "the share stated above"} of it. `
+            ? `The total salary stated in the annual contract is <b>${esc(mBase(fullSalary))}</b> per month; this project buys ${loePct ? `the <b>${esc(loePct)}% level of effort</b> stated above` : "the share stated above"} of it.${rateEn} `
             : ""}`}
 ${noFixedValue
       ? `This ${isService ? "agreement" : "contract"} has <b>${esc(TOTAL_TEXT[0].toLowerCase() + TOTAL_TEXT.slice(1))}</b>.`
