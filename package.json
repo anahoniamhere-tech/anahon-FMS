@@ -48,6 +48,7 @@
     "seed": "tsx prisma/seed.ts"
   },
   "overrides": {
-    "qs": "6.16.0"
+    "qs": "6.16.0",
+    "@grpc/grpc-js": "~1.13.7"
   }
 }
