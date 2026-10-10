@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { selfDealingRequester } from "../selfDealing";
-import { Search } from "lucide-react";
+import { Banknote, Search } from "lucide-react";
+import { ic } from "../nav";
 import { Procurement, Project, Vendor } from "../types";
 import { THRESHOLD_LABEL, needsProcurement } from "../procurementPolicy";
 import { costAccountChoices, noSupplierChoice } from "../spendKind";
 import { costAccountFor } from "../costAccount";
 import { WHT_RATE, WHT_LABEL, whtLabelOf } from "../tax";
+import { methodsFor, defaultMethodFor, refLabelFor } from "../paymentMethods";
 import { SharedProps, waLink, WA_TEMPLATES } from "./shared";
 import Info from "../Info";
 import { FINANCE, MANAGERS, REQUESTERS } from "../roles";
@@ -42,6 +44,9 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
   const [expenseDate, setExpenseDate] = useState(today);
   // What an approver has confirmed the cost to be, per voucher, before they sign.
   const [confirmCostAccount, setConfirmCostAccount] = useState<Record<string, string>>({});
+  // How the money left, and its own reference — chosen per voucher, because a BLOM payment order is
+  // not a petty-cash envelope and the bank's advice number is not the voucher number (10 Oct 2026).
+  const [payWith, setPayWith] = useState<Record<string, { account: string; method: string; ref: string }>>({});
 
   // Inline single-source waiver raised from the voucher form (null = panel closed).
   const [inlineWaiver, setInlineWaiver] = useState<{ vendorName: string; amount: string; reason: string; retrospective: boolean } | null>(null);
@@ -1033,10 +1038,19 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                     <span className="font-bold text-emerald-700" dir="ltr">{netVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {exp.currency}</span>
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-2 border-t border-slate-200 pt-2 mt-1">
-                                  <span className="text-xs text-slate-600 font-semibold font-mono">Cashier Source:</span>
+                                {(() => {
+                                  const chosen = payWith[exp.id] || { account: payFrom[0]?.id || "", method: "", ref: "" };
+                                  const acct = payFrom.find(b => b.id === chosen.account);
+                                  const methods = acct ? methodsFor(acct.type) : [];
+                                  const method = chosen.method && methods.includes(chosen.method) ? chosen.method : (acct ? defaultMethodFor(acct.type) : "");
+                                  const set = (p: Partial<{ account: string; method: string; ref: string }>) =>
+                                    setPayWith(cur => ({ ...cur, [exp.id]: { ...chosen, method, ...p } }));
+                                  return (
+                                <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2 mt-1">
+                                  <span className="text-xs text-slate-600 font-semibold font-mono">{t("Paid from")}:</span>
                                   <select
-                                    id={`ba-sel-${exp.id}`}
+                                    id={`ba-sel-${exp.id}`} value={chosen.account}
+                                    onChange={e => set({ account: e.target.value, method: "" })}
                                     className="bg-white text-xs px-2 py-1 rounded border border-slate-300 outline-none"
                                   >
                                     {payFrom.map(b => (
@@ -1046,6 +1060,21 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                       <option value="past-cash">{t("Paid before")} {openedOn || t("the float opened")} {t("from cash awaiting vouchers")}</option>
                                     )}
                                   </select>
+                                  {acct && (<>
+                                    <select
+                                      aria-label={t("How it was paid")} value={method}
+                                      onChange={e => set({ method: e.target.value })}
+                                      className="bg-white text-xs px-2 py-1 rounded border border-slate-300 outline-none"
+                                    >
+                                      {methods.map(m => <option key={m} value={m}>{t(m)}</option>)}
+                                    </select>
+                                    <input
+                                      aria-label={t(refLabelFor(method))} value={chosen.ref}
+                                      onChange={e => set({ ref: e.target.value })}
+                                      placeholder={t(refLabelFor(method))} dir="ltr"
+                                      className="bg-white text-xs px-2 py-1 rounded border border-slate-300 outline-none w-56"
+                                    />
+                                  </>)}
                                   {approvedByMe && (
                                     <span className="text-[11px] text-amber-800">{t("You approved this request — pay it by bank, or a different officer pays it in cash (Policy P5 §4.3).")}</span>
                                   )}
@@ -1055,23 +1084,24 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                     </span>
                                   )}
                                   <button
-                                    onClick={() => {
-                                      const sel = (document.getElementById(`ba-sel-${exp.id}`) as HTMLSelectElement).value;
-                                      handleExpenseAction(exp.id, "cashbook-pay", sel === "past-cash" ? {
-                                        pastCash: true, whtAmount: whtVal, netAmount: netVal,
-                                      } : {
-                                        bankAccountId: sel,
-                                        paymentMethod: "Petty cash envelope",
-                                        paymentRef: `VOU-${exp.voucherNo}`,
-                                        whtAmount: whtVal,
-                                        netAmount: netVal
-                                      });
-                                    }}
-                                    className="text-[11px] bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded font-medium shadow-sm animate-pulse"
+                                    onClick={() => handleExpenseAction(exp.id, "cashbook-pay", chosen.account === "past-cash" ? {
+                                      pastCash: true, whtAmount: whtVal, netAmount: netVal,
+                                    } : {
+                                      bankAccountId: chosen.account,
+                                      paymentMethod: method,
+                                      // The bank's own reference when one is given; the voucher number is a fallback,
+                                      // never a substitute for BLOM's advice number.
+                                      paymentRef: chosen.ref.trim() || `VOU-${exp.voucherNo}`,
+                                      whtAmount: whtVal,
+                                      netAmount: netVal
+                                    })}
+                                    className="text-[11px] bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-1.5 rounded font-medium shadow-sm"
                                   >
-                                    💸 Settle Cashier payment (Apply WHT)
+                                    {ic(Banknote)} {t("Record the payment")}
                                   </button>
                                 </div>
+                                  );
+                                })()}
                               </div>
                             );
                           })()}

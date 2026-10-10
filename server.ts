@@ -12,6 +12,7 @@ import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
 import { evidenceOf, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATION_SIGNED } from "./src/declarations.js";
 import { teamMemberFlag } from "./src/supplierDocs.js";
 import { WHT_RATE, WHT_LABEL } from "./src/tax.js";
+import { methodBlocker, defaultMethodFor } from "./src/paymentMethods.js";
 import { CONFIDENTIAL_PURPOSE, nextSourceCode, maySealedRead, SEALED_REFUSAL, confidentialRaiseBlocker, SANCTIONS_RESULTS, SEALED_DOC_KINDS, hasSealedReceipt, reviewDue, type SealedDoc } from "./src/sources.js";
 import { syncDigitizedInvoice, contractHtml, quotationHtml, proposalHtml, workplanHtml, instalmentRequestHtml, providerInvoiceHtml, payslipHtml, declarationHtml, archive, vaultFolderForProject, nextDocRef, cashReceiptHtml, referenceOfContractDoc } from "./docgen.js";
 import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publishBlockers, socialPostBlockers, rehearsalSeatClash, REHEARSAL_TAG, isRawSourceCategory, isContentLabel, LABEL_WORDS } from "./src/editorialGates.js";
@@ -10482,6 +10483,10 @@ app.post("/api/expense/action", async (req, res) => {
       const account = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
       if (!account) return res.status(404).json({ error: "Cash/Bank vault not configured." });
       if (approverPaysCash(account.type !== "Bank")) return res.status(403).json({ error: APPROVER_PAYS_CASH });
+      {
+        const wrongMethod = isTransit(account) ? "" : methodBlocker(String(paymentMethod || ""), account.type);
+        if (wrongMethod) return res.status(400).json({ error: wrongMethod });
+      }
       // Determine payout amounts: if whtAmount/netAmount is passed use them, otherwise default to no tax
       updatedWhtAmount = typeof whtAmount === "number" ? whtAmount : 0;
       updatedNetAmount = typeof netAmount === "number" ? netAmount : exp.amount;
@@ -10542,7 +10547,9 @@ app.post("/api/expense/action", async (req, res) => {
       // The old "Petty Cash Box" default made general-ledger-post credit 1120 while the
       // money left the bank — ledger/bank mismatch caught by the 30-Jul lifecycle drill.
       // Cash in transit keeps "Cash": the rebuild credits 1127 for a voucher with a transit payment line.
-      updatedPaymentMethod = isTransit(account) ? "Cash" : paymentMethod || (account.type === "Petty Cash" ? "Petty Cash" : "Bank Transfer");
+      // How it left is recorded as the payer chose, and refused if it does not suit the account —
+      // a BLOM payment order is a bank payment, and no bank payment is a petty-cash envelope.
+      updatedPaymentMethod = isTransit(account) ? "Cash" : (paymentMethod || defaultMethodFor(account.type));
       updatedPaymentRef = paymentRef || `PAY-${account.accountNo || account.id}-${Date.now().toString().slice(-4)}`;
 
       // Register bank transaction activity for the actual net payout (in account currency)
