@@ -311,8 +311,11 @@ app.use((req, res, next) => {
  *   /api/document/ticket answers 401 by itself when nobody is signed in
  *   /api/social/meta/callback  Meta sends the browser back here after a Page is connected; a random
  *                        single-use state, bound to whoever pressed Connect, is its credential
+ *   /api/website/live-edit/verify  nginx's auth_request for the Live editor's :8443 door; the
+ *                        signed cookie minted by /api/website/live-edit/start is its credential,
+ *                        and it answers only 200 or 401 — no body, nothing read
  */
-const OPEN_GETS = new Set(["/api/desk.ics", "/api/calendar.ics", "/api/document/ticket", "/api/social/meta/callback"]);
+const OPEN_GETS = new Set(["/api/desk.ics", "/api/calendar.ics", "/api/document/ticket", "/api/social/meta/callback", "/api/website/live-edit/verify"]);
 
 /**
  * Reads worth remembering.
@@ -7138,6 +7141,41 @@ app.get("/api/website/content", async (req, res) => {
   const out: Record<string, any> = {};
   for (const [k, f] of Object.entries(WEBSITE_FILES)) { const v = readJsonFile(path.join(SITE_DIR, "src/data", f), null); if (v) out[k] = v; }
   res.json(out);
+});
+
+// ---- The Live editor from the public door (Saad, 10 Oct 2026) --------------------------------
+// On the LAN and the tailnet the Live editor frames the site's DEV server on a sibling port of
+// the FMS's own host (3100↔4321, 8444↔8443). app.anahon.org had no sibling, fell back to
+// SITE_PUBLIC_URL and framed production, which refuses to be framed and has no live-edit.js.
+// The VPS now serves the dev server on app.anahon.org:8443 — a sibling port again — but that
+// port faces the internet, so nginx asks /verify before every request and proxies only on 200.
+// The credential is a cookie, because an iframe cannot send the sign-in header: /start, called
+// by the signed-in Live editor, sets it for a SITE_EDITOR only. Cookies ignore the port, so the
+// one set on :443 reaches :8443 with no cross-domain scoping. Same HMAC shape as the document
+// ticket, with its own secret and a purpose prefix, so neither can stand in for the other.
+const LIVE_EDIT_SECRET = process.env.LIVE_EDIT_SECRET || crypto.randomBytes(32).toString("hex");
+const LIVE_EDIT_COOKIE = "anahon_live_edit";
+const LIVE_EDIT_MS = 4 * 60 * 60 * 1000;   // one editing session; the tab re-mints on every open
+const liveEditSig = (userId: string, exp: string) => crypto.createHmac("sha256", LIVE_EDIT_SECRET).update(`live-edit.${userId}.${exp}`).digest("hex");
+function liveEditUser(v: string): string {
+  const [userId, exp, sig] = String(v || "").split(".");
+  if (!userId || !exp || !sig || Number(exp) < Date.now()) return "";
+  const want = liveEditSig(userId, exp);
+  if (sig.length !== want.length) return "";
+  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want)) ? userId : "";
+}
+app.get("/api/website/live-edit/start", async (req, res) => {
+  if (!(await siteEditorReads(req))) return res.status(403).json({ error: "The Live editor is for the website's editors." });
+  const id = await viewerIdFromReq(req);
+  const exp = String(Date.now() + LIVE_EDIT_MS);
+  res.cookie(LIVE_EDIT_COOKIE, `${id}.${exp}.${liveEditSig(id, exp)}`, { httpOnly: true, secure: true, sameSite: "lax", maxAge: LIVE_EDIT_MS, path: "/" });
+  res.json({ success: true });
+});
+// Stateless on purpose: nginx calls this once per asset a page pulls, so no database read here.
+// The role was checked when the cookie was minted; the cookie lives four hours at most.
+app.get("/api/website/live-edit/verify", (req, res) => {
+  const raw = String(req.headers.cookie || "").split(";").map(c => c.trim()).find(c => c.startsWith(`${LIVE_EDIT_COOKIE}=`));
+  res.status(liveEditUser(raw ? decodeURIComponent(raw.slice(LIVE_EDIT_COOKIE.length + 1)) : "") ? 200 : 401).end();
 });
 app.post("/api/website/content", async (req, res) => {
   try {

@@ -53,10 +53,36 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
   // which is what keeps an https page from framing an http site (blocked as mixed content) and
   // keeps anahon.local (mDNS, LAN-only) out of the tailnet. SITE_PUBLIC_URL remains the fallback
   // for any origin this map does not know. Server-to-server calls keep SITE_URL, untouched.
+  //
+  // The public door (app.anahon.org, 10 Oct 2026, Saad: "i want to fix this") has no sibling
+  // port of its own — it fell into the SITE_PUBLIC_URL fallback, which resolved to production
+  // anahon.org (X-Frame-Options: SAMEORIGIN, no live-edit.js either way). Fixed the same way as
+  // the other two: a sibling port on the SAME host, :8443, which the VPS now proxies straight to
+  // the Astro dev server — same-origin framing rules never enter into it, same as 3100↔4321.
+  // Gated, because this one crosses the open internet: GET /api/website/live-edit/start (below)
+  // sets a short-lived signed cookie the VPS checks on every request to :8443.
   const SITE_PORT: Record<string, string> = { "3100": "4321", "8444": "8443" };
-  const derived = typeof window !== "undefined" && SITE_PORT[window.location.port] ? `${window.location.protocol}//${window.location.hostname}:${SITE_PORT[window.location.port]}` : "";
+  const SITE_HOST_PORT: Record<string, string> = { "app.anahon.org": "8443" };
+  const isPublicDoor = typeof window !== "undefined" && !SITE_PORT[window.location.port] && !!SITE_HOST_PORT[window.location.hostname];
+  const derived = typeof window === "undefined" ? "" : SITE_PORT[window.location.port]
+    ? `${window.location.protocol}//${window.location.hostname}:${SITE_PORT[window.location.port]}`
+    : SITE_HOST_PORT[window.location.hostname]
+    ? `${window.location.protocol}//${window.location.hostname}:${SITE_HOST_PORT[window.location.hostname]}`
+    : "";
   const siteUrl = (derived || String(state.siteUrl || "")).replace(/\/$/, "");
   const siteOrigin = siteUrl ? new URL(siteUrl).origin : "";
+  // LAN/tailnet: nothing to wait for, the iframe can render immediately as it always did. The
+  // public door needs the start call to land first — framing before the cookie exists would
+  // just 401 on the very first load.
+  const [liveEditReady, setLiveEditReady] = useState(!isPublicDoor);
+  const [liveEditError, setLiveEditError] = useState("");
+  useEffect(() => {
+    if (!isPublicDoor) return;
+    fetch("/api/website/live-edit/start")
+      .then(r => r.json().then(j => ({ ok: r.ok, j })))
+      .then(({ ok, j }) => { if (ok) setLiveEditReady(true); else setLiveEditError(j.error || t("Could not start the Live editor.")); })
+      .catch(() => setLiveEditError(t("Could not reach the Live editor's gate.")));
+  }, [isPublicDoor]);
   const frame = useRef<HTMLIFrameElement>(null);
   const [edit, setEdit] = useState(false);
   const [path, setPath] = useState("/");
@@ -144,6 +170,8 @@ export default function LiveTab({ state, currentUser, triggerToast, lang, openDo
   };
 
   if (!siteUrl) return <div className="p-6 text-sm text-slate-500">{t("The site's editing server is not configured (SITE_URL).")}</div>;
+  if (liveEditError) return <div className="p-6 text-sm text-red-700">{liveEditError}</div>;
+  if (!liveEditReady) return <div className="p-6 text-sm text-slate-500">{t("Opening the Live editor…")}</div>;
 
   return (
     <div className="flex h-[calc(100vh-7rem)] flex-col gap-2">

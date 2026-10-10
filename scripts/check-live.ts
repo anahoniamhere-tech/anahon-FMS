@@ -211,5 +211,22 @@ ok("the guard resolves the viewer itself rather than trusting req.body.user",
   /const siteEditorReads = async \(req: any\)[\s\S]{0,400}?viewerIdFromReq\(req\)[\s\S]{0,300}?SITE_EDITOR_ROLES\.includes\(u\.role\)/.test(server));
 ok("and it refuses a closed account", /u\.active !== false && SITE_EDITOR_ROLES/.test(server));
 
+console.log("\nthe Live editor from the public door (Saad, 10 Oct 2026) — app.anahon.org:8443, gated");
+ok("app.anahon.org maps to its sibling port 8443, like 3100→4321 and 8444→8443", /SITE_HOST_PORT: Record<string, string> = \{ "app\.anahon\.org": "8443" \}/.test(live));
+ok("the iframe waits for the gate on the public door — it never frames before the cookie exists",
+  /useState\(!isPublicDoor\)/.test(live) && /fetch\("\/api\/website\/live-edit\/start"\)/.test(live) && /if \(!liveEditReady\) return/.test(live));
+ok("the LAN and tailnet are untouched: isPublicDoor is false whenever a sibling PORT matched", /isPublicDoor = typeof window !== "undefined" && !SITE_PORT\[window\.location\.port\]/.test(live));
+ok("start hands the cookie to a website editor only, resolving the viewer itself",
+  /app\.get\("\/api\/website\/live-edit\/start"[\s\S]{0,120}?if \(!\(await siteEditorReads\(req\)\)\) return res\.status\(403\)/.test(server));
+ok("the cookie is HttpOnly and Secure — script on the page cannot read it, plain http never carries it",
+  /res\.cookie\(LIVE_EDIT_COOKIE,[^\n]*httpOnly: true, secure: true/.test(server));
+ok("its own secret and a purpose prefix, so a document ticket cannot pass for it",
+  /LIVE_EDIT_SECRET = process\.env\.LIVE_EDIT_SECRET/.test(server) && /update\(`live-edit\.\$\{userId\}\.\$\{exp\}`\)/.test(server));
+ok("verify compares in constant time and refuses an expired cookie",
+  /Number\(exp\) < Date\.now\(\)\) return ""/.test(server.slice(server.indexOf("function liveEditUser"))) && /timingSafeEqual/.test(server.slice(server.indexOf("function liveEditUser"), server.indexOf("function liveEditUser") + 600)));
+ok("verify is the ONE new open GET — nginx calls it without a sign-in header, the cookie is the credential",
+  /const OPEN_GETS = new Set\(\["\/api\/desk\.ics", "\/api\/calendar\.ics", "\/api\/document\/ticket", "\/api\/social\/meta\/callback", "\/api\/website\/live-edit\/verify"\]\)/.test(server));
+ok("and it answers only 200 or 401, reading nothing", /res\.status\(liveEditUser\([^\n]*\) \? 200 : 401\)\.end\(\)/.test(server));
+
 console.log(failed ? `\n${failed} check(s) failed` : "\nall checks passed");
 process.exit(failed ? 1 : 0);

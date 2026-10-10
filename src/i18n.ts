@@ -1731,5 +1731,10 @@ export const AR: Record<string, string> = {
   "Contracts already drawn are unchanged — the clauses print on contracts drawn from now on.": "العقود المحرَّرة سابقاً لا تتغيّر — تُطبع البنود في العقود التي تُحرَّر من الآن فصاعداً.",
   "donor clauses saved — they print as clause 6": "حُفظت بنود المانح — وتُطبع كالبند السادس",
   "donor clauses cleared": "مُسحت بنود المانح",
+
+  // Live editor from the public door (10 Oct 2026)
+  "Opening the Live editor…": "جارٍ فتح المحرّر المباشر…",
+  "Could not start the Live editor.": "تعذّر تشغيل المحرّر المباشر.",
+  "Could not reach the Live editor's gate.": "تعذّر الوصول إلى بوابة المحرّر المباشر.",
 };
 export const tr = (lang: string, s: string) => (lang === "ar" ? (AR[s] || s) : s);
