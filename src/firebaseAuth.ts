@@ -80,6 +80,10 @@ export async function verifyIdToken(idToken: string): Promise<VerifiedToken> {
   if (typeof payload.exp !== "number" || payload.exp <= now) throw new Error("Token has expired.");
   if (typeof payload.iat === "number" && payload.iat > now + 300) throw new Error("Token issued in the future.");
   if (!payload.email) throw new Error("Token carries no email.");
+  // Accounts are matched by address, so the address must be proven: only a Google sign-in
+  // with a verified email is an identity here (10 Oct 2026). Every caller goes through this.
+  if (payload.firebase?.sign_in_provider !== "google.com") throw new Error("Sign in with Google.");
+  if (payload.email_verified !== true) throw new Error("This Google address is not verified.");
 
   return {
     uid: String(payload.sub),

@@ -5,7 +5,6 @@ import { selfDealingRequester } from "./selfDealing";
 import { isPersonnelDoc, maySeePersonnelFile, PERSONNEL_CATEGORIES } from "./personnelDocs";
 import {
   Building,
-  User,
   Users,
   FolderGit2,
   Coins,
@@ -90,12 +89,10 @@ import SealedSourcePanel from "./tabs/SealedSourcePanel";
 import { auth } from "./firebaseConfig";
 import {
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
   signOut,
-  onAuthStateChanged,
-  updateProfile
+  onAuthStateChanged
 } from "firebase/auth";
 
 
@@ -112,7 +109,6 @@ export default function App() {
   const [authTab, setAuthTab] = useState<"signin" | "signup">("signin");
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
-  const [authName, setAuthName] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [authBtnLoading, setAuthBtnLoading] = useState(false);
 
@@ -715,31 +711,6 @@ export default function App() {
     }
   };
 
-  const handleFirebaseSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!authEmail || !authPassword || !authName) {
-      setAuthError("Name, Email and Password are required.");
-      return;
-    }
-    setAuthBtnLoading(true);
-    setAuthError(null);
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-      if (userCredential.user) {
-        await updateProfile(userCredential.user, { displayName: authName });
-      }
-      triggerToast("Account registered successfully via Firebase.");
-      // Reset input fields
-      setAuthEmail("");
-      setAuthPassword("");
-      setAuthName("");
-    } catch (err: any) {
-      setAuthError(err.message.replace("Firebase: ", ""));
-    } finally {
-      setAuthBtnLoading(false);
-    }
-  };
-
   const handleFirebaseSignOut = async () => {
     localStorage.removeItem("anahon-uid");
     try {
@@ -810,16 +781,6 @@ export default function App() {
                 <motion.div layoutId="auth-tab" className="absolute bottom-0 start-0 end-0 h-0.5 bg-red-600" />
               )}
             </button>
-            <button
-              onClick={() => { setAuthTab("signup"); setAuthError(null); }}
-              className={`flex-1 pb-3 text-sm font-bold transition-all relative ${authTab === "signup" ? "text-slate-900" : "text-slate-500 hover:text-slate-800"
-                }`}
-            >
-              Create Account
-              {authTab === "signup" && (
-                <motion.div layoutId="auth-tab" className="absolute bottom-0 start-0 end-0 h-0.5 bg-red-600" />
-              )}
-            </button>
           </div>
 
           {/* Error Message Box */}
@@ -831,23 +792,7 @@ export default function App() {
           )}
 
           {/* Forms */}
-          <form onSubmit={authTab === "signin" ? handleFirebaseSignIn : handleFirebaseSignUp} className="space-y-4 text-start">
-            {authTab === "signup" && (
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">{t("Full Name")}</label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    value={authName}
-                    onChange={(e) => setAuthName(e.target.value)}
-                    className="w-full text-sm bg-white border border-slate-300 rounded-lg p-2.5 ps-9 text-slate-900 focus:outline-none focus:border-red-600 focus:ring-1 focus:ring-red-600/30 transition-all font-sans"
-                    placeholder="Enter your name"
-                  />
-                  <User className="absolute start-3 top-3 w-4 h-4 text-slate-500" />
-                </div>
-              </div>
-            )}
+          <form onSubmit={handleFirebaseSignIn} className="space-y-4 text-start">
 
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-600 uppercase tracking-wide">{t("Email Address")}</label>
@@ -890,7 +835,7 @@ export default function App() {
                   <span>Processing...</span>
                 </>
               ) : (
-                <span>{authTab === "signin" ? "Sign in" : "Create account"}</span>
+                <span>Sign in</span>
               )}
             </button>
           </form>
