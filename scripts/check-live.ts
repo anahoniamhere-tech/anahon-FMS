@@ -218,8 +218,8 @@ ok("the iframe waits for the gate on the public door — it never frames before 
 ok("the LAN and tailnet are untouched: isPublicDoor is false whenever a sibling PORT matched", /isPublicDoor = typeof window !== "undefined" && !SITE_PORT\[window\.location\.port\]/.test(live));
 ok("start hands the cookie to a website editor only, resolving the viewer itself",
   /app\.get\("\/api\/website\/live-edit\/start"[\s\S]{0,120}?if \(!\(await siteEditorReads\(req\)\)\) return res\.status\(403\)/.test(server));
-ok("the cookie is HttpOnly and Secure — script on the page cannot read it, plain http never carries it",
-  /res\.cookie\(LIVE_EDIT_COOKIE,[^\n]*httpOnly: true, secure: true/.test(server));
+ok("the cookie is HttpOnly, Secure and SameSite=Strict — no script reads it, no plain http or foreign page carries it",
+  /res\.cookie\(LIVE_EDIT_COOKIE,[^\n]*httpOnly: true, secure: true, sameSite: "strict"/.test(server));
 ok("its own secret and a purpose prefix, so a document ticket cannot pass for it",
   /LIVE_EDIT_SECRET = process\.env\.LIVE_EDIT_SECRET/.test(server) && /update\(`live-edit\.\$\{userId\}\.\$\{exp\}`\)/.test(server));
 ok("verify compares in constant time and refuses an expired cookie",

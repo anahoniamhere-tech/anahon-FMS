@@ -7168,11 +7168,15 @@ app.get("/api/website/live-edit/start", async (req, res) => {
   if (!(await siteEditorReads(req))) return res.status(403).json({ error: "The Live editor is for the website's editors." });
   const id = await viewerIdFromReq(req);
   const exp = String(Date.now() + LIVE_EDIT_MS);
-  res.cookie(LIVE_EDIT_COOKIE, `${id}.${exp}.${liveEditSig(id, exp)}`, { httpOnly: true, secure: true, sameSite: "lax", maxAge: LIVE_EDIT_MS, path: "/" });
+  res.cookie(LIVE_EDIT_COOKIE, `${id}.${exp}.${liveEditSig(id, exp)}`, { httpOnly: true, secure: true, sameSite: "strict", maxAge: LIVE_EDIT_MS, path: "/" });
   res.json({ success: true });
 });
 // Stateless on purpose: nginx calls this once per asset a page pulls, so no database read here.
 // The role was checked when the cookie was minted; the cookie lives four hours at most.
+// SameSite=Strict: the frame is app.anahon.org:443 → :8443, which is same-SITE (a site ignores
+// the port), so Strict still sends it there and nowhere a foreign page could lead a browser.
+// Path stays "/": :8443 serves the whole site from the root, and a cookie's Path cannot tell
+// ports apart anyway. The FMS on :443 receives it too and simply never reads it.
 app.get("/api/website/live-edit/verify", (req, res) => {
   const raw = String(req.headers.cookie || "").split(";").map(c => c.trim()).find(c => c.startsWith(`${LIVE_EDIT_COOKIE}=`));
   res.status(liveEditUser(raw ? decodeURIComponent(raw.slice(LIVE_EDIT_COOKIE.length + 1)) : "") ? 200 : 401).end();
