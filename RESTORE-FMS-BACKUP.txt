@@ -1,73 +1,125 @@
-HOW TO RESTORE THIS BACKUP
-==========================
-
-These two files are AES-256-CBC encrypted with PBKDF2 (200,000 iterations),
-the same scheme and the SAME KEY as the AnaHon media archive.
-
-  fms-database-YYYY-MM-DD.db.enc     the whole financial system: accounts,
-                                     journals, vouchers, payroll, bank
-                                     transactions, donors, projects
-  document-vault-YYYY-MM-DD.tar.gz.enc   the 643-file document vault
-                                         (registration papers, contracts,
-                                         grant agreements, receipts)
-
-THE KEY IS NOT HERE AND MUST NEVER BE UPLOADED HERE.
-It lives on Saad's Mac at ~/anahon-archive-keys/anahon-archive-2026-08-17.key
-and in his password manager. Without it these files are unrecoverable —
-there is no reset, no recovery link, no support line.
+HOW TO RESTORE THE ANAHON FMS BACKUP
+====================================
+Rewritten 11 Oct 2026 from a real restore test. Steps 1-3 were run end to end on the
+11 Oct set and gave back a database byte-identical to the NAS snapshot it was taken
+from and all 1,020 vault files unchanged. Step 4 (putting it back over live data) has
+NOT been rehearsed; follow it carefully, snapshot first.
 
 
-1. CHECK NOTHING WAS CORRUPTED IN TRANSIT
------------------------------------------
-    shasum -a 256 -c SHA256SUMS.txt
+WHAT IS IN THIS FOLDER
+----------------------
+Every night at 03:00 the Mac adds one dated set. Use the NEWEST date that has all four files:
 
-Every line must say OK.
+  fms-database-YYYY-MM-DD.db.enc         the whole financial system (accounts, journals,
+                                         vouchers, payroll, bank lines, donors, projects,
+                                         documents index, audit log)
+  document-vault-YYYY-MM-DD.tar.gz.enc   the document vault (1,020 files on 11 Oct)
+                                         plus calendar-feed.json
+  workbench-YYYY-MM-DD.tar.gz.enc        what exists in one place only: the website's
+                                         live-edited content, data, uploads and images,
+                                         the media archive's catalogue, the Claude memory,
+                                         ~/AnaHon/documents, and fms.env (the server's
+                                         settings: API keys, Google token, push keys)
+  SHA256SUMS-YYYY-MM-DD.txt              checksums of the three files above
+
+Ignore the undated SHA256SUMS.txt; it belongs to an August set.
+
+All three are AES-256-CBC + PBKDF2 (200,000 iterations), encrypted with ONE key file.
 
 
-2. DECRYPT
-----------
-    openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
-      -in fms-database-YYYY-MM-DD.db.enc \
-      -out dev.db -pass file:/path/to/anahon-archive-2026-08-17.key
-
-    openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
-      -in document-vault-YYYY-MM-DD.tar.gz.enc \
-      -out vault.tar.gz -pass file:/path/to/anahon-archive-2026-08-17.key
-
-If you are typing the passphrase instead of using the key file, replace
-`-pass file:...` with `-pass pass:THEPASSPHRASE` — but the key file is the
-supported path.
+THE KEY  (never upload it to this folder)
+-------
+  On Saad's Mac:   ~/anahon-archive-keys/anahon-archive-2026-08-17.key
+  Apple Passwords: "AnaHon archive key 2026-08-17" (iCloud Keychain, phone + Mac)
+  Paper:           a printed copy in the office file
+Without it these files cannot be opened. There is no reset.
+Below, KEY means the path to the key file.
 
 
-3. PUT IT BACK
---------------
-Database — confirm it is intact, then drop it into place:
+HOW LONG IT TAKES (11 Oct 2026, office line)
+-----------------
+  Google Drive downloading the 1.3 GB set ......... about 30 min
+  database, decrypt + copy ........................ seconds
+  vault, decrypt + unpack ......................... about 14 min
+  workbench, decrypt + unpack ..................... about 2 min
+Budget an hour.
 
-    sqlite3 dev.db "pragma integrity_check;"     # must print: ok
+
+1. CHECK NOTHING WAS DAMAGED
+----------------------------
+In the folder that holds the set (D below):
+
+    cd "D"
+    shasum -a 256 -c SHA256SUMS-YYYY-MM-DD.txt
+
+All three lines must say OK. On Linux use: sha256sum -c SHA256SUMS-YYYY-MM-DD.txt
+
+
+2. DECRYPT, INTO A SCRATCH FOLDER (never straight over live data)
+-------------------------------------------------------------
+    mkdir -m 700 restore && cd restore
+
+    openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass file:KEY \
+      -in "D/fms-database-YYYY-MM-DD.db.enc" -out dev.db
+
+    mkdir vaultset && openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass file:KEY \
+      -in "D/document-vault-YYYY-MM-DD.tar.gz.enc" | tar -xzf - -C vaultset --exclude='._*'
+
+    mkdir workbenchset && openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass file:KEY \
+      -in "D/workbench-YYYY-MM-DD.tar.gz.enc" | tar -xzf - -C workbenchset --exclude='._*'
+
+(--exclude='._*' drops macOS metadata files that sets made before 12 Oct 2026 carry.
+"Ignoring unknown extended header keyword" warnings from GNU tar are harmless.)
+
+To work on the NAS without copying the key there: run each openssl on the Mac and pipe
+into   ssh admin@192.168.1.22 "sudo sh -c 'cat > SCRATCH/dev.db'"   (or into tar -xzf -
+-C SCRATCH/vaultset), so the key never leaves the Mac. That is how the test was done.
+
+
+3. CHECK WHAT CAME BACK
+-----------------------
+    sqlite3 dev.db "pragma integrity_check;"          # must print: ok
+    sqlite3 dev.db "select count(*) from AppDoc;"      # 743 on 11 Oct; it only grows
     sqlite3 dev.db "select count(*) from JournalEntry;"
-    cp dev.db <FMS>/prisma/dev.db
+    find vaultset/vault -type f | wc -l                # 1,020 on 11 Oct; it only grows
+    ls workbenchset/workbench                          # site, archive-catalogue,
+                                                       # claude-memory, documents, fms.env
 
-Vault:
+If the NAS still exists, the strongest check is to compare with the snapshot the set
+was taken from (the nightly log names it: "pull from NAS snapshot fms-YYYY-MM-DD_HH-00"):
+    sha256sum dev.db /mnt/mainpool/anahon/fms/.zfs/snapshot/<that snapshot>/db/dev.db
 
-    tar -xzf vault.tar.gz -C ~/Documents/
 
-The FMS application code is a separate matter — it lives in git at
-https://github.com/anahoniamhere-tech/anahon-FMS. This backup deliberately
-contains DATA ONLY, because the data is what cannot be rebuilt.
+4. PUT IT BACK (not rehearsed; on the NAS, as root)
+---------------------------------------------------
+First take a snapshot, so this step can be undone:
+    zfs snapshot mainpool/anahon/fms@before-restore-$(date +%Y%m%d%H%M)
+Stop the FMS so nothing writes during the swap:
+    docker stop anahon-fms
+
+Database:
+    cp dev.db /mnt/mainpool/anahon/fms/db/dev.db
+    chown 1000:1000 /mnt/mainpool/anahon/fms/db/dev.db
+Vault (adds and overwrites; nothing is deleted):
+    cp -a vaultset/vault/. /mnt/mainpool/anahon/fms/vault/
+    chown -R 1000:1000 /mnt/mainpool/anahon/fms/vault
+Server settings (only if the .env itself was lost):
+    cp workbenchset/workbench/fms.env /mnt/mainpool/anahon/fms/src/.env
+    chown 1000:1000 /mnt/mainpool/anahon/fms/src/.env && chmod 600 /mnt/mainpool/anahon/fms/src/.env
+Website content, uploads and images: copy workbenchset/workbench/site/<part>/ into
+/mnt/mainpool/anahon/site/<part>/.
+
+Start it again and check it answers:
+    docker start anahon-fms
+    curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3100/       # 200
+
+Afterwards, delete the scratch folder: it holds an unencrypted copy of everything.
 
 
 WHAT THIS BACKUP IS NOT
 -----------------------
-It is a snapshot, not a sync. It reflects the moment the script last ran.
-Re-run scripts/backup_to_drive.sh after any significant bookkeeping session.
-
-[3 Sep 2026] The encryption key also lives in Apple Passwords under "AnaHon archive key 2026-08-17" (iCloud Keychain, phone + Mac) and as a printed copy in the office file. If the Mac is gone, start there.
-
-WORKBENCH SET (added 5 Sep 2026) — workbench-<date>.tar.gz.enc
-  Decrypt exactly like the vault set, then untar. Inside: site/ (the website's live-edited
-  content, data, uploads, images — copy back into /mnt/mainpool/anahon/site), archive-catalogue/
-  (everything in /mnt/mainpool/anahon/archive except archive/raw; the raw media is in Drive's
-  AnaHon-Archive-Encrypted), claude-memory/ (restore to ~/.claude/projects/-Users-saadmatar-AnaHon/memory),
-  documents/ (~/AnaHon/documents), and fms.env (added 5 Sep 2026: the server's own
-  /mnt/mainpool/anahon/fms/src/.env — API keys, the Google refresh token, the VAPID push pair;
-  restore it to that path, owner 1000:1000, mode 600, then docker compose up -d).
+It is a nightly snapshot, not a live sync: anything entered after 03:00 is not in it.
+The application code is not in it either; that lives in git at
+https://github.com/anahoniamhere-tech/anahon-FMS. The archive's raw media (terabytes)
+is not in it; its rescued 32 GB has its own encrypted Drive copy (AnaHon-Archive-Encrypted),
+and the imported media on the NAS has no off-box copy.

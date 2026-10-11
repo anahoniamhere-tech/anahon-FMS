@@ -30,6 +30,9 @@ DRIVE="$HOME/Library/CloudStorage/GoogleDrive-anahoniamhere@gmail.com/My Drive/A
 KEEP=2
 STAMP=$(date +%Y-%m-%d)
 export PATH="/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin"
+# macOS tar otherwise adds a "._" metadata file for every file that has extended attributes:
+# 1,170 junk files in the 11 Oct vault set, which unpack as real files on Linux.
+export COPYFILE_DISABLE=1
 
 [ -f "$KEY" ] || { echo "missing key: $KEY"; exit 1; }
 [ -d "$(dirname "$DRIVE")" ] || { echo "Google Drive folder not mounted"; exit 1; }
