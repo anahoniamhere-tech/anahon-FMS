@@ -1209,8 +1209,10 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                                 className="text-slate-500 hover:text-red-650 hover:underline inline-flex items-center gap-1"
                                 title={`${d.category} · ${d.sizeStr}`}
                               >
-                                {d.category === "Evidence" ? "📷" : "🧾"} {d.filename}
-                                {d.refNo && <span className="font-mono text-slate-400">{d.refNo}</span>}
+                                {d.category === "Evidence" ? "📷" : "🧾"}{" "}
+                                {/* A filename is a Latin run: in Arabic its leading date jumped to the far end. */}
+                                <span dir="ltr">{d.filename}</span>
+                                {d.refNo && <span dir="ltr" className="font-mono text-slate-400">{d.refNo}</span>}
                                 {/* Saad's rule, 11 Oct 2026: a record whose file is gone says so where it is read.
                                     The row stays — it is the record of what was filed — and nothing here uploads:
                                     a new upload would make a second record beside this one. */}
