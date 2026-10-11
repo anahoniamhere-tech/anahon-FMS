@@ -32,7 +32,17 @@ ok("it accepts the sign-in token or a document ticket", /const viewerId = await 
 
 console.log("\nthe exceptions, and only those");
 const open = JSON.parse((server.match(/const OPEN_GETS = new Set\((\[[^\]]*\])\)/) || [])[1] || "[]") as string[];
-ok("exactly four", open.length === 4, open.join(","));
+ok("exactly five", open.length === 5, open.join(","));
+// 10 Oct 2026, the Live editor's public door: nginx asks this route about every request on
+// app.anahon.org:8443. It carries the editor's signed cookie, not a sign-in token, so it cannot
+// pass the GET guard, and its whole answer must be that cookie's verdict.
+ok("the Live editor's door check", open.includes("/api/website/live-edit/verify"));
+ok("…answers only by verifying the signed cookie", (() => {
+  const i = server.indexOf('app.get("/api/website/live-edit/verify"');
+  const body = i < 0 ? "" : server.slice(i, server.indexOf("\napp.", i + 10));
+  return /res\.status\(liveEditUser\(/.test(body) && /\? 200 : 401\)\.end\(\)/.test(body);
+})());
+ok("…and the cookie is signed and time-limited", /crypto\.timingSafeEqual\(Buffer\.from\(sig\), Buffer\.from\(want\)\)/.test(server) && /Number\(exp\) < Date\.now\(\)\) return ""/.test(server));
 ok("Meta's return address after connecting a Page", open.includes("/api/social/meta/callback"));
 // It carries no sign-in header (Meta redirects the browser), so its credential is the random
 // single-use state minted by /api/social/meta/connect for a signed-in editor; the callback must

@@ -19,6 +19,7 @@ import { CONTENT_TYPES, CONTENT_CHANNELS, CONTENT_CHECKS, CONTENT_LABELS, publis
 import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src/insights.js";
 import { itemOpenFacts } from "./src/fillMarkers.js";
 import { m as gm, type Msg } from "./src/gateText.js";
+import { setDocHeaders } from "./src/docServe.js";
 import { diversityBlockers, trackerRequired, monthlySummary, monthsLogged, isPresenceValue, MAIN_SUBJECTS, VULNERABLE_GROUPS, PRESENCE_FIELDS, PACKAGE_ANGLES, NO_GROUP, TRACKER_FROM } from "./src/diversity.js";
 import { parseArticle, writeArticle, field, tagsOf, listOf, unquote, changedText, correctionBlocker, EDITABLE, ARTICLE_TYPES } from "./src/articleFile.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
@@ -2925,9 +2926,8 @@ app.get("/api/sources/:id/document/:docId", async (req, res) => {
   const doc = f ? (JSON.parse(f.docsJson || "[]") as SealedDoc[]).find(d => d.id === req.params.docId) : null;
   const abs = doc ? path.resolve(VAULT_ROOT, doc.path) : "";
   if (!doc || !abs.startsWith(path.resolve(VAULT_ROOT, "SEALED")) || !fs.existsSync(abs)) return res.status(404).json({ error: "No such paper in this file." });
-  res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
+  setDocHeaders(res, doc.filename, doc.mimeType, doc.id);   // offered under its id: the name is the person's
   res.setHeader("Cache-Control", "no-store");
-  res.setHeader("Content-Disposition", `inline; filename="${doc.id}"`);
   fs.createReadStream(abs).pipe(res);
 });
 
@@ -12932,8 +12932,7 @@ app.get("/api/document/content/:id", async (req, res) => {
     }
     if (await officialPaperBlocked(doc, await viewerIdFromReq(req), actingSeat(req))) return res.status(403).json({ error: PAPERS_REFUSAL });
 
-    res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
-    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(doc.filename)}"`);
+    setDocHeaders(res, doc.filename, doc.mimeType);
 
     const vaultPath = vaultPathFromPointer(doc.base64 || "");
     if (vaultPath) {
