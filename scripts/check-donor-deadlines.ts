@@ -41,6 +41,12 @@ for (const pid of ["proj-skf-mediamig", "proj-1785584153305"]) {
   assert.ok(/agreement/i.test(o.detail), `${pid}: the record must say why it is unknown`);
 }
 
+// C2 — FPU iContent 2: the subgrant was found (11 Oct 2026, ANH-DOC-00849), so its dates are read, not unknown.
+const ic2 = DONOR_OBLIGATIONS.filter(o => o.projectId === "proj-fpu-icontent2");
+assert.deepEqual(ic2.map(o => [o.key, o.due]), [["progress-report", "2024-01-15"], ["final-report", "2024-03-15"]], "FPU iContent 2: progress 15 Jan 2024, final 15 Mar 2024");
+assert.ok(ic2.every(o => !o.unknown && /ANH-DOC-00849/.test(o.source)), "both cite the signed subgrant");
+assert.ok(!JSON.stringify(DONOR_OBLIGATIONS).includes("23057"), "the wrong reference 50675/23057 is gone");
+
 // D — Asfari's spending condition is recorded with its evidence, not as folklore.
 const yp = DONOR_OBLIGATIONS.find(o => o.key === "year-plan")!;
 assert.ok(yp.done, "the Year Plan was approved 29 Jun 2026 — the grant is spendable");

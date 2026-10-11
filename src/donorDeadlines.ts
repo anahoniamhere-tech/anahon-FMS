@@ -161,13 +161,20 @@ export const DONOR_OBLIGATIONS: Obligation[] = [
     source: "BWZ-2023-FRL/Contract/agreements ana hon.pdf (Clause 4, Time frame) + BWZ-2023-FRL/Agreement/CSEU - CBOs Agreement (AnaHon-bwz).docx"
   },
 
-  // ── FPU iContent 2 — no agreement in the vault ─────────────────────────────
+  // ── FPU iContent 2 — subgrant 2WWEU21/50679/23061, found 11 Oct 2026 ────────
   {
-    projectId: "proj-fpu-icontent2", key: "reporting-unknown",
-    title: "Reporting schedule UNKNOWN — no agreement on file (reports delivered)",
-    detail: "The vault holds only a budget workbook and reconstructed vouchers for this grant; the subgrant contract (2WWEU21/50675/23057) is nowhere, so no due date can be stated. What is known: the final financial and narrative reports were delivered — Emilie Bisson of Free Press Unlimited acknowledged them on 8 April 2024 (\"Many thanks for the report\"). The obligation was met; the schedule it was measured against is not on record.",
-    due: "", unknown: true, done: true,
-    source: "no agreement on file — FPU thread \"Final_financial_report\", 8 Apr 2024"
+    projectId: "proj-fpu-icontent2", key: "progress-report",
+    title: "Financial progress report (period 1 Nov – 31 Dec 2023)",
+    detail: "Deadline 15 January 2024 (Art. 3, reports schedule). No submission of this report is on record; it is closed because Free Press Unlimited accepted the final reports covering the whole period — Emilie Bisson acknowledged them on 8 April 2024 (\"Many thanks for the report\") — and the grant is closed.",
+    due: "2024-01-15", done: true,
+    source: "FPU-2024-ICONTENT2/Agreement/PROMIS-Subgrant-AnaHon-23061-200923_SIGNED.pdf (ANH-DOC-00849), Art. 3"
+  },
+  {
+    projectId: "proj-fpu-icontent2", key: "final-report",
+    title: "Final narrative + financial reports (period 1 Nov 2023 – 29 Feb 2024)",
+    detail: "Deadline 15 March 2024 (Art. 3, reports schedule). Delivered: Emilie Bisson of Free Press Unlimited acknowledged them on 8 April 2024 (\"Many thanks for the report\"). Page 1 of the subgrant prints the expiration as \"29-02-2023\"; Art. 4 and this schedule give 29 Feb 2024.",
+    due: "2024-03-15", done: true,
+    source: "FPU-2024-ICONTENT2/Agreement/PROMIS-Subgrant-AnaHon-23061-200923_SIGNED.pdf (ANH-DOC-00849), Art. 3 — acknowledgement: FPU thread \"Final_financial_report\", 8 Apr 2024"
   }
 ];
 
