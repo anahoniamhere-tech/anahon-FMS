@@ -1,7 +1,7 @@
 import * as XLSX from "xlsx";
 import { ic } from "../nav";
 import React, { useEffect, useState } from "react";
-import { Activity, Award, Download, Trash2, Banknote, CalendarRange, ChartColumn, CircleCheck, ClipboardList, Files, FolderGit2, FolderOpen, MapPin, Plus, Sheet, Sparkles, X } from "lucide-react";
+import { Activity, AlertTriangle, Award, Download, Trash2, Banknote, CalendarRange, ChartColumn, CircleCheck, ClipboardList, Files, FolderGit2, FolderOpen, MapPin, Plus, Sheet, Sparkles, X } from "lucide-react";
 import { Account, AppDoc, Donor, Expense, Procurement, Project, Timesheet } from "../types";
 import { STREAMS } from "../constants";
 import { tr } from "../i18n";
@@ -1660,6 +1660,13 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                         </button>
                                       )}
                                       <span className="text-slate-700 truncate">📄 {doc.filename} ({doc.sizeStr})</span>
+                                      {/* Saad, 11 Oct 2026: a record whose file is gone says so where it is listed. */}
+                                      {doc.fileMissing && (
+                                        <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 shrink-0"
+                                          title={t("Re-attach the scan at this record's own place (the Admin room does it). A new upload creates a second record.")}>
+                                          {ic(AlertTriangle, "h-3 w-3")}{t("File missing")}
+                                        </span>
+                                      )}
                                       {/* What this paper is filed as — and, for the people who
                                           keep a project's papers, the way to correct it. Only
                                           the four core categories are offered: the panel above
