@@ -50,7 +50,7 @@ import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, B
 
 import { PROPOSAL_SECTIONS, STREAMS, OPP_STAGES, QUOTE_STATUSES, SERVICE_CATALOG, FINANCIAL_TERMS, PRODUCTION_NOTE, TECHNICAL_NOTE, EXTRAS_DEFAULT } from "./constants";
 import { tr } from "./i18n";
-import { lostFiles } from "./lostFiles";
+import { lostFiles, lostBeyond } from "./lostFiles";
 import LostFilesSection from "./LostFilesSection";
 import { sayResponse } from "./gateText";
 import { THRESHOLD_LABEL, needsProcurement } from "./procurementPolicy";
@@ -967,6 +967,8 @@ export default function App() {
   // Files lost from the vault: read off the per-document flag the state load already computes (server.ts),
   // so a scan put back at the record's path leaves the list on the next load. Never stored, never re-stat'd.
   const lostVault = lostFiles(state.documents as any, state.expenses as any, new Set(state.projects.map(p => p.id)));
+  // The drawer's badge: the spend gaps plus the lost files (a voucher already in the evidence gaps counts once).
+  const gapBadge = evidenceGaps.total + lostBeyond(lostVault, new Set(evidenceGaps.noEvidence.map(e => e.id)));
 
   const isProjectOfficer = currentUser?.role === "Project Officer";
   // The server already narrows a Project Officer's payload; this mirrors it in the UI.
@@ -1468,7 +1470,7 @@ export default function App() {
 
       {/* Missing-evidence button. Always visible, because a documentation gap you have to go
           looking for is a gap nobody looks for. Counts are derived, never stored. */}
-      {(evidenceGaps.total > 0 || lostVault.total > 0) && !gapsOpen && (
+      {gapBadge > 0 && !gapsOpen && (
         <button
           onClick={() => setGapsOpen(true)}
           title="Documents missing against posted spend"
@@ -1477,7 +1479,7 @@ export default function App() {
                      bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-colors"
         >
           <span data-float-label className="text-base leading-none">📄</span>
-          <span>{evidenceGaps.total || lostVault.total}<span data-float-label> {t("missing")}</span></span>
+          <span>{gapBadge}<span data-float-label> {t("missing")}</span></span>
         </button>
       )}
 

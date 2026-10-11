@@ -18,7 +18,8 @@ export default function LostFilesSection({ lost, project, t, onOpen }: {
         <p className="text-xs font-bold text-amber-900">{t("Files lost from the vault")} ({lost.total})</p>
         <p className="text-[10px] text-amber-800 mt-0.5">
           {lost.vouchers > 0 && <>{lost.vouchers} {t("of them are scans of posted vouchers")}. </>}
-          {t("The record is here, the scan is not. Putting the file back at the record's path takes it off this list by itself.")}
+          {t("The record is here, the scan is not.")}{" "}
+          {t("To re-attach, put the scan back at the record's own place — the Admin room can do it — and the line leaves this list by itself. A new upload makes a second record and leaves this one listed.")}
         </p>
       </div>
       {lost.groups.map(g => {
@@ -37,9 +38,8 @@ export default function LostFilesSection({ lost, project, t, onOpen }: {
                   {/* The file name is what tells you what to scan again, so it is never cut off: it gets its own line. */}
                   <span className="flex items-baseline gap-2 text-[10px]">
                     <span dir="ltr" className="font-mono font-bold text-slate-500 shrink-0">{r.refNo}</span>
-                    <span className="text-slate-400 truncate">
-                      {r.voucherNo ? <bdi dir="ltr" className="font-mono">{r.voucherNo}</bdi> : <bdi>{r.category}</bdi>}
-                    </span>
+                    <span className="text-slate-400 truncate"><bdi>{r.category}</bdi></span>
+                    {r.voucherNo && <bdi dir="ltr" className="font-mono text-slate-500 shrink-0">{r.voucherNo}</bdi>}
                   </span>
                   <span className="block text-[11px] text-slate-800 break-all"><bdi>{r.filename}</bdi></span>
                 </button>

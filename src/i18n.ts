@@ -266,7 +266,6 @@ export const AR: Record<string, string> = {
   "End Date": "تاريخ الانتهاء",
   "Expenditure Purpose Title": "عنوان المصروف",
   "Date on the invoice or receipt": "تاريخ الفاتورة أو الإيصال",
-  "The scan is gone from the vault. It is re-attached on the record itself, by the Admin room — uploading it here would create a second record.": "النسخة الممسوحة مفقودة من الأرشيف. تُعاد إضافتها على السجل نفسه من غرفة الإدارة — ورفعها من هنا يُنشئ سجلاً ثانياً.",
   "Paid from": "دُفع من",
   "How it was paid": "كيف دُفع",
   "Record the payment": "سجّل الدفعة",

@@ -2,7 +2,10 @@
 // It must read the live per-document flag, group by project, name the posted vouchers, and never show a
 // file that is back. Run:  npx tsx scripts/check-lost-files.ts
 import { readFileSync } from "node:fs";
-import { lostFiles } from "../src/lostFiles.js";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { lostFiles, lostBeyond } from "../src/lostFiles.js";
+import LostFilesSection from "../src/LostFilesSection.js";
 import { AR } from "../src/i18n.js";
 
 let failed = 0;
@@ -56,12 +59,29 @@ const app = read("src/App.tsx"), section = read("src/LostFilesSection.tsx");
 ok("the section has no replace or upload control", !/type="file"|handleVoucherDocUpload|Replace|Re-attach</.test(section) && /data-lost-files/.test(section));
 ok("the drawer mounts the section", /<LostFilesSection lost=\{lostVault\}/.test(app));
 ok("it reads the per-document flag, not the nightly note", /lostFiles\(state\.documents/.test(app) && !/isMarked|MISSING_MARK/.test(app + section));
-ok("the floating button appears when only lost files exist", /evidenceGaps\.total > 0 \|\| lostVault\.total > 0/.test(app));
 for (const k of ["Files lost from the vault", "of them are scans of posted vouchers", "Not tied to a project", "Missing documents",
-  "The record is here, the scan is not. Putting the file back at the record's path takes it off this list by itself."])
+  "The record is here, the scan is not.",
+  "To re-attach, put the scan back at the record's own place — the Admin room can do it — and the line leaves this list by itself. A new upload makes a second record and leaves this one listed."])
   ok(`Arabic exists for «${k.slice(0, 40)}»`, !!AR[k] && /[؀-ۿ]/.test(AR[k]));
 ok("the Arabic heading is the one Saad approved", AR["Files lost from the vault"] === "ملفات مفقودة من الأرشيف");
 ok("the server sends the flag the list reads", /fileMissing: \(\(\) => \{ const f = vaultPathFromPointer\(d\.base64/.test(read("server.ts")));
+
+console.log("\n6. the section on the page: a scratch lost document must appear, and a found one must not");
+const T = (s: string) => s;
+const show = (docsIn: any[]) => renderToStaticMarkup(React.createElement(LostFilesSection, {
+  lost: lostFiles(docsIn, vouchers, projects), project: (id: string) => (id === "p-a" ? { code: "P-A", name: "Alpha" } : undefined), t: T, onOpen: () => {} }));
+const lostHtml = show([doc("zz-scratch", { filename: "scratch-receipt.pdf", refNo: "ANH-DOC-99999" })]);
+ok("a scratch document with fileMissing true appears, by reference, name and category",
+  /ANH-DOC-99999/.test(lostHtml) && /scratch-receipt\.pdf/.test(lostHtml) && /Invoice/.test(lostHtml) && /Files lost from the vault/.test(lostHtml));
+ok("the same document, file back, renders nothing at all", show([doc("zz-scratch", { fileMissing: false })]) === "");
+ok("a voucher's scan shows its voucher number beside the reference", /PV-2026-001/.test(show([doc("zz-v", { linkedRecordType: "Expense", linkedRecordId: "e1" })])));
+ok("the section says how to re-attach, and that a new upload leaves the old record listed", /A new upload makes a second record and leaves this one listed/.test(lostHtml));
+
+console.log("\n7. the badge");
+const two = lostFiles([doc("1"), doc("2", { linkedRecordType: "Expense", linkedRecordId: "e1" })], vouchers, projects);
+ok("every lost file adds to the badge", lostBeyond(two, new Set()) === 2);
+ok("a voucher the evidence register already counts is one item, not two", lostBeyond(two, new Set(["e1"])) === 1);
+ok("the drawer's badge is the spend gaps plus the lost files", /const gapBadge = evidenceGaps\.total \+ lostBeyond\(lostVault,/.test(app) && /\{gapBadge > 0 && !gapsOpen/.test(app));
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
