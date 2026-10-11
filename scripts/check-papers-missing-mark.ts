@@ -18,6 +18,8 @@ const tip = "Re-attach the scan at this record's own place (the Admin room does 
 assert.ok(list.includes(`title={t("${tip}")}`), "the tooltip says where to re-attach and why not to re-upload");
 assert.equal(AR["File missing"], "الملف مفقود");
 assert.ok(AR[tip], "the tooltip has Arabic");
+// At phone width the mark must not squeeze the name out of the line (it did on ANH-DOC-00156).
+assert.ok(list.includes('<span className="text-slate-700 truncate min-w-[4rem]">📄 {doc.filename}'), "the filename keeps a minimum width beside the mark");
 // Read-only: the mark adds no control.
 const mark = list.slice(list.indexOf("{doc.fileMissing && ("), list.indexOf("{t(\"File missing\")}"));
 assert.ok(!/<button|<input|<select|onClick/.test(mark), "the mark is a label, not a control");

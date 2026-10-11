@@ -1659,7 +1659,7 @@ export default function ProjectsTab({ currentUser, formatIn, formatUSD, handleVo
                                           {doc.refNo}
                                         </button>
                                       )}
-                                      <span className="text-slate-700 truncate">📄 {doc.filename} ({doc.sizeStr})</span>
+                                      <span className="text-slate-700 truncate min-w-[4rem]">📄 {doc.filename} ({doc.sizeStr})</span>
                                       {/* Saad, 11 Oct 2026: a record whose file is gone says so where it is listed. */}
                                       {doc.fileMissing && (
                                         <span className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded px-1 py-0.5 shrink-0"
