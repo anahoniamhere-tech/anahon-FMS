@@ -1211,6 +1211,14 @@ export default function ExpensesTab({ currentUser, formatUSD, handleVoucherDocUp
                               >
                                 {d.category === "Evidence" ? "📷" : "🧾"} {d.filename}
                                 {d.refNo && <span className="font-mono text-slate-400">{d.refNo}</span>}
+                                {/* Saad's rule, 11 Oct 2026: a record whose file is gone says so where it is read.
+                                    The row stays — it is the record of what was filed — and nothing here uploads:
+                                    a new upload would make a second record beside this one. */}
+                                {d.fileMissing && (
+                                  <span className="rounded bg-red-50 px-1 font-bold text-red-700" title={t("Re-attach the scan at this record's own place (the Admin room does it). A new upload creates a second record.")}>
+                                    {t("File missing")}
+                                  </span>
+                                )}
                               </a>
                             ))}
                           </div>
