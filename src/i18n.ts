@@ -2,6 +2,13 @@
 // Main navigation and primary actions only — data, documents and financial
 // records stay in the language they were entered in.
 export const AR: Record<string, string> = {
+  // the Missing documents drawer: files lost from the vault
+  "Missing documents": "وثائق مفقودة",
+  "Derived live from the register — nothing here is stored": "مشتقّة مباشرةً من السجل — لا يُخزَّن هنا شيء",
+  "Files lost from the vault": "ملفات مفقودة من الأرشيف",
+  "of them are scans of posted vouchers": "منها مسوحات لسندات صرف مرحَّلة",
+  "The record is here, the scan is not. Putting the file back at the record's path takes it off this list by itself.": "السجل موجود لكنّ المسح غير موجود. بإعادة الملف إلى مساره في السجل يخرج من هذه القائمة تلقائيًا.",
+  "Not tied to a project": "غير مرتبطة بمشروع",
   // the official papers shelf
   "The original scan": "المسح الأصلي",
   "was lost; this certified copy carries the same text.": "فُقد؛ وهذه النسخة المصدّقة تحمل النص نفسه.",

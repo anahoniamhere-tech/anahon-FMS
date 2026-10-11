@@ -50,6 +50,8 @@ import { DatabaseState, Account, Project, Donor, Vendor, Expense, Procurement, B
 
 import { PROPOSAL_SECTIONS, STREAMS, OPP_STAGES, QUOTE_STATUSES, SERVICE_CATALOG, FINANCIAL_TERMS, PRODUCTION_NOTE, TECHNICAL_NOTE, EXTRAS_DEFAULT } from "./constants";
 import { tr } from "./i18n";
+import { lostFiles } from "./lostFiles";
+import LostFilesSection from "./LostFilesSection";
 import { sayResponse } from "./gateText";
 import { THRESHOLD_LABEL, needsProcurement } from "./procurementPolicy";
 import IcontentInvPage from "./IcontentInvPage";
@@ -962,6 +964,10 @@ export default function App() {
     };
   })();
 
+  // Files lost from the vault: read off the per-document flag the state load already computes (server.ts),
+  // so a scan put back at the record's path leaves the list on the next load. Never stored, never re-stat'd.
+  const lostVault = lostFiles(state.documents as any, state.expenses as any, new Set(state.projects.map(p => p.id)));
+
   const isProjectOfficer = currentUser?.role === "Project Officer";
   // The server already narrows a Project Officer's payload; this mirrors it in the UI.
   const officerScopeStream = (currentUser as any)?.streamScope || "";
@@ -1462,7 +1468,7 @@ export default function App() {
 
       {/* Missing-evidence button. Always visible, because a documentation gap you have to go
           looking for is a gap nobody looks for. Counts are derived, never stored. */}
-      {evidenceGaps.total > 0 && !gapsOpen && (
+      {(evidenceGaps.total > 0 || lostVault.total > 0) && !gapsOpen && (
         <button
           onClick={() => setGapsOpen(true)}
           title="Documents missing against posted spend"
@@ -1471,7 +1477,7 @@ export default function App() {
                      bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs transition-colors"
         >
           <span data-float-label className="text-base leading-none">📄</span>
-          <span>{evidenceGaps.total}<span data-float-label> missing</span></span>
+          <span>{evidenceGaps.total || lostVault.total}<span data-float-label> {t("missing")}</span></span>
         </button>
       )}
 
@@ -1482,8 +1488,8 @@ export default function App() {
             <div className="flex items-center gap-3 px-5 py-4 bg-[#6D1A1A] text-white shrink-0">
               <span className="text-lg">📄</span>
               <div className="flex-1">
-                <p className="font-bold text-sm">Missing documents</p>
-                <p className="text-[11px] text-slate-300">Derived live from the register — nothing here is stored</p>
+                <p className="font-bold text-sm">{t("Missing documents")}</p>
+                <p className="text-[11px] text-slate-300">{t("Derived live from the register — nothing here is stored")}</p>
               </div>
               <button onClick={() => setGapsOpen(false)} aria-label="Close" className="text-slate-300 hover:text-white text-xl px-2">✕</button>
             </div>
@@ -1586,6 +1592,13 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              {/* Files lost from the vault — read-only; see src/LostFilesSection.tsx. */}
+              <LostFilesSection lost={lostVault} project={evidenceGaps.proj} t={t} onOpen={r => {
+                if (r.opens === "voucher") { setGapsOpen(false); handleNavClick("expenses"); setDrawerExpenseId(r.recordId); }
+                else if (r.opens === "project") { setGapsOpen(false); setSelectedProjectId(r.recordId); handleNavClick("projects"); }
+                else { const d = state.documents.find(x => x.id === r.recordId); if (d) openDoc(d); }
+              }} />
             </div>
           </div>
         </>

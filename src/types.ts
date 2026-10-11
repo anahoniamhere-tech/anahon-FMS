@@ -552,6 +552,8 @@ export interface AppDoc {
   receiptNo?: string | null;
   /** True on the client's signed scan: the same receipt, never a second entry in the log. */
   receiptSigned?: boolean;
+  /** Sent with app state: nothing is in the vault at this record's path (computed per load, server.ts). */
+  fileMissing?: boolean;
   created_at: string;
 }
 
