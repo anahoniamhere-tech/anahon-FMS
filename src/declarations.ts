@@ -34,6 +34,17 @@ export function evidenceOf(docs: { category: string }[], declaration?: Declarati
   return "missing";
 }
 
+/**
+ * Where one voucher's evidence stands, counting only documents whose file is still in the vault. A record whose
+ * file is gone proves nothing: on 11 Oct 2026 25 posted vouchers read as proven with no scan behind them (Saad,
+ * same day: a document with a missing file no longer counts as proof). `fileIsGone` is the vault test the state
+ * load already uses for its `fileMissing` flag, so the register and the "Files lost" list can never disagree.
+ */
+export function evidenceWithFiles<D extends { category: string }>(
+  docs: D[], declaration: DeclarationLike | null | undefined, fileIsGone: (d: D) => boolean): Evidence {
+  return evidenceOf(docs.filter(d => !fileIsGone(d)), declaration);
+}
+
 /** The Executive Director approves, never the person who prepared it, and only a signed one. */
 export function declarationApproveBlocker(d: { preparedById: string; signedDocId?: string | null; approvedById?: string | null },
   approver: { id: string; role: string }, directorSeats: string[]): string {

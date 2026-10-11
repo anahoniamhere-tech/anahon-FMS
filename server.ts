@@ -9,7 +9,7 @@ import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
 import { verifyIdToken, bearerToken } from "./src/firebaseAuth.js";
-import { evidenceOf, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATION_SIGNED } from "./src/declarations.js";
+import { evidenceWithFiles, declarationApproveBlocker, DECLARATION_UNSIGNED, DECLARATION_SIGNED } from "./src/declarations.js";
 import { teamMemberFlag } from "./src/supplierDocs.js";
 import { WHT_RATE, WHT_LABEL } from "./src/tax.js";
 import { methodBlocker, defaultMethodFor } from "./src/paymentMethods.js";
@@ -524,6 +524,15 @@ function vaultPathFromPointer(pointer: string): string | null {
   return abs;
 }
 
+/**
+ * True when a record points at a vault file and nothing is there. The one test for "this file is lost": the state's
+ * `fileMissing` flag, the evidence register (a lost scan is not proof) and the declaration route all use it.
+ */
+function fileIsGone(pointer: string): boolean {
+  const f = vaultPathFromPointer(pointer || "");
+  return !!f && !fs.existsSync(f);
+}
+
 // Fallback seed definitions in case database fails
 const DEFAULT_DATABASE = {
   users: [
@@ -742,7 +751,10 @@ async function loadStateFor(viewer?: any) {
   const declarationFor = (e: any) => {
     const d = declarations.find(x => x.expenseId === e.id);
     if (!d) return null;
-    const signed = d.signedDocId || (expenseDocs.get(e.id) || []).filter(x => x.category === DECLARATION_SIGNED).map(x => x.id).pop() || "";
+    // A signed scan whose file is gone is not a signed declaration: the row's pointer counts only while its file does.
+    const pointed = d.signedDocId ? documents.find(x => x.id === d.signedDocId) : null;
+    const signed = (d.signedDocId && !(pointed && fileIsGone(pointed.base64))) ? d.signedDocId
+      : (expenseDocs.get(e.id) || []).filter(x => x.category === DECLARATION_SIGNED && !fileIsGone(x.base64)).map(x => x.id).pop() || "";
     return { id: d.id, generatedDocId: d.generatedDocId, signedDocId: signed, preparedById: d.preparedById, preparedAt: d.preparedAt,
       approvedById: d.approvedById, approvedAs: d.approvedAs, approvedAt: d.approvedAt, madeOn: d.madeOn };
   };
@@ -758,7 +770,7 @@ async function loadStateFor(viewer?: any) {
       /** Why this cost never involved choosing a supplier, or "" when it did. */
       noSupplierChoice: noSupplierChoice(codes),
       declaration: declarationFor(e),
-      evidence: e.confidential && hasSealedReceipt(sealedDocs.get(e.sourceId) || [], e.id) ? "proof" : evidenceOf(expenseDocs.get(e.id) || [], declarationFor(e))
+      evidence: e.confidential && hasSealedReceipt(sealedDocs.get(e.sourceId) || [], e.id) ? "proof" : evidenceWithFiles(expenseDocs.get(e.id) || [], declarationFor(e), d => fileIsGone(d.base64))
     };
   });
 
@@ -1022,7 +1034,7 @@ async function loadStateFor(viewer?: any) {
       // "signed agreement" is one of the ~107 August-2026 casualties, and while the row
       // counted, the project looked papered. One stat per document per state load.
       // ponytail: stat on the read path, cache if state ever gets slow.
-      fileMissing: (() => { const f = vaultPathFromPointer(d.base64 || ""); return !!f && !fs.existsSync(f); })()
+      fileMissing: fileIsGone(d.base64)
     })),
     auditLogs,
     auditLogTotal: auditTotal,
@@ -3920,7 +3932,7 @@ app.post("/api/projects/channel-rule", async (req, res) => {
     let source = "";
     if (channelRule === "bank") {
       const rows = await prisma.appDoc.findMany({ where: { linkedRecordType: "Project", linkedRecordId: project.id }, select: { refNo: true, filename: true, category: true, base64: true, created_at: true, linkedRecordType: true, linkedRecordId: true } });
-      const docs = rows.map(d => ({ ...d, fileMissing: (() => { const f = vaultPathFromPointer(d.base64 || ""); return !!f && !fs.existsSync(f); })() }));
+      const docs = rows.map(d => ({ ...d, fileMissing: fileIsGone(d.base64) }));
       const agreement = agreementDocs(docs, project.id).find(d => d.refNo === String(channelRuleSource || ""));
       if (!agreement) return res.status(400).json({ error: "Bank only must cite the agreement that imposes it — choose one of the agreement papers filed on this project." });
       source = agreement.refNo!;
@@ -12016,7 +12028,7 @@ app.post("/api/declarations/prepare", async (req, res) => {
     if (!["Paid", "Posted"].includes(exp.status)) return res.status(400).json({ error: "A declaration stands in for the receipt of a payment already made." });
     if (await prisma.missingReceiptDeclaration.findUnique({ where: { expenseId: exp.id } })) return res.status(409).json({ error: `${exp.voucherNo} already has a declaration.` });
     const docs = await prisma.appDoc.findMany({ where: { linkedRecordType: "Expense", linkedRecordId: exp.id } });
-    if (evidenceOf(docs, null) === "proof") return res.status(400).json({ error: `${exp.voucherNo} already has its evidence on file.` });
+    if (evidenceWithFiles(docs, null, d => fileIsGone(d.base64)) === "proof") return res.status(400).json({ error: `${exp.voucherNo} already has its evidence on file.` });
     const vendor = exp.vendorId ? await prisma.vendor.findUnique({ where: { id: exp.vendorId } }) : null;
     const payeeName = vendor?.name || String(req.body.payeeName || "").trim();
     if (!payeeName) return res.status(400).json({ error: "No supplier is named on the request — give the name of the person or company paid." });

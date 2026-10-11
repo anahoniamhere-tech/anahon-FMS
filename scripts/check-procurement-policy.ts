@@ -356,7 +356,7 @@ console.log("\nQ. a missing receipt: re-issued copy first, else a declaration si
   ok("figures come from the voucher, never the body — only a payee name when no supplier row names one",
     /const payeeName = vendor\?\.name \|\| String\(req\.body\.payeeName/.test(prep) && !/req\.body\.(amount|paymentDate|currency|paidFor|projectId)/.test(prep));
   ok("it is dated the day it is made, not the payment's (§6.8)", /const madeOn = localDate\(\);/.test(prep));
-  ok("the gap is answered on the server for every seat, and the browser reads it", /evidence: [^\n]*evidenceOf\(expenseDocs\.get\(e\.id\) \|\| \[\], declarationFor\(e\)\)/.test(server) && /e\.evidence !== "proof"/.test(read("src/App.tsx")) && !/const hasProof/.test(read("src/App.tsx")));
+  ok("the gap is answered on the server for every seat, and the browser reads it", /evidence: [^\n]*evidenceWithFiles\(expenseDocs\.get\(e\.id\) \|\| \[\], declarationFor\(e\), d => fileIsGone\(d\.base64\)\)/.test(server) && /e\.evidence !== "proof"/.test(read("src/App.tsx")) && !/const hasProof/.test(read("src/App.tsx")));
   ok("the seats: Finance prepares, the directors approve", /"\/api\/declarations\/prepare": FINANCE/.test(read("src/gates.ts")) && /"\/api\/declarations\/approve": DIRECTORS/.test(read("src/gates.ts")));
   const { declarationHtml } = await import("../docgen.js");
   const html = declarationHtml({ voucherNo: "PV-2026-001", payeeName: "Test Payee", paymentDate: "2025-03-10", amount: 120, currency: "USD", paidFor: "Taxi", projectCode: "TRF-2026", projectName: "TRF", madeOn: "2026-09-15", preparedBy: "Finance" });

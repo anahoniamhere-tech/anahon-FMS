@@ -49,8 +49,8 @@ export function lostFiles(docs: LostDoc[], vouchers: LostVoucher[], projectIds: 
 
 /**
  * How many lost files add to the drawer's badge: all of them, except a voucher's scan whose voucher the
- * evidence register already counts as a gap — that payment is one item, not two. Today evidenceOf() still reads
- * a lost scan as proof, so the second term is zero; it keeps the badge honest the day that is corrected.
+ * evidence register already counts as a gap — that payment is one item, not two. Since 11 Oct the register
+ * ignores a lost scan (evidenceWithFiles), so a voucher whose only scan is gone is in both lists; it counts once.
  */
 export function lostBeyond(lost: ReturnType<typeof lostFiles>, gapVoucherIds: Set<string>): number {
   return lost.groups.flatMap(g => g.rows).filter(r => !(r.opens === "voucher" && gapVoucherIds.has(r.recordId))).length;

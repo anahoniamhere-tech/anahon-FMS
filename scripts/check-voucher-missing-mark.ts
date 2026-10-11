@@ -28,7 +28,7 @@ assert.ok(AR[tip], "the tooltip has Arabic");
 assert.ok(!/fileMissing[\s\S]{0,400}(<button|<input|onClick)/.test(list), "the mark adds no button, upload or click of its own");
 
 // The flag is the server's, per document, and not recomputed in the browser.
-assert.ok(/fileMissing: \(\(\) => \{ const f = vaultPathFromPointer/.test(server), "the server decides whether a file is missing");
+assert.ok(/fileMissing: fileIsGone\(d\.base64\)/.test(server) && /function fileIsGone[\s\S]{0,200}vaultPathFromPointer/.test(server), "the server decides whether a file is missing");
 assert.ok(!/fs\.existsSync/.test(tab), "the browser never checks the disk itself");
 
 console.log("all checks passed");

@@ -1,7 +1,10 @@
 // Files lost from the vault (Books, 11 Oct 2026) — the list behind the Missing documents drawer.
 // It must read the live per-document flag, group by project, name the posted vouchers, and never show a
 // file that is back. Run:  npx tsx scripts/check-lost-files.ts
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { evidenceWithFiles, evidenceOf } from "../src/declarations.js";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { lostFiles, lostBeyond } from "../src/lostFiles.js";
@@ -64,7 +67,8 @@ for (const k of ["Files lost from the vault", "of them are scans of posted vouch
   "To re-attach, put the scan back at the record's own place — the Admin room can do it — and the line leaves this list by itself. A new upload makes a second record and leaves this one listed."])
   ok(`Arabic exists for «${k.slice(0, 40)}»`, !!AR[k] && /[؀-ۿ]/.test(AR[k]));
 ok("the Arabic heading is the one Saad approved", AR["Files lost from the vault"] === "ملفات مفقودة من الأرشيف");
-ok("the server sends the flag the list reads", /fileMissing: \(\(\) => \{ const f = vaultPathFromPointer\(d\.base64/.test(read("server.ts")));
+ok("the server sends the flag the list reads, from the one vault test, at both places it sets it",
+  (read("server.ts").match(/fileMissing: fileIsGone\(d\.base64\)/g) || []).length === 2 && !/fileMissing: \(\(\) =>/.test(read("server.ts")));
 
 console.log("\n6. the section on the page: a scratch lost document must appear, and a found one must not");
 const T = (s: string) => s;
@@ -82,6 +86,28 @@ const two = lostFiles([doc("1"), doc("2", { linkedRecordType: "Expense", linkedR
 ok("every lost file adds to the badge", lostBeyond(two, new Set()) === 2);
 ok("a voucher the evidence register already counts is one item, not two", lostBeyond(two, new Set(["e1"])) === 1);
 ok("the drawer's badge is the spend gaps plus the lost files", /const gapBadge = evidenceGaps\.total \+ lostBeyond\(lostVault,/.test(app) && /\{gapBadge > 0 && !gapsOpen/.test(app));
+
+console.log("\n8. a lost file is not proof (Saad, 11 Oct) — and a file put back is");
+const vault = mkdtempSync(join(tmpdir(), "lostfiles-"));
+const gone = (d: any) => !existsSync(join(vault, d.base64.replace(/^file:\/\//, "")));
+const scan = { category: "Invoice", base64: "file://2026/PV-9/receipt.pdf" };
+const ownCopy = { category: "Digitized Voucher", base64: "file://2026/PV-9/voucher.pdf" };
+writeFileSync(join(vault, "2026-PV-9.keep"), "");
+ok("with no file at its path the scan proves nothing", evidenceWithFiles([scan, ownCopy], null, gone) === "missing");
+ok("…whereas the old rule called it proof, which is the bug", evidenceOf([scan, ownCopy]) === "proof");
+const { mkdirSync } = await import("node:fs");
+mkdirSync(join(vault, "2026/PV-9"), { recursive: true });
+writeFileSync(join(vault, "2026/PV-9/receipt.pdf"), "%PDF");
+ok("put the scan back at the record's path and the voucher is proven again", evidenceWithFiles([scan, ownCopy], null, gone) === "proof");
+rmSync(join(vault, "2026/PV-9/receipt.pdf"));
+ok("take it away again and it is not", evidenceWithFiles([scan, ownCopy], null, gone) === "missing");
+ok("the app's own copy is still never proof, present or not", evidenceWithFiles([ownCopy], null, () => false) === "missing");
+const server = read("server.ts");
+ok("the register asks which documents still have a file", /evidenceWithFiles\(expenseDocs\.get\(e\.id\) \|\| \[\], declarationFor\(e\), d => fileIsGone\(d\.base64\)\)/.test(server));
+ok("so does the declaration route — a voucher whose scan is lost can be given a declaration",
+  /evidenceWithFiles\(docs, null, d => fileIsGone\(d\.base64\)\) === "proof"/.test(server) && !/\bevidenceOf\(/.test(server));
+ok("a signed declaration whose scan is gone is not signed", /x\.category === DECLARATION_SIGNED && !fileIsGone\(x\.base64\)/.test(server) && /pointed && fileIsGone\(pointed\.base64\)/.test(server));
+rmSync(vault, { recursive: true, force: true });
 
 console.log(failed ? `\n${failed} check(s) FAILED\n` : "\nall checks passed\n");
 process.exit(failed ? 1 : 0);
