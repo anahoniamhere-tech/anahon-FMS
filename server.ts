@@ -20,6 +20,7 @@ import { pageInsights, pagePosts, igInsights, igPosts, periodCount } from "./src
 import { itemOpenFacts } from "./src/fillMarkers.js";
 import { m as gm, type Msg } from "./src/gateText.js";
 import { setDocHeaders } from "./src/docServe.js";
+import { sweepMissingFiles } from "./src/missingFiles.js";
 import { diversityBlockers, trackerRequired, monthlySummary, monthsLogged, isPresenceValue, MAIN_SUBJECTS, VULNERABLE_GROUPS, PRESENCE_FIELDS, PACKAGE_ANGLES, NO_GROUP, TRACKER_FROM } from "./src/diversity.js";
 import { parseArticle, writeArticle, field, tagsOf, listOf, unquote, changedText, correctionBlocker, EDITABLE, ARTICLE_TYPES } from "./src/articleFile.js";
 import { CAROUSEL_MAX, graph, connectUrl, pagesFromCode, accountStatus, recentPosts, publishRow, postStats, planPublish, initialState, isDue, nextAttemptAt, gateRelease, checkContainer, checkReel, publishContainer, fbPermalink, isPending, isFinalError, isMaybePublished, composeText, BACKOFF_MINUTES, MAX_VIDEO_BYTES, VIDEO_MIMES, VIDEO_SPEC, MAX_IMAGE_BYTES, IMAGE_MIMES, CONTAINER_TIMEOUT_MS, type MediaBytes } from "./src/meta.js";
@@ -2514,6 +2515,42 @@ async function nightlyReminders() {
 if (!process.env.VERCEL && process.env.REMINDERS_NIGHTLY !== "off") {
   setInterval(nightlyReminders, 10 * 60 * 1000).unref();
   setTimeout(nightlyReminders, 30 * 1000).unref();                    // and once shortly after boot, in case the hour already passed
+}
+
+/* ── Documents whose file is gone (Saad, 11 Oct 2026) ─────────────────────────
+ * Once a day, before the desk is read, every document row is checked against the vault.
+ * A missing file gets a first line in the record's own note; a file that is back gets
+ * "File re-attached <date>". Anything NEW goes on the master account's task list, which is
+ * on Saad's desk in the morning. The first pass ever is the known backlog (105 rows lost in
+ * August, reported by the Admin room), so it marks the records but raises no task.
+ */
+let missingFilesLastRun = "";
+async function nightlyMissingFiles() {
+  const { date, hour } = beirutNow();
+  if (hour < 5 || missingFilesLastRun === date) return;
+  missingFilesLastRun = date;
+  const human = new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  try {
+    const r = await sweepMissingFiles(prisma, vaultPathFromPointer, fs.existsSync, human);
+    if (r.marked.length || r.cleared.length) {
+      await createAuditLog("u-1", "System", "Document Files Checked",
+        `${r.marked.length} newly missing${r.marked.length ? ` (${r.marked.join(", ")})` : ""}; ${r.cleared.length} re-attached${r.cleared.length ? ` (${r.cleared.join(", ")})` : ""}; ${r.stillMissing} missing in all.`);
+    }
+    if (r.marked.length && !r.firstRun) {
+      await prisma.complianceTask.create({ data: {
+        id: `task-missing-files-${date}`, title: `${r.marked.length} document file${r.marked.length === 1 ? "" : "s"} went missing from the vault`,
+        category: "Governance", dueDate: date, status: "Pending", assigneeUserId: null, createdBy: "u-1",
+        notes: `${r.marked.join(", ")}. Each record now says so in its note. Admin room: look for them in the NAS snapshots before anyone re-scans.`,
+      } }).catch(() => {});
+    }
+    console.log(`[missing-files] ${date}: ${r.marked.length} marked, ${r.cleared.length} re-attached, ${r.stillMissing} missing in all`);
+  } catch (err: any) {
+    console.log(`[missing-files] ${date}: failed — ${err.message}`);
+  }
+}
+if (!process.env.VERCEL && process.env.MISSING_FILES_NIGHTLY !== "off") {
+  setInterval(nightlyMissingFiles, 10 * 60 * 1000).unref();
+  setTimeout(nightlyMissingFiles, 45 * 1000).unref();
 }
 
 // ---------------------------------------------------------------------------------
