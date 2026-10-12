@@ -277,6 +277,8 @@ export const PAGE_SECTIONS: Record<string, SectionInfo[]> = {
     { id: "icontent.hero", label: "Hero" },
     { id: "icontent.pillars", label: "Pillars" },
     { id: "icontent.academy", label: "The Academy So Far" },
+    { id: "icontent.cycles", label: "Training cycles" },
+    { id: "icontent.collabs", label: "Collaborations" },
     { id: "icontent.follow", label: "Follow iContent" },
   ],
   "iContent — Studio": [{ id: "icstudio.all", label: "Creator Coach" }],
