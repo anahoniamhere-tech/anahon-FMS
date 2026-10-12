@@ -280,7 +280,10 @@ export const PAGE_SECTIONS: Record<string, SectionInfo[]> = {
     { id: "icontent.follow", label: "Follow iContent" },
   ],
   "iContent — Studio": [{ id: "icstudio.all", label: "Creator Coach" }],
-  "iContent — Trainings": [{ id: "ictrainings.all", label: "Trainings" }],
+  "iContent — Trainings": [
+    { id: "ictrainings.all", label: "Trainings" },
+    { id: "ictrainings.cohorts", label: "Funded cohorts" },
+  ],
 };
 
 /**
