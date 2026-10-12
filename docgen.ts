@@ -162,6 +162,9 @@ caption{text-transform:uppercase;letter-spacing:1.5px;font-weight:700;color:#6f1
 .mk{height:64px;display:block}
 .bar{height:4px;background:linear-gradient(90deg,#a12736 0 64px,#e0685c 64px 128px,#f7b2b0 128px);margin:14px 0 18px}`;
 
+/** True when two names are the same person, so a document names them once (Saad, 12 Oct 2026). */
+const samePerson = (a: any, b: any) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
+
 /** Record card for one voucher. Mirrors the format of the 129 records already in the vault. */
 export function digitizedInvoiceHtml(o: {
   expense: any; project: any; donor?: any; vendor?: any; budgetLine?: any; account?: any;
@@ -720,7 +723,7 @@ export function cashReceiptHtml(o: {
   receivedBy: string;
 }) {
   // A payer who is their own contact is named once (Saad, 12 Oct 2026) — the quotation already does this.
-  const contact = o.clientContact.split(" · ").filter(s => s.trim().toLowerCase() !== o.clientName.trim().toLowerCase()).join(" · ");
+  const contact = o.clientContact.split(" · ").filter(s => !samePerson(s, o.clientName)).join(" · ");
   // The letterhead already reads ANAHON MEDIA PLATFORM; the receipt signs as it, like the quotation (12 Oct 2026).
   return page(`Receipt ${o.receiptNo} — ${o.clientName}`, `
 <div style="display:flex;justify-content:space-between;align-items:flex-start">
@@ -895,7 +898,7 @@ Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st
 <table>
   <tr><th scope="row">Our reference</th><td><strong>${esc(o.ref)}</strong></td></tr>
   <tr><th scope="row">Date</th><td>${longDate(o.date)}</td></tr>
-  <tr><th scope="row">To</th><td>${esc(o.donorName)}${o.attention ? `<br>For the attention of ${esc(o.attention)}` : ""}${o.donorAddress ? `<br>${esc(o.donorAddress)}` : ""}${o.cc ? `<br><span style="color:#555">cc: ${esc(o.cc)}</span>` : ""}</td></tr>
+  <tr><th scope="row">To</th><td>${esc(o.donorName)}${o.attention && !samePerson(o.attention, o.donorName) ? `<br>For the attention of ${esc(o.attention)}` : ""}${o.donorAddress ? `<br>${esc(o.donorAddress)}` : ""}${o.cc ? `<br><span style="color:#555">cc: ${esc(o.cc)}</span>` : ""}</td></tr>
   ${o.agreementNo ? `<tr><th scope="row">Agreement</th><td>${esc(o.agreementNo)}</td></tr>` : ""}
   <tr><th scope="row">Project</th><td>${esc(o.projectName)} (${esc(o.projectCode)})</td></tr>
   <tr><th scope="row">Amount requested</th><td class="amt"><strong>${money(o.instalment.amount)}</strong>${o.instalment.percent ? ` — ${o.instalment.percent}% of ${money(o.grantAmount)}` : ""}</td></tr>
@@ -944,7 +947,7 @@ export function providerInvoiceHtml(o: {
     return t && t.toUpperCase() !== "N/A" ? t : "";
   };
   const hasTaxId = !!real(v.taxId);
-  const contact = real(v.contact);
+  const contact = String(real(v.contact)).split(" · ").filter(s => !samePerson(s, v.name)).join(" · ");
 
   return page(`Service Invoice & Receipt — ${v.name} — ${e.voucherNo}`, `
 <h1>SERVICE INVOICE &amp; PAYMENT RECEIPT</h1>

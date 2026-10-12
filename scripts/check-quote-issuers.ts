@@ -68,4 +68,18 @@ assert.ok(/quoteNo: \{ endsWith: `\/\$\{year\}` \}/.test(server), "one NNN/YYYY 
 const mig = fs.readFileSync("prisma/migrations/20261012100000_quote_issuers_three/migration.sql", "utf8");
 assert.ok(/UPDATE "Quotation" SET "issuedAs" = 'icontent-studio' WHERE "issuedAs" = 'icontent';/.test(mig), "006–008 move to Studio, nothing else");
 
-console.log("check-quote-issuers: all passed");
+// F — the same two rules on the other AnaHon documents (Saad, 12 Oct 2026): the platform's name, and a person named once.
+import("../docgen.js").then(({ providerInvoiceHtml, instalmentRequestHtml }) => {
+  const inv = providerInvoiceHtml({ vendor: { name: "Omar Haidar", contact: "omar haidar", taxId: "" }, expense: { voucherNo: "PV-1", amount: 100, whtAmount: 0, netAmount: 100, currency: "USD", created_at: "2026-10-12" }, countersignatory: "Saad Matar" });
+  assert.ok(!/Omar Haidar<\/strong><br>omar haidar/i.test(inv), "a provider who is their own contact is named once");
+  const inv2 = providerInvoiceHtml({ vendor: { name: "Omar Films", contact: "Omar Haidar · +961 70 000 000", taxId: "" }, expense: { voucherNo: "PV-2", amount: 100, whtAmount: 0, netAmount: 100, currency: "USD", created_at: "2026-10-12" }, countersignatory: "Saad Matar" });
+  assert.ok(inv2.includes("Omar Films</strong><br>Omar Haidar · +961 70 000 000"), "a company's named contact still prints");
+  const letter = (attention: string) => instalmentRequestHtml({ ref: "X/INST-1", date: "2026-10-12", projectName: "P", projectCode: "X", agreementNo: "A", donorName: "Samir Kassir Foundation",
+    attention, currency: "EUR", grantAmount: 100, instalment: { no: 1, amount: 100, share: 100, due: "", condition: "" }, schedule: [{ no: 1, amount: 100, share: 100, due: "", condition: "" }],
+    bank: { accountName: "A", bankName: "B", iban: "I", swift: "S", source: "s" }, preparedBy: "Saad Matar", preparedByTitle: "Executive Director", basis: [] } as any);
+  assert.ok(!letter("Samir Kassir Foundation").includes("For the attention of Samir Kassir Foundation"), "the donor is not 'for the attention of' itself");
+  assert.ok(letter("Ayman Mhanna, Executive Director").includes("For the attention of Ayman Mhanna, Executive Director"), "a named person still prints");
+  const all = fs.readFileSync("docgen.ts", "utf8");
+  assert.ok(!/ANAHON PRODUCTION|ANAHON production|AnaHon Production/.test(all.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, "")), "no document prints a production-only name");
+  console.log("check-quote-issuers: all passed");
+});
