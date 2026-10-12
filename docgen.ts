@@ -8,9 +8,9 @@
 // a single <h1>, <th scope> on every table header and a caption, so a screen reader can
 // navigate them and the print view stays correct.
 import fs from "fs";
-import { QUOTE_REVISION_CLAUSE, QUOTE_REVISION_CLAUSE_AR, QUOTE_REVISION_CLAUSE_ICONTENT, QUOTE_REVISION_CLAUSE_ICONTENT_AR, ICONTENT_PHONE, ICONTENT_EMAIL } from "./src/constants.js";
+import { QUOTE_REVISION_CLAUSE, QUOTE_REVISION_CLAUSE_AR, QUOTE_REVISION_CLAUSE_ICONTENT, QUOTE_REVISION_CLAUSE_ICONTENT_AR, QUOTE_REVISION_CLAUSE_ICONTENT_MEDIA, QUOTE_REVISION_CLAUSE_ICONTENT_MEDIA_AR, ICONTENT_PHONE, ICONTENT_EMAIL, ICONTENT_MEDIA_EMAIL, ICONTENT_MEDIA_SITE, ANAHON_EMAIL } from "./src/constants.js";
 import { quoteTotals, DEFAULT_DISCOUNT_LABEL } from "./src/quoteTotals.js";
-import { ICONTENT_FONT_FACES } from "./src/brandFonts.js";
+import { ICONTENT_FONT_FACES, ICONTENT_MEDIA_FONT_FACES, ICONTENT_MEDIA_LOGO } from "./src/brandFonts.js";
 import { runsIn, type Workplan, type WorkplanActivity } from "./src/workplan.js";
 import { type Instalment, type PayeeBank } from "./src/instalments.js";
 import { AR } from "./src/i18n.js";
@@ -146,6 +146,21 @@ caption{text-transform:uppercase;letter-spacing:1.5px;font-weight:600;color:#777
 .wm .i{color:#FF4D2E}
 .wm small{display:block;font-family:Inter,sans-serif;font-size:10.5px;font-weight:600;letter-spacing:4px;color:#777;margin-top:6px}
 .bar{height:4px;background:linear-gradient(90deg,#FF4D2E 0 64px,#111111 64px);margin:14px 0 18px}`;
+
+/**
+ * iContent Media's paper (Saad, 12 Oct 2026): the creators' academy at icontent.media. The hub's own
+ * #أنا المحتوى mark and palette — ivory, maroon, coral and pink, navy ink — in IBM Plex Sans Arabic,
+ * all embedded. Same layout as the Studio paper; nothing names AnaHon or Studio.
+ */
+const ICONTENT_MEDIA_STYLE = `${ICONTENT_MEDIA_FONT_FACES}
+body{font-family:"IBM Plex Sans Arabic","Helvetica Neue",Arial,sans-serif !important;color:#23294d !important;font-size:12.5px !important}
+td,th{border:none !important;border-bottom:1px solid #e4e0d4 !important}
+th{background:#f7f4ee !important;color:#23294d !important;font-weight:700}
+caption{text-transform:uppercase;letter-spacing:1.5px;font-weight:700;color:#6f1d1b !important}
+.amt{color:#a12736 !important}
+.sig div{border-top:1.5px solid #23294d !important}
+.mk{height:64px;display:block}
+.bar{height:4px;background:linear-gradient(90deg,#a12736 0 64px,#e0685c 64px 128px,#f7b2b0 128px);margin:14px 0 18px}`;
 
 /** Record card for one voucher. Mirrors the format of the 129 records already in the vault. */
 export function digitizedInvoiceHtml(o: {
@@ -582,11 +597,15 @@ export function quotationHtml(o: {
   /** The quotation's title — the caption of an iContent package table. */
   title?: string;
 }) {
-  const icontent = o.issuedAs === "icontent";
-  // A client document issued as iContent names no AnaHon and no AnaHon title (Saad, 15 Sep 2026).
+  // Three papers (Saad, 12 Oct 2026). Either iContent paper names no AnaHon and no AnaHon title (15 Sep).
+  const media = o.issuedAs === "icontent-media";
+  const icontent = media || o.issuedAs === "icontent-studio";
   const preparedBy = icontent ? o.preparedBy.split(" — ")[0] : o.preparedBy;
-  const icontentContact = [ICONTENT_PHONE, ICONTENT_EMAIL].filter(Boolean).join(" · ");
-  const brand = icontent ? "iContent Studio" : "ANAHON PRODUCTION";
+  const icontentContact = media
+    ? [`${ICONTENT_PHONE} (WhatsApp)`, ICONTENT_MEDIA_EMAIL, ICONTENT_MEDIA_SITE].filter(Boolean).join(" · ")
+    : [ICONTENT_PHONE, ICONTENT_EMAIL].filter(Boolean).join(" · ");
+  const signFor = media ? "iContent — أنا المحتوى" : icontent ? "iContent Studio" : "ANAHON MEDIA PLATFORM";
+  const footerName = media ? `iContent · ${ICONTENT_MEDIA_SITE}` : icontent ? "iContent Studio" : "AnaHon Media Platform";
   const sums = quoteTotals(o.items, o.discountAmount || 0);
   // An iContent quotation is a package (Saad, 15 Sep 2026): Service / What's included / You receive,
   // no numbering and no per-line price in front of the client. Line prices stay stored and shown in
@@ -608,16 +627,22 @@ export function quotationHtml(o: {
   const noteBlock = (label: string, text?: string) =>
     text ? `<p style="margin:6px 0"><strong>${label}:</strong> ${esc(text).replace(/\n/g, "<br>")}</p>` : "";
 
-  const issuerBlock = icontent
+  const issuerBlock = media
+    ? `<div>
+    <img class="mk" src="${ICONTENT_MEDIA_LOGO}" alt="أنا المحتوى — iContent">
+    <p style="font-size:10.5px;color:#4a5065;margin-top:8px;font-weight:700;letter-spacing:2px">CREATORS' ACADEMY · <span dir="rtl" lang="ar">أنا المحتوى</span></p>
+    <p style="font-size:10.5px;color:#4a5065;margin-top:2px">Tripoli, Lebanon · ${esc(icontentContact)}</p>
+  </div>`
+    : icontent
     ? `<div>
     <p class="wm"><span class="i">i</span>Content<small>STUDIO · BRANDING &amp; CONTENT</small></p>
     <p style="font-size:10.5px;color:#666;margin-top:10px">Tripoli, Lebanon · ${esc(icontentContact)}</p>
   </div>`
+    // The letterhead above already reads ANAHON MEDIA PLATFORM; a second heading here said
+    // "ANAHON PRODUCTION", which reads as production-only (Saad, 12 Oct 2026).
     : `<div>
-    <h1 style="border:none;margin-bottom:0">ANAHON PRODUCTION</h1>
-    <h2>Tripoli, Lebanon</h2>
-    <p style="font-size:11px;color:#555;margin-top:8px">Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor<br>
-    MOF: 3893185 · Phone: +961 81 408 171 · info@anahon.org</p>
+    <p style="font-size:11px;color:#555;margin-top:0">Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor<br>
+    MOF: 3893185 · Phone: +961 81 408 171 · ${ANAHON_EMAIL}</p>
   </div>`;
   // Package value and discount print only when there is a discount; TOTAL is always the net amount.
   const span = icontent ? 2 : 5;
@@ -667,19 +692,21 @@ ${noteBlock("EXTRAS", o.terms.extras)}
 ${o.notes ? noteBlock("NOTES", o.notes) : ""}
 <h3 style="font-size:12px;letter-spacing:1px;margin:14px 0 4px">ACCEPTANCE</h3>
 <p style="margin:0;font-size:10.5px">By signing below, the client accepts the services, quantities and prices set out above, and the notes attached to them. Production is booked once this page is signed and returned.</p>
-<p style="margin:6px 0 0;font-size:10.5px">${esc(icontent ? QUOTE_REVISION_CLAUSE_ICONTENT : QUOTE_REVISION_CLAUSE)}</p>
-<p dir="rtl" lang="ar" style="margin:4px 0 0;font-size:11.5px;line-height:1.7;text-align:right;unicode-bidi:isolate;font-family:'Noto Naskh Arabic','Noto Sans Arabic','Tajawal',serif">${icontent
+<p style="margin:6px 0 0;font-size:10.5px">${esc(media ? QUOTE_REVISION_CLAUSE_ICONTENT_MEDIA : icontent ? QUOTE_REVISION_CLAUSE_ICONTENT : QUOTE_REVISION_CLAUSE)}</p>
+<p dir="rtl" lang="ar" style="margin:4px 0 0;font-size:11.5px;line-height:1.7;text-align:right;unicode-bidi:isolate;font-family:${media ? "'IBM Plex Sans Arabic'," : ""}'Noto Naskh Arabic','Noto Sans Arabic','Tajawal',serif">${media
+  ? esc(QUOTE_REVISION_CLAUSE_ICONTENT_MEDIA_AR)
+  : icontent
   ? esc(QUOTE_REVISION_CLAUSE_ICONTENT_AR).replace("{ICONTENT}", `<span dir="ltr">iContent Studio</span>`)
   : esc(QUOTE_REVISION_CLAUSE_AR)}</p>
 <div class="sig">
-<div>${esc(preparedBy)}<br>For ${icontent ? "iContent Studio" : "ANAHON PRODUCTION"} — date &amp; signature</div>
+<div>${esc(preparedBy)}<br>For ${signFor} — date &amp; signature</div>
 <div>${esc(o.clientName)}<br>Client — date &amp; signature</div>
 </div>
 <p class="note">${icontent
   ? `If you have any questions concerning this quotation, contact: Saad Matar · ${esc(icontentContact)}`
-  : "If you have any questions concerning this quotation, contact: Saad Matar — Executive Director · Mobile: +961 81 408 171 · info@anahon.org"}<br>
-${icontent ? "iContent Studio" : "ANAHON production"} · This quotation is not an invoice; services are booked upon written acceptance.</p>`,
-    icontent ? { letterhead: false, style: ICONTENT_STYLE } : {});
+  : `If you have any questions concerning this quotation, contact: Saad Matar — Executive Director · Mobile: +961 81 408 171 · ${ANAHON_EMAIL}`}<br>
+${footerName} · This quotation is not an invoice; services are booked upon written acceptance.</p>`,
+    icontent ? { letterhead: false, style: media ? ICONTENT_MEDIA_STYLE : ICONTENT_STYLE } : {});
 }
 
 /** Cash receipt. For a bank or OMT payment the counterparty holds a trace; for cash
@@ -698,7 +725,7 @@ export function cashReceiptHtml(o: {
     <h1 style="border:none;margin-bottom:0">ANAHON PRODUCTION</h1>
     <h2>Tripoli, Lebanon</h2>
     <p style="font-size:11px;color:#555;margin-top:8px">Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor<br>
-    MOF: 3893185 · Phone: +961 81 408 171 · info@anahon.org</p>
+    MOF: 3893185 · Phone: +961 81 408 171 · ${ANAHON_EMAIL}</p>
   </div>
   <div style="text-align:right">
     <p style="font-size:22px;letter-spacing:3px;margin:0"><strong>RECEIPT</strong></p>
@@ -745,7 +772,7 @@ export function proposalHtml(o: {
 <h1 style="margin-bottom:0">ANAHON MEDIA PLATFORM</h1>
 <h2>Project Proposal — internal master (adapt to the donor's template)</h2>
 <p style="font-size:11px;color:#555">Applicant &amp; implementing body: AnaHon (Lebanese civil company (general partnership), civil company no. 90/2023, First Instance Chamber North, Tripoli, 12/10/2023 · MoF 3893185)<br>
-Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor, Tripoli · +961 81 408 171 · info@anahon.org</p>
+Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor, Tripoli · +961 81 408 171 · ${ANAHON_EMAIL}</p>
 <table>
   <caption>Application overview</caption>
   <tr><th scope="row">Project title</th><td><strong>${esc(o.title)}</strong></td></tr>
@@ -802,7 +829,7 @@ export function workplanHtml(o: {
 <h1>PROJECT WORKPLAN</h1>
 <h2 class="sub">${esc(o.projectName)}</h2>
 <p style="font-size:11px;color:#555">AnaHon Media Platform — Lebanese civil company (general partnership), civil company no. 90/2023, First Instance Chamber North, Tripoli, 12/10/2023 · MoF 3893185<br>
-Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor, Tripoli · +961 81 408 171 · info@anahon.org</p>
+Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor, Tripoli · +961 81 408 171 · ${ANAHON_EMAIL}</p>
 <table>
   <caption>The project</caption>
   <tr><th scope="row">Donor</th><td>${esc(o.donorName || "\u2014")}</td></tr>
@@ -863,7 +890,7 @@ export function instalmentRequestHtml(o: {
 <h1>REQUEST FOR PAYMENT</h1>
 <h2 class="sub">Instalment ${o.instalment.no} of ${o.schedule.length} &middot; ${esc(o.projectName)}</h2>
 <p style="font-size:11px;color:#555">AnaHon Media Platform — Lebanese civil company (general partnership), civil company no. 90/2023, First Instance Chamber North, Tripoli, 12/10/2023 · MoF 3893185<br>
-Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor, Tripoli · +961 81 408 171 · info@anahon.org</p>
+Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor, Tripoli · +961 81 408 171 · ${ANAHON_EMAIL}</p>
 <table>
   <tr><th scope="row">Our reference</th><td><strong>${esc(o.ref)}</strong></td></tr>
   <tr><th scope="row">Date</th><td>${longDate(o.date)}</td></tr>

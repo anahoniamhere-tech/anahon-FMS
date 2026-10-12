@@ -17,6 +17,7 @@ import { NO_SUPPLIER_CHOICE } from "./spendKind";
 import { ROUTE_SEATS, ACTION_SEATS, mayCall } from "./gates";
 import { PAYROLL_VIEWERS, MANAGERS, DIRECTORS, REQUESTERS } from "./roles";
 import type { DeskItem } from "./workflow";
+import { QUOTE_ISSUERS, QUOTE_ISSUER_LABELS, type QuoteIssuer } from "./quoteTotals";
 
 /** Models by tier (D2 for Saad; D10-2: staff on Haiku). USD per million tokens, input / output. */
 export const ANNA_MODELS = { sonnet: "claude-sonnet-5", haiku: "claude-haiku-4-5" } as const;
@@ -205,7 +206,7 @@ export function annaTools(doors: string[], role: string) {
           unitPrice: { type: "number" }, qty: { type: "number" },
         }, ["service", "description", "output", "unitPrice", "qty"]) },
         currency: { type: "string", enum: ["USD", "EUR", "LBP"] },
-        issuedAs: { type: "string", enum: ["anahon", "icontent"], description: "letterhead: AnaHon, or iContent Studio for production services" },
+        issuedAs: { type: "string", enum: ["icontent-media", "icontent-studio", "anahon"], description: "paper: iContent Studio for production services, iContent Media for creators' trainings, AnaHon for journalism trainings, services and collaborations" },
         validUntil: dateProp("valid until"), notes: str("notes printed on the quotation"),
       }, ["client", "title", "items", "currency", "issuedAs"]) },
     { name: "draft_client", description: "Prepare a new client registration as a draft card for the user to confirm, when the person a quotation is for is not a registered client yet. Give `from` (e.g. \"contact:ID\") when the person was found in another list, so their details are copied. Nothing is saved by this tool.",
@@ -544,7 +545,7 @@ export function draftTool(name: string, input: any, ctx: AnnaCtx): { type: "prop
       if (!items.length) return { error: "A quotation needs at least one line." };
       if (!String(input?.title || "").trim()) return { error: "A quotation needs a title." };
       const currency = ["USD", "EUR", "LBP"].includes(input?.currency) ? input.currency : "USD";
-      const issuedAs = input?.issuedAs === "icontent" ? "icontent" : "anahon";
+      const issuedAs = (QUOTE_ISSUERS as readonly string[]).includes(input?.issuedAs) ? input.issuedAs : input?.issuedAs === "icontent" ? "icontent-studio" : "anahon";
       const total = money(items.reduce((t: number, it: any) => t + it.unitPrice * it.qty, 0));
       return card({
         kind: "quotation", confirmRoute: "/api/quotations/save",
@@ -553,7 +554,7 @@ export function draftTool(name: string, input: any, ctx: AnnaCtx): { type: "prop
           validUntil: ymd(input?.validUntil), notes: String(input?.notes || ""), status: "Draft" },
         lines: [`Quotation for ${client.name}: ${String(input.title).trim()}`,
           ...items.map((it: any) => `${it.qty} × ${it.service || it.description} — ${currency} ${it.unitPrice}`),
-          `Total ${currency} ${total} · ${issuedAs === "icontent" ? "iContent Studio" : "AnaHon"} letterhead · a Draft when you confirm`],
+          `Total ${currency} ${total} · ${QUOTE_ISSUER_LABELS[issuedAs as QuoteIssuer]} paper · a Draft when you confirm`],
       });
     }
     case "draft_client": {

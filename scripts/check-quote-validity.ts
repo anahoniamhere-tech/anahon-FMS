@@ -32,7 +32,7 @@ assert.ok(/<p dir="rtl" lang="ar"[^>]*>[^<]*يحقّ لاناهون/.test(html),
 assert.ok(html.indexOf(QUOTE_REVISION_CLAUSE) < html.indexOf(QUOTE_REVISION_CLAUSE_AR), "the Arabic sits under the English line");
 assert.ok(!/monospace/.test(html.slice(html.indexOf('lang="ar"') - 20, html.indexOf(QUOTE_REVISION_CLAUSE_AR))), "not in a monospace face");
 // iContent variant (Saad, 15 Sep 2026): same rule, iContent Studio as the party; the AnaHon wording must not appear.
-const icHtml = quotationHtml({ quoteNo: "T/2026", date: "2026-09-14", validUntil: "", preparedBy: "x", clientName: "C", clientContact: "", clientPhone: "", clientTaxId: "", currency: "USD", total: 1, items: [], terms: {} as any, notes: "", issuedAs: "icontent" } as any);
+const icHtml = quotationHtml({ quoteNo: "T/2026", date: "2026-09-14", validUntil: "", preparedBy: "x", clientName: "C", clientContact: "", clientPhone: "", clientTaxId: "", currency: "USD", total: 1, items: [], terms: {} as any, notes: "", issuedAs: "icontent-studio" } as any);
 assert.equal(icHtml.split(QUOTE_REVISION_CLAUSE_ICONTENT).length - 1, 1, "the iContent clause appears exactly once on an iContent quotation");
 assert.ok(!icHtml.includes(QUOTE_REVISION_CLAUSE) && !icHtml.includes(QUOTE_REVISION_CLAUSE_AR), "an iContent quotation does not carry the AnaHon clause");
 assert.equal(QUOTE_REVISION_CLAUSE_ICONTENT.replace("iContent Studio", "AnaHon"), QUOTE_REVISION_CLAUSE, "same wording, only the subject differs");

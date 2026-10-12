@@ -7,13 +7,20 @@
  * A total can never go negative — a discount larger than the package is refused, never clamped.
  */
 
-/** Who a quotation is issued as. Numbering is one NNN/YYYY sequence for both. */
-export const QUOTE_ISSUERS = ["anahon", "icontent"] as const;
+/**
+ * Who a quotation is issued as — three papers (Saad, 12 Oct 2026). iContent Media is the creators'
+ * academy (icontent.media), iContent Studio the production company (icontent.studio), AnaHon the main
+ * platform (journalism trainings, services, collaborations). Numbering is one NNN/YYYY series for all three.
+ */
+export const QUOTE_ISSUERS = ["icontent-media", "icontent-studio", "anahon"] as const;
 export type QuoteIssuer = typeof QUOTE_ISSUERS[number];
-/** Saad, 15 Sep 2026: production quotations are issued by iContent Studio from now on. Only the NEW
- *  quotation form defaults to it; AnaHon Production stays selectable and saved quotations keep theirs. */
-export const DEFAULT_NEW_QUOTE_ISSUER: QuoteIssuer = "icontent";
-export const QUOTE_ISSUER_LABELS: Record<QuoteIssuer, string> = { anahon: "AnaHon Production", icontent: "iContent Studio" };
+/** New quotations default to iContent Studio (Saad, 15 Sep and 12 Oct 2026); saved quotations keep theirs. */
+export const DEFAULT_NEW_QUOTE_ISSUER: QuoteIssuer = "icontent-studio";
+export const QUOTE_ISSUER_LABELS: Record<QuoteIssuer, string> = {
+  "icontent-media": "iContent Media (أنا المحتوى)", "icontent-studio": "iContent Studio", anahon: "AnaHon Media Platform",
+};
+/** Either iContent paper: names no AnaHon, prints a package table, carries no ANH-DOC line. */
+export const isIContent = (issuedAs?: string) => issuedAs === "icontent-media" || issuedAs === "icontent-studio";
 export const DEFAULT_DISCOUNT_LABEL = "Discount";
 
 const r2 = (n: number) => Math.round(n * 100) / 100;

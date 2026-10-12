@@ -543,10 +543,12 @@ const st2: any = { ...state,
   employees: [{ id: "emp-1", name: "Rana Haddad", active: true }],
   vendors: [...state.vendors, { id: "v2", name: "Omar Films", engageable: true, active: true }, { id: "v3", name: "Blocked Films", engageable: true, active: true, blocked: true }] };
 const c2: AnnaCtx = { ...ctx, state: st2 };
-const dq: any = draftTool("draft_quotation", { client: "maroun", title: "Reel", currency: "USD", issuedAs: "icontent",
+const dq: any = draftTool("draft_quotation", { client: "maroun", title: "Reel", currency: "USD", issuedAs: "icontent-studio",
   items: [{ service: "Edit", description: "30s reel", output: "MP4", unitPrice: 150, qty: 2 }] }, c2);
 ok("a quotation card names a registered client and is a Draft", dq.proposal?.data.clientId === "c1" && dq.proposal.data.status === "Draft"
   && dq.proposal.confirmRoute === "/api/quotations/save" && dq.proposal.lines.some((l: string) => l.includes("USD 300")));
+ok("a quotation card carries the paper it is issued on", dq.proposal?.data.issuedAs === "icontent-studio" && dq.proposal.lines.some((l: string) => l.includes("iContent Studio paper")));
+ok("an old 'icontent' answer still lands on Studio", (draftTool("draft_quotation", { client: "maroun", title: "Reel", currency: "USD", issuedAs: "icontent", items: [{ service: "Edit", unitPrice: 1, qty: 1 }] }, c2) as any).proposal?.data.issuedAs === "icontent-studio");
 ok("an unknown client is refused, and a new client is offered as a card", /Offer draft_client to register a new client/.test((draftTool("draft_quotation", { client: "Nobody", title: "x", items: [{ service: "a", unitPrice: 1, qty: 1 }] }, c2) as any).error || ""));
 const dt: any = draftTool("draft_task", { title: "Call SKF", dueDate: "2026-09-20", category: "Donor", assignee: "rana" }, c2);
 ok("a task card resolves an active person only", dt.proposal?.data.assigneeUserId === "u-7" && dt.proposal.confirmRoute === "/api/compliance/save");

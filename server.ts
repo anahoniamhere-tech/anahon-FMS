@@ -33,7 +33,7 @@ import {
 } from "./src/helpBot.js";
 import { NAV } from "./src/nav.js";
 import { buildMediaIndex, mediaForItem, mediaKind, mediaType, dataOffset, parseRange, type ZipMedia } from "./src/archiveMedia.js";
-import { QUOTE_ISSUERS, quoteTotals, discountBlocker } from "./src/quoteTotals.js";
+import { QUOTE_ISSUERS, quoteTotals, discountBlocker, isIContent } from "./src/quoteTotals.js";
 import { freezeSubmission, submissionBlocker, inReportCurrency, usdEquivalent } from "./src/lateCosts.js";
 import { DONOR_OBLIGATIONS, DOCUMENTED_PROJECT_IDS, obligationId } from "./src/donorDeadlines.js";
 import { RECEIPT_CATEGORY, nextReceiptNo, parseReceiptNo, receiptNoOf } from "./src/receipts.js";
@@ -9667,7 +9667,7 @@ app.post("/api/quotations/generate-doc", async (req, res) => {
       html,
       linkedRecordType: "quotation",
       linkedRecordId: quote.id,
-      omitReference: quote.issuedAs === "icontent"
+      omitReference: isIContent(quote.issuedAs)
     });
     await createAuditLog(user?.id, user?.name, "Quotation Document Generated", `Rendered quotation ${quote.quoteNo} for ${client.name} (${quote.currency} ${quote.amount}) → vault GENERAL/Quotations/${filename}.`);
     // The viewer chooses its renderer from the filename, so hand it back rather than
@@ -9970,7 +9970,7 @@ app.get("/api/quotations/:id/pdf", async (req, res) => {
 
     const pdf = await quotationPdf(quote, client, viewer);
     // The file the client receives is named for the issuer too.
-    const name = `${quote.issuedAs === "icontent" ? "iContent" : "AnaHon"}_Quotation_${quote.quoteNo.replace("/", "-")}_${client.name.replace(/\s+/g, "")}.pdf`;
+    const name = `${isIContent(quote.issuedAs) ? "iContent" : "AnaHon"}_Quotation_${quote.quoteNo.replace("/", "-")}_${client.name.replace(/\s+/g, "")}.pdf`;
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
     res.send(pdf);

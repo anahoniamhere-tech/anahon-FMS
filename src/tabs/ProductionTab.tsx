@@ -392,7 +392,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                       </div>
                       <div>
                         <label htmlFor="qt-issuer" className="block text-[10px] font-bold text-slate-600 uppercase mb-1">{t("Issued as")}</label>
-                        <select id="qt-issuer" value={quoteForm.issuedAs || "anahon"} onChange={e => setQuoteForm({ ...quoteForm, issuedAs: e.target.value as Quotation["issuedAs"] })} className="finance-input w-full text-xs">
+                        <select id="qt-issuer" value={quoteForm.issuedAs || DEFAULT_NEW_QUOTE_ISSUER} onChange={e => setQuoteForm({ ...quoteForm, issuedAs: e.target.value as Quotation["issuedAs"] })} className="finance-input w-full text-xs">
                           {QUOTE_ISSUERS.map(k => <option key={k} value={k}>{QUOTE_ISSUER_LABELS[k]}</option>)}
                         </select>
                       </div>
@@ -743,7 +743,7 @@ export default function ProductionTab({ currentUser, formatIn, formatUSD, openDo
                                   still owed. Both sentences already existed in shared.ts. */}
                               {/* The client link (src/quoteShare.ts): iContent quotations only, never a Draft.
                                   The PDF lives on icontent.studio until its validity date. */}
-                              {q.issuedAs === "icontent" && SHAREABLE_STATUSES.includes(q.status) && MANAGERS.includes(currentUser.role) && (() => {
+                              {q.issuedAs === "icontent-studio" && SHAREABLE_STATUSES.includes(q.status) && MANAGERS.includes(currentUser.role) && (() => {
                                 const live = liveShare(state.quoteShares || [], q.id, new Date());
                                 const liveUrl = live ? shareUrl(live.token, q.quoteNo) : "";
                                 return (

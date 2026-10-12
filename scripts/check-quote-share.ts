@@ -26,13 +26,14 @@ assert.throws(() => outboxName(token.toUpperCase()), "the VPS route serves lower
 assert.ok(!/anahon/i.test(SHARE_ORIGIN), "an iContent link never names AnaHon");
 
 // B — who gets one.
-const sent = { status: "Sent", issuedAs: "icontent", validUntil: "2026-09-30" };
+const sent = { status: "Sent", issuedAs: "icontent-studio", validUntil: "2026-09-30" };
 assert.equal(shareBlocker(sent, now), null);
 assert.ok(shareBlocker({ ...sent, status: "Draft" }, now), "never for a Draft");
 assert.ok(shareBlocker({ ...sent, status: "Rejected" }, now));
 assert.ok(shareBlocker({ ...sent, status: "Paid" }, now), "a settled quotation is no longer an offer");
 assert.equal(shareBlocker({ ...sent, status: "Invoiced" }, now), null, "part paid: the balance message may still carry it");
 assert.ok(shareBlocker({ ...sent, issuedAs: "anahon" }, now), "AnaHon quotations get no link (Saad, 16 Sep)");
+assert.ok(shareBlocker({ ...sent, issuedAs: "icontent-media" }, now), "iContent Media is download-only until icontent.media serves /q/ (Saad, 12 Oct)");
 assert.ok(shareBlocker({ ...sent, validUntil: "2026-09-15" }, now), "validity passed");
 
 // C — expiry: the whole Beirut validity day; with no date, the same 15 days a new quotation gets.
@@ -78,7 +79,7 @@ assert.ok(/"\/api\/quotations\/share": MANAGERS/.test(gates) && /"\/api\/quotati
 
 // G — the bytes a client reads carry no AnaHon.
 const html = quotationHtml({ quoteNo: "006/2026", date: "2026-09-15", validUntil: "2026-09-30", preparedBy: "Saad Matar — Executive Director", clientName: "Maroun Asmar", clientContact: "", clientPhone: "", clientTaxId: "",
-  currency: "USD", total: 750, items: [{ service: "Brand", description: "", output: "", unitPrice: 750, qty: 1 }], terms: {}, notes: "", issuedAs: "icontent", discountAmount: 0, discountLabel: "", title: "VxV" });
+  currency: "USD", total: 750, items: [{ service: "Brand", description: "", output: "", unitPrice: 750, qty: 1 }], terms: {}, notes: "", issuedAs: "icontent-studio", discountAmount: 0, discountLabel: "", title: "VxV" });
 assert.ok(!/anahon|اناهون|أنا هون|ANH-/i.test(html.replace(/data:font\/woff2;base64,[A-Za-z0-9+/=]+/g, "")), "iContent PDF names AnaHon");
 
 // H — the outbox write: mtime survives the rename and a revoked file is gone.

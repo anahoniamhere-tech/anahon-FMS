@@ -67,14 +67,17 @@ console.log("\nE. a client message is signed by whoever issued the quotation (16
 // Saad's rule: nothing a client of iContent Studio reads mentions AnaHon. 006/2026 went out
 // signed "— AnaHon" and saying "we have sent you" at the moment it was being sent.
 const Q = (lang: string, over: any) => WA_TEMPLATES["client-quotation"]((s: string) => tr(lang, s),
-  { name: "Maroun", ref: "006/2026", amount: "750.00 USD", validUntil: "2026-09-30", issuedAs: "icontent", ...over });
+  { name: "Maroun", ref: "006/2026", amount: "750.00 USD", validUntil: "2026-09-30", issuedAs: "icontent-studio", ...over });
 const BAL = (lang: string, over: any) => WA_TEMPLATES["client-balance"]((s: string) => tr(lang, s),
-  { name: "Maroun", amount: "250.00 USD", date: "2026-09-10", issuedAs: "icontent", ...over });
+  { name: "Maroun", amount: "250.00 USD", date: "2026-09-10", issuedAs: "icontent-studio", ...over });
 for (const lang of ["en", "ar"]) {
   for (const [label, text] of [["quotation", Q(lang, {})], ["balance", BAL(lang, {})]] as const) {
     ok(`iContent ${label} (${lang}) never names AnaHon`, !/AnaHon|اناهون|أنا هون/i.test(text), text);
     ok(`iContent ${label} (${lang}) is signed iContent Studio`, /— \u2068?iContent Studio\u2069?$/.test(text.trim()), text.slice(-24));
   }
+  // iContent Media (12 Oct 2026): signed iContent / أنا المحتوى, never AnaHon, never Studio.
+  const media = Q(lang, { issuedAs: "icontent-media" }).trim();
+  ok(`iContent Media quotation (${lang}) is signed ${lang === "ar" ? "أنا المحتوى" : "iContent"}`, (lang === "ar" ? /— أنا المحتوى$/ : /— iContent$/).test(media) && !/AnaHon|اناهون|Studio/.test(media), media.slice(-24));
   ok(`AnaHon quotation (${lang}) is still signed AnaHon`, /— (AnaHon|اناهون)$/.test(Q(lang, { issuedAs: "anahon" }).trim()));
   ok(`quotation (${lang}) delivers it rather than claiming it was sent`, !/we have sent|أرسلنا/.test(Q(lang, {})), Q(lang, {}));
   ok(`quotation (${lang}) prints the validity date as the PDF does`,

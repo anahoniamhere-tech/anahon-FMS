@@ -87,10 +87,19 @@ export const QUOTE_REVISION_CLAUSE = "AnaHon may revise the prices, scope or ter
  * iContent never names AnaHon; internally everything stays AnaHon. The email is blank until Saad
  * gives one — when set, it prints beside the phone.
  */
-export const ICONTENT_PHONE = "+961 3 677 246"; // Saad's private number (15 Sep 2026); +961 81 408 171 stays AnaHon's
+export const ICONTENT_PHONE = "+961 70 530 424"; // the official iContent number, WhatsApp, on both iContent papers (12 Oct 2026)
 export const ICONTENT_EMAIL = "hello@icontent.studio"; // live 15 Sep 2026 (MX/SPF/DKIM/DMARC checked by the iContent room)
 /** The same rule as QUOTE_REVISION_CLAUSE, with iContent Studio as the party that may revise. */
 export const QUOTE_REVISION_CLAUSE_ICONTENT = "iContent Studio may revise the prices, scope or terms of this quotation at any time until the client accepts it in writing; after acceptance, changes require the agreement of both parties.";
 /** Arabic; the name is wrapped in an LTR span where it prints. */
 export const QUOTE_REVISION_CLAUSE_ICONTENT_AR = "يحقّ لـ {ICONTENT} تعديل الأسعار أو نطاق العمل أو شروط عرض السعر هذا في أي وقت إلى أن يقبله العميل خطّياً؛ وبعد القبول، لا يُجرى أي تعديل إلا بموافقة الطرفين.";
+/** iContent Media (the creators' academy, icontent.media). No mailbox is live yet: blank until Admin
+ *  confirms hello@icontent.media, then this one line — it prints beside the phone when set. */
+export const ICONTENT_MEDIA_EMAIL = "";
+export const ICONTENT_MEDIA_SITE = "icontent.media";
+export const QUOTE_REVISION_CLAUSE_ICONTENT_MEDIA = "iContent may revise the prices, scope or terms of this quotation at any time until the client accepts it in writing; after acceptance, changes require the agreement of both parties.";
+export const QUOTE_REVISION_CLAUSE_ICONTENT_MEDIA_AR = "يحقّ لـ«أنا المحتوى» تعديل الأسعار أو نطاق العمل أو شروط عرض السعر هذا في أي وقت إلى أن يقبله العميل خطّياً؛ وبعد القبول، لا يُجرى أي تعديل إلا بموافقة الطرفين.";
+/** The address on AnaHon paper. On hold (12 Oct 2026): Admin is checking anahon.org mail; this line
+ *  changes once Front desk confirms the address (saad@ or finance@). */
+export const ANAHON_EMAIL = "info@anahon.org";
 export const QUOTE_REVISION_CLAUSE_AR = "يحقّ لاناهون تعديل الأسعار أو نطاق العمل أو شروط عرض السعر هذا في أي وقت إلى أن يقبله العميل خطّياً؛ وبعد القبول، لا يُجرى أي تعديل إلا بموافقة الطرفين.";

@@ -125,8 +125,8 @@ export interface Quotation {
    *  via link-payment. A list because a client may pay in tranches (half up front, half
    *  on delivery); the amounts live on the bank lines, never here. */
   paymentTxIds: string[];
-  /** "anahon" (default) or "icontent" — the letterhead the quotation is issued under. */
-  issuedAs?: "anahon" | "icontent";
+  /** The paper the quotation is issued on (src/quoteTotals.ts QUOTE_ISSUERS). */
+  issuedAs?: "icontent-media" | "icontent-studio" | "anahon";
   /** Positive amount deducted from the package value; amount is the net total. */
   discountAmount?: number;
   discountLabel?: string;

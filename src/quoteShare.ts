@@ -58,7 +58,9 @@ type QuoteLike = { status: string; issuedAs: string; validUntil: string };
 
 /** Why this quotation cannot get a link now, or null. */
 export function shareBlocker(q: QuoteLike, now: Date): string | null {
-  if (q.issuedAs !== "icontent") return "Only iContent Studio quotations can be shared by link. Send AnaHon quotations as the PDF.";
+  // Links live on icontent.studio, so only Studio's quotations get one; iContent Media is download-only
+  // until icontent.media serves /q/ too (Saad, 12 Oct 2026).
+  if (q.issuedAs !== "icontent-studio") return "Only iContent Studio quotations can be shared by link. Send AnaHon and iContent Media quotations as the PDF.";
   if (!SHAREABLE_STATUSES.includes(q.status)) return `A link is only for a quotation the client is meant to read (Sent, Accepted or part paid); this one is ${q.status}.`;
   if (shareExpiry(q.validUntil, now).getTime() <= now.getTime()) return "This quotation's validity has passed. Extend the valid-until date first.";
   return null;
