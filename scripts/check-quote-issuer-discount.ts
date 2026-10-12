@@ -67,7 +67,7 @@ assert.ok(/\$\{isIContent\(quote\.issuedAs\) \? "iContent" : "AnaHon"\}_Quotatio
 const an = quotationHtml({ ...base, total: 1150 });
 assert.ok(an.includes('alt="AnaHon"') && an.includes("For ANAHON MEDIA PLATFORM — date &amp; signature"), "AnaHon paper signs as the platform (12 Oct 2026)");
 assert.ok(!/ANAHON PRODUCTION|ANAHON production/.test(an), "no production-only heading on AnaHon paper");
-assert.ok(an.includes("info@anahon.org") && fs.readFileSync("src/constants.ts", "utf8").includes('ANAHON_EMAIL = "info@anahon.org"'), "the AnaHon address is held as one constant until Front desk confirms it");
+assert.ok(an.includes("finance@anahon.org") && !an.includes("info@anahon.org") && fs.readFileSync("src/constants.ts", "utf8").includes('ANAHON_EMAIL = "finance@anahon.org"'), "AnaHon paper prints finance@anahon.org (Saad, 12 Oct 2026)");
 assert.ok(!an.includes("Package value"), "no discount rows when there is no discount");
 assert.ok(!/@font-face/.test(an), "the AnaHon quotation does not carry the iContent fonts");
 

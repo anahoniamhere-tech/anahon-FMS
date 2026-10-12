@@ -6,7 +6,7 @@
  */
 import assert from "assert";
 import fs from "fs";
-import { quotationHtml } from "../docgen.js";
+import { quotationHtml, cashReceiptHtml } from "../docgen.js";
 import { QUOTE_ISSUERS, QUOTE_ISSUER_LABELS, DEFAULT_NEW_QUOTE_ISSUER, isIContent } from "../src/quoteTotals.js";
 import { QUOTE_VALIDITY_DAYS, ICONTENT_MEDIA_EMAIL, QUOTE_REVISION_CLAUSE_ICONTENT_MEDIA, QUOTE_REVISION_CLAUSE_ICONTENT_MEDIA_AR } from "../src/constants.js";
 
@@ -46,6 +46,13 @@ const a = page("anahon");
 assert.ok(a.includes('alt="AnaHon"') && a.includes("For ANAHON MEDIA PLATFORM — date &amp; signature") && a.includes("AnaHon Media Platform · This quotation"));
 assert.ok(!/ANAHON PRODUCTION|ANAHON production|icontent/i.test(a), "no production-only heading, no iContent");
 assert.ok(a.includes("+961 81 408 171") && a.includes(">Unit<"), "AnaHon's number and the itemised table");
+// finance@anahon.org on every AnaHon paper (Saad, 12 Oct 2026): header and footer of the quotation, and the receipt.
+assert.equal((a.match(/finance@anahon\.org/g) || []).length, 2, "quotation header and footer");
+const rc = cashReceiptHtml({ receiptNo: "RC-001/2026", date: "2026-10-12", method: "Cash", clientName: "C", clientContact: "", currency: "USD", amount: 1, amountWords: "one", againstQuoteNo: "005/2026", againstTitle: "T", receivedBy: "Saad Matar" });
+assert.ok(rc.includes("finance@anahon.org"), "the cash receipt");
+const docgen = fs.readFileSync("docgen.ts", "utf8");
+assert.ok(!docgen.includes("info@anahon.org") && (docgen.match(/\$\{ANAHON_EMAIL\}/g) || []).length === 6, "all six AnaHon addresses come from the one constant");
+for (const h of [mt, s]) assert.ok(!/@anahon\.org/.test(h), "no AnaHon address on iContent paper");
 
 // E — what stays shared: one series, one validity, no bank block on any paper.
 assert.equal(QUOTE_VALIDITY_DAYS, 15);
