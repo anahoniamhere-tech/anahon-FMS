@@ -50,6 +50,12 @@ assert.ok(a.includes("+961 81 408 171") && a.includes(">Unit<"), "AnaHon's numbe
 assert.equal((a.match(/finance@anahon\.org/g) || []).length, 2, "quotation header and footer");
 const rc = cashReceiptHtml({ receiptNo: "RC-001/2026", date: "2026-10-12", method: "Cash", clientName: "C", clientContact: "", currency: "USD", amount: 1, amountWords: "one", againstQuoteNo: "005/2026", againstTitle: "T", receivedBy: "Saad Matar" });
 assert.ok(rc.includes("finance@anahon.org"), "the cash receipt");
+// The receipt names the platform like the quotation, and does not repeat a payer who is their own contact (Saad, 12 Oct 2026).
+assert.ok(!/ANAHON PRODUCTION|ANAHON production/.test(rc) && rc.includes("for ANAHON MEDIA PLATFORM — date") && /issued by\s+AnaHon Media Platform/.test(rc), "the receipt signs as the platform");
+const same = cashReceiptHtml({ receiptNo: "RC-002/2026", date: "2026-10-12", method: "Cash", clientName: "Mohamad Al Omar", clientContact: "Mohamad Al Omar · +961 78 804 167", currency: "USD", amount: 400, amountWords: "four hundred USD", againstQuoteNo: "005/2026", againstTitle: "T", receivedBy: "Saad Matar" });
+assert.ok(same.includes("<td>Mohamad Al Omar — +961 78 804 167</td>"), "a payer who is their own contact is named once, then the phone");
+const org = cashReceiptHtml({ receiptNo: "RC-003/2026", date: "2026-10-12", method: "Cash", clientName: "WARD Organization", clientContact: "Rania · +961 70 000 000", currency: "USD", amount: 1, amountWords: "one", againstQuoteNo: "004/2026", againstTitle: "T", receivedBy: "Saad Matar" });
+assert.ok(org.includes("<td>WARD Organization — Rania · +961 70 000 000</td>"), "an organisation's named contact still prints");
 const docgen = fs.readFileSync("docgen.ts", "utf8");
 assert.ok(!docgen.includes("info@anahon.org") && (docgen.match(/\$\{ANAHON_EMAIL\}/g) || []).length === 6, "all six AnaHon addresses come from the one constant");
 for (const h of [mt, s]) assert.ok(!/@anahon\.org/.test(h), "no AnaHon address on iContent paper");

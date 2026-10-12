@@ -719,12 +719,13 @@ export function cashReceiptHtml(o: {
   againstQuoteNo: string; againstTitle: string;
   receivedBy: string;
 }) {
+  // A payer who is their own contact is named once (Saad, 12 Oct 2026) — the quotation already does this.
+  const contact = o.clientContact.split(" · ").filter(s => s.trim().toLowerCase() !== o.clientName.trim().toLowerCase()).join(" · ");
+  // The letterhead already reads ANAHON MEDIA PLATFORM; the receipt signs as it, like the quotation (12 Oct 2026).
   return page(`Receipt ${o.receiptNo} — ${o.clientName}`, `
 <div style="display:flex;justify-content:space-between;align-items:flex-start">
   <div>
-    <h1 style="border:none;margin-bottom:0">ANAHON PRODUCTION</h1>
-    <h2>Tripoli, Lebanon</h2>
-    <p style="font-size:11px;color:#555;margin-top:8px">Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor<br>
+    <p style="font-size:11px;color:#555;margin-top:0">Behind Kasr El Helou (Hallab 1881), Gebran Khalil Gebran Street, Awada Bldg, 1st floor<br>
     MOF: 3893185 · Phone: +961 81 408 171 · ${ANAHON_EMAIL}</p>
   </div>
   <div style="text-align:right">
@@ -736,17 +737,17 @@ export function cashReceiptHtml(o: {
 </div>
 <table>
   <caption>Received with thanks</caption>
-  <tr><th scope="row">From</th><td>${esc(o.clientName)}${o.clientContact ? ` — ${esc(o.clientContact)}` : ""}</td></tr>
+  <tr><th scope="row">From</th><td>${esc(o.clientName)}${contact ? ` — ${esc(contact)}` : ""}</td></tr>
   <tr><th scope="row">The sum of</th><td><strong>${money(o.amount, o.currency)}</strong>${o.amountWords ? ` — ${esc(o.amountWords)}` : ""}</td></tr>
   <tr><th scope="row">In settlement of</th><td>Quotation № ${esc(o.againstQuoteNo)}${o.againstTitle ? ` — ${esc(o.againstTitle)}` : ""}</td></tr>
 </table>
 <p style="margin:10px 0;font-size:10.5px">This receipt acknowledges payment in full of the quotation named above. It is issued by
-ANAHON PRODUCTION and is valid only when signed by the person who received the payment.</p>
+AnaHon Media Platform and is valid only when signed by the person who received the payment.</p>
 <div class="sig">
-<div>${esc(o.receivedBy)}<br>Received by, for ANAHON PRODUCTION — date &amp; signature</div>
+<div>${esc(o.receivedBy)}<br>Received by, for ANAHON MEDIA PLATFORM — date &amp; signature</div>
 <div>${esc(o.clientName)}<br>Payer — date &amp; signature</div>
 </div>
-<p class="note">ANAHON production · MOF 3893185 · Keep this receipt: for a cash payment it is the only proof of settlement.</p>`);
+<p class="note">AnaHon Media Platform · MOF 3893185 · Keep this receipt: for a cash payment it is the only proof of settlement.</p>`);
 }
 
 /** AnaHon master project proposal — the internal template the team adapts into
